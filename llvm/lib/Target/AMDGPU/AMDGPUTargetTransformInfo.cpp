@@ -512,9 +512,8 @@ bool GCNTTIImpl::getTgtMemIntrinsic(IntrinsicInst *Inst,
 
 InstructionCost GCNTTIImpl::getArithmeticInstrCost(
     unsigned Opcode, Type *Ty, TTI::TargetCostKind CostKind,
-    TTI::OperandValueKind Opd1Info, TTI::OperandValueKind Opd2Info,
-    TTI::OperandValueProperties Opd1PropInfo,
-    TTI::OperandValueProperties Opd2PropInfo, ArrayRef<const Value *> Args,
+    TTI::OperandValueInfo Op1Info, TTI::OperandValueInfo Op2Info,
+    ArrayRef<const Value *> Args,
     const Instruction *CxtI) {
 
   // Legalize the type.
@@ -657,8 +656,8 @@ InstructionCost GCNTTIImpl::getArithmeticInstrCost(
     break;
   }
 
-  return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Opd1Info, Opd2Info,
-                                       Opd1PropInfo, Opd2PropInfo, Args, CxtI);
+  return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Op1Info, Op2Info,
+                                       Args, CxtI);
 }
 
 // Return true if there's a potential benefit from using v2f16/v2i16
@@ -917,6 +916,38 @@ bool GCNTTIImpl::isAlwaysUniform(const Value *V) const {
     if (CI->isInlineAsm())
       return !isInlineAsmSourceOfDivergence(CI);
     return false;
+  }
+
+  // In most cases TID / wavefrontsize is uniform.
+  //
+  // However, if a kernel has uneven dimesions we can have a value of
+  // workitem-id-x divided by the wavefrontsize non-uniform. For example
+  // dimensions (65, 2) will have workitems with address (64, 0) and (0, 1)
+  // packed into a same wave which gives 1 and 0 after the division by 64
+  // respectively.
+  //
+  // FIXME: limit it to 1D kernels only, although that shall be possible
+  // to perform this optimization is the size of the X dimension is a power
+  // of 2, we just do not currently have infrastructure to query it.
+  using namespace llvm::PatternMatch;
+  uint64_t C;
+  if (match(V, m_LShr(m_Intrinsic<Intrinsic::amdgcn_workitem_id_x>(),
+                      m_ConstantInt(C))) ||
+      match(V, m_AShr(m_Intrinsic<Intrinsic::amdgcn_workitem_id_x>(),
+                      m_ConstantInt(C)))) {
+    const Function *F = cast<Instruction>(V)->getFunction();
+    return C >= ST->getWavefrontSizeLog2() &&
+           ST->getMaxWorkitemID(*F, 1) == 0 && ST->getMaxWorkitemID(*F, 2) == 0;
+  }
+
+  Value *Mask;
+  if (match(V, m_c_And(m_Intrinsic<Intrinsic::amdgcn_workitem_id_x>(),
+                       m_Value(Mask)))) {
+    const Function *F = cast<Instruction>(V)->getFunction();
+    const DataLayout &DL = F->getParent()->getDataLayout();
+    return computeKnownBits(Mask, DL).countMinTrailingZeros() >=
+               ST->getWavefrontSizeLog2() &&
+           ST->getMaxWorkitemID(*F, 1) == 0 && ST->getMaxWorkitemID(*F, 2) == 0;
   }
 
   const ExtractValueInst *ExtValue = dyn_cast<ExtractValueInst>(V);

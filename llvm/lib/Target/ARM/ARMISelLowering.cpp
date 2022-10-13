@@ -3445,11 +3445,16 @@ SDValue ARMTargetLowering::LowerConstantPool(SDValue Op,
     return LowerGlobalAddress(GA, DAG);
   }
 
+  // The 16-bit ADR instruction can only encode offsets that are multiples of 4,
+  // so we need to align to at least 4 bytes when we don't have 32-bit ADR.
+  Align CPAlign = CP->getAlign();
+  if (Subtarget->isThumb1Only())
+    CPAlign = std::max(CPAlign, Align(4));
   if (CP->isMachineConstantPoolEntry())
     Res =
-        DAG.getTargetConstantPool(CP->getMachineCPVal(), PtrVT, CP->getAlign());
+        DAG.getTargetConstantPool(CP->getMachineCPVal(), PtrVT, CPAlign);
   else
-    Res = DAG.getTargetConstantPool(CP->getConstVal(), PtrVT, CP->getAlign());
+    Res = DAG.getTargetConstantPool(CP->getConstVal(), PtrVT, CPAlign);
   return DAG.getNode(ARMISD::Wrapper, dl, MVT::i32, Res);
 }
 
@@ -4481,7 +4486,7 @@ SDValue ARMTargetLowering::LowerFormalArguments(
   int lastInsIndex = -1;
   if (isVarArg && MFI.hasVAStart()) {
     unsigned RegIdx = CCInfo.getFirstUnallocated(GPRArgRegs);
-    if (RegIdx != array_lengthof(GPRArgRegs))
+    if (RegIdx != std::size(GPRArgRegs))
       ArgRegBegin = std::min(ArgRegBegin, (unsigned)GPRArgRegs[RegIdx]);
   }
 
@@ -13706,7 +13711,7 @@ static SDValue PerformSHLSimplify(SDNode *N,
     return SDValue();
 
   // Check that all the users could perform the shl themselves.
-  for (auto U : N->uses()) {
+  for (auto *U : N->uses()) {
     switch(U->getOpcode()) {
     default:
       return SDValue();
@@ -21157,11 +21162,11 @@ bool ARMTargetLowering::canCombineStoreAndExtract(Type *VectorTy, Value *Idx,
   return false;
 }
 
-bool ARMTargetLowering::isCheapToSpeculateCttz() const {
+bool ARMTargetLowering::isCheapToSpeculateCttz(Type *Ty) const {
   return Subtarget->hasV6T2Ops();
 }
 
-bool ARMTargetLowering::isCheapToSpeculateCtlz() const {
+bool ARMTargetLowering::isCheapToSpeculateCtlz(Type *Ty) const {
   return Subtarget->hasV6T2Ops();
 }
 

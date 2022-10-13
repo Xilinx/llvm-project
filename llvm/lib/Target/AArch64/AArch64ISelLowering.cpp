@@ -1380,6 +1380,10 @@ AArch64TargetLowering::AArch64TargetLowering(const TargetMachine &TM,
     setOperationAction(ISD::MUL, MVT::v1i64, Custom);
     setOperationAction(ISD::MUL, MVT::v2i64, Custom);
 
+    // NEON doesn't support across-vector reductions, but SVE does.
+    for (auto VT : {MVT::v4f16, MVT::v8f16, MVT::v2f32, MVT::v4f32, MVT::v2f64})
+      setOperationAction(ISD::VECREDUCE_SEQ_FADD, VT, Custom);
+
     // NOTE: Currently this has to happen after computeRegisterProperties rather
     // than the preferred option of combining it with the addRegisterClass call.
     if (Subtarget->useSVEForFixedLengthVectors()) {
@@ -1433,10 +1437,6 @@ AArch64TargetLowering::AArch64TargetLowering(const TargetMachine &TM,
         setOperationAction(ISD::VECREDUCE_XOR, VT, Custom);
       }
 
-      // FP operations with no NEON support.
-      for (auto VT : {MVT::v4f16, MVT::v8f16, MVT::v2f32, MVT::v4f32,
-                      MVT::v1f64, MVT::v2f64})
-        setOperationAction(ISD::VECREDUCE_SEQ_FADD, VT, Custom);
 
       // Use SVE for vectors with more than 2 elements.
       for (auto VT : {MVT::v4f16, MVT::v8f16, MVT::v4f32})
@@ -2693,9 +2693,7 @@ static bool isZerosVector(const SDNode *N) {
     return false;
 
   auto Opnd0 = N->getOperand(0);
-  auto *CINT = dyn_cast<ConstantSDNode>(Opnd0);
-  auto *CFP = dyn_cast<ConstantFPSDNode>(Opnd0);
-  return (CINT && CINT->isZero()) || (CFP && CFP->isZero());
+  return isNullConstant(Opnd0) || isNullFPConstant(Opnd0);
 }
 
 /// changeIntCCToAArch64CC - Convert a DAG integer condition code to an AArch64
@@ -5812,8 +5810,11 @@ CCAssignFn *AArch64TargetLowering::CCAssignFnForCall(CallingConv::ID CC,
   case CallingConv::Swift:
   case CallingConv::SwiftTail:
   case CallingConv::Tail:
-    if (Subtarget->isTargetWindows() && IsVarArg)
+    if (Subtarget->isTargetWindows() && IsVarArg) {
+      if (Subtarget->isWindowsArm64EC())
+        return CC_AArch64_Arm64EC_VarArg;
       return CC_AArch64_Win64_VarArg;
+    }
     if (!Subtarget->isTargetDarwin())
       return CC_AArch64_AAPCS;
     if (!IsVarArg)
@@ -5821,7 +5822,12 @@ CCAssignFn *AArch64TargetLowering::CCAssignFnForCall(CallingConv::ID CC,
     return Subtarget->isTargetILP32() ? CC_AArch64_DarwinPCS_ILP32_VarArg
                                       : CC_AArch64_DarwinPCS_VarArg;
    case CallingConv::Win64:
-    return IsVarArg ? CC_AArch64_Win64_VarArg : CC_AArch64_AAPCS;
+     if (IsVarArg) {
+       if (Subtarget->isWindowsArm64EC())
+         return CC_AArch64_Arm64EC_VarArg;
+       return CC_AArch64_Win64_VarArg;
+     }
+     return CC_AArch64_AAPCS;
    case CallingConv::CFGuard_Check:
      return CC_AArch64_Win64_CFGuard_Check;
    case CallingConv::AArch64_VectorCall:
@@ -5957,8 +5963,9 @@ SDValue AArch64TargetLowering::LowerFormalArguments(
       case CCValAssign::Full:
         break;
       case CCValAssign::Indirect:
-        assert(VA.getValVT().isScalableVector() &&
-               "Only scalable vectors can be passed indirectly");
+        assert((VA.getValVT().isScalableVector() ||
+                Subtarget->isWindowsArm64EC()) &&
+               "Indirect arguments should be scalable on most subtargets");
         break;
       case CCValAssign::BCvt:
         ArgValue = DAG.getNode(ISD::BITCAST, DL, VA.getValVT(), ArgValue);
@@ -5985,10 +5992,24 @@ SDValue AArch64TargetLowering::LowerFormalArguments(
           !Ins[i].Flags.isInConsecutiveRegs())
         BEAlign = 8 - ArgSize;
 
-      int FI = MFI.CreateFixedObject(ArgSize, ArgOffset + BEAlign, true);
+      SDValue FIN;
+      MachinePointerInfo PtrInfo;
+      if (isVarArg && Subtarget->isWindowsArm64EC()) {
+        // In the ARM64EC varargs convention, fixed arguments on the stack are
+        // accessed relative to x4, not sp.
+        unsigned ObjOffset = ArgOffset + BEAlign;
+        Register VReg = MF.addLiveIn(AArch64::X4, &AArch64::GPR64RegClass);
+        SDValue Val = DAG.getCopyFromReg(Chain, DL, VReg, MVT::i64);
+        FIN = DAG.getNode(ISD::ADD, DL, MVT::i64, Val,
+                          DAG.getConstant(ObjOffset, DL, MVT::i64));
+        PtrInfo = MachinePointerInfo::getUnknownStack(MF);
+      } else {
+        int FI = MFI.CreateFixedObject(ArgSize, ArgOffset + BEAlign, true);
 
-      // Create load nodes to retrieve arguments from the stack.
-      SDValue FIN = DAG.getFrameIndex(FI, getPointerTy(DAG.getDataLayout()));
+        // Create load nodes to retrieve arguments from the stack.
+        FIN = DAG.getFrameIndex(FI, getPointerTy(DAG.getDataLayout()));
+        PtrInfo = MachinePointerInfo::getFixedStack(MF, FI);
+      }
 
       // For NON_EXTLOAD, generic code in getLoad assert(ValVT == MemVT)
       ISD::LoadExtType ExtType = ISD::NON_EXTLOAD;
@@ -6002,8 +6023,9 @@ SDValue AArch64TargetLowering::LowerFormalArguments(
         MemVT = VA.getLocVT();
         break;
       case CCValAssign::Indirect:
-        assert(VA.getValVT().isScalableVector() &&
-               "Only scalable vectors can be passed indirectly");
+        assert((VA.getValVT().isScalableVector() ||
+                Subtarget->isWindowsArm64EC()) &&
+               "Indirect arguments should be scalable on most subtargets");
         MemVT = VA.getLocVT();
         break;
       case CCValAssign::SExt:
@@ -6017,14 +6039,14 @@ SDValue AArch64TargetLowering::LowerFormalArguments(
         break;
       }
 
-      ArgValue =
-          DAG.getExtLoad(ExtType, DL, VA.getLocVT(), Chain, FIN,
-                         MachinePointerInfo::getFixedStack(MF, FI), MemVT);
+      ArgValue = DAG.getExtLoad(ExtType, DL, VA.getLocVT(), Chain, FIN, PtrInfo,
+                                MemVT);
     }
 
     if (VA.getLocInfo() == CCValAssign::Indirect) {
-      assert(VA.getValVT().isScalableVector() &&
-           "Only scalable vectors can be passed indirectly");
+      assert(
+          (VA.getValVT().isScalableVector() || Subtarget->isWindowsArm64EC()) &&
+          "Indirect arguments should be scalable on most subtargets");
 
       uint64_t PartSize = VA.getValVT().getStoreSize().getKnownMinSize();
       unsigned NumParts = 1;
@@ -6044,9 +6066,16 @@ SDValue AArch64TargetLowering::LowerFormalArguments(
         InVals.push_back(ArgValue);
         NumParts--;
         if (NumParts > 0) {
-          SDValue BytesIncrement = DAG.getVScale(
-              DL, Ptr.getValueType(),
-              APInt(Ptr.getValueSizeInBits().getFixedSize(), PartSize));
+          SDValue BytesIncrement;
+          if (PartLoad.isScalableVector()) {
+            BytesIncrement = DAG.getVScale(
+                DL, Ptr.getValueType(),
+                APInt(Ptr.getValueSizeInBits().getFixedSize(), PartSize));
+          } else {
+            BytesIncrement = DAG.getConstant(
+                APInt(Ptr.getValueSizeInBits().getFixedSize(), PartSize), DL,
+                Ptr.getValueType());
+          }
           SDNodeFlags Flags;
           Flags.setNoUnsignedWrap(true);
           Ptr = DAG.getNode(ISD::ADD, DL, Ptr.getValueType(), Ptr,
@@ -6092,6 +6121,7 @@ SDValue AArch64TargetLowering::LowerFormalArguments(
     unsigned StackOffset = CCInfo.getNextStackOffset();
     // We currently pass all varargs at 8-byte alignment, or 4 for ILP32
     StackOffset = alignTo(StackOffset, Subtarget->isTargetILP32() ? 4 : 8);
+    FuncInfo->setVarArgsStackOffset(StackOffset);
     FuncInfo->setVarArgsStackIndex(MFI.CreateFixedObject(4, StackOffset, true));
 
     if (MFI.hasMustTailInVarArgFunc()) {
@@ -6173,7 +6203,12 @@ void AArch64TargetLowering::saveVarArgRegisters(CCState &CCInfo,
   static const MCPhysReg GPRArgRegs[] = { AArch64::X0, AArch64::X1, AArch64::X2,
                                           AArch64::X3, AArch64::X4, AArch64::X5,
                                           AArch64::X6, AArch64::X7 };
-  static const unsigned NumGPRArgRegs = array_lengthof(GPRArgRegs);
+  unsigned NumGPRArgRegs = std::size(GPRArgRegs);
+  if (Subtarget->isWindowsArm64EC()) {
+    // In the ARM64EC ABI, only x0-x3 are used to pass arguments to varargs
+    // functions.
+    NumGPRArgRegs = 4;
+  }
   unsigned FirstVariadicGPR = CCInfo.getFirstUnallocated(GPRArgRegs);
 
   unsigned GPRSaveSize = 8 * (NumGPRArgRegs - FirstVariadicGPR);
@@ -6187,7 +6222,19 @@ void AArch64TargetLowering::saveVarArgRegisters(CCState &CCInfo,
     } else
       GPRIdx = MFI.CreateStackObject(GPRSaveSize, Align(8), false);
 
-    SDValue FIN = DAG.getFrameIndex(GPRIdx, PtrVT);
+    SDValue FIN;
+    if (Subtarget->isWindowsArm64EC()) {
+      // With the Arm64EC ABI, we reserve the save area as usual, but we
+      // compute its address relative to x4.  For a normal AArch64->AArch64
+      // call, x4 == sp on entry, but calls from an entry thunk can pass in a
+      // different address.
+      Register VReg = MF.addLiveIn(AArch64::X4, &AArch64::GPR64RegClass);
+      SDValue Val = DAG.getCopyFromReg(Chain, DL, VReg, MVT::i64);
+      FIN = DAG.getNode(ISD::SUB, DL, MVT::i64, Val,
+                        DAG.getConstant(GPRSaveSize, DL, MVT::i64));
+    } else {
+      FIN = DAG.getFrameIndex(GPRIdx, PtrVT);
+    }
 
     for (unsigned i = FirstVariadicGPR; i < NumGPRArgRegs; ++i) {
       Register VReg = MF.addLiveIn(GPRArgRegs[i], &AArch64::GPR64RegClass);
@@ -6209,7 +6256,7 @@ void AArch64TargetLowering::saveVarArgRegisters(CCState &CCInfo,
     static const MCPhysReg FPRArgRegs[] = {
         AArch64::Q0, AArch64::Q1, AArch64::Q2, AArch64::Q3,
         AArch64::Q4, AArch64::Q5, AArch64::Q6, AArch64::Q7};
-    static const unsigned NumFPRArgRegs = array_lengthof(FPRArgRegs);
+    static const unsigned NumFPRArgRegs = std::size(FPRArgRegs);
     unsigned FirstVariadicFPR = CCInfo.getFirstUnallocated(FPRArgRegs);
 
     unsigned FPRSaveSize = 16 * (NumFPRArgRegs - FirstVariadicFPR);
@@ -6495,9 +6542,10 @@ bool AArch64TargetLowering::isEligibleForTailCallOptimization(
   // 'getBytesInStackArgArea' is not sufficient to determine whether we need to
   // allocate space on the stack. That is why we determine this explicitly here
   // the call cannot be a tailcall.
-  if (llvm::any_of(ArgLocs, [](CCValAssign &A) {
+  if (llvm::any_of(ArgLocs, [&](CCValAssign &A) {
         assert((A.getLocInfo() != CCValAssign::Indirect ||
-                A.getValVT().isScalableVector()) &&
+                A.getValVT().isScalableVector() ||
+                Subtarget->isWindowsArm64EC()) &&
                "Expected value to be scalable");
         return A.getLocInfo() == CCValAssign::Indirect;
       }))
@@ -6586,6 +6634,7 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
 
   AArch64FunctionInfo *FuncInfo = MF.getInfo<AArch64FunctionInfo>();
   bool TailCallOpt = MF.getTarget().Options.GuaranteedTailCallOpt;
+  bool IsCFICall = CLI.CB && CLI.CB->isIndirectCall() && CLI.CFIType;
   bool IsSibCall = false;
   bool GuardWithBTI = false;
 
@@ -6761,8 +6810,9 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
       Arg = DAG.getNode(ISD::FP_EXTEND, DL, VA.getLocVT(), Arg);
       break;
     case CCValAssign::Indirect:
-      assert(VA.getValVT().isScalableVector() &&
-             "Only scalable vectors can be passed indirectly");
+      bool isScalable = VA.getValVT().isScalableVector();
+      assert((isScalable || Subtarget->isWindowsArm64EC()) &&
+             "Indirect arguments should be scalable on most subtargets");
 
       uint64_t StoreSize = VA.getValVT().getStoreSize().getKnownMinSize();
       uint64_t PartSize = StoreSize;
@@ -6778,7 +6828,8 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
       Type *Ty = EVT(VA.getValVT()).getTypeForEVT(*DAG.getContext());
       Align Alignment = DAG.getDataLayout().getPrefTypeAlign(Ty);
       int FI = MFI.CreateStackObject(StoreSize, Alignment, false);
-      MFI.setStackID(FI, TargetStackID::ScalableVector);
+      if (isScalable)
+        MFI.setStackID(FI, TargetStackID::ScalableVector);
 
       MachinePointerInfo MPI = MachinePointerInfo::getFixedStack(MF, FI);
       SDValue Ptr = DAG.getFrameIndex(
@@ -6791,9 +6842,16 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
         Chain = DAG.getStore(Chain, DL, OutVals[i], Ptr, MPI);
         NumParts--;
         if (NumParts > 0) {
-          SDValue BytesIncrement = DAG.getVScale(
-              DL, Ptr.getValueType(),
-              APInt(Ptr.getValueSizeInBits().getFixedSize(), PartSize));
+          SDValue BytesIncrement;
+          if (isScalable) {
+            BytesIncrement = DAG.getVScale(
+                DL, Ptr.getValueType(),
+                APInt(Ptr.getValueSizeInBits().getFixedSize(), PartSize));
+          } else {
+            BytesIncrement = DAG.getConstant(
+                APInt(Ptr.getValueSizeInBits().getFixedSize(), PartSize), DL,
+                Ptr.getValueType());
+          }
           SDNodeFlags Flags;
           Flags.setNoUnsignedWrap(true);
 
@@ -6912,6 +6970,16 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
     }
   }
 
+  if (IsVarArg && Subtarget->isWindowsArm64EC()) {
+    // For vararg calls, the Arm64EC ABI requires values in x4 and x5
+    // describing the argument list.  x4 contains the address of the
+    // first stack parameter. x5 contains the size in bytes of all parameters
+    // passed on the stack.
+    RegsToPass.emplace_back(AArch64::X4, StackPtr);
+    RegsToPass.emplace_back(AArch64::X5,
+                            DAG.getConstant(NumBytes, DL, MVT::i64));
+  }
+
   if (!MemOpChains.empty())
     Chain = DAG.getNode(ISD::TokenFactor, DL, MVT::Other, MemOpChains);
 
@@ -7009,6 +7077,10 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
   if (IsTailCall) {
     MF.getFrameInfo().setHasTailCall();
     SDValue Ret = DAG.getNode(AArch64ISD::TC_RETURN, DL, NodeTys, Ops);
+
+    if (IsCFICall)
+      Ret.getNode()->setCFIType(CLI.CFIType->getZExtValue());
+
     DAG.addCallSiteInfo(Ret.getNode(), std::move(CSInfo));
     return Ret;
   }
@@ -7032,6 +7104,10 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
 
   // Returns a chain and a flag for retval copy to use.
   Chain = DAG.getNode(CallOpc, DL, NodeTys, Ops);
+
+  if (IsCFICall)
+    Chain.getNode()->setCFIType(CLI.CFIType->getZExtValue());
+
   DAG.addNoMergeSiteInfo(Chain.getNode(), CLI.NoMerge);
   InFlag = Chain.getValue(1);
   DAG.addCallSiteInfo(Chain.getNode(), std::move(CSInfo));
@@ -8592,14 +8668,30 @@ SDValue AArch64TargetLowering::LowerDarwin_VASTART(SDValue Op,
 
 SDValue AArch64TargetLowering::LowerWin64_VASTART(SDValue Op,
                                                   SelectionDAG &DAG) const {
-  AArch64FunctionInfo *FuncInfo =
-      DAG.getMachineFunction().getInfo<AArch64FunctionInfo>();
+  MachineFunction &MF = DAG.getMachineFunction();
+  AArch64FunctionInfo *FuncInfo = MF.getInfo<AArch64FunctionInfo>();
 
   SDLoc DL(Op);
-  SDValue FR = DAG.getFrameIndex(FuncInfo->getVarArgsGPRSize() > 0
-                                     ? FuncInfo->getVarArgsGPRIndex()
-                                     : FuncInfo->getVarArgsStackIndex(),
-                                 getPointerTy(DAG.getDataLayout()));
+  SDValue FR;
+  if (Subtarget->isWindowsArm64EC()) {
+    // With the Arm64EC ABI, we compute the address of the varargs save area
+    // relative to x4. For a normal AArch64->AArch64 call, x4 == sp on entry,
+    // but calls from an entry thunk can pass in a different address.
+    Register VReg = MF.addLiveIn(AArch64::X4, &AArch64::GPR64RegClass);
+    SDValue Val = DAG.getCopyFromReg(DAG.getEntryNode(), DL, VReg, MVT::i64);
+    uint64_t StackOffset;
+    if (FuncInfo->getVarArgsGPRSize() > 0)
+      StackOffset = -(uint64_t)FuncInfo->getVarArgsGPRSize();
+    else
+      StackOffset = FuncInfo->getVarArgsStackOffset();
+    FR = DAG.getNode(ISD::ADD, DL, MVT::i64, Val,
+                     DAG.getConstant(StackOffset, DL, MVT::i64));
+  } else {
+    FR = DAG.getFrameIndex(FuncInfo->getVarArgsGPRSize() > 0
+                               ? FuncInfo->getVarArgsGPRIndex()
+                               : FuncInfo->getVarArgsStackIndex(),
+                           getPointerTy(DAG.getDataLayout()));
+  }
   const Value *SV = cast<SrcValueSDNode>(Op.getOperand(2))->getValue();
   return DAG.getStore(Op.getOperand(0), DL, FR, Op.getOperand(1),
                       MachinePointerInfo(SV));
@@ -9830,9 +9922,9 @@ static SDValue ReconstructTruncateFromBuildVector(SDValue V, SelectionDAG &DAG) 
   SDValue Trunc[4] = {
       V.getOperand(0).getOperand(0), V.getOperand(4).getOperand(0),
       V.getOperand(8).getOperand(0), V.getOperand(12).getOperand(0)};
-  for (int I = 0; I < 4; I++)
-    if (Trunc[I].getValueType() == MVT::v4i32)
-      Trunc[I] = DAG.getNode(ISD::TRUNCATE, DL, MVT::v4i16, Trunc[I]);
+  for (SDValue &V : Trunc)
+    if (V.getValueType() == MVT::v4i32)
+      V = DAG.getNode(ISD::TRUNCATE, DL, MVT::v4i16, V);
   SDValue Concat0 =
       DAG.getNode(ISD::CONCAT_VECTORS, DL, MVT::v8i16, Trunc[0], Trunc[1]);
   SDValue Concat1 =
@@ -12400,7 +12492,8 @@ SDValue AArch64TargetLowering::LowerWindowsDYNAMIC_STACKALLOC(
     SDValue Op, SDValue Chain, SDValue &Size, SelectionDAG &DAG) const {
   SDLoc dl(Op);
   EVT PtrVT = getPointerTy(DAG.getDataLayout());
-  SDValue Callee = DAG.getTargetExternalSymbol("__chkstk", PtrVT, 0);
+  SDValue Callee = DAG.getTargetExternalSymbol(Subtarget->getChkStkName(),
+                                               PtrVT, 0);
 
   const AArch64RegisterInfo *TRI = Subtarget->getRegisterInfo();
   const uint32_t *Mask = TRI->getWindowsStackProbePreservedMask();
@@ -12890,7 +12983,7 @@ static bool areOperandsOfVmullHighP64(Value *Op1, Value *Op2) {
 
 static bool isSplatShuffle(Value *V) {
   if (auto *Shuf = dyn_cast<ShuffleVectorInst>(V))
-    return is_splat(Shuf->getShuffleMask());
+    return all_equal(Shuf->getShuffleMask());
   return false;
 }
 
@@ -16136,6 +16229,7 @@ static SDValue performBuildVectorCombine(SDNode *N,
                                          TargetLowering::DAGCombinerInfo &DCI,
                                          SelectionDAG &DAG) {
   SDLoc DL(N);
+  EVT VT = N->getValueType(0);
 
   // A build vector of two extracted elements is equivalent to an
   // extract subvector where the inner vector is any-extended to the
@@ -16146,7 +16240,7 @@ static SDValue performBuildVectorCombine(SDNode *N,
 
   // For now, only consider the v2i32 case, which arises as a result of
   // legalization.
-  if (N->getValueType(0) != MVT::v2i32)
+  if (VT != MVT::v2i32)
     return SDValue();
 
   SDValue Elt0 = N->getOperand(0), Elt1 = N->getOperand(1);
@@ -16159,7 +16253,10 @@ static SDValue performBuildVectorCombine(SDNode *N,
       // Both EXTRACT_VECTOR_ELT from same vector...
       Elt0->getOperand(0) == Elt1->getOperand(0) &&
       // ... and contiguous. First element's index +1 == second element's index.
-      Elt0->getConstantOperandVal(1) + 1 == Elt1->getConstantOperandVal(1)) {
+      Elt0->getConstantOperandVal(1) + 1 == Elt1->getConstantOperandVal(1) &&
+      // EXTRACT_SUBVECTOR requires that Idx be a constant multiple of
+      // ResultType's known minimum vector length.
+      Elt0->getConstantOperandVal(1) % VT.getVectorMinNumElements() == 0) {
     SDValue VecToExtend = Elt0->getOperand(0);
     EVT ExtVT = VecToExtend.getValueType().changeVectorElementType(MVT::i32);
     if (!DAG.getTargetLoweringInfo().isTypeLegal(ExtVT))
@@ -20827,7 +20924,7 @@ bool AArch64TargetLowering::functionArgumentNeedsConsecutiveRegisters(
   // All non aggregate members of the type must have the same type
   SmallVector<EVT> ValueVTs;
   ComputeValueVTs(*this, DL, Ty, ValueVTs);
-  return is_splat(ValueVTs);
+  return all_equal(ValueVTs);
 }
 
 bool AArch64TargetLowering::shouldNormalizeToSelectSequence(LLVMContext &,
@@ -20869,8 +20966,8 @@ void AArch64TargetLowering::insertSSPDeclarations(Module &M) const {
 
     // MSVC CRT has a function to validate security cookie.
     FunctionCallee SecurityCheckCookie = M.getOrInsertFunction(
-        "__security_check_cookie", Type::getVoidTy(M.getContext()),
-        Type::getInt8PtrTy(M.getContext()));
+        Subtarget->getSecurityCheckCookieName(),
+        Type::getVoidTy(M.getContext()), Type::getInt8PtrTy(M.getContext()));
     if (Function *F = dyn_cast<Function>(SecurityCheckCookie.getCallee())) {
       F->setCallingConv(CallingConv::Win64);
       F->addParamAttr(0, Attribute::AttrKind::InReg);
@@ -20890,7 +20987,7 @@ Value *AArch64TargetLowering::getSDagStackGuard(const Module &M) const {
 Function *AArch64TargetLowering::getSSPStackGuardCheck(const Module &M) const {
   // MSVC CRT has a function to validate security cookie.
   if (Subtarget->getTargetTriple().isWindowsMSVCEnvironment())
-    return M.getFunction("__security_check_cookie");
+    return M.getFunction(Subtarget->getSecurityCheckCookieName());
   return TargetLowering::getSSPStackGuardCheck(M);
 }
 
@@ -21246,7 +21343,7 @@ SDValue AArch64TargetLowering::LowerFixedLengthVectorLoadToSVE(
 
   auto Pg = getPredicateForFixedLengthVector(DAG, DL, VT);
 
-  if (VT.isFloatingPoint() && Load->getExtensionType() == ISD::EXTLOAD) {
+  if (VT.isFloatingPoint()) {
     LoadVT = ContainerVT.changeTypeToInteger();
     MemVT = MemVT.changeTypeToInteger();
   }
@@ -21264,6 +21361,8 @@ SDValue AArch64TargetLowering::LowerFixedLengthVectorLoadToSVE(
     Result = getSVESafeBitCast(ExtendVT, Result, DAG);
     Result = DAG.getNode(AArch64ISD::FP_EXTEND_MERGE_PASSTHRU, DL, ContainerVT,
                          Pg, Result, DAG.getUNDEF(ContainerVT));
+  } else if (VT.isFloatingPoint()) {
+    Result = DAG.getNode(ISD::BITCAST, DL, ContainerVT, Result);
   }
 
   Result = convertFromScalableVector(DAG, VT, Result);
@@ -21352,6 +21451,10 @@ SDValue AArch64TargetLowering::LowerFixedLengthVectorStoreToSVE(
     NewValue = DAG.getNode(AArch64ISD::FP_ROUND_MERGE_PASSTHRU, DL, TruncVT, Pg,
                            NewValue, DAG.getTargetConstant(0, DL, MVT::i64),
                            DAG.getUNDEF(TruncVT));
+    NewValue =
+        getSVESafeBitCast(ContainerVT.changeTypeToInteger(), NewValue, DAG);
+  } else if (VT.isFloatingPoint()) {
+    MemVT = MemVT.changeTypeToInteger();
     NewValue =
         getSVESafeBitCast(ContainerVT.changeTypeToInteger(), NewValue, DAG);
   }

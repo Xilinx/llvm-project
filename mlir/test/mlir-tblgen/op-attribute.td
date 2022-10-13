@@ -109,8 +109,6 @@ def AOp : NS_Op<"a_op", []> {
 // DEF-NEXT:   ::mlir::impl::getAttrFromSortedRange((*this)->getAttrs().begin() + 1, (*this)->getAttrs().end() - 0, bAttrAttrName()).dyn_cast_or_null<some-attr-kind>()
 // DEF:      some-return-type AOp::bAttr() {
 // DEF-NEXT:   auto attr = bAttrAttr();
-// DEF-NEXT:   if (!attr)
-// DEF-NEXT:       return some-const-builder-call(::mlir::Builder((*this)->getContext()), 4.2).some-convert-from-storage();
 // DEF-NEXT:   return attr.some-convert-from-storage();
 
 // DEF:      some-attr-kind AOp::cAttrAttr()
@@ -173,7 +171,6 @@ def AOp : NS_Op<"a_op", []> {
 def Test2_Dialect : Dialect {
   let name = "test2";
   let cppNamespace = "foobar2";
-  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 def AgetOp : Op<Test2_Dialect, "a_get_op", []> {
   let arguments = (ins
@@ -343,11 +340,11 @@ def BOp : NS_Op<"b_op", []> {
 
 def COp : NS_Op<"c_op", []> {
   let arguments = (ins
-    DefaultValuedAttr<I32ArrayAttr, "{1, 2}">:$i32_array_attr,
-    DefaultValuedAttr<I64ArrayAttr, "{3, 4}">:$i64_array_attr,
-    DefaultValuedAttr<F32ArrayAttr, "{5.f, 6.f}">:$f32_array_attr,
-    DefaultValuedAttr<F64ArrayAttr, "{7., 8.}">:$f64_array_attr,
-    DefaultValuedAttr<StrArrayAttr, "{\"a\", \"b\"}">:$str_array_attr
+    DefaultValuedOptionalAttr<I32ArrayAttr, "{1, 2}">:$i32_array_attr,
+    DefaultValuedOptionalAttr<I64ArrayAttr, "{3, 4}">:$i64_array_attr,
+    DefaultValuedOptionalAttr<F32ArrayAttr, "{5.f, 6.f}">:$f32_array_attr,
+    DefaultValuedOptionalAttr<F64ArrayAttr, "{7., 8.}">:$f64_array_attr,
+    DefaultValuedOptionalAttr<StrArrayAttr, "{\"a\", \"b\"}">:$str_array_attr
   );
 }
 
@@ -473,8 +470,8 @@ def OpWithDefaultAndSuccessor : NS_Op<"default_with_succ", []> {
 // DECL: static void build({{.*}}, bool dv_bool_attr, ::mlir::BlockRange succ)
 
 // DEF-LABEL: MixOperandsAndAttrs definitions
-// DEF-DAG: ::mlir::Value MixOperandsAndAttrs::operand()
-// DEF-DAG: ::mlir::Value MixOperandsAndAttrs::otherArg()
+// DEF-DAG: ::mlir::TypedValue<::mlir::FloatType> MixOperandsAndAttrs::operand()
+// DEF-DAG: ::mlir::TypedValue<::mlir::FloatType> MixOperandsAndAttrs::otherArg()
 // DEF-DAG: void MixOperandsAndAttrs::build(::mlir::OpBuilder &odsBuilder, ::mlir::OperationState &odsState, ::mlir::FloatAttr attr, ::mlir::Value operand, ::mlir::FloatAttr otherAttr, ::mlir::Value otherArg)
 // DEF-DAG: ::llvm::APFloat MixOperandsAndAttrs::attr()
 // DEF-DAG: ::llvm::APFloat MixOperandsAndAttrs::otherAttr()

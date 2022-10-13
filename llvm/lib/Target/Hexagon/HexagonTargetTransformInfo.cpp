@@ -29,14 +29,18 @@ using namespace llvm;
 #define DEBUG_TYPE "hexagontti"
 
 static cl::opt<bool> HexagonAutoHVX("hexagon-autohvx", cl::init(false),
-  cl::Hidden, cl::desc("Enable loop vectorizer for HVX"));
+    cl::Hidden, cl::desc("Enable loop vectorizer for HVX"));
+
+static cl::opt<bool> EnableV68FloatAutoHVX(
+    "force-hvx-float", cl::Hidden,
+    cl::desc("Enable auto-vectorization of floatint point types on v68."));
 
 static cl::opt<bool> EmitLookupTables("hexagon-emit-lookup-tables",
-  cl::init(true), cl::Hidden,
-  cl::desc("Control lookup table emission on Hexagon target"));
+    cl::init(true), cl::Hidden,
+    cl::desc("Control lookup table emission on Hexagon target"));
 
 static cl::opt<bool> HexagonMaskedVMem("hexagon-masked-vmem", cl::init(true),
-  cl::Hidden, cl::desc("Enable masked loads/stores for HVX"));
+    cl::Hidden, cl::desc("Enable masked loads/stores for HVX"));
 
 // Constant "cost factor" to make floating point operations more expensive
 // in terms of vectorization cost. This isn't the best way, but it should
@@ -45,6 +49,17 @@ static const unsigned FloatFactor = 4;
 
 bool HexagonTTIImpl::useHVX() const {
   return ST.useHVXOps() && HexagonAutoHVX;
+}
+
+bool HexagonTTIImpl::isHVXVectorType(Type *Ty) const {
+  auto *VecTy = dyn_cast<VectorType>(Ty);
+  if (!VecTy)
+    return false;
+  if (!ST.isTypeForHVX(VecTy))
+    return false;
+  if (ST.useHVXV69Ops() || !VecTy->getElementType()->isFloatingPointTy())
+    return true;
+  return ST.useHVXV68Ops() && EnableV68FloatAutoHVX;
 }
 
 unsigned HexagonTTIImpl::getTypeNumElements(Type *Ty) const {
@@ -161,7 +176,7 @@ InstructionCost HexagonTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src,
                                                 MaybeAlign Alignment,
                                                 unsigned AddressSpace,
                                                 TTI::TargetCostKind CostKind,
-                                                TTI::OperandValueKind OpdInfo,
+                                                TTI::OperandValueInfo OpInfo,
                                                 const Instruction *I) {
   assert(Opcode == Instruction::Load || Opcode == Instruction::Store);
   // TODO: Handle other cost kinds.
@@ -170,12 +185,12 @@ InstructionCost HexagonTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src,
 
   if (Opcode == Instruction::Store)
     return BaseT::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace,
-                                  CostKind, OpdInfo, I);
+                                  CostKind, OpInfo, I);
 
   if (Src->isVectorTy()) {
     VectorType *VecTy = cast<VectorType>(Src);
     unsigned VecWidth = VecTy->getPrimitiveSizeInBits().getFixedSize();
-    if (useHVX() && ST.isTypeForHVX(VecTy)) {
+    if (isHVXVectorType(VecTy)) {
       unsigned RegWidth =
           getRegisterBitWidth(TargetTransformInfo::RGK_FixedWidthVector)
               .getFixedSize();
@@ -211,7 +226,7 @@ InstructionCost HexagonTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src,
   }
 
   return BaseT::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace, CostKind,
-                                OpdInfo, I);
+                                OpInfo, I);
 }
 
 InstructionCost
@@ -256,6 +271,8 @@ InstructionCost HexagonTTIImpl::getCmpSelInstrCost(unsigned Opcode, Type *ValTy,
                                                    TTI::TargetCostKind CostKind,
                                                    const Instruction *I) {
   if (ValTy->isVectorTy() && CostKind == TTI::TCK_RecipThroughput) {
+    if (!isHVXVectorType(ValTy) && ValTy->isFPOrFPVectorTy())
+      return InstructionCost::getMax();
     std::pair<InstructionCost, MVT> LT = getTypeLegalizationCost(ValTy);
     if (Opcode == Instruction::FCmp)
       return LT.first + FloatFactor * getTypeNumElements(ValTy);
@@ -265,23 +282,23 @@ InstructionCost HexagonTTIImpl::getCmpSelInstrCost(unsigned Opcode, Type *ValTy,
 
 InstructionCost HexagonTTIImpl::getArithmeticInstrCost(
     unsigned Opcode, Type *Ty, TTI::TargetCostKind CostKind,
-    TTI::OperandValueKind Opd1Info, TTI::OperandValueKind Opd2Info,
-    TTI::OperandValueProperties Opd1PropInfo,
-    TTI::OperandValueProperties Opd2PropInfo, ArrayRef<const Value *> Args,
+    TTI::OperandValueInfo Op1Info, TTI::OperandValueInfo Op2Info,
+    ArrayRef<const Value *> Args,
     const Instruction *CxtI) {
   // TODO: Handle more cost kinds.
   if (CostKind != TTI::TCK_RecipThroughput)
-    return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Opd1Info,
-                                         Opd2Info, Opd1PropInfo,
-                                         Opd2PropInfo, Args, CxtI);
+    return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Op1Info,
+                                         Op2Info, Args, CxtI);
 
   if (Ty->isVectorTy()) {
+    if (!isHVXVectorType(Ty) && Ty->isFPOrFPVectorTy())
+      return InstructionCost::getMax();
     std::pair<InstructionCost, MVT> LT = getTypeLegalizationCost(Ty);
     if (LT.second.isFloatingPoint())
       return LT.first + FloatFactor * getTypeNumElements(Ty);
   }
-  return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Opd1Info, Opd2Info,
-                                       Opd1PropInfo, Opd2PropInfo, Args, CxtI);
+  return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Op1Info, Op2Info,
+                                       Args, CxtI);
 }
 
 InstructionCost HexagonTTIImpl::getCastInstrCost(unsigned Opcode, Type *DstTy,
@@ -289,6 +306,12 @@ InstructionCost HexagonTTIImpl::getCastInstrCost(unsigned Opcode, Type *DstTy,
                                                  TTI::CastContextHint CCH,
                                                  TTI::TargetCostKind CostKind,
                                                  const Instruction *I) {
+  auto isNonHVXFP = [this] (Type *Ty) {
+    return Ty->isVectorTy() && !isHVXVectorType(Ty) && Ty->isFPOrFPVectorTy();
+  };
+  if (isNonHVXFP(SrcTy) || isNonHVXFP(DstTy))
+    return InstructionCost::getMax();
+
   if (SrcTy->isFPOrFPVectorTy() || DstTy->isFPOrFPVectorTy()) {
     unsigned SrcN = SrcTy->isFPOrFPVectorTy() ? getTypeNumElements(SrcTy) : 0;
     unsigned DstN = DstTy->isFPOrFPVectorTy() ? getTypeNumElements(DstTy) : 0;
@@ -325,10 +348,14 @@ InstructionCost HexagonTTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val,
 }
 
 bool HexagonTTIImpl::isLegalMaskedStore(Type *DataType, Align /*Alignment*/) {
+  // This function is called from scalarize-masked-mem-intrin, which runs
+  // in pre-isel. Use ST directly instead of calling isHVXVectorType.
   return HexagonMaskedVMem && ST.isTypeForHVX(DataType);
 }
 
 bool HexagonTTIImpl::isLegalMaskedLoad(Type *DataType, Align /*Alignment*/) {
+  // This function is called from scalarize-masked-mem-intrin, which runs
+  // in pre-isel. Use ST directly instead of calling isHVXVectorType.
   return HexagonMaskedVMem && ST.isTypeForHVX(DataType);
 }
 

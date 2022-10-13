@@ -54,8 +54,7 @@ public:
   /// Return the cost of materializing a vector immediate, assuming it does
   /// not get folded into the using instruction(s).
   InstructionCost getVectorImmCost(VectorType *VecTy,
-                                   TTI::OperandValueKind OpInfo,
-                                   TTI::OperandValueProperties PropInfo,
+                                   TTI::OperandValueInfo OpInfo,
                                    TTI::TargetCostKind CostKind);
 
   InstructionCost getIntImmCost(const APInt &Imm, Type *Ty,
@@ -83,6 +82,8 @@ public:
   TypeSize getRegisterBitWidth(TargetTransformInfo::RegisterKind K) const;
 
   unsigned getRegUsageForType(Type *Ty);
+
+  unsigned getMaximumVF(unsigned ElemWidth, unsigned Opcode) const;
 
   InstructionCost getMaskedMemoryOpCost(unsigned Opcode, Type *Src,
                                         Align Alignment, unsigned AddressSpace,
@@ -136,8 +137,13 @@ public:
   InstructionCost
   getMemoryOpCost(unsigned Opcode, Type *Src, MaybeAlign Alignment,
                   unsigned AddressSpace, TTI::TargetCostKind CostKind,
-                  TTI::OperandValueKind OpdInfo = TTI::OK_AnyValue,
+                  TTI::OperandValueInfo OpdInfo = {TTI::OK_AnyValue, TTI::OP_None},
                   const Instruction *I = nullptr);
+
+  InstructionCost getCmpSelInstrCost(unsigned Opcode, Type *ValTy, Type *CondTy,
+                                     CmpInst::Predicate VecPred,
+                                     TTI::TargetCostKind CostKind,
+                                     const Instruction *I = nullptr);
 
   bool isElementTypeLegalForScalableVector(Type *Ty) const {
     return TLI->isLegalElementTypeForRVV(Ty);
@@ -238,6 +244,7 @@ public:
     case RecurKind::UMax:
     case RecurKind::FMin:
     case RecurKind::FMax:
+    case RecurKind::FMulAdd:
       return true;
     default:
       return false;

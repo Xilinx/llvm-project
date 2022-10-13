@@ -3499,6 +3499,8 @@ bool LLParser::parseValID(ValID &ID, PerFunctionState *PFS, Type *ExpectedTy) {
     return error(ID.Loc, "fdiv constexprs are no longer supported");
   case lltok::kw_frem:
     return error(ID.Loc, "frem constexprs are no longer supported");
+  case lltok::kw_fneg:
+    return error(ID.Loc, "fneg constexprs are no longer supported");
   case lltok::kw_icmp:
   case lltok::kw_fcmp: {
     unsigned PredVal, Opc = Lex.getUIntVal();
@@ -3532,30 +3534,6 @@ bool LLParser::parseValID(ValID &ID, PerFunctionState *PFS, Type *ExpectedTy) {
     return false;
   }
 
-  // Unary Operators.
-  case lltok::kw_fneg: {
-    unsigned Opc = Lex.getUIntVal();
-    Constant *Val;
-    Lex.Lex();
-    if (parseToken(lltok::lparen, "expected '(' in unary constantexpr") ||
-        parseGlobalTypeAndValue(Val) ||
-        parseToken(lltok::rparen, "expected ')' in unary constantexpr"))
-      return true;
-
-    // Check that the type is valid for the operator.
-    switch (Opc) {
-    case Instruction::FNeg:
-      if (!Val->getType()->isFPOrFPVectorTy())
-        return error(ID.Loc, "constexpr requires fp operands");
-      break;
-    default: llvm_unreachable("Unknown unary operator!");
-    }
-    unsigned Flags = 0;
-    Constant *C = ConstantExpr::get(Opc, Val, Flags);
-    ID.ConstantVal = C;
-    ID.Kind = ValID::t_Constant;
-    return false;
-  }
   // Binary Operators.
   case lltok::kw_add:
   case lltok::kw_sub:
@@ -6979,21 +6957,22 @@ int LLParser::parsePHI(Instruction *&Inst, PerFunctionState &PFS) {
   Type *Ty = nullptr;  LocTy TypeLoc;
   Value *Op0, *Op1;
 
-  if (parseType(Ty, TypeLoc) ||
-      parseToken(lltok::lsquare, "expected '[' in phi value list") ||
-      parseValue(Ty, Op0, PFS) ||
-      parseToken(lltok::comma, "expected ',' after insertelement value") ||
-      parseValue(Type::getLabelTy(Context), Op1, PFS) ||
-      parseToken(lltok::rsquare, "expected ']' in phi value list"))
+  if (parseType(Ty, TypeLoc))
     return true;
 
+  if (!Ty->isFirstClassType())
+    return error(TypeLoc, "phi node must have first class type");
+
+  bool First = true;
   bool AteExtraComma = false;
   SmallVector<std::pair<Value*, BasicBlock*>, 16> PHIVals;
 
   while (true) {
-    PHIVals.push_back(std::make_pair(Op0, cast<BasicBlock>(Op1)));
-
-    if (!EatIfPresent(lltok::comma))
+    if (First) {
+      if (Lex.getKind() != lltok::lsquare)
+        break;
+      First = false;
+    } else if (!EatIfPresent(lltok::comma))
       break;
 
     if (Lex.getKind() == lltok::MetadataVar) {
@@ -7007,10 +6986,9 @@ int LLParser::parsePHI(Instruction *&Inst, PerFunctionState &PFS) {
         parseValue(Type::getLabelTy(Context), Op1, PFS) ||
         parseToken(lltok::rsquare, "expected ']' in phi value list"))
       return true;
-  }
 
-  if (!Ty->isFirstClassType())
-    return error(TypeLoc, "phi node must have first class type");
+    PHIVals.push_back(std::make_pair(Op0, cast<BasicBlock>(Op1)));
+  }
 
   PHINode *PN = PHINode::Create(Ty, PHIVals.size());
   for (unsigned i = 0, e = PHIVals.size(); i != e; ++i)

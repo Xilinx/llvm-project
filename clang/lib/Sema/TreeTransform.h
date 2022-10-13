@@ -4852,8 +4852,7 @@ QualType TreeTransform<Derived>::RebuildQualifiedType(QualType T,
         Replacement = SemaRef.Context.getQualifiedType(
             Replacement.getUnqualifiedType(), Qs);
         T = SemaRef.Context.getSubstTemplateTypeParmType(
-            SubstTypeParam->getReplacedParameter(), Replacement,
-            SubstTypeParam->getPackIndex());
+            SubstTypeParam->getReplacedParameter(), Replacement);
       } else if ((AutoTy = dyn_cast<AutoType>(T)) && AutoTy->isDeduced()) {
         // 'auto' types behave the same way as template parameters.
         QualType Deduced = AutoTy->getDeducedType();
@@ -6410,8 +6409,9 @@ QualType TreeTransform<Derived>::TransformSubstTemplateTypeParmType(
 
   // Always canonicalize the replacement type.
   Replacement = SemaRef.Context.getCanonicalType(Replacement);
-  QualType Result = SemaRef.Context.getSubstTemplateTypeParmType(
-      T->getReplacedParameter(), Replacement, T->getPackIndex());
+  QualType Result
+    = SemaRef.Context.getSubstTemplateTypeParmType(T->getReplacedParameter(),
+                                                   Replacement);
 
   // Propagate type-source information.
   SubstTemplateTypeParmTypeLoc NewTL
@@ -9671,9 +9671,7 @@ OMPClause *TreeTransform<Derived>::TransformOMPInitClause(OMPInitClause *C) {
   if (IVR.isInvalid())
     return nullptr;
 
-  OMPInteropInfo InteropInfo;
-  InteropInfo.IsTarget = C->getIsTarget();
-  InteropInfo.IsTargetSync = C->getIsTargetSync();
+  OMPInteropInfo InteropInfo(C->getIsTarget(), C->getIsTargetSync());
   InteropInfo.PreferTypes.reserve(C->varlist_size() - 1);
   for (Expr *E : llvm::drop_begin(C->varlists())) {
     ExprResult ER = getDerived().TransformExpr(cast<Expr>(E));

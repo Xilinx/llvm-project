@@ -383,6 +383,10 @@ AArch64TTIImpl::getIntrinsicInstrCost(const IntrinsicCostAttributes &ICA,
     break;
   }
   case Intrinsic::ctpop: {
+    if (!ST->hasNEON()) {
+      // 32-bit or 64-bit ctpop without NEON is 12 instructions.
+      return getTypeLegalizationCost(RetTy).first * 12;
+    }
     static const CostTblEntry CtpopCostTbl[] = {
         {ISD::CTPOP, MVT::v2i64, 4},
         {ISD::CTPOP, MVT::v4i32, 3},
@@ -1602,10 +1606,26 @@ InstructionCost AArch64TTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst,
 
   static const TypeConversionCostTblEntry
   ConversionTbl[] = {
-    { ISD::TRUNCATE, MVT::v4i16, MVT::v4i32,  1 },
-    { ISD::TRUNCATE, MVT::v4i32, MVT::v4i64,  0 },
-    { ISD::TRUNCATE, MVT::v8i8,  MVT::v8i32,  3 },
-    { ISD::TRUNCATE, MVT::v16i8, MVT::v16i32, 6 },
+    { ISD::TRUNCATE, MVT::v2i8,   MVT::v2i64,  1},  // xtn
+    { ISD::TRUNCATE, MVT::v2i16,  MVT::v2i64,  1},  // xtn
+    { ISD::TRUNCATE, MVT::v2i32,  MVT::v2i64,  1},  // xtn
+    { ISD::TRUNCATE, MVT::v4i8,   MVT::v4i32,  1},  // xtn
+    { ISD::TRUNCATE, MVT::v4i8,   MVT::v4i64,  3},  // 2 xtn + 1 uzp1
+    { ISD::TRUNCATE, MVT::v4i16,  MVT::v4i32,  1},  // xtn
+    { ISD::TRUNCATE, MVT::v4i16,  MVT::v4i64,  2},  // 1 uzp1 + 1 xtn
+    { ISD::TRUNCATE, MVT::v4i32,  MVT::v4i64,  1},  // 1 uzp1
+    { ISD::TRUNCATE, MVT::v8i8,   MVT::v8i16,  1},  // 1 xtn
+    { ISD::TRUNCATE, MVT::v8i8,   MVT::v8i32,  2},  // 1 uzp1 + 1 xtn
+    { ISD::TRUNCATE, MVT::v8i8,   MVT::v8i64,  4},  // 3 x uzp1 + xtn
+    { ISD::TRUNCATE, MVT::v8i16,  MVT::v8i32,  1},  // 1 uzp1
+    { ISD::TRUNCATE, MVT::v8i16,  MVT::v8i64,  3},  // 3 x uzp1
+    { ISD::TRUNCATE, MVT::v8i32,  MVT::v8i64,  2},  // 2 x uzp1
+    { ISD::TRUNCATE, MVT::v16i8,  MVT::v16i16, 1},  // uzp1
+    { ISD::TRUNCATE, MVT::v16i8,  MVT::v16i32, 3},  // (2 + 1) x uzp1
+    { ISD::TRUNCATE, MVT::v16i8,  MVT::v16i64, 7},  // (4 + 2 + 1) x uzp1
+    { ISD::TRUNCATE, MVT::v16i16, MVT::v16i32, 2},  // 2 x uzp1
+    { ISD::TRUNCATE, MVT::v16i16, MVT::v16i64, 6},  // (4 + 2) x uzp1
+    { ISD::TRUNCATE, MVT::v16i32, MVT::v16i64, 4},  // 4 x uzp1
 
     // Truncations on nxvmiN
     { ISD::TRUNCATE, MVT::nxv2i1, MVT::nxv2i16, 1 },
@@ -1978,15 +1998,14 @@ InstructionCost AArch64TTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val,
 
 InstructionCost AArch64TTIImpl::getArithmeticInstrCost(
     unsigned Opcode, Type *Ty, TTI::TargetCostKind CostKind,
-    TTI::OperandValueKind Opd1Info, TTI::OperandValueKind Opd2Info,
-    TTI::OperandValueProperties Opd1PropInfo,
-    TTI::OperandValueProperties Opd2PropInfo, ArrayRef<const Value *> Args,
+    TTI::OperandValueInfo Op1Info, TTI::OperandValueInfo Op2Info,
+    ArrayRef<const Value *> Args,
     const Instruction *CxtI) {
+
   // TODO: Handle more cost kinds.
   if (CostKind != TTI::TCK_RecipThroughput)
-    return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Opd1Info,
-                                         Opd2Info, Opd1PropInfo,
-                                         Opd2PropInfo, Args, CxtI);
+    return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Op1Info,
+                                         Op2Info, Args, CxtI);
 
   // Legalize the type.
   std::pair<InstructionCost, MVT> LT = getTypeLegalizationCost(Ty);
@@ -1994,61 +2013,53 @@ InstructionCost AArch64TTIImpl::getArithmeticInstrCost(
 
   switch (ISD) {
   default:
-    return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Opd1Info,
-                                         Opd2Info, Opd1PropInfo, Opd2PropInfo);
+    return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Op1Info,
+                                         Op2Info);
   case ISD::SDIV:
-    if (Opd2Info == TargetTransformInfo::OK_UniformConstantValue &&
-        Opd2PropInfo == TargetTransformInfo::OP_PowerOf2) {
+    if (Op2Info.isConstant() && Op2Info.isUniform() && Op2Info.isPowerOf2()) {
       // On AArch64, scalar signed division by constants power-of-two are
       // normally expanded to the sequence ADD + CMP + SELECT + SRA.
       // The OperandValue properties many not be same as that of previous
       // operation; conservatively assume OP_None.
       InstructionCost Cost = getArithmeticInstrCost(
-          Instruction::Add, Ty, CostKind, Opd1Info, Opd2Info,
-          TargetTransformInfo::OP_None, TargetTransformInfo::OP_None);
-      Cost += getArithmeticInstrCost(Instruction::Sub, Ty, CostKind, Opd1Info,
-                                     Opd2Info, TargetTransformInfo::OP_None,
-                                     TargetTransformInfo::OP_None);
+          Instruction::Add, Ty, CostKind,
+          Op1Info.getNoProps(), Op2Info.getNoProps());
+      Cost += getArithmeticInstrCost(Instruction::Sub, Ty, CostKind,
+                                     Op1Info.getNoProps(), Op2Info.getNoProps());
       Cost += getArithmeticInstrCost(
-          Instruction::Select, Ty, CostKind, Opd1Info, Opd2Info,
-          TargetTransformInfo::OP_None, TargetTransformInfo::OP_None);
-      Cost += getArithmeticInstrCost(Instruction::AShr, Ty, CostKind, Opd1Info,
-                                     Opd2Info, TargetTransformInfo::OP_None,
-                                     TargetTransformInfo::OP_None);
+          Instruction::Select, Ty, CostKind,
+          Op1Info.getNoProps(), Op2Info.getNoProps());
+      Cost += getArithmeticInstrCost(Instruction::AShr, Ty, CostKind,
+                                     Op1Info.getNoProps(), Op2Info.getNoProps());
       return Cost;
     }
     [[fallthrough]];
   case ISD::UDIV: {
-    if (Opd2Info == TargetTransformInfo::OK_UniformConstantValue) {
+    if (Op2Info.isConstant() && Op2Info.isUniform()) {
       auto VT = TLI->getValueType(DL, Ty);
       if (TLI->isOperationLegalOrCustom(ISD::MULHU, VT)) {
         // Vector signed division by constant are expanded to the
         // sequence MULHS + ADD/SUB + SRA + SRL + ADD, and unsigned division
         // to MULHS + SUB + SRL + ADD + SRL.
         InstructionCost MulCost = getArithmeticInstrCost(
-            Instruction::Mul, Ty, CostKind, Opd1Info, Opd2Info,
-            TargetTransformInfo::OP_None, TargetTransformInfo::OP_None);
+            Instruction::Mul, Ty, CostKind, Op1Info.getNoProps(), Op2Info.getNoProps());
         InstructionCost AddCost = getArithmeticInstrCost(
-            Instruction::Add, Ty, CostKind, Opd1Info, Opd2Info,
-            TargetTransformInfo::OP_None, TargetTransformInfo::OP_None);
+            Instruction::Add, Ty, CostKind, Op1Info.getNoProps(), Op2Info.getNoProps());
         InstructionCost ShrCost = getArithmeticInstrCost(
-            Instruction::AShr, Ty, CostKind, Opd1Info, Opd2Info,
-            TargetTransformInfo::OP_None, TargetTransformInfo::OP_None);
+            Instruction::AShr, Ty, CostKind, Op1Info.getNoProps(), Op2Info.getNoProps());
         return MulCost * 2 + AddCost * 2 + ShrCost * 2 + 1;
       }
     }
 
     InstructionCost Cost = BaseT::getArithmeticInstrCost(
-        Opcode, Ty, CostKind, Opd1Info, Opd2Info, Opd1PropInfo, Opd2PropInfo);
+        Opcode, Ty, CostKind, Op1Info, Op2Info);
     if (Ty->isVectorTy()) {
       // On AArch64, vector divisions are not supported natively and are
       // expanded into scalar divisions of each pair of elements.
       Cost += getArithmeticInstrCost(Instruction::ExtractElement, Ty, CostKind,
-                                     Opd1Info, Opd2Info, Opd1PropInfo,
-                                     Opd2PropInfo);
+                                     Op1Info, Op2Info);
       Cost += getArithmeticInstrCost(Instruction::InsertElement, Ty, CostKind,
-                                     Opd1Info, Opd2Info, Opd1PropInfo,
-                                     Opd2PropInfo);
+                                     Op1Info, Op2Info);
       // TODO: if one of the arguments is scalar, then it's not necessary to
       // double the cost of handling the vector elements.
       Cost += Cost;
@@ -2090,8 +2101,8 @@ InstructionCost AArch64TTIImpl::getArithmeticInstrCost(
     if (!Ty->getScalarType()->isFP128Ty())
       return 2 * LT.first;
 
-    return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Opd1Info,
-                                         Opd2Info, Opd1PropInfo, Opd2PropInfo);
+    return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Op1Info,
+                                         Op2Info);
   }
 }
 
@@ -2250,7 +2261,7 @@ InstructionCost AArch64TTIImpl::getGatherScatterOpCost(
   ElementCount LegalVF = LT.second.getVectorElementCount();
   InstructionCost MemOpCost =
       getMemoryOpCost(Opcode, VT->getElementType(), Alignment, 0, CostKind,
-                      TTI::OK_AnyValue, I);
+                      {TTI::OK_AnyValue, TTI::OP_None}, I);
   // Add on an overhead cost for using gathers/scatters.
   // TODO: At the moment this is applied unilaterally for all CPUs, but at some
   // point we may want a per-CPU overhead.
@@ -2266,7 +2277,7 @@ InstructionCost AArch64TTIImpl::getMemoryOpCost(unsigned Opcode, Type *Ty,
                                                 MaybeAlign Alignment,
                                                 unsigned AddressSpace,
                                                 TTI::TargetCostKind CostKind,
-                                                TTI::OperandValueKind OpdInfo,
+                                                TTI::OperandValueInfo OpInfo,
                                                 const Instruction *I) {
   EVT VT = TLI->getValueType(DL, Ty, true);
   // Type legalization can't handle structs
@@ -2784,6 +2795,13 @@ InstructionCost AArch64TTIImpl::getSpliceCost(VectorType *Tp, int Index) {
       { TTI::SK_Splice, MVT::nxv2f64,  1 },
   };
 
+  // The code-generator is currently not able to handle scalable vectors
+  // of <vscale x 1 x eltty> yet, so return an invalid cost to avoid selecting
+  // it. This change will be removed when code-generation for these types is
+  // sufficiently reliable.
+  if (Tp->getElementCount() == ElementCount::getScalable(1))
+    return InstructionCost::getInvalid();
+
   std::pair<InstructionCost, MVT> LT = getTypeLegalizationCost(Tp);
   Type *LegalVTy = EVT(LT.second).getTypeForEVT(Tp->getContext());
   TTI::TargetCostKind CostKind = TTI::TCK_RecipThroughput;
@@ -2911,116 +2929,116 @@ InstructionCost AArch64TTIImpl::getShuffleCost(TTI::ShuffleKind Kind,
       Kind == TTI::SK_Select || Kind == TTI::SK_PermuteSingleSrc ||
       Kind == TTI::SK_Reverse || Kind == TTI::SK_Splice) {
     static const CostTblEntry ShuffleTbl[] = {
-      // Broadcast shuffle kinds can be performed with 'dup'.
-      { TTI::SK_Broadcast, MVT::v8i8,  1 },
-      { TTI::SK_Broadcast, MVT::v16i8, 1 },
-      { TTI::SK_Broadcast, MVT::v4i16, 1 },
-      { TTI::SK_Broadcast, MVT::v8i16, 1 },
-      { TTI::SK_Broadcast, MVT::v2i32, 1 },
-      { TTI::SK_Broadcast, MVT::v4i32, 1 },
-      { TTI::SK_Broadcast, MVT::v2i64, 1 },
-      { TTI::SK_Broadcast, MVT::v2f32, 1 },
-      { TTI::SK_Broadcast, MVT::v4f32, 1 },
-      { TTI::SK_Broadcast, MVT::v2f64, 1 },
-      // Transpose shuffle kinds can be performed with 'trn1/trn2' and
-      // 'zip1/zip2' instructions.
-      { TTI::SK_Transpose, MVT::v8i8,  1 },
-      { TTI::SK_Transpose, MVT::v16i8, 1 },
-      { TTI::SK_Transpose, MVT::v4i16, 1 },
-      { TTI::SK_Transpose, MVT::v8i16, 1 },
-      { TTI::SK_Transpose, MVT::v2i32, 1 },
-      { TTI::SK_Transpose, MVT::v4i32, 1 },
-      { TTI::SK_Transpose, MVT::v2i64, 1 },
-      { TTI::SK_Transpose, MVT::v2f32, 1 },
-      { TTI::SK_Transpose, MVT::v4f32, 1 },
-      { TTI::SK_Transpose, MVT::v2f64, 1 },
-      // Select shuffle kinds.
-      // TODO: handle vXi8/vXi16.
-      { TTI::SK_Select, MVT::v2i32, 1 }, // mov.
-      { TTI::SK_Select, MVT::v4i32, 2 }, // rev+trn (or similar).
-      { TTI::SK_Select, MVT::v2i64, 1 }, // mov.
-      { TTI::SK_Select, MVT::v2f32, 1 }, // mov.
-      { TTI::SK_Select, MVT::v4f32, 2 }, // rev+trn (or similar).
-      { TTI::SK_Select, MVT::v2f64, 1 }, // mov.
-      // PermuteSingleSrc shuffle kinds.
-      { TTI::SK_PermuteSingleSrc, MVT::v2i32, 1 }, // mov.
-      { TTI::SK_PermuteSingleSrc, MVT::v4i32, 3 }, // perfectshuffle worst case.
-      { TTI::SK_PermuteSingleSrc, MVT::v2i64, 1 }, // mov.
-      { TTI::SK_PermuteSingleSrc, MVT::v2f32, 1 }, // mov.
-      { TTI::SK_PermuteSingleSrc, MVT::v4f32, 3 }, // perfectshuffle worst case.
-      { TTI::SK_PermuteSingleSrc, MVT::v2f64, 1 }, // mov.
-      { TTI::SK_PermuteSingleSrc, MVT::v4i16, 3 }, // perfectshuffle worst case.
-      { TTI::SK_PermuteSingleSrc, MVT::v4f16, 3 }, // perfectshuffle worst case.
-      { TTI::SK_PermuteSingleSrc, MVT::v4bf16, 3 }, // perfectshuffle worst case.
-      { TTI::SK_PermuteSingleSrc, MVT::v8i16, 8 }, // constpool + load + tbl
-      { TTI::SK_PermuteSingleSrc, MVT::v8f16, 8 }, // constpool + load + tbl
-      { TTI::SK_PermuteSingleSrc, MVT::v8bf16, 8 }, // constpool + load + tbl
-      { TTI::SK_PermuteSingleSrc, MVT::v8i8, 8 }, // constpool + load + tbl
-      { TTI::SK_PermuteSingleSrc, MVT::v16i8, 8 }, // constpool + load + tbl
-      // Reverse can be lowered with `rev`.
-      { TTI::SK_Reverse, MVT::v2i32, 1 }, // mov.
-      { TTI::SK_Reverse, MVT::v4i32, 2 }, // REV64; EXT
-      { TTI::SK_Reverse, MVT::v2i64, 1 }, // mov.
-      { TTI::SK_Reverse, MVT::v2f32, 1 }, // mov.
-      { TTI::SK_Reverse, MVT::v4f32, 2 }, // REV64; EXT
-      { TTI::SK_Reverse, MVT::v2f64, 1 }, // mov.
-      { TTI::SK_Reverse, MVT::v8f16, 2 }, // REV64; EXT
-      { TTI::SK_Reverse, MVT::v8i16, 2 }, // REV64; EXT
-      { TTI::SK_Reverse, MVT::v16i8, 2 }, // REV64; EXT
-      { TTI::SK_Reverse, MVT::v4f16, 1 }, // REV64
-      { TTI::SK_Reverse, MVT::v4i16, 1 }, // REV64
-      { TTI::SK_Reverse, MVT::v8i8, 1 }, // REV64
-      // Splice can all be lowered as `ext`.
-      { TTI::SK_Splice, MVT::v2i32, 1 },
-      { TTI::SK_Splice, MVT::v4i32, 1 },
-      { TTI::SK_Splice, MVT::v2i64, 1 },
-      { TTI::SK_Splice, MVT::v2f32, 1 },
-      { TTI::SK_Splice, MVT::v4f32, 1 },
-      { TTI::SK_Splice, MVT::v2f64, 1 },
-      { TTI::SK_Splice, MVT::v8f16, 1 },
-      { TTI::SK_Splice, MVT::v8bf16, 1 },
-      { TTI::SK_Splice, MVT::v8i16, 1 },
-      { TTI::SK_Splice, MVT::v16i8, 1 },
-      { TTI::SK_Splice, MVT::v4bf16, 1 },
-      { TTI::SK_Splice, MVT::v4f16, 1 },
-      { TTI::SK_Splice, MVT::v4i16, 1 },
-      { TTI::SK_Splice, MVT::v8i8, 1 },
-      // Broadcast shuffle kinds for scalable vectors
-      { TTI::SK_Broadcast, MVT::nxv16i8,  1 },
-      { TTI::SK_Broadcast, MVT::nxv8i16,  1 },
-      { TTI::SK_Broadcast, MVT::nxv4i32,  1 },
-      { TTI::SK_Broadcast, MVT::nxv2i64,  1 },
-      { TTI::SK_Broadcast, MVT::nxv2f16,  1 },
-      { TTI::SK_Broadcast, MVT::nxv4f16,  1 },
-      { TTI::SK_Broadcast, MVT::nxv8f16,  1 },
-      { TTI::SK_Broadcast, MVT::nxv2bf16, 1 },
-      { TTI::SK_Broadcast, MVT::nxv4bf16, 1 },
-      { TTI::SK_Broadcast, MVT::nxv8bf16, 1 },
-      { TTI::SK_Broadcast, MVT::nxv2f32,  1 },
-      { TTI::SK_Broadcast, MVT::nxv4f32,  1 },
-      { TTI::SK_Broadcast, MVT::nxv2f64,  1 },
-      { TTI::SK_Broadcast, MVT::nxv16i1,  1 },
-      { TTI::SK_Broadcast, MVT::nxv8i1,   1 },
-      { TTI::SK_Broadcast, MVT::nxv4i1,   1 },
-      { TTI::SK_Broadcast, MVT::nxv2i1,   1 },
-      // Handle the cases for vector.reverse with scalable vectors
-      { TTI::SK_Reverse, MVT::nxv16i8,  1 },
-      { TTI::SK_Reverse, MVT::nxv8i16,  1 },
-      { TTI::SK_Reverse, MVT::nxv4i32,  1 },
-      { TTI::SK_Reverse, MVT::nxv2i64,  1 },
-      { TTI::SK_Reverse, MVT::nxv2f16,  1 },
-      { TTI::SK_Reverse, MVT::nxv4f16,  1 },
-      { TTI::SK_Reverse, MVT::nxv8f16,  1 },
-      { TTI::SK_Reverse, MVT::nxv2bf16, 1 },
-      { TTI::SK_Reverse, MVT::nxv4bf16, 1 },
-      { TTI::SK_Reverse, MVT::nxv8bf16, 1 },
-      { TTI::SK_Reverse, MVT::nxv2f32,  1 },
-      { TTI::SK_Reverse, MVT::nxv4f32,  1 },
-      { TTI::SK_Reverse, MVT::nxv2f64,  1 },
-      { TTI::SK_Reverse, MVT::nxv16i1,  1 },
-      { TTI::SK_Reverse, MVT::nxv8i1,   1 },
-      { TTI::SK_Reverse, MVT::nxv4i1,   1 },
-      { TTI::SK_Reverse, MVT::nxv2i1,   1 },
+        // Broadcast shuffle kinds can be performed with 'dup'.
+        {TTI::SK_Broadcast, MVT::v8i8, 1},
+        {TTI::SK_Broadcast, MVT::v16i8, 1},
+        {TTI::SK_Broadcast, MVT::v4i16, 1},
+        {TTI::SK_Broadcast, MVT::v8i16, 1},
+        {TTI::SK_Broadcast, MVT::v2i32, 1},
+        {TTI::SK_Broadcast, MVT::v4i32, 1},
+        {TTI::SK_Broadcast, MVT::v2i64, 1},
+        {TTI::SK_Broadcast, MVT::v2f32, 1},
+        {TTI::SK_Broadcast, MVT::v4f32, 1},
+        {TTI::SK_Broadcast, MVT::v2f64, 1},
+        // Transpose shuffle kinds can be performed with 'trn1/trn2' and
+        // 'zip1/zip2' instructions.
+        {TTI::SK_Transpose, MVT::v8i8, 1},
+        {TTI::SK_Transpose, MVT::v16i8, 1},
+        {TTI::SK_Transpose, MVT::v4i16, 1},
+        {TTI::SK_Transpose, MVT::v8i16, 1},
+        {TTI::SK_Transpose, MVT::v2i32, 1},
+        {TTI::SK_Transpose, MVT::v4i32, 1},
+        {TTI::SK_Transpose, MVT::v2i64, 1},
+        {TTI::SK_Transpose, MVT::v2f32, 1},
+        {TTI::SK_Transpose, MVT::v4f32, 1},
+        {TTI::SK_Transpose, MVT::v2f64, 1},
+        // Select shuffle kinds.
+        // TODO: handle vXi8/vXi16.
+        {TTI::SK_Select, MVT::v2i32, 1}, // mov.
+        {TTI::SK_Select, MVT::v4i32, 2}, // rev+trn (or similar).
+        {TTI::SK_Select, MVT::v2i64, 1}, // mov.
+        {TTI::SK_Select, MVT::v2f32, 1}, // mov.
+        {TTI::SK_Select, MVT::v4f32, 2}, // rev+trn (or similar).
+        {TTI::SK_Select, MVT::v2f64, 1}, // mov.
+        // PermuteSingleSrc shuffle kinds.
+        {TTI::SK_PermuteSingleSrc, MVT::v2i32, 1}, // mov.
+        {TTI::SK_PermuteSingleSrc, MVT::v4i32, 3}, // perfectshuffle worst case.
+        {TTI::SK_PermuteSingleSrc, MVT::v2i64, 1}, // mov.
+        {TTI::SK_PermuteSingleSrc, MVT::v2f32, 1}, // mov.
+        {TTI::SK_PermuteSingleSrc, MVT::v4f32, 3}, // perfectshuffle worst case.
+        {TTI::SK_PermuteSingleSrc, MVT::v2f64, 1}, // mov.
+        {TTI::SK_PermuteSingleSrc, MVT::v4i16, 3}, // perfectshuffle worst case.
+        {TTI::SK_PermuteSingleSrc, MVT::v4f16, 3}, // perfectshuffle worst case.
+        {TTI::SK_PermuteSingleSrc, MVT::v4bf16, 3}, // same
+        {TTI::SK_PermuteSingleSrc, MVT::v8i16, 8},  // constpool + load + tbl
+        {TTI::SK_PermuteSingleSrc, MVT::v8f16, 8},  // constpool + load + tbl
+        {TTI::SK_PermuteSingleSrc, MVT::v8bf16, 8}, // constpool + load + tbl
+        {TTI::SK_PermuteSingleSrc, MVT::v8i8, 8},   // constpool + load + tbl
+        {TTI::SK_PermuteSingleSrc, MVT::v16i8, 8},  // constpool + load + tbl
+        // Reverse can be lowered with `rev`.
+        {TTI::SK_Reverse, MVT::v2i32, 1}, // REV64
+        {TTI::SK_Reverse, MVT::v4i32, 2}, // REV64; EXT
+        {TTI::SK_Reverse, MVT::v2i64, 1}, // EXT
+        {TTI::SK_Reverse, MVT::v2f32, 1}, // REV64
+        {TTI::SK_Reverse, MVT::v4f32, 2}, // REV64; EXT
+        {TTI::SK_Reverse, MVT::v2f64, 1}, // EXT
+        {TTI::SK_Reverse, MVT::v8f16, 2}, // REV64; EXT
+        {TTI::SK_Reverse, MVT::v8i16, 2}, // REV64; EXT
+        {TTI::SK_Reverse, MVT::v16i8, 2}, // REV64; EXT
+        {TTI::SK_Reverse, MVT::v4f16, 1}, // REV64
+        {TTI::SK_Reverse, MVT::v4i16, 1}, // REV64
+        {TTI::SK_Reverse, MVT::v8i8, 1},  // REV64
+        // Splice can all be lowered as `ext`.
+        {TTI::SK_Splice, MVT::v2i32, 1},
+        {TTI::SK_Splice, MVT::v4i32, 1},
+        {TTI::SK_Splice, MVT::v2i64, 1},
+        {TTI::SK_Splice, MVT::v2f32, 1},
+        {TTI::SK_Splice, MVT::v4f32, 1},
+        {TTI::SK_Splice, MVT::v2f64, 1},
+        {TTI::SK_Splice, MVT::v8f16, 1},
+        {TTI::SK_Splice, MVT::v8bf16, 1},
+        {TTI::SK_Splice, MVT::v8i16, 1},
+        {TTI::SK_Splice, MVT::v16i8, 1},
+        {TTI::SK_Splice, MVT::v4bf16, 1},
+        {TTI::SK_Splice, MVT::v4f16, 1},
+        {TTI::SK_Splice, MVT::v4i16, 1},
+        {TTI::SK_Splice, MVT::v8i8, 1},
+        // Broadcast shuffle kinds for scalable vectors
+        {TTI::SK_Broadcast, MVT::nxv16i8, 1},
+        {TTI::SK_Broadcast, MVT::nxv8i16, 1},
+        {TTI::SK_Broadcast, MVT::nxv4i32, 1},
+        {TTI::SK_Broadcast, MVT::nxv2i64, 1},
+        {TTI::SK_Broadcast, MVT::nxv2f16, 1},
+        {TTI::SK_Broadcast, MVT::nxv4f16, 1},
+        {TTI::SK_Broadcast, MVT::nxv8f16, 1},
+        {TTI::SK_Broadcast, MVT::nxv2bf16, 1},
+        {TTI::SK_Broadcast, MVT::nxv4bf16, 1},
+        {TTI::SK_Broadcast, MVT::nxv8bf16, 1},
+        {TTI::SK_Broadcast, MVT::nxv2f32, 1},
+        {TTI::SK_Broadcast, MVT::nxv4f32, 1},
+        {TTI::SK_Broadcast, MVT::nxv2f64, 1},
+        {TTI::SK_Broadcast, MVT::nxv16i1, 1},
+        {TTI::SK_Broadcast, MVT::nxv8i1, 1},
+        {TTI::SK_Broadcast, MVT::nxv4i1, 1},
+        {TTI::SK_Broadcast, MVT::nxv2i1, 1},
+        // Handle the cases for vector.reverse with scalable vectors
+        {TTI::SK_Reverse, MVT::nxv16i8, 1},
+        {TTI::SK_Reverse, MVT::nxv8i16, 1},
+        {TTI::SK_Reverse, MVT::nxv4i32, 1},
+        {TTI::SK_Reverse, MVT::nxv2i64, 1},
+        {TTI::SK_Reverse, MVT::nxv2f16, 1},
+        {TTI::SK_Reverse, MVT::nxv4f16, 1},
+        {TTI::SK_Reverse, MVT::nxv8f16, 1},
+        {TTI::SK_Reverse, MVT::nxv2bf16, 1},
+        {TTI::SK_Reverse, MVT::nxv4bf16, 1},
+        {TTI::SK_Reverse, MVT::nxv8bf16, 1},
+        {TTI::SK_Reverse, MVT::nxv2f32, 1},
+        {TTI::SK_Reverse, MVT::nxv4f32, 1},
+        {TTI::SK_Reverse, MVT::nxv2f64, 1},
+        {TTI::SK_Reverse, MVT::nxv16i1, 1},
+        {TTI::SK_Reverse, MVT::nxv8i1, 1},
+        {TTI::SK_Reverse, MVT::nxv4i1, 1},
+        {TTI::SK_Reverse, MVT::nxv2i1, 1},
     };
     if (const auto *Entry = CostTableLookup(ShuffleTbl, Kind, LT.second))
       return LT.first * Entry->Cost;

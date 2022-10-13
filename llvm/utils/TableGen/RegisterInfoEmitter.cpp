@@ -440,7 +440,7 @@ void RegisterInfoEmitter::EmitRegMappingTables(
       OS << "extern const unsigned " << Namespace
          << (j == 0 ? "DwarfFlavour" : "EHFlavour") << I << "Dwarf2LSize";
       if (!isCtor)
-        OS << " = array_lengthof(" << Namespace
+        OS << " = std::size(" << Namespace
            << (j == 0 ? "DwarfFlavour" : "EHFlavour") << I << "Dwarf2L);\n\n";
       else
         OS << ";\n\n";
@@ -498,7 +498,7 @@ void RegisterInfoEmitter::EmitRegMappingTables(
       OS << "extern const unsigned " << Namespace
          << (j == 0 ? "DwarfFlavour" : "EHFlavour") << i << "L2DwarfSize";
       if (!isCtor)
-        OS << " = array_lengthof(" << Namespace
+        OS << " = std::size(" << Namespace
            << (j == 0 ? "DwarfFlavour" : "EHFlavour") << i << "L2Dwarf);\n\n";
       else
         OS << ";\n\n";
@@ -1190,6 +1190,7 @@ RegisterInfoEmitter::runTargetHeader(raw_ostream &OS, CodeGenTarget &Target,
      << "MCRegister) const override;\n"
      << "  bool isArgumentRegister(const MachineFunction &, "
      << "MCRegister) const override;\n"
+     << "  bool isConstantPhysReg(MCRegister PhysReg) const override final;\n"
      << "  /// Devirtualized TargetFrameLowering.\n"
      << "  static const " << TargetName << "FrameLowering *getFrameLowering(\n"
      << "      const MachineFunction &MF);\n"
@@ -1675,6 +1676,15 @@ RegisterInfoEmitter::runTargetDesc(raw_ostream &OS, CodeGenTarget &Target,
            << "RegClass.contains(PhysReg) ||\n";
       break;
     }
+  OS << "      false;\n";
+  OS << "}\n\n";
+
+  OS << "bool " << ClassName << "::\n"
+     << "isConstantPhysReg(MCRegister PhysReg) const {\n"
+     << "  return\n";
+  for (const auto &Reg : Regs)
+    if (Reg.Constant)
+      OS << "      PhysReg == " << getQualifiedName(Reg.TheDef) << " ||\n";
   OS << "      false;\n";
   OS << "}\n\n";
 

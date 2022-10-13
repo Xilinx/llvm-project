@@ -11,7 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PassDetail.h"
+#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
@@ -31,6 +32,11 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/WithColor.h"
 #include <algorithm>
+
+namespace mlir {
+#define GEN_PASS_DEF_LINALGSTRUCTURALFUSION
+#include "mlir/Dialect/Linalg/Passes.h.inc"
+} // namespace mlir
 
 #define DEBUG_TYPE "linalg-structural-fusion"
 
@@ -478,7 +484,7 @@ static FailureOr<Strategy> parseStrategy(ArrayRef<std::string> tactics) {
 }
 
 struct LinalgStructuralFusionPass
-    : public LinalgStructuralFusionBase<LinalgStructuralFusionPass> {
+    : public impl::LinalgStructuralFusionBase<LinalgStructuralFusionPass> {
   void runOnOperation() override {
     if (!strategy) {
       if (!strategyString.empty()) {

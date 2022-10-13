@@ -21,6 +21,8 @@
 #include "MCTargetDesc/LoongArchMCTargetDesc.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/ISDOpcodes.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/IntrinsicsLoongArch.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/KnownBits.h"
 
@@ -104,13 +106,19 @@ LoongArchTargetLowering::LoongArchTargetLowering(const TargetMachine &TM,
   if (Subtarget.hasBasicF()) {
     setCondCodeAction(FPCCToExpand, MVT::f32, Expand);
     setOperationAction(ISD::SELECT_CC, MVT::f32, Expand);
+    setOperationAction(ISD::BR_CC, MVT::f32, Expand);
   }
   if (Subtarget.hasBasicD()) {
     setCondCodeAction(FPCCToExpand, MVT::f64, Expand);
     setOperationAction(ISD::SELECT_CC, MVT::f64, Expand);
+    setOperationAction(ISD::BR_CC, MVT::f64, Expand);
     setLoadExtAction(ISD::EXTLOAD, MVT::f64, MVT::f32, Expand);
     setLoadExtAction(ISD::EXTLOAD, MVT::f64, MVT::f32, Expand);
   }
+
+  // Effectively disable jump table generation.
+  setMinimumJumpTableEntries(INT_MAX);
+  setOperationAction(ISD::BR_JT, MVT::Other, Expand);
 
   setOperationAction(ISD::BR_CC, GRLenVT, Expand);
   setOperationAction(ISD::SELECT_CC, GRLenVT, Expand);
@@ -130,6 +138,8 @@ LoongArchTargetLowering::LoongArchTargetLowering(const TargetMachine &TM,
   setBooleanContents(ZeroOrOneBooleanContent);
 
   setMaxAtomicSizeInBitsSupported(Subtarget.getGRLen());
+
+  setMinCmpXchgSizeInBits(32);
 
   // Function alignments.
   const Align FunctionAlignment(4);
@@ -1095,7 +1105,7 @@ static bool CC_LoongArch(const DataLayout &DL, LoongArchABI::ABI ABI,
   }
 
   // FPR32 and FPR64 alias each other.
-  if (State.getFirstUnallocated(ArgFPR32s) == array_lengthof(ArgFPR32s))
+  if (State.getFirstUnallocated(ArgFPR32s) == std::size(ArgFPR32s))
     UseGPRForFloat = true;
 
   if (UseGPRForFloat && ValVT == MVT::f32) {
@@ -1120,7 +1130,7 @@ static bool CC_LoongArch(const DataLayout &DL, LoongArchABI::ABI ABI,
       DL.getTypeAllocSize(OrigTy) == TwoGRLenInBytes) {
     unsigned RegIdx = State.getFirstUnallocated(ArgGPRs);
     // Skip 'odd' register if necessary.
-    if (RegIdx != array_lengthof(ArgGPRs) && RegIdx % 2 == 1)
+    if (RegIdx != std::size(ArgGPRs) && RegIdx % 2 == 1)
       State.AllocateReg(ArgGPRs);
   }
 
@@ -1743,6 +1753,115 @@ bool LoongArchTargetLowering::isFPImmLegal(const APFloat &Imm, EVT VT,
   return (Imm.isZero() || Imm.isExactlyValue(+1.0));
 }
 
-bool LoongArchTargetLowering::isCheapToSpeculateCttz() const { return true; }
+bool LoongArchTargetLowering::isCheapToSpeculateCttz(Type *) const {
+  return true;
+}
 
-bool LoongArchTargetLowering::isCheapToSpeculateCtlz() const { return true; }
+bool LoongArchTargetLowering::isCheapToSpeculateCtlz(Type *) const {
+  return true;
+}
+
+bool LoongArchTargetLowering::shouldInsertFencesForAtomic(
+    const Instruction *I) const {
+  if (!Subtarget.is64Bit())
+    return isa<LoadInst>(I) || isa<StoreInst>(I);
+
+  if (isa<LoadInst>(I))
+    return true;
+
+  // On LA64, atomic store operations with IntegerBitWidth of 32 and 64 do not
+  // require fences beacuse we can use amswap_db.[w/d].
+  if (isa<StoreInst>(I)) {
+    unsigned Size = I->getOperand(0)->getType()->getIntegerBitWidth();
+    return (Size == 8 || Size == 16);
+  }
+
+  return false;
+}
+
+bool LoongArchTargetLowering::hasAndNot(SDValue Y) const {
+  // TODO: Support vectors.
+  return Y.getValueType().isScalarInteger() && !isa<ConstantSDNode>(Y);
+}
+
+bool LoongArchTargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
+                                                 const CallInst &I,
+                                                 MachineFunction &MF,
+                                                 unsigned Intrinsic) const {
+  switch (Intrinsic) {
+  default:
+    return false;
+  case Intrinsic::loongarch_masked_atomicrmw_xchg_i32:
+    Info.opc = ISD::INTRINSIC_W_CHAIN;
+    Info.memVT = MVT::i32;
+    Info.ptrVal = I.getArgOperand(0);
+    Info.offset = 0;
+    Info.align = Align(4);
+    Info.flags = MachineMemOperand::MOLoad | MachineMemOperand::MOStore |
+                 MachineMemOperand::MOVolatile;
+    return true;
+    // TODO: Add more Intrinsics later.
+  }
+}
+
+TargetLowering::AtomicExpansionKind
+LoongArchTargetLowering::shouldExpandAtomicRMWInIR(AtomicRMWInst *AI) const {
+  // TODO: Add more AtomicRMWInst that needs to be extended.
+  unsigned Size = AI->getType()->getPrimitiveSizeInBits();
+  if (Size == 8 || Size == 16)
+    return AtomicExpansionKind::MaskedIntrinsic;
+  return AtomicExpansionKind::None;
+}
+
+static Intrinsic::ID
+getIntrinsicForMaskedAtomicRMWBinOp(unsigned GRLen,
+                                    AtomicRMWInst::BinOp BinOp) {
+  if (GRLen == 64) {
+    switch (BinOp) {
+    default:
+      llvm_unreachable("Unexpected AtomicRMW BinOp");
+    case AtomicRMWInst::Xchg:
+      return Intrinsic::loongarch_masked_atomicrmw_xchg_i64;
+      // TODO: support other AtomicRMWInst.
+    }
+  }
+
+  if (GRLen == 32) {
+    switch (BinOp) {
+    default:
+      llvm_unreachable("Unexpected AtomicRMW BinOp");
+    case AtomicRMWInst::Xchg:
+      return Intrinsic::loongarch_masked_atomicrmw_xchg_i32;
+      // TODO: support other AtomicRMWInst.
+    }
+  }
+
+  llvm_unreachable("Unexpected GRLen\n");
+}
+
+Value *LoongArchTargetLowering::emitMaskedAtomicRMWIntrinsic(
+    IRBuilderBase &Builder, AtomicRMWInst *AI, Value *AlignedAddr, Value *Incr,
+    Value *Mask, Value *ShiftAmt, AtomicOrdering Ord) const {
+  unsigned GRLen = Subtarget.getGRLen();
+  Value *Ordering =
+      Builder.getIntN(GRLen, static_cast<uint64_t>(AI->getOrdering()));
+  Type *Tys[] = {AlignedAddr->getType()};
+  Function *LlwOpScwLoop = Intrinsic::getDeclaration(
+      AI->getModule(),
+      getIntrinsicForMaskedAtomicRMWBinOp(GRLen, AI->getOperation()), Tys);
+
+  if (GRLen == 64) {
+    Incr = Builder.CreateSExt(Incr, Builder.getInt64Ty());
+    Mask = Builder.CreateSExt(Mask, Builder.getInt64Ty());
+    ShiftAmt = Builder.CreateSExt(ShiftAmt, Builder.getInt64Ty());
+  }
+
+  Value *Result;
+
+  Result =
+      Builder.CreateCall(LlwOpScwLoop, {AlignedAddr, Incr, Mask, Ordering});
+
+  if (GRLen == 64)
+    Result = Builder.CreateTrunc(Result, Builder.getInt32Ty());
+  return Result;
+}

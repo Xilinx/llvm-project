@@ -1450,6 +1450,11 @@ def : Pat<(AArch64mrs imm:$id),
 def MOVbaseTLS : Pseudo<(outs GPR64:$dst), (ins),
                        [(set GPR64:$dst, AArch64threadpointer)]>, Sched<[WriteSys]>;
 
+let Defs = [ X9, X16, X17, NZCV ] in {
+def KCFI_CHECK : Pseudo<
+  (outs), (ins GPR64:$ptr, i32imm:$type), []>, Sched<[]>;
+}
+
 let Uses = [ X9 ], Defs = [ X16, X17, LR, NZCV ] in {
 def HWASAN_CHECK_MEMACCESS : Pseudo<
   (outs), (ins GPR64noip:$ptr, i32imm:$accessinfo),
@@ -2092,7 +2097,7 @@ defm BICS : LogicalRegS<0b11, 1, "bics",
                         BinOpFrag<(AArch64and_flag node:$LHS, (not node:$RHS))>>;
 defm AND  : LogicalReg<0b00, 0, "and", and>;
 defm BIC  : LogicalReg<0b00, 1, "bic",
-                       BinOpFrag<(and node:$LHS, (not node:$RHS))>>;
+                       BinOpFrag<(and node:$LHS, (not node:$RHS))>, 3>;
 defm EON  : LogicalReg<0b10, 1, "eon",
                        BinOpFrag<(not (xor node:$LHS, node:$RHS))>>;
 defm EOR  : LogicalReg<0b10, 0, "eor", xor>;

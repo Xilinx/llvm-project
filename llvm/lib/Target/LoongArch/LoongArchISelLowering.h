@@ -96,8 +96,20 @@ public:
                       SelectionDAG &DAG) const override;
   SDValue LowerCall(TargetLowering::CallLoweringInfo &CLI,
                     SmallVectorImpl<SDValue> &InVals) const override;
-  bool isCheapToSpeculateCttz() const override;
-  bool isCheapToSpeculateCtlz() const override;
+  bool isCheapToSpeculateCttz(Type *Ty) const override;
+  bool isCheapToSpeculateCtlz(Type *Ty) const override;
+  bool hasAndNot(SDValue Y) const override;
+  TargetLowering::AtomicExpansionKind
+  shouldExpandAtomicRMWInIR(AtomicRMWInst *AI) const override;
+
+  Value *emitMaskedAtomicRMWIntrinsic(IRBuilderBase &Builder, AtomicRMWInst *AI,
+                                      Value *AlignedAddr, Value *Incr,
+                                      Value *Mask, Value *ShiftAmt,
+                                      AtomicOrdering Ord) const override;
+
+  bool getTgtMemIntrinsic(IntrinsicInfo &Info, const CallInst &I,
+                          MachineFunction &MF,
+                          unsigned Intrinsic) const override;
 
 private:
   /// Target-specific function used to lower LoongArch calling conventions.
@@ -132,9 +144,7 @@ private:
   bool isFPImmLegal(const APFloat &Imm, EVT VT,
                     bool ForCodeSize) const override;
 
-  bool shouldInsertFencesForAtomic(const Instruction *I) const override {
-    return isa<LoadInst>(I) || isa<StoreInst>(I);
-  }
+  bool shouldInsertFencesForAtomic(const Instruction *I) const override;
 };
 
 } // end namespace llvm

@@ -323,10 +323,9 @@ void PipelineSolver::reset() {
     for (auto &SG : SyncPipeline) {
       SmallVector<SUnit *, 32> TempCollection = SG.Collection;
       SG.Collection.clear();
-      auto SchedBarr = std::find_if(
-          TempCollection.begin(), TempCollection.end(), [](SUnit *SU) {
-            return SU->getInstr()->getOpcode() == AMDGPU::SCHED_GROUP_BARRIER;
-          });
+      auto SchedBarr = llvm::find_if(TempCollection, [](SUnit *SU) {
+        return SU->getInstr()->getOpcode() == AMDGPU::SCHED_GROUP_BARRIER;
+      });
       if (SchedBarr != TempCollection.end())
         SG.Collection.push_back(*SchedBarr);
     }
@@ -428,9 +427,8 @@ void PipelineSolver::removeEdges(
     SUnit *Pred = PredSuccPair.first;
     SUnit *Succ = PredSuccPair.second;
 
-    auto Match =
-        std::find_if(Succ->Preds.begin(), Succ->Preds.end(),
-                     [&Pred](SDep &P) { return P.getSUnit() == Pred; });
+    auto Match = llvm::find_if(
+        Succ->Preds, [&Pred](SDep &P) { return P.getSUnit() == Pred; });
     if (Match != Succ->Preds.end()) {
       assert(Match->isArtificial());
       Succ->removePred(*Match);
@@ -767,10 +765,9 @@ void MFMASmallGemmOpt::applyIGLPStrategy(
     DenseMap<int, SmallVector<SchedGroup, 4>> &SyncedSchedGroups) {
   // Count the number of MFMA instructions.
   unsigned MFMACount = 0;
-  for (auto I = DAG->begin(), E = DAG->end(); I != E; ++I) {
-    if (TII->isMFMA(*I))
+  for (const MachineInstr &I : *DAG)
+    if (TII->isMFMA(I))
       ++MFMACount;
-  }
 
   const unsigned PipelineSyncID = 0;
   SchedGroup *SG = nullptr;
@@ -933,7 +930,7 @@ bool SchedGroup::canAddMI(const MachineInstr &MI) const {
 int SchedGroup::link(SUnit &SU, bool MakePred,
                      std::vector<std::pair<SUnit *, SUnit *>> &AddedEdges) {
   int MissedEdges = 0;
-  for (auto A : Collection) {
+  for (auto *A : Collection) {
     SUnit *B = &SU;
     if (A == B || A->getInstr()->getOpcode() == AMDGPU::SCHED_GROUP_BARRIER)
       continue;
@@ -955,7 +952,7 @@ int SchedGroup::link(SUnit &SU, bool MakePred,
 }
 
 void SchedGroup::link(SUnit &SU, bool MakePred) {
-  for (auto A : Collection) {
+  for (auto *A : Collection) {
     SUnit *B = &SU;
     if (A->getInstr()->getOpcode() == AMDGPU::SCHED_GROUP_BARRIER)
       continue;
@@ -968,7 +965,7 @@ void SchedGroup::link(SUnit &SU, bool MakePred) {
 
 void SchedGroup::link(SUnit &SU,
                       function_ref<bool(const SUnit *A, const SUnit *B)> P) {
-  for (auto A : Collection) {
+  for (auto *A : Collection) {
     SUnit *B = &SU;
     if (P(A, B))
       std::swap(A, B);
@@ -978,7 +975,7 @@ void SchedGroup::link(SUnit &SU,
 }
 
 void SchedGroup::link(SchedGroup &OtherGroup) {
-  for (auto B : OtherGroup.Collection)
+  for (auto *B : OtherGroup.Collection)
     link(*B);
 }
 

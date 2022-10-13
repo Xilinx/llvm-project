@@ -178,9 +178,8 @@ cl::opt<bolt::ReorderBasicBlocks::LayoutType> ReorderBlocks(
     cl::ZeroOrMore, cl::cat(BoltOptCategory),
     cl::callback([](const bolt::ReorderBasicBlocks::LayoutType &option) {
       if (option == bolt::ReorderBasicBlocks::LT_OPTIMIZE_CACHE_PLUS) {
-        WithColor::warning()
-            << "'-reorder-blocks=cache+' is deprecated, "
-            << "please use '-reorder-blocks=ext-tsp' instead\n";
+        errs() << "BOLT-WARNING: '-reorder-blocks=cache+' is deprecated, please"
+               << " use '-reorder-blocks=ext-tsp' instead\n";
         ReorderBlocks = bolt::ReorderBasicBlocks::LT_OPTIMIZE_EXT_TSP;
       }
     }));
@@ -593,7 +592,7 @@ void LowerAnnotations::runOnFunctions(BinaryContext &BC) {
   for (auto &It : BC.getBinaryFunctions()) {
     BinaryFunction &BF = It.second;
 
-    for (const FunctionFragment FF : BF.getLayout().fragments()) {
+    for (FunctionFragment &FF : BF.getLayout().fragments()) {
       int64_t CurrentGnuArgsSize = 0;
 
       for (BinaryBasicBlock *const BB : FF) {
@@ -1450,11 +1449,11 @@ void PrintProgramStats::runOnFunctions(BinaryContext &BC) {
   if (!opts::PrintSortedBy.empty() &&
       !llvm::is_contained(opts::PrintSortedBy, DynoStats::FIRST_DYNO_STAT)) {
 
-    std::vector<const BinaryFunction *> Functions;
+    std::vector<BinaryFunction *> Functions;
     std::map<const BinaryFunction *, DynoStats> Stats;
 
-    for (const auto &BFI : BC.getBinaryFunctions()) {
-      const BinaryFunction &BF = BFI.second;
+    for (auto &BFI : BC.getBinaryFunctions()) {
+      BinaryFunction &BF = BFI.second;
       if (shouldOptimize(BF) && BF.hasValidProfile()) {
         Functions.push_back(&BF);
         Stats.emplace(&BF, getDynoStats(BF));
@@ -1554,9 +1553,9 @@ void PrintProgramStats::runOnFunctions(BinaryContext &BC) {
 
   // Collect and print information about suboptimal code layout on input.
   if (opts::ReportBadLayout) {
-    std::vector<const BinaryFunction *> SuboptimalFuncs;
+    std::vector<BinaryFunction *> SuboptimalFuncs;
     for (auto &BFI : BC.getBinaryFunctions()) {
-      const BinaryFunction &BF = BFI.second;
+      BinaryFunction &BF = BFI.second;
       if (!BF.hasValidProfile())
         continue;
 

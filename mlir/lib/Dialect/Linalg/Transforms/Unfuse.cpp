@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PassDetail.h"
 #include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
@@ -26,6 +26,11 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
+
+namespace mlir {
+#define GEN_PASS_DEF_LINALGUNFUSE
+#include "mlir/Dialect/Linalg/Passes.h.inc"
+} // namespace mlir
 
 #define DEBUG_TYPE "linalg-unfuse"
 
@@ -690,7 +695,7 @@ struct LinearLowering : OpRewritePattern<LinearOp> {
   }
 };
 
-struct LinalgUnfusePass : public LinalgUnfuseBase<LinalgUnfusePass> {
+struct LinalgUnfusePass : public impl::LinalgUnfuseBase<LinalgUnfusePass> {
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
 
