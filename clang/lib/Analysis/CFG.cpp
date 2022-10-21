@@ -1002,7 +1002,7 @@ private:
         if (BuildOpts.Observer)
           BuildOpts.Observer->compareBitwiseEquality(B,
                                                      B->getOpcode() != BO_EQ);
-        TryResult(B->getOpcode() != BO_EQ);
+        return TryResult(B->getOpcode() != BO_EQ);
       }
     } else if (BoolExpr->isKnownToHaveBooleanValue()) {
       if ((*IntLiteral1 == 1) || (*IntLiteral1 == 0)) {
@@ -1041,7 +1041,7 @@ private:
         case UO_Not:
           return ~Value;
         case UO_LNot:
-          return llvm::APInt(Value.getBitWidth(), !Value);
+          return llvm::APInt(Context->getTypeSize(Context->IntTy), !Value);
         default:
           assert(false && "Unexpected unary operator!");
           return llvm::None;
@@ -1970,9 +1970,10 @@ void CFGBuilder::addImplicitDtorsForDestructor(const CXXDestructorDecl *DD) {
   for (auto *FI : RD->fields()) {
     // Check for constant size array. Set type to array element type.
     QualType QT = FI->getType();
-    if (const ConstantArrayType *AT = Context->getAsConstantArrayType(QT)) {
+    // It may be a multidimensional array.
+    while (const ConstantArrayType *AT = Context->getAsConstantArrayType(QT)) {
       if (AT->getSize() == 0)
-        continue;
+        break;
       QT = AT->getElementType();
     }
 
@@ -2993,7 +2994,7 @@ CFGBlock *CFGBuilder::VisitDeclSubExpr(DeclStmt *DS) {
   // If we bind to a tuple-like type, we iterate over the HoldingVars, and
   // create a DeclStmt for each of them.
   if (const auto *DD = dyn_cast<DecompositionDecl>(VD)) {
-    for (auto BD : llvm::reverse(DD->bindings())) {
+    for (auto *BD : llvm::reverse(DD->bindings())) {
       if (auto *VD = BD->getHoldingVar()) {
         DeclGroupRef DG(VD);
         DeclStmt *DSNew =
@@ -5333,8 +5334,19 @@ CFGImplicitDtor::getDestructorDecl(ASTContext &astContext) const {
       const CXXTemporary *temp = bindExpr->getTemporary();
       return temp->getDestructor();
     }
+    case CFGElement::MemberDtor: {
+      const FieldDecl *field = castAs<CFGMemberDtor>().getFieldDecl();
+      QualType ty = field->getType();
+
+      while (const ArrayType *arrayType = astContext.getAsArrayType(ty)) {
+        ty = arrayType->getElementType();
+      }
+
+      const CXXRecordDecl *classDecl = ty->getAsCXXRecordDecl();
+      assert(classDecl);
+      return classDecl->getDestructor();
+    }
     case CFGElement::BaseDtor:
-    case CFGElement::MemberDtor:
       // Not yet supported.
       return nullptr;
   }

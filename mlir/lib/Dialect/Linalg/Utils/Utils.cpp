@@ -17,8 +17,8 @@
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/IR/AffineValueMap.h"
 #include "mlir/Dialect/Affine/LoopUtils.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-#include "mlir/Dialect/Arithmetic/Utils/Utils.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -140,9 +140,11 @@ static void unpackRanges(OpBuilder &builder, Location loc,
                          SmallVectorImpl<Value> &ubs,
                          SmallVectorImpl<Value> &steps) {
   for (Range range : ranges) {
-    lbs.emplace_back(materializeOpFoldResult(builder, loc, range.offset));
-    ubs.emplace_back(materializeOpFoldResult(builder, loc, range.size));
-    steps.emplace_back(materializeOpFoldResult(builder, loc, range.stride));
+    lbs.emplace_back(
+        getValueOrCreateConstantIndexOp(builder, loc, range.offset));
+    ubs.emplace_back(getValueOrCreateConstantIndexOp(builder, loc, range.size));
+    steps.emplace_back(
+        getValueOrCreateConstantIndexOp(builder, loc, range.stride));
   }
 }
 
@@ -178,7 +180,7 @@ bool isElementwise(LinalgOp op) {
 
   // TODO: relax the restrictions on indexing map.
   for (OpOperand *opOperand : op.getOutputOperands()) {
-    if (!op.getTiedIndexingMap(opOperand).isPermutation())
+    if (!op.getMatchingIndexingMap(opOperand).isPermutation())
       return false;
   }
   return hasOnlyScalarElementwiseOp(op->getRegion(0));
@@ -195,6 +197,14 @@ bool isPermutation(ArrayRef<int64_t> permutation) {
   }
   // Return true if all indices appear once.
   return count(indexCounts, 1) == static_cast<int64_t>(permutation.size());
+}
+
+bool isParallelIterator(StringRef iteratorType) {
+  return iteratorType == getParallelIteratorTypeName();
+}
+
+bool isReductionIterator(StringRef iteratorType) {
+  return iteratorType == getReductionIteratorTypeName();
 }
 
 /// Helper function that creates a memref::DimOp or tensor::DimOp depending on
@@ -303,7 +313,7 @@ void getUpperBoundForIndex(Value value, AffineMap &boundMap,
   // of the terminals of the index computation.
   unsigned pos = getPosition(value);
   if (constantRequired) {
-    auto ubConst = constraints.getConstantBound(
+    auto ubConst = constraints.getConstantBound64(
         FlatAffineValueConstraints::BoundType::UB, pos);
     if (!ubConst)
       return;
@@ -344,48 +354,6 @@ FailureOr<int64_t> getConstantUpperBoundForIndex(Value value) {
   if (constantBounds.empty())
     return failure();
   return *std::min_element(constantBounds.begin(), constantBounds.end());
-}
-
-tensor::ExtractSliceOp makeComposedExtractSliceOp(
-    OpBuilder &b, Location loc, Value source, ArrayRef<OpFoldResult> offsets,
-    ArrayRef<OpFoldResult> sizes, ArrayRef<OpFoldResult> strides) {
-  assert(source && "expect source to be nonzero");
-
-  // Do not fold if the producer is not an ExtractSliceOp.
-  auto producerOp = source.getDefiningOp<tensor::ExtractSliceOp>();
-  if (!producerOp)
-    return b.create<tensor::ExtractSliceOp>(loc, source, offsets, sizes,
-                                            strides);
-
-  // Do not fold if the producer is rank reducing or if there are any non-unit
-  // strides. Supporting non-unit strides complicates the offset computation
-  // since the consumer offsets need to be multiplied by the producer strides.
-  // TODO: support non-unit strides once there are use cases.
-  SmallVector<OpFoldResult> allStrides = producerOp.getMixedStrides();
-  allStrides.append(strides.begin(), strides.end());
-  bool hasNonUnitStride = any_of(allStrides, [](OpFoldResult ofr) {
-    return getConstantIntValue(ofr) != static_cast<int64_t>(1);
-  });
-  if (hasNonUnitStride ||
-      producerOp.getSourceType().getRank() !=
-          producerOp.getResult().getType().cast<ShapedType>().getRank())
-    return b.create<tensor::ExtractSliceOp>(loc, source, offsets, sizes,
-                                            strides);
-
-  // Fold the producer by adding the offests and extracting the slice directly
-  // from the producer source tensor.
-  SmallVector<OpFoldResult> foldedOffsets(offsets.begin(), offsets.end());
-  AffineExpr dim1, dim2;
-  bindDims(b.getContext(), dim1, dim2);
-  for (const auto &en : enumerate(producerOp.getMixedOffsets())) {
-    SmallVector<Value> offsetValues = {
-        getValueOrCreateConstantIndexOp(b, loc, foldedOffsets[en.index()]),
-        getValueOrCreateConstantIndexOp(b, loc, en.value())};
-    foldedOffsets[en.index()] =
-        makeComposedAffineApply(b, loc, dim1 + dim2, offsetValues).getResult();
-  }
-  return b.create<tensor::ExtractSliceOp>(loc, producerOp.getSource(),
-                                          foldedOffsets, sizes, strides);
 }
 
 Value makeComposedPadHighOp(OpBuilder &b, Location loc, RankedTensorType type,
@@ -514,7 +482,7 @@ GenericOp makeMemRefCopyOp(OpBuilder &b, Location loc, Value from, Value to) {
 template <>
 void GenerateLoopNest<scf::ForOp>::doit(
     OpBuilder &b, Location loc, ArrayRef<Range> loopRanges, LinalgOp linalgOp,
-    ArrayRef<Attribute> iteratorTypes,
+    ArrayRef<StringRef> iteratorTypes,
     function_ref<scf::ValueVector(OpBuilder &, Location, ValueRange,
                                   ValueRange)>
         bodyBuilderFn,
@@ -544,7 +512,7 @@ void GenerateLoopNest<scf::ForOp>::doit(
     return;
 
   // Filter out scf.for loops that were created out of parallel dimensions.
-  for (auto loop : llvm::enumerate(loopNest.loops)) {
+  for (const auto &loop : llvm::enumerate(loopNest.loops)) {
     if (procInfo[loop.index()].distributionMethod ==
         DistributionMethod::Cyclic) {
       mapLoopToProcessorIds(loop.value(), procInfo[loop.index()].procId,
@@ -557,7 +525,7 @@ void GenerateLoopNest<scf::ForOp>::doit(
 template <>
 void GenerateLoopNest<AffineForOp>::doit(
     OpBuilder &b, Location loc, ArrayRef<Range> loopRanges, LinalgOp linalgOp,
-    ArrayRef<Attribute> iteratorTypes,
+    ArrayRef<StringRef> iteratorTypes,
     function_ref<scf::ValueVector(OpBuilder &, Location, ValueRange,
                                   ValueRange)>
         bodyBuilderFn,
@@ -607,7 +575,7 @@ void updateBoundsForCyclicDistribution(OpBuilder &b, Location loc, Value procId,
 // exceeds 10.
 static void generateParallelLoopNest(
     OpBuilder &b, Location loc, ValueRange lbs, ValueRange ubs,
-    ValueRange steps, ArrayRef<Attribute> iteratorTypes,
+    ValueRange steps, ArrayRef<StringRef> iteratorTypes,
     ArrayRef<linalg::ProcInfo> procInfo,
     function_ref<void(OpBuilder &, Location, ValueRange)> bodyBuilderFn,
     SmallVectorImpl<Value> &ivStorage) {
@@ -722,7 +690,7 @@ static void generateParallelLoopNest(
 template <>
 void GenerateLoopNest<scf::ParallelOp>::doit(
     OpBuilder &b, Location loc, ArrayRef<Range> loopRanges, LinalgOp linalgOp,
-    ArrayRef<Attribute> iteratorTypes,
+    ArrayRef<StringRef> iteratorTypes,
     function_ref<scf::ValueVector(OpBuilder &, Location, ValueRange,
                                   ValueRange)>
         bodyBuilderFn,
@@ -746,7 +714,7 @@ void GenerateLoopNest<scf::ParallelOp>::doit(
   unpackRanges(b, loc, loopRanges, lbsStorage, ubsStorage, stepsStorage);
 
   // Modify the lb, ub, and step based on the distribution options.
-  for (auto it : llvm::enumerate(procInfo)) {
+  for (const auto &it : llvm::enumerate(procInfo)) {
     if (it.value().distributionMethod != linalg::DistributionMethod::None) {
       updateBoundsForCyclicDistribution(
           b, loc, it.value().procId, it.value().nprocs, lbsStorage[it.index()],
@@ -777,8 +745,8 @@ static Value materializeTiledShape(OpBuilder &builder, Location loc,
                             sliceParams.sizes, sliceParams.strides);
                       })
                       .Case([&](RankedTensorType) {
-                        return makeComposedExtractSliceOp(
-                            builder, loc, valueToTile, sliceParams.offsets,
+                        return builder.create<tensor::ExtractSliceOp>(
+                            loc, valueToTile, sliceParams.offsets,
                             sliceParams.sizes, sliceParams.strides);
                       })
                       .Default([](ShapedType) -> Operation * {
@@ -971,23 +939,6 @@ SmallVector<Value> insertSlicesBack(OpBuilder &builder, Location loc,
   return tensorResults;
 }
 
-Value materializeOpFoldResult(ImplicitLocOpBuilder &builder,
-                              OpFoldResult opFoldResult) {
-  if (!opFoldResult)
-    return nullptr;
-
-  if (auto value = opFoldResult.dyn_cast<Value>())
-    return value;
-  auto attr = opFoldResult.get<Attribute>().cast<IntegerAttr>();
-  return builder.create<arith::ConstantIndexOp>(attr.getValue().getSExtValue());
-}
-
-Value materializeOpFoldResult(OpBuilder &builder, Location loc,
-                              OpFoldResult opFoldResult) {
-  ImplicitLocOpBuilder b(loc, builder);
-  return materializeOpFoldResult(b, opFoldResult);
-}
-
 SmallVector<Optional<SliceParameters>>
 computeAllSliceParameters(OpBuilder &builder, Location loc, LinalgOp linalgOp,
                           ValueRange valuesToTile, ArrayRef<OpFoldResult> ivs,
@@ -1014,7 +965,7 @@ computeAllSliceParameters(OpBuilder &builder, Location loc, LinalgOp linalgOp,
   for (OpOperand *opOperand : linalgOp.getInputAndOutputOperands()) {
     Value shapedOp = valuesToTile[opOperand->getOperandNumber()];
     LLVM_DEBUG(llvm::dbgs() << "makeTiledShapes: for operand " << shapedOp);
-    AffineMap map = linalgOp.getTiedIndexingMap(opOperand);
+    AffineMap map = linalgOp.getMatchingIndexingMap(opOperand);
     // Use `opOperand` as is if it is not tiled and not an output tensor. Having
     // an extract/insert slice pair for all output tensors simplifies follow up
     // transformations such as padding and bufferization since the
@@ -1078,7 +1029,8 @@ void offsetIndices(RewriterBase &b, LinalgOp linalgOp,
     OpFoldResult applied = makeComposedFoldedAffineApply(
         b, indexOp.getLoc(), index + offset,
         {getAsOpFoldResult(indexOp.getResult()), offsets[indexOp.getDim()]});
-    Value materialized = materializeOpFoldResult(b, indexOp.getLoc(), applied);
+    Value materialized =
+        getValueOrCreateConstantIndexOp(b, indexOp.getLoc(), applied);
     b.replaceOpWithIf(indexOp, materialized, [&](OpOperand &use) {
       return use.getOwner() != materialized.getDefiningOp();
     });

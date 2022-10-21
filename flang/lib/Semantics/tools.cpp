@@ -1059,6 +1059,13 @@ bool HasCoarray(const parser::Expr &expression) {
   return false;
 }
 
+bool IsAssumedType(const Symbol &symbol) {
+  if (const DeclTypeSpec * type{symbol.GetType()}) {
+    return type->IsAssumedType();
+  }
+  return false;
+}
+
 bool IsPolymorphic(const Symbol &symbol) {
   if (const DeclTypeSpec * type{symbol.GetType()}) {
     return type->IsPolymorphic();
@@ -1148,6 +1155,14 @@ ProcedureDefinitionClass ClassifyProcedure(const Symbol &symbol) { // 15.2.2
       return ProcedureDefinitionClass::Dummy;
     } else if (IsPointer(ultimate)) {
       return ProcedureDefinitionClass::Pointer;
+    }
+  } else if (const auto *nameDetails{
+                 ultimate.detailsIf<SubprogramNameDetails>()}) {
+    switch (nameDetails->kind()) {
+    case SubprogramKind::Module:
+      return ProcedureDefinitionClass::Module;
+    case SubprogramKind::Internal:
+      return ProcedureDefinitionClass::Internal;
     }
   } else if (const Symbol * subp{FindSubprogram(symbol)}) {
     if (const auto *subpDetails{subp->detailsIf<SubprogramDetails>()}) {

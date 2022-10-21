@@ -169,6 +169,25 @@ def GetClosestIsolatedParentOp : TransformDialectOp<"get_closest_isolated_parent
   let assemblyFormat = "$target attr-dict";
 }
 
+def GetProducerOfOperand : TransformDialectOp<"get_producer_of_operand",
+    [DeclareOpInterfaceMethods<TransformOpInterface>,
+     NavigationTransformOpTrait, MemoryEffectsOpInterface]> {
+  let summary = "Get handle to the producer of this operation's operand number";
+  let description = [{
+    The handle defined by this Transform op corresponds to operation that
+    produces the SSA value defined by the `target` and `operand_number`
+    arguments. If the origin of the SSA value is not an operations (i.e. it is
+    a block argument), the transform silently fails.
+    The return handle points to only the subset of successfully produced
+    computational operations, which can be empty.
+  }];
+
+  let arguments = (ins PDL_Operation:$target,
+                       I64Attr:$operand_number);
+  let results = (outs PDL_Operation:$parent);
+  let assemblyFormat = "$target `[` $operand_number `]` attr-dict";
+}
+
 def MergeHandlesOp : TransformDialectOp<"merge_handles",
     [DeclareOpInterfaceMethods<TransformOpInterface>,
      DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
@@ -191,8 +210,37 @@ def MergeHandlesOp : TransformDialectOp<"merge_handles",
   let hasFolder = 1;
 }
 
+def SplitHandlesOp : TransformDialectOp<"split_handles",
+    [FunctionalStyleTransformOpTrait,
+     DeclareOpInterfaceMethods<TransformOpInterface>,
+     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
+  let summary = "Splits handles from a union of payload ops to a list";
+  let description = [{
+    Creates `num_result_handles` transform IR handles extracted from the 
+    `handle` operand. The resulting Payload IR operation handles are listed
+    in the same order as the operations appear in the source `handle`.
+    This is useful for ensuring a statically known number of operations are
+    tracked by the source `handle` and to extract them into individual handles
+    that can be further manipulated in isolation.
+
+    This operation succeeds and returns `num_result_handles` if the statically
+    specified `num_result_handles` corresponds to the dynamic number of 
+    operations contained in the source `handle`. Otherwise it silently fails.
+  }];
+
+  let arguments = (ins PDL_Operation:$handle,
+                       I64Attr:$num_result_handles);
+  let results = (outs Variadic<PDL_Operation>:$results);
+  let assemblyFormat = [{
+    $handle `in` `[` $num_result_handles `]` 
+    custom<StaticNumPDLResults>(type($results), ref($num_result_handles))
+    attr-dict
+  }];
+}
+
 def PDLMatchOp : TransformDialectOp<"pdl_match",
-    [DeclareOpInterfaceMethods<TransformOpInterface>]> {
+    [DeclareOpInterfaceMethods<TransformOpInterface>,
+     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let summary = "Finds ops that match the named PDL pattern";
   let description = [{
     Find Payload IR ops nested within the Payload IR op associated with the
@@ -212,12 +260,10 @@ def PDLMatchOp : TransformDialectOp<"pdl_match",
   }];
 
   let arguments = (ins
-    Arg<PDL_Operation, "Payload IR scope to match within",
-        [TransformMappingRead, PayloadIRRead]>:$root, 
+    Arg<PDL_Operation, "Payload IR scope to match within">:$root, 
     SymbolRefAttr:$pattern_name);
   let results = (outs
-    Res<PDL_Operation, "Handle to the matched Payload IR ops",
-        [TransformMappingAlloc, TransformMappingWrite]>:$matched);
+    Res<PDL_Operation, "Handle to the matched Payload IR ops">:$matched);
 
   let assemblyFormat = "$pattern_name `in` $root attr-dict";
 }

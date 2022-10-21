@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
@@ -25,7 +25,6 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 
 using namespace mlir;
@@ -66,10 +65,6 @@ struct TestLinalgTransforms
       *this, "test-tile-and-distribute-options",
       llvm::cl::desc("Test tile and distribute options"),
       llvm::cl::init(false)};
-  Option<bool> testTileFuseAndDistributionOptions{
-      *this, "test-tile-fuse-and-distribute-options",
-      llvm::cl::desc("Test tile, fuse and distribute options"),
-      llvm::cl::init(false)};
   Option<bool> testVectorTransferForwardingPatterns{
       *this, "test-vector-transfer-forwarding-patterns",
       llvm::cl::desc(
@@ -104,6 +99,10 @@ struct TestLinalgTransforms
       *this, "test-split-reduction",
       llvm::cl::desc("Test split reduction transformation"),
       llvm::cl::init(false)};
+  Option<bool> testSplitReductionInnerParallel{
+      *this, "test-split-reduction-inner-parallel",
+      llvm::cl::desc("Test split reduction with inner parallel transformation"),
+      llvm::cl::init(false)};
   ListOption<int64_t> peeledLoops{
       *this, "peeled-loops",
       llvm::cl::desc("Loops to be peeled when test-tile-pattern")};
@@ -123,6 +122,11 @@ struct TestLinalgTransforms
       *this, "test-bubble-up-extract-slice-op-pattern",
       llvm::cl::desc("Test rewrite of linalgOp + extract_slice into "
                      "extract_slice + linalgOp"),
+      llvm::cl::init(false)};
+  Option<bool> testSwapExtractSliceWithFill{
+      *this, "test-swap-extract-slice-with-fill-pattern",
+      llvm::cl::desc(
+          "Test patterns to swap tensor.extract_slice(linalg.fill())"),
       llvm::cl::init(false)};
 };
 } // namespace
@@ -225,19 +229,7 @@ static void applyPatterns(func::FuncOp funcOp) {
   //===--------------------------------------------------------------------===//
   // Linalg to vector contraction patterns.
   //===--------------------------------------------------------------------===//
-  patterns.add<LinalgVectorizationPattern>(
-      ctx, LinalgTransformationFilter(StringAttr::get(ctx, "VECTORIZE"))
-               .addOpFilter<MatmulOp, FillOp, GenericOp>());
   patterns.add<CopyVectorizationPattern>(ctx);
-
-  //===--------------------------------------------------------------------===//
-  // Linalg generic interchange pattern.
-  //===--------------------------------------------------------------------===//
-  patterns.add<GenericOpInterchangePattern>(
-      ctx,
-      /*interchangeVector=*/ArrayRef<unsigned>{1, 2, 0},
-      LinalgTransformationFilter(ArrayRef<StringAttr>{},
-                                 StringAttr::get(ctx, "PERMUTED")));
 
   (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
 
@@ -419,27 +411,6 @@ static void fillTileAndDistributePatterns(MLIRContext *context,
   }
 }
 
-static void fillTileFuseAndDistributePatterns(MLIRContext *context,
-                                              RewritePatternSet &patterns) {
-  LinalgLoopDistributionOptions cyclicNprocsEqNiters;
-  SmallVector<linalg::DistributionMethod> distributionMethod = {
-      DistributionMethod::Cyclic, DistributionMethod::Cyclic};
-  cyclicNprocsEqNiters.procInfo =
-      [distributionMethod](OpBuilder &b, Location loc,
-                           ArrayRef<Range> parallelLoopRanges) {
-        return getGpuProcIds<gpu::BlockIdOp, gpu::GridDimOp>(
-            b, loc, parallelLoopRanges, distributionMethod);
-      };
-  patterns.add<LinalgTileAndFuseTensorOpsPattern>(
-      MatmulOp::getOperationName(), context,
-      LinalgTilingAndFusionOptions()
-          .setTileSizes({8, 8, 4})
-          .setDistributionOptions(cyclicNprocsEqNiters),
-      LinalgTransformationFilter(
-          StringAttr::get(context, "tensors_fuse_distribute1"),
-          StringAttr::get(context, "tensors_after_fuse_distribute1")));
-}
-
 static void applyVectorTransferForwardingPatterns(func::FuncOp funcOp) {
   RewritePatternSet forwardPattern(funcOp.getContext());
   forwardPattern.add<LinalgCopyVTRForwardingPattern>(funcOp.getContext());
@@ -450,9 +421,6 @@ static void applyVectorTransferForwardingPatterns(func::FuncOp funcOp) {
 static void applyLinalgToVectorPatterns(func::FuncOp funcOp) {
   RewritePatternSet patterns(funcOp.getContext());
   auto *ctx = funcOp.getContext();
-  patterns.add<LinalgVectorizationPattern>(
-      ctx, LinalgTransformationFilter()
-               .addOpFilter<ContractionOpInterface, FillOp, GenericOp>());
   patterns.add<CopyVectorizationPattern>(ctx);
   populatePadOpVectorizationPatterns(patterns);
   populateConvolutionVectorizationPatterns(patterns);
@@ -510,7 +478,21 @@ static void applySplitReduction(func::FuncOp funcOp) {
       patterns,
       [](LinalgOp op) {
         unsigned insertDimIndex = op.getNumLoops() - 1;
-        return std::make_pair(4, insertDimIndex);
+        return SplitReductionOptions{4, insertDimIndex, false};
+      },
+      LinalgTransformationFilter(
+          ArrayRef<StringAttr>{},
+          StringAttr::get(funcOp.getContext(), "SPLIT")));
+  (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
+}
+
+static void applySplitReductionInnerParallel(func::FuncOp funcOp) {
+  RewritePatternSet patterns(funcOp.getContext());
+  linalg::populateSplitReductionPattern(
+      patterns,
+      [](LinalgOp op) {
+        unsigned insertDimIndex = op.getNumLoops() - 1;
+        return SplitReductionOptions{4, insertDimIndex, true};
       },
       LinalgTransformationFilter(
           ArrayRef<StringAttr>{},
@@ -521,6 +503,12 @@ static void applySplitReduction(func::FuncOp funcOp) {
 static void applyBubbleUpExtractSliceOpPattern(func::FuncOp funcOp) {
   RewritePatternSet patterns(funcOp.getContext());
   populateBubbleUpExtractSliceOpPatterns(patterns);
+  (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
+}
+
+static void applySwapExtractSliceWithFillPattern(func::FuncOp funcOp) {
+  RewritePatternSet patterns(funcOp.getContext());
+  populateSwapExtractSliceWithFillPatterns(patterns);
   (void)applyPatternsAndFoldGreedily(funcOp, std::move(patterns));
 }
 
@@ -536,12 +524,6 @@ void TestLinalgTransforms::runOnOperation() {
   if (testTileAndDistributionOptions) {
     RewritePatternSet patterns(&getContext());
     fillTileAndDistributePatterns(&getContext(), patterns);
-    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
-    return;
-  }
-  if (testTileFuseAndDistributionOptions) {
-    RewritePatternSet patterns(&getContext());
-    fillTileFuseAndDistributePatterns(&getContext(), patterns);
     (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
     return;
   }
@@ -565,8 +547,12 @@ void TestLinalgTransforms::runOnOperation() {
                             /*peeledLoops=*/{}, /*scalarizeDynamicDims=*/true);
   if (testSplitReduction)
     return applySplitReduction(getOperation());
+  if (testSplitReductionInnerParallel)
+    return applySplitReductionInnerParallel(getOperation());
   if (testBubbleUpExtractSliceOpPattern)
     return applyBubbleUpExtractSliceOpPattern(getOperation());
+  if (testSwapExtractSliceWithFill)
+    return applySwapExtractSliceWithFillPattern(getOperation());
 }
 
 namespace mlir {

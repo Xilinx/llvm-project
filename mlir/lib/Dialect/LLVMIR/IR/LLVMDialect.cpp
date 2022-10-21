@@ -21,7 +21,6 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Matchers.h"
 
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/Bitcode/BitcodeReader.h"
@@ -2681,6 +2680,17 @@ LogicalResult LLVMDialect::verifyOperationAttribute(Operation *op,
       return op->emitOpError()
              << "expected '" << LLVMDialect::getLoopOptionsAttrName()
              << "' to be a `loopopts` attribute";
+  }
+
+  if (attr.getName() == LLVMDialect::getReadnoneAttrName()) {
+    const auto attrName = LLVMDialect::getReadnoneAttrName();
+    if (!isa<FunctionOpInterface>(op))
+      return op->emitOpError()
+             << "'" << attrName
+             << "' is permitted only on FunctionOpInterface operations";
+    if (!attr.getValue().isa<UnitAttr>())
+      return op->emitOpError()
+             << "expected '" << attrName << "' to be a unit attribute";
   }
 
   if (attr.getName() == LLVMDialect::getStructAttrsAttrName()) {

@@ -15,6 +15,7 @@
 #include <__config>
 #include <__iterator/iterator_traits.h>
 #include <__utility/move.h>
+#include <__utility/pair.h>
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
 #  pragma GCC system_header
@@ -71,8 +72,7 @@ _LIBCPP_HIDE_FROM_ABI _LIBCPP_CONSTEXPR_SINCE_CXX20 _OutputIterator set_symmetri
     _InputIterator2 __last2,
     _OutputIterator __result,
     _Compare __comp) {
-  typedef typename __comp_ref_type<_Compare>::type _Comp_ref;
-  return std::__set_symmetric_difference<_Comp_ref>(
+  return std::__set_symmetric_difference<__comp_ref_type<_Compare> >(
              std::move(__first1),
              std::move(__last1),
              std::move(__first2),

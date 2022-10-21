@@ -56,9 +56,10 @@ stages there is no ABI stability in any form.
    :maxdepth: 1
    :caption: Status
 
+   date_and_time
+   math
    strings
    stdio
-   math
 
 .. toctree::
    :hidden:
@@ -85,3 +86,4 @@ stages there is no ABI stability in any form.
 
    Source Code <https://github.com/llvm/llvm-project/tree/main/libc>
    Bug Reports <https://github.com/llvm/llvm-project/labels/libc>
+   Buildbot <https://lab.llvm.org/buildbot/#/builders?tags=libc>

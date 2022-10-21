@@ -980,9 +980,8 @@ InstructionCost PPCTTIImpl::vectorCostAdjustmentFactor(unsigned Opcode,
 
 InstructionCost PPCTTIImpl::getArithmeticInstrCost(
     unsigned Opcode, Type *Ty, TTI::TargetCostKind CostKind,
-    TTI::OperandValueKind Op1Info, TTI::OperandValueKind Op2Info,
-    TTI::OperandValueProperties Opd1PropInfo,
-    TTI::OperandValueProperties Opd2PropInfo, ArrayRef<const Value *> Args,
+    TTI::OperandValueInfo Op1Info, TTI::OperandValueInfo Op2Info,
+    ArrayRef<const Value *> Args,
     const Instruction *CxtI) {
   assert(TLI->InstructionOpcodeToISD(Opcode) && "Invalid opcode");
 
@@ -993,12 +992,11 @@ InstructionCost PPCTTIImpl::getArithmeticInstrCost(
   // TODO: Handle more cost kinds.
   if (CostKind != TTI::TCK_RecipThroughput)
     return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Op1Info,
-                                         Op2Info, Opd1PropInfo,
-                                         Opd2PropInfo, Args, CxtI);
+                                         Op2Info, Args, CxtI);
 
   // Fallback to the default implementation.
   InstructionCost Cost = BaseT::getArithmeticInstrCost(
-      Opcode, Ty, CostKind, Op1Info, Op2Info, Opd1PropInfo, Opd2PropInfo);
+      Opcode, Ty, CostKind, Op1Info, Op2Info);
   return Cost * CostFactor;
 }
 
@@ -1146,7 +1144,7 @@ InstructionCost PPCTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src,
                                             MaybeAlign Alignment,
                                             unsigned AddressSpace,
                                             TTI::TargetCostKind CostKind,
-                                            TTI::OperandValueKind OpdInfo,
+                                            TTI::OperandValueInfo OpInfo,
                                             const Instruction *I) {
 
   InstructionCost CostFactor = vectorCostAdjustmentFactor(Opcode, Src, nullptr);
@@ -1369,6 +1367,15 @@ bool PPCTTIImpl::getTgtMemIntrinsic(IntrinsicInst *Inst,
   case Intrinsic::ppc_vsx_stxvll:
   case Intrinsic::ppc_vsx_stxvp: {
     Info.PtrVal = Inst->getArgOperand(1);
+    Info.ReadMem = false;
+    Info.WriteMem = true;
+    return true;
+  }
+  case Intrinsic::ppc_stbcx:
+  case Intrinsic::ppc_sthcx:
+  case Intrinsic::ppc_stdcx:
+  case Intrinsic::ppc_stwcx: {
+    Info.PtrVal = Inst->getArgOperand(0);
     Info.ReadMem = false;
     Info.WriteMem = true;
     return true;

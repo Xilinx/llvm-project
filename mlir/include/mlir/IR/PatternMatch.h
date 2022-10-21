@@ -546,9 +546,9 @@ protected:
   /// they would like to be notified about certain types of mutations.
 
   /// Notify the rewriter that the specified operation is about to be replaced
-  /// with another set of operations. This is called before the uses of the
-  /// operation have been changed.
-  virtual void notifyRootReplaced(Operation *op) {}
+  /// with the set of values potentially produced by new operations. This is
+  /// called before the uses of the operation have been changed.
+  virtual void notifyRootReplaced(Operation *op, ValueRange replacement) {}
 
   /// This is called on an operation that a rewrite is removing, right before
   /// the operation is deleted. At this point, the operation has zero uses.
@@ -1098,10 +1098,9 @@ void assertArgs(PatternRewriter &rewriter, ArrayRef<PDLValue> values,
     llvm::report_fatal_error(msg);
   };
   (void)errorFn;
-  (assert(succeeded(
-       ProcessPDLValue<typename FnTraitsT::template arg_t<I + 1>>::verifyAsArg(
-           errorFn, values[I], I))),
-   ...);
+  assert((succeeded(ProcessPDLValue<typename FnTraitsT::template arg_t<I + 1>>::
+                        verifyAsArg(errorFn, values[I], I)) &&
+          ...));
 #endif
 }
 

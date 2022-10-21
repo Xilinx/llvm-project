@@ -148,6 +148,8 @@ function check-cxx-benchmarks() {
 ${CMAKE} --version
 ${NINJA} --version
 
+if [ ! -z "${CXX}" ]; then ${CXX} --version; fi
+
 case "${BUILDER}" in
 check-format)
     clean
@@ -185,10 +187,18 @@ check-generated-output)
 
     # Reject patches that introduce non-ASCII characters or hard tabs.
     # Depends on LC_COLLATE set at the top of this script.
-    ! grep -rn '[^ -~]' libcxx/include/ || false
+    ! grep -rn '[^ -~]' libcxx/include libcxx/src libcxx/test libcxx/benchmarks \
+           --exclude '*.dat' \
+           --exclude 'format_tests.h' \
+           --exclude 'formatter.*.pass.cpp' \
+           --exclude 'grep.pass.cpp' \
+           --exclude 'locale-specific_form.pass.cpp' \
+           --exclude 'ostream.pass.cpp' \
+           --exclude 'std_format_spec_string_unicode.bench.cpp' \
+           || false
 
-    # Reject patches that introduce dependency cycles in the headers.
-    python3 libcxx/utils/graph_header_deps.py >/dev/null
+    # Reject code with trailing whitespace
+    ! grep -rn '[[:blank:]]$' libcxx/include libcxx/src libcxx/test libcxx/benchmarks || false
 ;;
 generic-cxx03)
     clean
@@ -263,25 +273,7 @@ generic-merged)
                    -DLIBUNWIND_TEST_CONFIG="llvm-libunwind-merged.cfg.in"
     check-runtimes
 ;;
-generic-clang-13)
-    export CC=clang-13
-    export CXX=clang++-13
-    clean
-    generate-cmake
-    check-runtimes
-    check-abi-list
-;;
-generic-clang-14)
-    export CC=clang-14
-    export CXX=clang++-14
-    clean
-    generate-cmake
-    check-runtimes
-    check-abi-list
-;;
 generic-gcc)
-    export CC=gcc-12
-    export CXX=g++-12
     clean
     generate-cmake -DLIBCXX_ENABLE_WERROR=NO \
                    -DLIBCXXABI_ENABLE_WERROR=NO \
@@ -289,8 +281,6 @@ generic-gcc)
     check-runtimes
 ;;
 generic-gcc-cxx11)
-    export CC=gcc-12
-    export CXX=g++-12
     clean
     generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/Generic-cxx11.cmake" \
                    -DLIBCXX_ENABLE_WERROR=NO \
@@ -503,13 +493,6 @@ bootstrapping-build)
     echo "--- Installing libc++ and libc++abi to a fake location"
     ${NINJA} -C "${BUILD_DIR}" install-runtimes
 ;;
-legacy-test-config)
-    clean
-    generate-cmake -DLIBCXX_TEST_CONFIG="legacy.cfg.in" \
-                   -DLIBCXXABI_TEST_CONFIG="${MONOREPO_ROOT}/libcxxabi/test/lit.site.cfg.in" \
-                   -DLIBUNWIND_TEST_CONFIG="${MONOREPO_ROOT}/libunwind/test/lit.site.cfg.in"
-    check-runtimes
-;;
 aarch64)
     clean
     generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/AArch64.cmake"
@@ -608,8 +591,6 @@ mingw-dll-i686)
     ${NINJA} -vC "${BUILD_DIR}" check-cxx
 ;;
 aix)
-    export CC=clang
-    export CXX=clang++
     clean
     generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/AIX.cmake" \
                    -DLIBCXX_TEST_CONFIG="ibm-libc++-shared.cfg.in" \

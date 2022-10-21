@@ -147,8 +147,8 @@ public:
   /// See Operation::walk for more details.
   template <WalkOrder Order = WalkOrder::PostOrder, typename FnT,
             typename RetT = detail::walkResultType<FnT>>
-  typename std::enable_if<
-      llvm::function_traits<std::decay_t<FnT>>::num_args == 1, RetT>::type
+  std::enable_if_t<llvm::function_traits<std::decay_t<FnT>>::num_args == 1,
+                   RetT>
   walk(FnT &&callback) {
     return state->walk<Order>(std::forward<FnT>(callback));
   }
@@ -175,8 +175,8 @@ public:
   ///         return WalkResult::advance();
   ///       });
   template <typename FnT, typename RetT = detail::walkResultType<FnT>>
-  typename std::enable_if<
-      llvm::function_traits<std::decay_t<FnT>>::num_args == 2, RetT>::type
+  std::enable_if_t<llvm::function_traits<std::decay_t<FnT>>::num_args == 2,
+                   RetT>
   walk(FnT &&callback) {
     return state->walk(std::forward<FnT>(callback));
   }
@@ -240,7 +240,7 @@ class OpFoldResult : public PointerUnion<Attribute, Value> {
   using PointerUnion<Attribute, Value>::PointerUnion;
 
 public:
-  void dump() { llvm::errs() << *this << "\n"; }
+  void dump() const { llvm::errs() << *this << "\n"; }
 };
 
 /// Allow printing to a stream.

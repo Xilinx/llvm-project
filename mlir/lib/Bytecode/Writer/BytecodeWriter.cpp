@@ -9,6 +9,7 @@
 #include "mlir/Bytecode/BytecodeWriter.h"
 #include "../Encoding.h"
 #include "IRNumbering.h"
+#include "mlir/Bytecode/BytecodeImplementation.h"
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/OpImplementation.h"
 #include "llvm/ADT/CachedHashString.h"
@@ -21,6 +22,34 @@
 
 using namespace mlir;
 using namespace mlir::bytecode::detail;
+
+//===----------------------------------------------------------------------===//
+// BytecodeWriterConfig
+//===----------------------------------------------------------------------===//
+
+struct BytecodeWriterConfig::Impl {
+  Impl(StringRef producer) : producer(producer) {}
+
+  /// The producer of the bytecode.
+  StringRef producer;
+
+  /// A collection of non-dialect resource printers.
+  SmallVector<std::unique_ptr<AsmResourcePrinter>> externalResourcePrinters;
+};
+
+BytecodeWriterConfig::BytecodeWriterConfig(StringRef producer)
+    : impl(std::make_unique<Impl>(producer)) {}
+BytecodeWriterConfig::BytecodeWriterConfig(FallbackAsmResourceMap &map,
+                                           StringRef producer)
+    : BytecodeWriterConfig(producer) {
+  attachFallbackResourcePrinter(map);
+}
+BytecodeWriterConfig::~BytecodeWriterConfig() = default;
+
+void BytecodeWriterConfig::attachResourcePrinter(
+    std::unique_ptr<AsmResourcePrinter> printer) {
+  impl->externalResourcePrinters.emplace_back(std::move(printer));
+}
 
 //===----------------------------------------------------------------------===//
 // EncodingEmitter
@@ -55,6 +84,48 @@ public:
     currentResult[offset - prevResultSize] = value;
   }
 
+  /// Emit the provided blob of data, which is owned by the caller and is
+  /// guaranteed to not die before the end of the bytecode process.
+  void emitOwnedBlob(ArrayRef<uint8_t> data) {
+    // Push the current buffer before adding the provided data.
+    appendResult(std::move(currentResult));
+    appendOwnedResult(data);
+  }
+
+  /// Emit the provided blob of data that has the given alignment, which is
+  /// owned by the caller and is guaranteed to not die before the end of the
+  /// bytecode process. The alignment value is also encoded, making it available
+  /// on load.
+  void emitOwnedBlobAndAlignment(ArrayRef<uint8_t> data, uint32_t alignment) {
+    emitVarInt(alignment);
+    emitVarInt(data.size());
+
+    alignTo(alignment);
+    emitOwnedBlob(data);
+  }
+  void emitOwnedBlobAndAlignment(ArrayRef<char> data, uint32_t alignment) {
+    ArrayRef<uint8_t> castedData(reinterpret_cast<const uint8_t *>(data.data()),
+                                 data.size());
+    emitOwnedBlobAndAlignment(castedData, alignment);
+  }
+
+  /// Align the emitter to the given alignment.
+  void alignTo(unsigned alignment) {
+    if (alignment < 2)
+      return;
+    assert(llvm::isPowerOf2_32(alignment) && "expected valid alignment");
+
+    // Check to see if we need to emit any padding bytes to meet the desired
+    // alignment.
+    size_t curOffset = size();
+    size_t paddingSize = llvm::alignTo(curOffset, alignment) - curOffset;
+    while (paddingSize--)
+      emitByte(bytecode::kAlignmentByte);
+
+    // Keep track of the maximum required alignment.
+    requiredAlignment = std::max(requiredAlignment, alignment);
+  }
+
   //===--------------------------------------------------------------------===//
   // Integer Emission
 
@@ -84,6 +155,14 @@ public:
     emitMultiByteVarInt(value);
   }
 
+  /// Emit a signed variable length integer. Signed varints are encoded using
+  /// a varint with zigzag encoding, meaning that we use the low bit of the
+  /// value to indicate the sign of the value. This allows for more efficient
+  /// encoding of negative values by limiting the number of active bits
+  void emitSignedVarInt(uint64_t value) {
+    emitVarInt((value << 1) ^ (uint64_t)((int64_t)value >> 63));
+  }
+
   /// Emit a variable length integer whose low bit is used to encode the
   /// provided flag, i.e. encoded as: (value << 1) | (flag ? 1 : 0).
   void emitVarIntWithFlag(uint64_t value, bool flag) {
@@ -110,15 +189,37 @@ public:
   /// Emit a nested section of the given code, whose contents are encoded in the
   /// provided emitter.
   void emitSection(bytecode::Section::ID code, EncodingEmitter &&emitter) {
-    // Emit the section code and length.
+    // Emit the section code and length. The high bit of the code is used to
+    // indicate whether the section alignment is present, so save an offset to
+    // it.
+    uint64_t codeOffset = currentResult.size();
     emitByte(code);
     emitVarInt(emitter.size());
+
+    // Integrate the alignment of the section into this emitter if necessary.
+    unsigned emitterAlign = emitter.requiredAlignment;
+    if (emitterAlign > 1) {
+      if (size() & (emitterAlign - 1)) {
+        emitVarInt(emitterAlign);
+        alignTo(emitterAlign);
+
+        // Indicate that we needed to align the section, the high bit of the
+        // code field is used for this.
+        currentResult[codeOffset] |= 0b10000000;
+      } else {
+        // Otherwise, if we happen to be at a compatible offset, we just
+        // remember that we need this alignment.
+        requiredAlignment = std::max(requiredAlignment, emitterAlign);
+      }
+    }
 
     // Push our current buffer and then merge the provided section body into
     // ours.
     appendResult(std::move(currentResult));
     for (std::vector<uint8_t> &result : emitter.prevResultStorage)
-      appendResult(std::move(result));
+      prevResultStorage.push_back(std::move(result));
+    llvm::append_range(prevResultList, emitter.prevResultList);
+    prevResultSize += emitter.prevResultSize;
     appendResult(std::move(emitter.currentResult));
   }
 
@@ -131,9 +232,16 @@ private:
 
   /// Append a new result buffer to the current contents.
   void appendResult(std::vector<uint8_t> &&result) {
-    prevResultSize += result.size();
+    if (result.empty())
+      return;
     prevResultStorage.emplace_back(std::move(result));
-    prevResultList.emplace_back(prevResultStorage.back());
+    appendOwnedResult(prevResultStorage.back());
+  }
+  void appendOwnedResult(ArrayRef<uint8_t> result) {
+    if (result.empty())
+      return;
+    prevResultSize += result.size();
+    prevResultList.emplace_back(result);
   }
 
   /// The result of the emitter currently being built. We refrain from building
@@ -148,14 +256,17 @@ private:
   /// An up-to-date total size of all of the buffers within `prevResultList`.
   /// This enables O(1) size checks of the current encoding.
   size_t prevResultSize = 0;
+
+  /// The highest required alignment for the start of this section.
+  unsigned requiredAlignment = 1;
 };
 
 /// A simple raw_ostream wrapper around a EncodingEmitter. This removes the need
 /// to go through an intermediate buffer when interacting with code that wants a
 /// raw_ostream.
-class raw_emitter_ostream : public raw_ostream {
+class RawEmitterOstream : public raw_ostream {
 public:
-  explicit raw_emitter_ostream(EncodingEmitter &emitter) : emitter(emitter) {
+  explicit RawEmitterOstream(EncodingEmitter &emitter) : emitter(emitter) {
     SetUnbuffered();
   }
 
@@ -197,6 +308,41 @@ void EncodingEmitter::emitMultiByteVarInt(uint64_t value) {
 }
 
 //===----------------------------------------------------------------------===//
+// StringSectionBuilder
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// This class is used to simplify the process of emitting the string section.
+class StringSectionBuilder {
+public:
+  /// Add the given string to the string section, and return the index of the
+  /// string within the section.
+  size_t insert(StringRef str) {
+    auto it = strings.insert({llvm::CachedHashStringRef(str), strings.size()});
+    return it.first->second;
+  }
+
+  /// Write the current set of strings to the given emitter.
+  void write(EncodingEmitter &emitter) {
+    emitter.emitVarInt(strings.size());
+
+    // Emit the sizes in reverse order, so that we don't need to backpatch an
+    // offset to the string data or have a separate section.
+    for (const auto &it : llvm::reverse(strings))
+      emitter.emitVarInt(it.first.size() + 1);
+    // Emit the string data itself.
+    for (const auto &it : strings)
+      emitter.emitNulTerminatedString(it.first.val());
+  }
+
+private:
+  /// A set of strings referenced within the bytecode. The value of the map is
+  /// unused.
+  llvm::MapVector<llvm::CachedHashStringRef, size_t> strings;
+};
+} // namespace
+
+//===----------------------------------------------------------------------===//
 // Bytecode Writer
 //===----------------------------------------------------------------------===//
 
@@ -206,7 +352,8 @@ public:
   BytecodeWriter(Operation *op) : numberingState(op) {}
 
   /// Write the bytecode for the given root operation.
-  void write(Operation *rootOp, raw_ostream &os, StringRef producer);
+  void write(Operation *rootOp, raw_ostream &os,
+             const BytecodeWriterConfig::Impl &config);
 
 private:
   //===--------------------------------------------------------------------===//
@@ -228,28 +375,29 @@ private:
   void writeIRSection(EncodingEmitter &emitter, Operation *op);
 
   //===--------------------------------------------------------------------===//
+  // Resources
+
+  void writeResourceSection(Operation *op, EncodingEmitter &emitter,
+                            const BytecodeWriterConfig::Impl &config);
+
+  //===--------------------------------------------------------------------===//
   // Strings
 
   void writeStringSection(EncodingEmitter &emitter);
 
-  /// Get the number for the given shared string, that is contained within the
-  /// string section.
-  size_t getSharedStringNumber(StringRef str);
-
   //===--------------------------------------------------------------------===//
   // Fields
 
+  /// The builder used for the string section.
+  StringSectionBuilder stringSection;
+
   /// The IR numbering state generated for the root operation.
   IRNumberingState numberingState;
-
-  /// A set of strings referenced within the bytecode. The value of the map is
-  /// unused.
-  llvm::MapVector<llvm::CachedHashStringRef, size_t> strings;
 };
 } // namespace
 
 void BytecodeWriter::write(Operation *rootOp, raw_ostream &os,
-                           StringRef producer) {
+                           const BytecodeWriterConfig::Impl &config) {
   EncodingEmitter emitter;
 
   // Emit the bytecode file header. This is how we identify the output as a
@@ -260,7 +408,7 @@ void BytecodeWriter::write(Operation *rootOp, raw_ostream &os,
   emitter.emitVarInt(bytecode::kVersion);
 
   // Emit the producer.
-  emitter.emitNulTerminatedString(producer);
+  emitter.emitNulTerminatedString(config.producer);
 
   // Emit the dialect section.
   writeDialectSection(emitter);
@@ -270,6 +418,9 @@ void BytecodeWriter::write(Operation *rootOp, raw_ostream &os,
 
   // Emit the IR section.
   writeIRSection(emitter, rootOp);
+
+  // Emit the resources section.
+  writeResourceSection(rootOp, emitter, config);
 
   // Emit the string section.
   writeStringSection(emitter);
@@ -314,11 +465,11 @@ void BytecodeWriter::writeDialectSection(EncodingEmitter &emitter) {
   auto dialects = numberingState.getDialects();
   dialectEmitter.emitVarInt(llvm::size(dialects));
   for (DialectNumbering &dialect : dialects)
-    dialectEmitter.emitVarInt(getSharedStringNumber(dialect.name));
+    dialectEmitter.emitVarInt(stringSection.insert(dialect.name));
 
   // Emit the referenced operation names grouped by dialect.
   auto emitOpName = [&](OpNameNumbering &name) {
-    dialectEmitter.emitVarInt(getSharedStringNumber(name.name.stripDialect()));
+    dialectEmitter.emitVarInt(stringSection.insert(name.name.stripDialect()));
   };
   writeDialectGrouping(dialectEmitter, numberingState.getOpNames(), emitOpName);
 
@@ -327,6 +478,83 @@ void BytecodeWriter::writeDialectSection(EncodingEmitter &emitter) {
 
 //===----------------------------------------------------------------------===//
 // Attributes and Types
+
+namespace {
+class DialectWriter : public DialectBytecodeWriter {
+public:
+  DialectWriter(EncodingEmitter &emitter, IRNumberingState &numberingState,
+                StringSectionBuilder &stringSection)
+      : emitter(emitter), numberingState(numberingState),
+        stringSection(stringSection) {}
+
+  //===--------------------------------------------------------------------===//
+  // IR
+  //===--------------------------------------------------------------------===//
+
+  void writeAttribute(Attribute attr) override {
+    emitter.emitVarInt(numberingState.getNumber(attr));
+  }
+  void writeType(Type type) override {
+    emitter.emitVarInt(numberingState.getNumber(type));
+  }
+
+  void writeResourceHandle(const AsmDialectResourceHandle &resource) override {
+    emitter.emitVarInt(numberingState.getNumber(resource));
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Primitives
+  //===--------------------------------------------------------------------===//
+
+  void writeVarInt(uint64_t value) override { emitter.emitVarInt(value); }
+
+  void writeSignedVarInt(int64_t value) override {
+    emitter.emitSignedVarInt(value);
+  }
+
+  void writeAPIntWithKnownWidth(const APInt &value) override {
+    size_t bitWidth = value.getBitWidth();
+
+    // If the value is a single byte, just emit it directly without going
+    // through a varint.
+    if (bitWidth <= 8)
+      return emitter.emitByte(value.getLimitedValue());
+
+    // If the value fits within a single varint, emit it directly.
+    if (bitWidth <= 64)
+      return emitter.emitSignedVarInt(value.getLimitedValue());
+
+    // Otherwise, we need to encode a variable number of active words. We use
+    // active words instead of the number of total words under the observation
+    // that smaller values will be more common.
+    unsigned numActiveWords = value.getActiveWords();
+    emitter.emitVarInt(numActiveWords);
+
+    const uint64_t *rawValueData = value.getRawData();
+    for (unsigned i = 0; i < numActiveWords; ++i)
+      emitter.emitSignedVarInt(rawValueData[i]);
+  }
+
+  void writeAPFloatWithKnownSemantics(const APFloat &value) override {
+    writeAPIntWithKnownWidth(value.bitcastToAPInt());
+  }
+
+  void writeOwnedString(StringRef str) override {
+    emitter.emitVarInt(stringSection.insert(str));
+  }
+
+  void writeOwnedBlob(ArrayRef<char> blob) override {
+    emitter.emitVarInt(blob.size());
+    emitter.emitOwnedBlob(ArrayRef<uint8_t>(
+        reinterpret_cast<const uint8_t *>(blob.data()), blob.size()));
+  }
+
+private:
+  EncodingEmitter &emitter;
+  IRNumberingState &numberingState;
+  StringSectionBuilder &stringSection;
+};
+} // namespace
 
 void BytecodeWriter::writeAttrTypeSection(EncodingEmitter &emitter) {
   EncodingEmitter attrTypeEmitter;
@@ -337,13 +565,34 @@ void BytecodeWriter::writeAttrTypeSection(EncodingEmitter &emitter) {
   // A functor used to emit an attribute or type entry.
   uint64_t prevOffset = 0;
   auto emitAttrOrType = [&](auto &entry) {
-    // TODO: Allow dialects to provide more optimal implementations of attribute
-    // and type encodings.
-    bool hasCustomEncoding = false;
+    auto entryValue = entry.getValue();
 
-    // Emit the entry using the textual format.
-    raw_emitter_ostream(attrTypeEmitter) << entry.getValue();
-    attrTypeEmitter.emitByte(0);
+    // First, try to emit this entry using the dialect bytecode interface.
+    bool hasCustomEncoding = false;
+    if (const BytecodeDialectInterface *interface = entry.dialect->interface) {
+      // The writer used when emitting using a custom bytecode encoding.
+      DialectWriter dialectWriter(attrTypeEmitter, numberingState,
+                                  stringSection);
+
+      if constexpr (std::is_same_v<std::decay_t<decltype(entryValue)>, Type>) {
+        // TODO: We don't currently support custom encoded mutable types.
+        hasCustomEncoding =
+            !entryValue.template hasTrait<TypeTrait::IsMutable>() &&
+            succeeded(interface->writeType(entryValue, dialectWriter));
+      } else {
+        // TODO: We don't currently support custom encoded mutable attributes.
+        hasCustomEncoding =
+            !entryValue.template hasTrait<AttributeTrait::IsMutable>() &&
+            succeeded(interface->writeAttribute(entryValue, dialectWriter));
+      }
+    }
+
+    // If the entry was not emitted using the dialect interface, emit it using
+    // the textual format.
+    if (!hasCustomEncoding) {
+      RawEmitterOstream(attrTypeEmitter) << entryValue;
+      attrTypeEmitter.emitByte(0);
+    }
 
     // Record the offset of this entry.
     uint64_t curOffset = attrTypeEmitter.size();
@@ -487,26 +736,117 @@ void BytecodeWriter::writeIRSection(EncodingEmitter &emitter, Operation *op) {
 }
 
 //===----------------------------------------------------------------------===//
+// Resources
+
+namespace {
+/// This class represents a resource builder implementation for the MLIR
+/// bytecode format.
+class ResourceBuilder : public AsmResourceBuilder {
+public:
+  using PostProcessFn = function_ref<void(StringRef, AsmResourceEntryKind)>;
+
+  ResourceBuilder(EncodingEmitter &emitter, StringSectionBuilder &stringSection,
+                  PostProcessFn postProcessFn)
+      : emitter(emitter), stringSection(stringSection),
+        postProcessFn(postProcessFn) {}
+  ~ResourceBuilder() override = default;
+
+  void buildBlob(StringRef key, ArrayRef<char> data,
+                 uint32_t dataAlignment) final {
+    emitter.emitOwnedBlobAndAlignment(data, dataAlignment);
+    postProcessFn(key, AsmResourceEntryKind::Blob);
+  }
+  void buildBool(StringRef key, bool data) final {
+    emitter.emitByte(data);
+    postProcessFn(key, AsmResourceEntryKind::Bool);
+  }
+  void buildString(StringRef key, StringRef data) final {
+    emitter.emitVarInt(stringSection.insert(data));
+    postProcessFn(key, AsmResourceEntryKind::String);
+  }
+
+private:
+  EncodingEmitter &emitter;
+  StringSectionBuilder &stringSection;
+  PostProcessFn postProcessFn;
+};
+} // namespace
+
+void BytecodeWriter::writeResourceSection(
+    Operation *op, EncodingEmitter &emitter,
+    const BytecodeWriterConfig::Impl &config) {
+  EncodingEmitter resourceEmitter;
+  EncodingEmitter resourceOffsetEmitter;
+  uint64_t prevOffset = 0;
+  SmallVector<std::tuple<StringRef, AsmResourceEntryKind, uint64_t>>
+      curResourceEntries;
+
+  // Functor used to process the offset for a resource of `kind` defined by
+  // 'key'.
+  auto appendResourceOffset = [&](StringRef key, AsmResourceEntryKind kind) {
+    uint64_t curOffset = resourceEmitter.size();
+    curResourceEntries.emplace_back(key, kind, curOffset - prevOffset);
+    prevOffset = curOffset;
+  };
+
+  // Functor used to emit a resource group defined by 'key'.
+  auto emitResourceGroup = [&](uint64_t key) {
+    resourceOffsetEmitter.emitVarInt(key);
+    resourceOffsetEmitter.emitVarInt(curResourceEntries.size());
+    for (auto [key, kind, size] : curResourceEntries) {
+      resourceOffsetEmitter.emitVarInt(stringSection.insert(key));
+      resourceOffsetEmitter.emitVarInt(size);
+      resourceOffsetEmitter.emitByte(kind);
+    }
+  };
+
+  // Builder used to emit resources.
+  ResourceBuilder entryBuilder(resourceEmitter, stringSection,
+                               appendResourceOffset);
+
+  // Emit the external resource entries.
+  resourceOffsetEmitter.emitVarInt(config.externalResourcePrinters.size());
+  for (const auto &printer : config.externalResourcePrinters) {
+    curResourceEntries.clear();
+    printer->buildResources(op, entryBuilder);
+    emitResourceGroup(stringSection.insert(printer->getName()));
+  }
+
+  // Emit the dialect resource entries.
+  for (DialectNumbering &dialect : numberingState.getDialects()) {
+    if (!dialect.asmInterface)
+      continue;
+    curResourceEntries.clear();
+    dialect.asmInterface->buildResources(op, dialect.resources, entryBuilder);
+
+    // Emit the declaration resources for this dialect, these didn't get emitted
+    // by the interface. These resources don't have data attached, so just use a
+    // "blob" kind as a placeholder.
+    for (const auto &resource : dialect.resourceMap)
+      if (resource.second->isDeclaration)
+        appendResourceOffset(resource.first, AsmResourceEntryKind::Blob);
+
+    // Emit the resource group for this dialect.
+    if (!curResourceEntries.empty())
+      emitResourceGroup(dialect.number);
+  }
+
+  // If we didn't emit any resource groups, elide the resource sections.
+  if (resourceOffsetEmitter.size() == 0)
+    return;
+
+  emitter.emitSection(bytecode::Section::kResourceOffset,
+                      std::move(resourceOffsetEmitter));
+  emitter.emitSection(bytecode::Section::kResource, std::move(resourceEmitter));
+}
+
+//===----------------------------------------------------------------------===//
 // Strings
 
 void BytecodeWriter::writeStringSection(EncodingEmitter &emitter) {
   EncodingEmitter stringEmitter;
-  stringEmitter.emitVarInt(strings.size());
-
-  // Emit the sizes in reverse order, so that we don't need to backpatch an
-  // offset to the string data or have a separate section.
-  for (const auto &it : llvm::reverse(strings))
-    stringEmitter.emitVarInt(it.first.size() + 1);
-  // Emit the string data itself.
-  for (const auto &it : strings)
-    stringEmitter.emitNulTerminatedString(it.first.val());
-
+  stringSection.write(stringEmitter);
   emitter.emitSection(bytecode::Section::kString, std::move(stringEmitter));
-}
-
-size_t BytecodeWriter::getSharedStringNumber(StringRef str) {
-  auto it = strings.insert({llvm::CachedHashStringRef(str), strings.size()});
-  return it.first->second;
 }
 
 //===----------------------------------------------------------------------===//
@@ -514,7 +854,7 @@ size_t BytecodeWriter::getSharedStringNumber(StringRef str) {
 //===----------------------------------------------------------------------===//
 
 void mlir::writeBytecodeToFile(Operation *op, raw_ostream &os,
-                               StringRef producer) {
+                               const BytecodeWriterConfig &config) {
   BytecodeWriter writer(op);
-  writer.write(op, os, producer);
+  writer.write(op, os, config.getImpl());
 }

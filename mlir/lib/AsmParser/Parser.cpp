@@ -242,7 +242,8 @@ OptionalParseResult Parser::parseOptionalInteger(APInt &result) {
   if (consumeIf(Token::kw_false)) {
     result = false;
     return success();
-  } else if (consumeIf(Token::kw_true)) {
+  }
+  if (consumeIf(Token::kw_true)) {
     result = true;
     return success();
   }
@@ -801,7 +802,7 @@ ParseResult OperationParser::finalize() {
     return failure();
 
   // Verify that the parsed operations are valid.
-  if (failed(verify(topLevelOp)))
+  if (state.config.shouldVerifyAfterParse() && failed(verify(topLevelOp)))
     return failure();
 
   // If we are populating the parser state, finalize the top-level operation.
@@ -2343,6 +2344,14 @@ public:
 
   InFlightDiagnostic emitError() const final { return p.emitError(keyLoc); }
 
+  AsmResourceEntryKind getKind() const final {
+    if (value.isAny(Token::kw_true, Token::kw_false))
+      return AsmResourceEntryKind::Bool;
+    return value.getSpelling().startswith("\"0x")
+               ? AsmResourceEntryKind::Blob
+               : AsmResourceEntryKind::String;
+  }
+
   FailureOr<bool> parseAsBool() const final {
     if (value.is(Token::kw_true))
       return true;
@@ -2584,8 +2593,8 @@ ParseResult TopLevelOperationParser::parse(Block *topLevelBlock,
       // top-level block.
       auto &parsedOps = topLevelOp->getBody()->getOperations();
       auto &destOps = topLevelBlock->getOperations();
-      destOps.splice(destOps.empty() ? destOps.end() : std::prev(destOps.end()),
-                     parsedOps, parsedOps.begin(), parsedOps.end());
+      destOps.splice(destOps.end(), parsedOps, parsedOps.begin(),
+                     parsedOps.end());
       return success();
     }
 

@@ -856,7 +856,8 @@ void Preprocessor::SkipExcludedConditionalBlock(SourceLocation HashTokenLoc,
         Tok.getLocation());
 }
 
-Module *Preprocessor::getModuleForLocation(SourceLocation Loc) {
+Module *Preprocessor::getModuleForLocation(SourceLocation Loc,
+                                           bool AllowTextual) {
   if (!SourceMgr.isInMainFile(Loc)) {
     // Try to determine the module of the include directive.
     // FIXME: Look into directly passing the FileEntry from LookupFile instead.
@@ -864,7 +865,7 @@ Module *Preprocessor::getModuleForLocation(SourceLocation Loc) {
     if (const FileEntry *EntryOfIncl = SourceMgr.getFileEntryForID(IDOfIncl)) {
       // The include comes from an included file.
       return HeaderInfo.getModuleMap()
-          .findModuleForHeader(EntryOfIncl)
+          .findModuleForHeader(EntryOfIncl, AllowTextual)
           .getModule();
     }
   }
@@ -879,7 +880,8 @@ Module *Preprocessor::getModuleForLocation(SourceLocation Loc) {
 const FileEntry *
 Preprocessor::getHeaderToIncludeForDiagnostics(SourceLocation IncLoc,
                                                SourceLocation Loc) {
-  Module *IncM = getModuleForLocation(IncLoc);
+  Module *IncM = getModuleForLocation(
+      IncLoc, LangOpts.ModulesValidateTextualHeaderIncludes);
 
   // Walk up through the include stack, looking through textual headers of M
   // until we hit a non-textual header that we can #include. (We assume textual
@@ -907,6 +909,10 @@ Preprocessor::getHeaderToIncludeForDiagnostics(SourceLocation IncLoc,
         InPrivateHeader = true;
         continue;
       }
+
+      // Don't suggest explicitly excluded headers.
+      if (Header.getRole() == ModuleMap::ExcludedHeader)
+        continue;
 
       // We'll suggest including textual headers below if they're
       // include-guarded.
@@ -953,7 +959,8 @@ Optional<FileEntryRef> Preprocessor::LookupFile(
   ConstSearchDirIterator CurDirLocal = nullptr;
   ConstSearchDirIterator &CurDir = CurDirArg ? *CurDirArg : CurDirLocal;
 
-  Module *RequestingModule = getModuleForLocation(FilenameLoc);
+  Module *RequestingModule = getModuleForLocation(
+      FilenameLoc, LangOpts.ModulesValidateTextualHeaderIncludes);
   bool RequestingModuleIsModuleInterface = !SourceMgr.isInMainFile(FilenameLoc);
 
   // If the header lookup mechanism may be relative to the current inclusion
@@ -2281,6 +2288,8 @@ Preprocessor::ImportAction Preprocessor::HandleHeaderIncludeOrImport(
     if (Imported) {
       Action = Import;
     } else if (Imported.isMissingExpected()) {
+      markModuleAsAffecting(
+          static_cast<Module *>(Imported)->getTopLevelModule());
       // We failed to find a submodule that we assumed would exist (because it
       // was in the directory of an umbrella header, for instance), but no
       // actual module containing it exists (because the umbrella header is

@@ -1145,6 +1145,7 @@ MaybeExpr ExpressionAnalyzer::Analyze(const parser::StructureComponent &sc) {
       return std::nullopt;
     } else if (std::optional<DataRef> dataRef{
                    ExtractDataRef(std::move(*dtExpr))}) {
+      auto restorer{GetContextualMessages().SetLocation(name)};
       if (auto component{
               CreateComponent(std::move(*dataRef), *sym, *dtSpec->scope())}) {
         return Designate(DataRef{std::move(*component)});
@@ -1836,7 +1837,8 @@ MaybeExpr ExpressionAnalyzer::Analyze(
                         "component", "value")};
                 if (checked && *checked && GetRank(*componentShape) > 0 &&
                     GetRank(*valueShape) == 0 &&
-                    !IsExpandableScalar(*converted, true /*admit PURE call*/)) {
+                    !IsExpandableScalar(*converted, GetFoldingContext(),
+                        *componentShape, true /*admit PURE call*/)) {
                   AttachDeclaration(
                       Say(expr.source,
                           "Scalar value cannot be expanded to shape of array component '%s'"_err_en_US,

@@ -237,6 +237,11 @@ def simm12 : Operand<XLenVT>, ImmLeaf<XLenVT, [{return isInt<12>(Imm);}]> {
   let OperandNamespace = "RISCVOp";
 }
 
+// A 12-bit signed immediate which cannot fit in 6-bit signed immediate,
+// but even negative value fit in 12-bit.
+def simm12_no6 : ImmLeaf<XLenVT, [{
+  return isInt<12>(Imm) && !isInt<6>(Imm) && isInt<12>(-Imm);}]>;
+
 // A 13-bit signed immediate where the least significant bit is zero.
 def simm13_lsb0 : Operand<OtherVT> {
   let ParserMatchClass = SImmAsmOperand<13, "Lsb0">;
@@ -366,15 +371,6 @@ def ixlenimm_li : Operand<XLenVT> {
 def simm12_plus1 : ImmLeaf<XLenVT,
   [{return (isInt<12>(Imm) && Imm != -2048) || Imm == 2048;}]>;
 
-// A 12-bit signed immediate sub one and exclude zero
-def simm12_minus1_nonzero : PatLeaf<(imm), [{
-  if (!N->hasOneUse())
-    return false;
-  // The immediate operand must be in range [-2049, 0) or (0, 2046].
-  int64_t Imm = N->getSExtValue();
-  return (Imm >= -2049 && Imm < 0) || (Imm > 0 && Imm <= 2046);
-}]>;
-
 // A 6-bit constant greater than 32.
 def uimm6gt32 : ImmLeaf<XLenVT, [{
   return isUInt<6>(Imm) && Imm > 32;
@@ -395,12 +391,6 @@ def NegImm : SDNodeXForm<imm, [{
 // Return an immediate value minus 32.
 def ImmSub32 : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant(N->getSExtValue() - 32, SDLoc(N),
-                                   N->getValueType(0));
-}]>;
-
-// Return an immediate value plus 1.
-def ImmPlus1 : SDNodeXForm<imm, [{
-  return CurDAG->getTargetConstant(N->getSExtValue() + 1, SDLoc(N),
                                    N->getValueType(0));
 }]>;
 
@@ -446,13 +436,13 @@ def AddiPairImmLarge : SDNodeXForm<imm, [{
 }]>;
 
 def TrailingZeros : SDNodeXForm<imm, [{
-  return CurDAG->getTargetConstant(N->getAPIntValue().countTrailingZeros(),
+  return CurDAG->getTargetConstant(countTrailingZeros(N->getZExtValue()),
                                    SDLoc(N), N->getValueType(0));
 }]>;
 
 def XLenSubTrailingOnes : SDNodeXForm<imm, [{
   uint64_t XLen = Subtarget->getXLen();
-  uint64_t TrailingOnes = N->getAPIntValue().countTrailingOnes();
+  uint64_t TrailingOnes = countTrailingOnes(N->getZExtValue());
   return CurDAG->getTargetConstant(XLen - TrailingOnes, SDLoc(N),
                                    N->getValueType(0));
 }]>;
@@ -470,6 +460,19 @@ def TrailingOnesMask : PatLeaf<(imm), [{
     return false;
   return !isInt<12>(N->getSExtValue()) && isMask_64(N->getZExtValue());
 }], XLenSubTrailingOnes>;
+
+// Similar to LeadingOnesMask, but only consider leading ones in the lower 32
+// bits.
+def LeadingOnesWMask : PatLeaf<(imm), [{
+  if (!N->hasOneUse())
+    return false;
+  // If the value is a uint32 but not an int32, it must have bit 31 set and
+  // bits 63:32 cleared. After that we're looking for a shifted mask but not
+  // an all ones mask.
+  int64_t Imm = N->getSExtValue();
+  return !isInt<32>(Imm) && isUInt<32>(Imm) && isShiftedMask_64(Imm) &&
+         Imm != UINT64_C(0xffffffff);
+}], TrailingZeros>;
 
 //===----------------------------------------------------------------------===//
 // Instruction Formats
@@ -707,6 +710,23 @@ def UNIMP : RVInstI<0b001, OPC_SYSTEM, (outs), (ins), "unimp", "">,
   let rd = 0;
   let imm12 = 0b110000000000;
 }
+
+let Predicates = [HasStdExtZawrs] in {
+def WRS_NTO : RVInstI<0b000, OPC_SYSTEM, (outs), (ins), "wrs.nto", "">,
+              Sched<[]> {
+  let rs1 = 0;
+  let rd = 0;
+  let imm12 = 0b000000001101;
+}
+
+def WRS_STO : RVInstI<0b000, OPC_SYSTEM, (outs), (ins), "wrs.sto", "">,
+              Sched<[]> {
+  let rs1 = 0;
+  let rd = 0;
+  let imm12 = 0b000000011101;
+}
+} // Predicates = [HasStdExtZawrs]
+
 } // hasSideEffects = 1, mayLoad = 0, mayStore = 0
 
 def CSRRW : CSR_ir<0b001, "csrrw">;
@@ -1311,6 +1331,18 @@ multiclass SelectCC_GPR_rrirr<RegisterClass valty> {
 
 defm Select_GPR : SelectCC_GPR_rrirr<GPR>;
 
+class SelectCompressOpt<CondCode Cond>: Pat<(riscv_selectcc_frag:$select GPR:$lhs, simm12_no6:$Constant, Cond,
+                                                  GPR:$truev, GPR:$falsev),
+    (Select_GPR_Using_CC_GPR (ADDI GPR:$lhs, (NegImm simm12:$Constant)), X0,
+                          (IntCCtoRISCVCC $select), GPR:$truev, GPR:$falsev)>;
+
+def OptForMinSize : Predicate<"MF ? MF->getFunction().hasMinSize() : false">;
+
+let Predicates = [HasStdExtC, OptForMinSize] in {
+  def : SelectCompressOpt<SETEQ>;
+  def : SelectCompressOpt<SETNE>;
+}
+
 /// Branches and jumps
 
 // Match `riscv_brcc` and lower to the appropriate RISC-V branch instruction.
@@ -1322,12 +1354,20 @@ multiclass BccPat<CondCode Cond, RVInstB Inst> {
             (Inst GPR:$rs1, X0, simm13_lsb0:$imm12)>;
 }
 
+class BrccCompessOpt<CondCode Cond, RVInstB Inst> : Pat<(riscv_brcc GPR:$lhs, simm12_no6:$Constant, Cond, bb:$place),
+                              (Inst (ADDI GPR:$lhs, (NegImm simm12:$Constant)), X0, bb:$place)>;
+
 defm : BccPat<SETEQ, BEQ>;
 defm : BccPat<SETNE, BNE>;
 defm : BccPat<SETLT, BLT>;
 defm : BccPat<SETGE, BGE>;
 defm : BccPat<SETULT, BLTU>;
 defm : BccPat<SETUGE, BGEU>;
+
+let Predicates = [HasStdExtC, OptForMinSize] in {
+  def : BrccCompessOpt<SETEQ, BEQ>;
+  def : BrccCompessOpt<SETNE, BNE>;
+}
 
 let isBarrier = 1, isBranch = 1, isTerminator = 1 in
 def PseudoBR : Pseudo<(outs), (ins simm21_lsb0_jal:$imm20), [(br bb:$imm20)]>,
@@ -1557,6 +1597,7 @@ class SwapSysRegImm<SysReg SR, list<Register> Regs>
 def ReadFRM : ReadSysReg<SysRegFRM, [FRM]>;
 def WriteFRM : WriteSysReg<SysRegFRM, [FRM]>;
 def WriteFRMImm : WriteSysRegImm<SysRegFRM, [FRM]>;
+def SwapFRMImm : SwapSysRegImm<SysRegFRM, [FRM]>;
 
 let hasSideEffects = true in {
 def ReadFFLAGS : ReadSysReg<SysRegFFLAGS, [FFLAGS]>;
@@ -1596,7 +1637,20 @@ def sexti32_allwusers : PatFrag<(ops node:$src),
   return hasAllWUsers(Node);
 }]>;
 
+def ImmSExt32 : SDNodeXForm<imm, [{
+  return CurDAG->getTargetConstant(SignExtend64<32>(N->getSExtValue()),
+                                   SDLoc(N), N->getValueType(0));
+}]>;
+// Look for constants where the upper 32 bits are 0, but sign extending bit 31
+// would be an simm12.
+def u32simm12 : ImmLeaf<XLenVT, [{
+  return isUInt<32>(Imm) && isInt<12>(SignExtend64<32>(Imm));
+}], ImmSExt32>;
+
 let Predicates = [IsRV64] in {
+
+def : Pat<(i64 (and GPR:$rs, LeadingOnesWMask:$mask)),
+          (SLLI (SRLIW $rs, LeadingOnesWMask:$mask), LeadingOnesWMask:$mask)>;
 
 /// sext and zext
 
@@ -1632,6 +1686,16 @@ def : PatGprImm<binop_allwusers<shl>, SLLIW, uimm5>;
 def : Pat<(binop_allwusers<srl> (sext_inreg GPR:$rs1, i32), uimm5:$shamt),
           (SRAIW GPR:$rs1, uimm5:$shamt)>;
 
+// Use binop_allwusers to recover immediates that may have been broken by
+// SimplifyDemandedBits.
+def : Pat<(binop_allwusers<and> GPR:$rs1, u32simm12:$imm),
+          (ANDI GPR:$rs1, u32simm12:$imm)>;
+
+def : Pat<(binop_allwusers<or> GPR:$rs1, u32simm12:$imm),
+          (ORI GPR:$rs1, u32simm12:$imm)>;
+
+def : Pat<(binop_allwusers<xor> GPR:$rs1, u32simm12:$imm),
+          (XORI GPR:$rs1, u32simm12:$imm)>;
 /// Loads
 
 defm : LdPat<sextloadi32, LW, i64>;
@@ -1665,6 +1729,13 @@ def : Pat<(trap), (UNIMP)>;
 // We lower `debugtrap` to `ebreak`, as this will get the attention of the
 // debugger if possible.
 def : Pat<(debugtrap), (EBREAK)>;
+
+let Predicates = [IsRV64], Uses = [X5],
+    Defs = [X1, X6, X7, X28, X29, X30, X31] in
+def HWASAN_CHECK_MEMACCESS_SHORTGRANULES 
+  : Pseudo<(outs), (ins GPRJALR:$ptr, i32imm:$accessinfo),
+           [(int_hwasan_check_memaccess_shortgranules X5, GPRJALR:$ptr,
+                                                      (i32 timm:$accessinfo))]>;
 
 /// Simple optimization
 def : Pat<(add GPR:$rs1, (AddiPair:$rs2)),

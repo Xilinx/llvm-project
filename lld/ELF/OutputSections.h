@@ -12,6 +12,8 @@
 #include "InputSection.h"
 #include "LinkerScript.h"
 #include "lld/Common/LLVM.h"
+#include "llvm/Support/Compiler.h"
+#include "llvm/Support/Parallel.h"
 
 #include <array>
 
@@ -104,7 +106,8 @@ public:
   bool relro = false;
 
   void finalize();
-  template <class ELFT> void writeTo(uint8_t *buf);
+  template <class ELFT>
+  void writeTo(uint8_t *buf, llvm::parallel::TaskGroup &tg);
   // Check that the addends for dynamic relocations were written correctly.
   void checkDynRelAddends(const uint8_t *bufStart);
   template <class ELFT> void maybeCompress();
@@ -114,6 +117,8 @@ public:
   void sortCtorsDtors();
 
 private:
+  SmallVector<InputSection *, 0> storage;
+
   // Used for implementation of --compress-debug-sections option.
   CompressedData compressed;
 
@@ -152,7 +157,8 @@ struct Out {
 
 uint64_t getHeaderSize();
 
-extern llvm::SmallVector<OutputSection *, 0> outputSections;
+LLVM_LIBRARY_VISIBILITY extern llvm::SmallVector<OutputSection *, 0>
+    outputSections;
 } // namespace lld::elf
 
 #endif

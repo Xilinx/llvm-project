@@ -1465,6 +1465,7 @@ def LLVM_LLVMFuncOp : LLVM_Op<"func", [
   }];
 
   let arguments = (ins
+    StrAttr:$sym_name,
     TypeAttrOf<LLVM_FunctionType>:$function_type,
     DefaultValuedAttr<Linkage, "Linkage::External">:$linkage,
     UnitAttr:$dso_local,
@@ -1665,7 +1666,8 @@ def AtomicOrdering : I64EnumAttr<
 
 def LLVM_AtomicRMWType : AnyTypeOf<[LLVM_AnyFloat, AnyInteger]>;
 
-// FIXME: Need to add alignment attribute to MLIR atomicrmw operation.
+// FIXME: Need to add alignment and syncscope attribute to MLIR atomicrmw
+// operation.
 def LLVM_AtomicRMWOp : LLVM_Op<"atomicrmw"> {
   let arguments = (ins AtomicBinOp:$bin_op,
                    LLVM_PointerTo<LLVM_AtomicRMWType>:$ptr,

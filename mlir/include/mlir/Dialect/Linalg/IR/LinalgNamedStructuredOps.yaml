@@ -309,7 +309,7 @@ structured_op: !LinalgStructuredOpConfig
     - 1
     - 1
   - !LinalgOperandDefConfig
-    name: mp_kernel_size
+    name: mpKernelSize
     kind: index_attr
     index_attr_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11,
       s12, s13, s14, s15, s16, s17, s18, s19, s20] -> (s13, s14)>
@@ -317,7 +317,7 @@ structured_op: !LinalgStructuredOpConfig
     - 1
     - 1
   - !LinalgOperandDefConfig
-    name: mp_strides
+    name: mpStrides
     kind: index_attr
     index_attr_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11,
       s12, s13, s14, s15, s16, s17, s18, s19, s20] -> (s4, s9)>
@@ -325,7 +325,7 @@ structured_op: !LinalgStructuredOpConfig
     - 1
     - 1
   - !LinalgOperandDefConfig
-    name: mp_padding
+    name: mpPadding
     kind: index_attr
     index_attr_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11,
       s12, s13, s14, s15, s16, s17, s18, s19, s20] -> (s15, s16, s17, s18)>
@@ -335,7 +335,7 @@ structured_op: !LinalgStructuredOpConfig
     - 0
     - 0
   - !LinalgOperandDefConfig
-    name: mp_dilations
+    name: mpDilations
     kind: index_attr
     index_attr_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11,
       s12, s13, s14, s15, s16, s17, s18, s19, s20] -> (s19, s20)>
@@ -472,7 +472,7 @@ structured_op: !LinalgStructuredOpConfig
     - 1
     - 1
   - !LinalgOperandDefConfig
-    name: mp_kernel_size
+    name: mpKernelSize
     kind: index_attr
     index_attr_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11,
       s12, s13, s14, s15, s16, s17, s18, s19, s20] -> (s13, s14)>
@@ -480,7 +480,7 @@ structured_op: !LinalgStructuredOpConfig
     - 1
     - 1
   - !LinalgOperandDefConfig
-    name: mp_strides
+    name: mpStrides
     kind: index_attr
     index_attr_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11,
       s12, s13, s14, s15, s16, s17, s18, s19, s20] -> (s4, s9)>
@@ -488,7 +488,7 @@ structured_op: !LinalgStructuredOpConfig
     - 1
     - 1
   - !LinalgOperandDefConfig
-    name: mp_padding
+    name: mpPadding
     kind: index_attr
     index_attr_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11,
       s12, s13, s14, s15, s16, s17, s18, s19, s20] -> (s15, s16, s17, s18)>
@@ -498,7 +498,7 @@ structured_op: !LinalgStructuredOpConfig
     - 0
     - 0
   - !LinalgOperandDefConfig
-    name: mp_dilations
+    name: mpDilations
     kind: index_attr
     index_attr_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11,
       s12, s13, s14, s15, s16, s17, s18, s19, s20] -> (s19, s20)>
@@ -1466,9 +1466,8 @@ metadata: !LinalgOpMetadata
     between input dimensions, filter dimensions and output dimensions do not meet the requirements
     for convolution.
 
-    Todo: When this fused op is lowered to generic/affine/loops the inner loop functionality
-    is incorrect. Implementation of correct conv_2d_tensor_add_globalaveragepool functionality. Current
-    inner loop functionality is a dummy implementation
+    Note the loop functionality is incorrect and will not execute correctly - see -linalg-unfuse
+    to get a valid executable expansion.
 structured_op: !LinalgStructuredOpConfig
   args:
   - !LinalgOperandDefConfig
@@ -1617,9 +1616,8 @@ metadata: !LinalgOpMetadata
     between input dimensions, filter dimensions and output dimensions do not meet the requirements
     for convolution.
 
-    Todo: When this fused op is lowered to generic/affine/loops the inner loop functionality
-    is incorrect. Implementation of correct conv_2d_tensor_add_relu_globalaveragepool functionality.
-    Current inner loop functionality is a dummy implementation
+    Note the loop functionality is incorrect and will not execute correctly - see -linalg-unfuse
+    to get a valid executable expansion.
 structured_op: !LinalgStructuredOpConfig
   args:
   - !LinalgOperandDefConfig
@@ -1769,9 +1767,8 @@ metadata: !LinalgOpMetadata
     between input dimensions, filter dimensions and output dimensions do not meet the requirements
     for convolution.
 
-    Todo: When this fused op is lowered to generic/affine/loops the inner loop functionality
-    is incorrect. Implementation of correct conv_2d_tensor_add_lrelu_globalaveragepool functionality.
-    Current inner loop functionality is a dummy implementation
+    Note the loop functionality is incorrect and will not execute correctly - see -linalg-unfuse
+    to get a valid executable expansion.
 structured_op: !LinalgStructuredOpConfig
   args:
   - !LinalgOperandDefConfig
@@ -2474,6 +2471,76 @@ structured_op: !LinalgStructuredOpConfig
                       scalar_arg: BZp
 --- !LinalgOpConfig
 metadata: !LinalgOpMetadata
+  name: batch_reduce_matmul
+  cpp_class_name: BatchReduceMatmulOp
+  doc: |-
+    Performs a batch-reduce matrix multiplication of two 3D inputs.
+    The partial multiplication results are reduced into a 2D output.
+
+    Numeric casting is performed on the operands to the inner multiply, promoting
+    them to the same data type as the accumulator/output.
+  implements:
+  - LinalgContractionOpInterface
+structured_op: !LinalgStructuredOpConfig
+  args:
+  - !LinalgOperandDefConfig
+    name: A
+    kind: input_tensor
+    type_var: T1
+    shape_map: affine_map<()[s0, s1, s2, s3] -> (s0, s1, s2)>
+  - !LinalgOperandDefConfig
+    name: B
+    kind: input_tensor
+    type_var: T2
+    shape_map: affine_map<()[s0, s1, s2, s3] -> (s0, s2, s3)>
+  - !LinalgOperandDefConfig
+    name: C
+    kind: output_tensor
+    type_var: U
+    shape_map: affine_map<()[s0, s1, s2, s3] -> (s1, s3)>
+  indexing_maps: !LinalgIndexingMapsConfig
+    static_indexing_maps:
+    - affine_map<(d0, d1, d2, d3)[s0, s1, s2, s3] -> (d0, d1, d3)>
+    - affine_map<(d0, d1, d2, d3)[s0, s1, s2, s3] -> (d0, d3, d2)>
+    - affine_map<(d0, d1, d2, d3)[s0, s1, s2, s3] -> (d1, d2)>
+  iterator_types:
+  - reduction
+  - parallel
+  - parallel
+  - reduction
+  assignments:
+  - !ScalarAssign
+    arg: C
+    value: !ScalarExpression
+      scalar_fn:
+        kind: binary
+        fn_name: add
+        operands:
+        - !ScalarExpression
+          scalar_arg: C
+        - !ScalarExpression
+          scalar_fn:
+            kind: type
+            fn_name: cast_signed
+            type_var: U
+            operands:
+            - !ScalarExpression
+              scalar_fn:
+                kind: binary
+                fn_name: mul
+                operands:
+                - !ScalarExpression
+                  scalar_arg: A
+                - !ScalarExpression
+                  scalar_fn:
+                    kind: type
+                    fn_name: cast_signed
+                    type_var: U
+                    operands:
+                    - !ScalarExpression
+                      scalar_arg: B
+--- !LinalgOpConfig
+metadata: !LinalgOpMetadata
   name: matvec
   cpp_class_name: MatvecOp
   doc: |-
@@ -2994,6 +3061,94 @@ structured_op: !LinalgStructuredOpConfig
     - affine_map<(d0, d1, d2, d3, d4)[s0, s1, s2, s3, s4, s5, s6] -> (d0, d1 * s2
       + d3 * s4, d4)>
     - affine_map<(d0, d1, d2, d3, d4)[s0, s1, s2, s3, s4, s5, s6] -> (d3, d4, d2)>
+    - affine_map<(d0, d1, d2, d3, d4)[s0, s1, s2, s3, s4, s5, s6] -> (d0, d1, d2)>
+  iterator_types:
+  - parallel
+  - parallel
+  - parallel
+  - reduction
+  - reduction
+  assignments:
+  - !ScalarAssign
+    arg: O
+    value: !ScalarExpression
+      scalar_fn:
+        kind: binary
+        fn_name: add
+        operands:
+        - !ScalarExpression
+          scalar_arg: O
+        - !ScalarExpression
+          scalar_fn:
+            kind: binary
+            fn_name: mul
+            operands:
+            - !ScalarExpression
+              scalar_fn:
+                kind: type
+                fn_name: cast_signed
+                type_var: U
+                operands:
+                - !ScalarExpression
+                  scalar_arg: I
+            - !ScalarExpression
+              scalar_fn:
+                kind: type
+                fn_name: cast_signed
+                type_var: U
+                operands:
+                - !ScalarExpression
+                  scalar_arg: K
+--- !LinalgOpConfig
+metadata: !LinalgOpMetadata
+  name: conv_1d_ncw_fcw
+  cpp_class_name: Conv1DNcwFcwOp
+  doc: |-
+    Performs 1-D convolution.
+
+    Layout:
+      * Input: NCW.
+      * Kernel: FCW.
+
+    Numeric casting is performed on the operands to the inner multiply, promoting
+    them to the same data type as the accumulator/output.
+  implements:
+  - LinalgConvolutionOpInterface
+structured_op: !LinalgStructuredOpConfig
+  args:
+  - !LinalgOperandDefConfig
+    name: I
+    kind: input_tensor
+    type_var: T1
+    shape_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6] -> (s0, s1, s2 * s3 + s4
+      * s5)>
+  - !LinalgOperandDefConfig
+    name: K
+    kind: input_tensor
+    type_var: T2
+    shape_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6] -> (s6, s1, s4)>
+  - !LinalgOperandDefConfig
+    name: O
+    kind: output_tensor
+    type_var: U
+    shape_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6] -> (s0, s6, s2)>
+  - !LinalgOperandDefConfig
+    name: strides
+    kind: index_attr
+    index_attr_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6] -> (s3)>
+    default_indices:
+    - 1
+  - !LinalgOperandDefConfig
+    name: dilations
+    kind: index_attr
+    index_attr_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6] -> (s5)>
+    default_indices:
+    - 1
+  indexing_maps: !LinalgIndexingMapsConfig
+    static_indexing_maps:
+    - affine_map<(d0, d1, d2, d3, d4)[s0, s1, s2, s3, s4, s5, s6] -> (d0, d3, d2 *
+      s3 + d4 * s5)>
+    - affine_map<(d0, d1, d2, d3, d4)[s0, s1, s2, s3, s4, s5, s6] -> (d1, d3, d4)>
     - affine_map<(d0, d1, d2, d3, d4)[s0, s1, s2, s3, s4, s5, s6] -> (d0, d1, d2)>
   iterator_types:
   - parallel
@@ -3941,38 +4096,39 @@ structured_op: !LinalgStructuredOpConfig
     name: I
     kind: input_tensor
     type_var: T1
-    shape_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (s0, s9, s1 *
-      s2 + s3 * s4, s5 * s6 + s7 * s8)>
+    shape_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (s0, s1, s2
+      * s3 + s4 * s5, s6 * s7 + s8 * s9)>
   - !LinalgOperandDefConfig
     name: K
     kind: input_tensor
     type_var: T2
-    shape_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (s9, s3, s7)>
+    shape_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (s1, s4, s8)>
   - !LinalgOperandDefConfig
     name: O
     kind: output_tensor
     type_var: U
-    shape_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (s0, s9, s1, s5)>
+    shape_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (s0, s1, s2,
+      s6)>
   - !LinalgOperandDefConfig
     name: strides
     kind: index_attr
-    index_attr_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (s2,
-      s6)>
+    index_attr_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (s3,
+      s7)>
     default_indices:
     - 1
     - 1
   - !LinalgOperandDefConfig
     name: dilations
     kind: index_attr
-    index_attr_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (s4,
-      s8)>
+    index_attr_map: affine_map<()[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (s5,
+      s9)>
     default_indices:
     - 1
     - 1
   indexing_maps: !LinalgIndexingMapsConfig
     static_indexing_maps:
     - affine_map<(d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9]
-      -> (d0, d3, d1 * s2 + d4 * s4, d2 * s6 + d5 * s8)>
+      -> (d0, d3, d1 * s3 + d4 * s5, d2 * s7 + d5 * s9)>
     - affine_map<(d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9]
       -> (d3, d4, d5)>
     - affine_map<(d0, d1, d2, d3, d4, d5)[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9]

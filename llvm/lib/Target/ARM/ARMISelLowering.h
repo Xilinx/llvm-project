@@ -584,6 +584,8 @@ class VectorType;
 
     bool preferZeroCompareBranch() const override { return true; }
 
+    bool isMaskAndCmp0FoldingBeneficial(const Instruction &AndI) const override;
+
     bool
     isShuffleMaskLegal(ArrayRef<int> M, EVT VT) const override;
     bool isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const override;
@@ -679,8 +681,8 @@ class VectorType;
       return (MemVT.getSizeInBits() <= 32);
     }
 
-    bool isCheapToSpeculateCttz() const override;
-    bool isCheapToSpeculateCtlz() const override;
+    bool isCheapToSpeculateCttz(Type *Ty) const override;
+    bool isCheapToSpeculateCtlz(Type *Ty) const override;
 
     bool convertSetCCLogicToBitwiseLogic(EVT VT) const override {
       return VT.isScalarInteger();

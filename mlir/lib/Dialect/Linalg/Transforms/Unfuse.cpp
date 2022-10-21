@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PassDetail.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
@@ -26,6 +26,11 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
+
+namespace mlir {
+#define GEN_PASS_DEF_LINALGUNFUSE
+#include "mlir/Dialect/Linalg/Passes.h.inc"
+} // namespace mlir
 
 #define DEBUG_TYPE "linalg-unfuse"
 
@@ -100,7 +105,7 @@ Value unfuse2DConvolution(OpBuilder &builder, Operation *op, Value ifm,
       weights.getType().cast<RankedTensorType>(), dilationAttr, strideAttr);
 
   // Ensure we have an appropriately sized destination operand.
-  Value dest = builder.create<InitTensorOp>(op->getLoc(), resultTy.getShape(),
+  Value dest = builder.create<tensor::EmptyOp>(op->getLoc(), resultTy.getShape(),
                                             resultTy.getElementType());
 
   // Apply the bias to dest.
@@ -416,7 +421,7 @@ struct Conv2DActivationMaxpoolOpLowering : OpRewritePattern<T> {
 
     // Unfuse the padding.
     Value padded = lreluResult;
-    auto padding = ::getValues<4>(op.mp_padding());
+    auto padding = ::getValues<4>(op.getMpPadding());
     auto elementTy = lreluResult.getType().cast<ShapedType>().getElementType();
     if (llvm::any_of(padding, [](auto x) { return x != 0; })) {
       // Create the tensor.pad op.
@@ -456,9 +461,9 @@ struct Conv2DActivationMaxpoolOpLowering : OpRewritePattern<T> {
 
     // Unfuse the maxpool.
     {
-      auto poolSize = ::getValues<2>(op.mp_kernel_size());
+      auto poolSize = ::getValues<2>(op.getMpKernelSize());
       Value inputs[] = {/*I=*/padded,
-                        /*K=*/rewriter.create<InitTensorOp>(
+                        /*K=*/rewriter.create<tensor::EmptyOp>(
                             op.getLoc(), poolSize, elementTy)};
       NamedAttribute attributes[] = {
           rewriter.getNamedAttr("dilations", op->getAttr("mp_dilations")),
@@ -542,7 +547,7 @@ struct SoftmaxLowering : OpRewritePattern<SoftmaxOp> {
     auto inTy = in.getType().dyn_cast<RankedTensorType>();
     assert(inTy && "expected tensor operand");
 
-    auto dim = op.dimAttr().getValue().getSExtValue();
+    auto dim = op.getDimAttr().getValue().getSExtValue();
     dim = dim < 0 ? dim + inTy.getRank() : dim;
     assert(dim < inTy.getRank() && "expected valid dim index");
 
@@ -597,7 +602,7 @@ struct GlobalAveragePool2DLowering : OpRewritePattern<GlobalAveragePool2DOp> {
   LogicalResult matchAndRewrite(GlobalAveragePool2DOp op,
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    Value input = op.input();
+    Value input = op.getInput();
     RankedTensorType inputTy = input.getType().cast<RankedTensorType>();
 
     assert(inputTy && "expected tensor operand");
@@ -613,7 +618,7 @@ struct GlobalAveragePool2DLowering : OpRewritePattern<GlobalAveragePool2DOp> {
         RankedTensorType::get(resultShape, inputTy.getElementType());
 
     // Define pooling op to accumulate spatial dimensions.
-    Value kernel = rewriter.create<linalg::InitTensorOp>(
+    Value kernel = rewriter.create<tensor::EmptyOp>(
         loc, SmallVector<int64_t>{inputTy.getShape()[2], inputTy.getShape()[3]},
         resultTy.getElementType());
     Attribute strideAttr = rewriter.getI64VectorAttr({1, 1});
@@ -665,7 +670,7 @@ struct LinearLowering : OpRewritePattern<LinearOp> {
 
     // Create a linalg op that transposes the weights tensor
     // The transposedWeights is simply used to describe the output shape.
-    Value transposedWeights = rewriter.create<InitTensorOp>(
+    Value transposedWeights = rewriter.create<tensor::EmptyOp>(
         loc,
         ArrayRef<int64_t>{weightsType.getShape()[1], weightsType.getShape()[0]},
         weightsType.getElementType());
@@ -675,7 +680,7 @@ struct LinearLowering : OpRewritePattern<LinearOp> {
 
     // Create a linalg op that broadcasts the 1D bias values across
     // the 2nd dimension
-    Value broadcastedBias = rewriter.create<InitTensorOp>(
+    Value broadcastedBias = rewriter.create<tensor::EmptyOp>(
         loc, outputType.getShape(), biasType.getElementType());
     Value broadcastBiasOp =
         rewriter.create<Broadcast1DTo2DOp>(loc, bias, broadcastedBias)
@@ -690,7 +695,7 @@ struct LinearLowering : OpRewritePattern<LinearOp> {
   }
 };
 
-struct LinalgUnfusePass : public LinalgUnfuseBase<LinalgUnfusePass> {
+struct LinalgUnfusePass : public impl::LinalgUnfuseBase<LinalgUnfusePass> {
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
 

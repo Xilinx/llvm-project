@@ -32,6 +32,42 @@ func.func @any_attr_of_fail() {
 // -----
 
 //===----------------------------------------------------------------------===//
+// Test float attributes
+//===----------------------------------------------------------------------===//
+
+func.func @float_attrs_pass() {
+  "test.float_attrs"() {
+    // CHECK: float_attr = 2.000000e+00 : f8E5M2
+    float_attr = 2. : f8E5M2
+  } : () -> ()
+  "test.float_attrs"() {
+    // CHECK: float_attr = 2.000000e+00 : f16
+    float_attr = 2. : f16
+  } : () -> ()
+  "test.float_attrs"() {
+    // CHECK: float_attr = 2.000000e+00 : bf16
+    float_attr = 2. : bf16
+  } : () -> ()
+  "test.float_attrs"() {
+    // CHECK: float_attr = 2.000000e+00 : f32
+    float_attr = 2. : f32
+  } : () -> ()
+  "test.float_attrs"() {
+    // CHECK: float_attr = 2.000000e+00 : f64
+    float_attr = 2. : f64
+  } : () -> ()
+  "test.float_attrs"() {
+    // CHECK: float_attr = 2.000000e+00 : f80
+    float_attr = 2. : f80
+  } : () -> ()
+  "test.float_attrs"() {
+    // CHECK: float_attr = 2.000000e+00 : f128
+    float_attr = 2. : f128
+  } : () -> ()
+  return
+}
+
+//===----------------------------------------------------------------------===//
 // Test integer attributes
 //===----------------------------------------------------------------------===//
 
@@ -569,7 +605,65 @@ func.func @dense_array_attr() attributes {
                f64attr = [-142.]
 // CHECK-SAME: emptyattr = []
                emptyattr = []
+
+  // CHECK: array.sizes
+  // CHECK-SAME: i0 = array<i0: 0, 0>
+  // CHECK-SAME: ui0 = array<ui0: 0, 0>
+  // CHECK-SAME: si0 = array<si0: 0, 0>
+  // CHECK-SAME: i24 = array<i24: -42, 42, 8388607>
+  // CHECK-SAME: ui24 = array<ui24: 16777215>
+  // CHECK-SAME: si24 = array<si24: -8388608>
+  // CHECK-SAME: bf16 = array<bf16: 1.2{{[0-9]+}}e+00, 3.4{{[0-9]+}}e+00>
+  // CHECK-SAME: f16 = array<f16: 1.{{[0-9]+}}e+00, 3.{{[0-9]+}}e+00>
+  "array.sizes"() {
+    x0_i0 = array<i0: 0, 0>,
+    x1_ui0 = array<ui0: 0, 0>,
+    x2_si0 = array<si0: 0, 0>,
+    x3_i24 = array<i24: -42, 42, 8388607>,
+    x4_ui24 = array<ui24: 16777215>,
+    x5_si24 = array<si24: -8388608>,
+    x6_bf16 = array<bf16: 1.2, 3.4>,
+    x7_f16 = array<f16: 1., 3.>
+  }: () -> ()
+
+  // CHECK: test.typed_attr tensor<4xi32> = array<1, 2, 3, 4>
+  test.typed_attr tensor<4xi32> = array<1, 2, 3, 4>
   return
+}
+
+// -----
+
+func.func @testConfinedDenseArrayAttr() {
+  "test.confined_dense_array_attr"() {
+    i64attr = array<i64: 0, 2, 3>,
+    i32attr = array<i32: 1>,
+    emptyattr = array<i16>
+  } : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @testConfinedDenseArrayAttrDuplicateValues() {
+  // expected-error@+1{{'test.confined_dense_array_attr' op attribute 'i64attr' failed to satisfy constraint: i64 dense array attribute should be in increasing order}}
+  "test.confined_dense_array_attr"() {
+    emptyattr = array<i16>,
+    i32attr = array<i32: 1, 1>,
+    i64attr = array<i64: 0, 2, 2>
+  } : () -> ()
+  func.return
+}
+
+// -----
+
+func.func @testConfinedDenseArrayAttrDecreasingOrder() {
+  // expected-error@+1{{'test.confined_dense_array_attr' op attribute 'i32attr' failed to satisfy constraint: i32 dense array attribute should be in non-decreasing order}}
+  "test.confined_dense_array_attr"() {
+    emptyattr = array<i16>,
+    i32attr = array<i32: 1, 0>,
+    i64attr = array<i64: 0, 2, 3>
+  } : () -> ()
+  func.return
 }
 
 // -----
@@ -582,11 +676,6 @@ func.func @fn() { return }
 
 // CHECK: test.symbol_ref_attr
 "test.symbol_ref_attr"() {symbol = @fn} : () -> ()
-
-// -----
-
-// expected-error @+1 {{referencing to a 'func::FuncOp' symbol}}
-"test.symbol_ref_attr"() {symbol = @foo} : () -> ()
 
 // -----
 

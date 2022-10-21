@@ -212,6 +212,8 @@ public:
   ///
   /// There are several different cost models that can be customized by the
   /// target. The normalization of each cost model may be target specific.
+  /// e.g. TCK_SizeAndLatency should be comparable to target thresholds such as
+  /// those derived from MCSchedModel::LoopMicroOpBufferSize etc.
   enum TargetCostKind {
     TCK_RecipThroughput, ///< Reciprocal throughput.
     TCK_Latency,         ///< The latency of instruction.
@@ -369,6 +371,8 @@ public:
   bool canHaveNonUndefGlobalInitializerInAddressSpace(unsigned AS) const;
 
   unsigned getAssumedAddrSpace(const Value *V) const;
+
+  bool isSingleThreaded() const;
 
   std::pair<const Value *, unsigned>
   getPredicatedAddrSpace(const Value *V) const;
@@ -602,7 +606,7 @@ public:
                              unsigned AddrSpace = 0,
                              Instruction *I = nullptr) const;
 
-  /// Return true if LSR cost of C1 is lower than C1.
+  /// Return true if LSR cost of C1 is lower than C2.
   bool isLSRCostLess(const TargetTransformInfo::LSRCost &C1,
                      const TargetTransformInfo::LSRCost &C2) const;
 
@@ -830,6 +834,14 @@ public:
   /// Return true if the hardware has a fast square-root instruction.
   bool haveFastSqrt(Type *Ty) const;
 
+  /// Return true if the cost of the instruction is too high to speculatively
+  /// execute and should be kept behind a branch.
+  /// This normally just wraps around a getInstructionCost() call, but some
+  /// targets might report a low TCK_SizeAndLatency value that is incompatible
+  /// with the fixed TCC_Expensive value.
+  /// NOTE: This assumes the instruction passes isSafeToSpeculativelyExecute().
+  bool isExpensiveToSpeculativelyExecute(const Instruction *I) const;
+
   /// Return true if it is faster to check if a floating-point value is NaN
   /// (or not-NaN) versus a comparison against a constant FP zero value.
   /// Targets should override this if materializing a 0.0 for comparison is
@@ -887,6 +899,7 @@ public:
     SK_Splice            ///< Concatenates elements from the first input vector
                          ///< with elements of the second input vector. Returning
                          ///< a vector of the same type as the input vectors.
+                         ///< Index indicates start offset in first input vector.
   };
 
   /// Additional information about an operand's possible values.
@@ -898,7 +911,36 @@ public:
   };
 
   /// Additional properties of an operand's values.
-  enum OperandValueProperties { OP_None = 0, OP_PowerOf2 = 1 };
+  enum OperandValueProperties {
+    OP_None = 0,
+    OP_PowerOf2 = 1,
+    OP_NegatedPowerOf2 = 2,
+  };
+
+  // Describe the values an operand can take.  We're in the process
+  // of migrating uses of OperandValueKind and OperandValueProperties
+  // to use this class, and then will change the internal representation.
+  struct OperandValueInfo {
+    OperandValueKind Kind = OK_AnyValue;
+    OperandValueProperties Properties = OP_None;
+
+    bool isConstant() const {
+      return Kind == OK_UniformConstantValue || Kind == OK_NonUniformConstantValue;
+    }
+    bool isUniform() const {
+      return Kind == OK_UniformConstantValue || Kind == OK_UniformValue;
+    }
+    bool isPowerOf2() const {
+      return Properties == OP_PowerOf2;
+    }
+    bool isNegatedPowerOf2() const {
+      return Properties == OP_NegatedPowerOf2;
+    }
+
+    OperandValueInfo getNoProps() const {
+      return {Kind, OP_None};
+    }
+  };
 
   /// \return the number of registers in the target-provided register class.
   unsigned getNumberOfRegisters(unsigned ClassID) const;
@@ -1033,10 +1075,7 @@ public:
   unsigned getMaxInterleaveFactor(unsigned VF) const;
 
   /// Collect properties of V used in cost analysis, e.g. OP_PowerOf2.
-  static OperandValueKind getOperandInfo(const Value *V,
-                                         OperandValueProperties &OpProps);
-  static OperandValueKind getOperandInfo(const Value *V);
-
+  static OperandValueInfo getOperandInfo(const Value *V);
 
   /// This is an approximation of reciprocal throughput of a math/logic op.
   /// A higher cost indicates less expected throughput.
@@ -1057,10 +1096,8 @@ public:
   InstructionCost getArithmeticInstrCost(
       unsigned Opcode, Type *Ty,
       TTI::TargetCostKind CostKind = TTI::TCK_RecipThroughput,
-      OperandValueKind Opd1Info = OK_AnyValue,
-      OperandValueKind Opd2Info = OK_AnyValue,
-      OperandValueProperties Opd1PropInfo = OP_None,
-      OperandValueProperties Opd2PropInfo = OP_None,
+      TTI::OperandValueInfo Opd1Info = {TTI::OK_AnyValue, TTI::OP_None},
+      TTI::OperandValueInfo Opd2Info = {TTI::OK_AnyValue, TTI::OP_None},
       ArrayRef<const Value *> Args = ArrayRef<const Value *>(),
       const Instruction *CxtI = nullptr) const;
 
@@ -1124,10 +1161,10 @@ public:
                    const Instruction *I = nullptr) const;
 
   /// \return The expected cost of a sign- or zero-extended vector extract. Use
-  /// -1 to indicate that there is no information about the index value.
+  /// Index = -1 to indicate that there is no information about the index value.
   InstructionCost getExtractWithExtendCost(unsigned Opcode, Type *Dst,
                                            VectorType *VecTy,
-                                           unsigned Index = -1) const;
+                                           unsigned Index) const;
 
   /// \return The expected cost of control-flow related instructions such as
   /// Phi, Ret, Br, Switch.
@@ -1179,7 +1216,7 @@ public:
   getMemoryOpCost(unsigned Opcode, Type *Src, Align Alignment,
                   unsigned AddressSpace,
                   TTI::TargetCostKind CostKind = TTI::TCK_RecipThroughput,
-                  OperandValueKind OpdInfo = OK_AnyValue,
+                  OperandValueInfo OpdInfo = {OK_AnyValue, OP_None},
                   const Instruction *I = nullptr) const;
 
   /// \return The cost of VP Load and Store instructions.
@@ -1274,7 +1311,7 @@ public:
   /// Calculate the cost of an extended reduction pattern, similar to
   /// getArithmeticReductionCost of a reduction with an extension.
   /// This is the cost of as:
-  /// ResTy vecreduce(ext(Ty A)).
+  /// ResTy vecreduce.opcode(ext(Ty A)).
   InstructionCost getExtendedReductionCost(
       unsigned Opcode, bool IsUnsigned, Type *ResTy, VectorType *Ty,
       Optional<FastMathFlags> FMF,
@@ -1546,6 +1583,7 @@ public:
   virtual bool
   canHaveNonUndefGlobalInitializerInAddressSpace(unsigned AS) const = 0;
   virtual unsigned getAssumedAddrSpace(const Value *V) const = 0;
+  virtual bool isSingleThreaded() const = 0;
   virtual std::pair<const Value *, unsigned>
   getPredicatedAddrSpace(const Value *V) const = 0;
   virtual Value *rewriteIntrinsicWithAddressSpace(IntrinsicInst *II,
@@ -1652,6 +1690,7 @@ public:
                                               bool *Fast) = 0;
   virtual PopcntSupportKind getPopcntSupport(unsigned IntTyWidthInBit) = 0;
   virtual bool haveFastSqrt(Type *Ty) = 0;
+  virtual bool isExpensiveToSpeculativelyExecute(const Instruction *I) = 0;
   virtual bool isFCmpOrdCheaperThanFCmpZero(Type *Ty) = 0;
   virtual InstructionCost getFPOpCost(Type *Ty) = 0;
   virtual InstructionCost getIntImmCodeSizeCost(unsigned Opc, unsigned Idx,
@@ -1716,9 +1755,9 @@ public:
   virtual unsigned getMaxInterleaveFactor(unsigned VF) = 0;
   virtual InstructionCost getArithmeticInstrCost(
       unsigned Opcode, Type *Ty, TTI::TargetCostKind CostKind,
-      OperandValueKind Opd1Info, OperandValueKind Opd2Info,
-      OperandValueProperties Opd1PropInfo, OperandValueProperties Opd2PropInfo,
+      OperandValueInfo Opd1Info, OperandValueInfo Opd2Info,
       ArrayRef<const Value *> Args, const Instruction *CxtI = nullptr) = 0;
+
   virtual InstructionCost getShuffleCost(ShuffleKind Kind, VectorType *Tp,
                                          ArrayRef<int> Mask,
                                          TTI::TargetCostKind CostKind,
@@ -1752,7 +1791,7 @@ public:
   virtual InstructionCost
   getMemoryOpCost(unsigned Opcode, Type *Src, Align Alignment,
                   unsigned AddressSpace, TTI::TargetCostKind CostKind,
-                  OperandValueKind OpdInfo, const Instruction *I) = 0;
+                  OperandValueInfo OpInfo, const Instruction *I) = 0;
   virtual InstructionCost getVPMemoryOpCost(unsigned Opcode, Type *Src,
                                             Align Alignment,
                                             unsigned AddressSpace,
@@ -1922,6 +1961,8 @@ public:
   unsigned getAssumedAddrSpace(const Value *V) const override {
     return Impl.getAssumedAddrSpace(V);
   }
+
+  bool isSingleThreaded() const override { return Impl.isSingleThreaded(); }
 
   std::pair<const Value *, unsigned>
   getPredicatedAddrSpace(const Value *V) const override {
@@ -2144,6 +2185,10 @@ public:
   }
   bool haveFastSqrt(Type *Ty) override { return Impl.haveFastSqrt(Ty); }
 
+  bool isExpensiveToSpeculativelyExecute(const Instruction* I) override {
+    return Impl.isExpensiveToSpeculativelyExecute(I);
+  }
+
   bool isFCmpOrdCheaperThanFCmpZero(Type *Ty) override {
     return Impl.isFCmpOrdCheaperThanFCmpZero(Ty);
   }
@@ -2266,13 +2311,13 @@ public:
   }
   InstructionCost getArithmeticInstrCost(
       unsigned Opcode, Type *Ty, TTI::TargetCostKind CostKind,
-      OperandValueKind Opd1Info, OperandValueKind Opd2Info,
-      OperandValueProperties Opd1PropInfo, OperandValueProperties Opd2PropInfo,
+      OperandValueInfo Opd1Info, OperandValueInfo Opd2Info,
       ArrayRef<const Value *> Args,
       const Instruction *CxtI = nullptr) override {
     return Impl.getArithmeticInstrCost(Opcode, Ty, CostKind, Opd1Info, Opd2Info,
-                                       Opd1PropInfo, Opd2PropInfo, Args, CxtI);
+                                       Args, CxtI);
   }
+
   InstructionCost getShuffleCost(ShuffleKind Kind, VectorType *Tp,
                                  ArrayRef<int> Mask,
                                  TTI::TargetCostKind CostKind, int Index,
@@ -2319,10 +2364,10 @@ public:
   InstructionCost getMemoryOpCost(unsigned Opcode, Type *Src, Align Alignment,
                                   unsigned AddressSpace,
                                   TTI::TargetCostKind CostKind,
-                                  OperandValueKind OpdInfo,
+                                  OperandValueInfo OpInfo,
                                   const Instruction *I) override {
     return Impl.getMemoryOpCost(Opcode, Src, Alignment, AddressSpace, CostKind,
-                                OpdInfo, I);
+                                OpInfo, I);
   }
   InstructionCost getVPMemoryOpCost(unsigned Opcode, Type *Src, Align Alignment,
                                     unsigned AddressSpace,

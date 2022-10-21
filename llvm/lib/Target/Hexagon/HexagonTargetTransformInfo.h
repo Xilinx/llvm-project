@@ -43,6 +43,7 @@ class HexagonTTIImpl : public BasicTTIImplBase<HexagonTTIImpl> {
   const HexagonTargetLowering *getTLI() const { return &TLI; }
 
   bool useHVX() const;
+  bool isHVXVectorType(Type *Ty) const;
 
   // Returns the number of vector elements of Ty, if Ty is a vector type,
   // or 1 if Ty is a scalar type. It is incorrect to call this function
@@ -119,7 +120,7 @@ public:
   InstructionCost
   getMemoryOpCost(unsigned Opcode, Type *Src, MaybeAlign Alignment,
                   unsigned AddressSpace, TTI::TargetCostKind CostKind,
-                  TTI::OperandValueKind OpdInfo = TTI::OK_AnyValue,
+                  TTI::OperandValueInfo OpInfo = {TTI::OK_AnyValue, TTI::OP_None},
                   const Instruction *I = nullptr);
   InstructionCost getMaskedMemoryOpCost(unsigned Opcode, Type *Src,
                                         Align Alignment, unsigned AddressSpace,
@@ -144,10 +145,8 @@ public:
                                      const Instruction *I = nullptr);
   InstructionCost getArithmeticInstrCost(
       unsigned Opcode, Type *Ty, TTI::TargetCostKind CostKind,
-      TTI::OperandValueKind Opd1Info = TTI::OK_AnyValue,
-      TTI::OperandValueKind Opd2Info = TTI::OK_AnyValue,
-      TTI::OperandValueProperties Opd1PropInfo = TTI::OP_None,
-      TTI::OperandValueProperties Opd2PropInfo = TTI::OP_None,
+      TTI::OperandValueInfo Op1Info = {TTI::OK_AnyValue, TTI::OP_None},
+      TTI::OperandValueInfo Op2Info = {TTI::OK_AnyValue, TTI::OP_None},
       ArrayRef<const Value *> Args = ArrayRef<const Value *>(),
       const Instruction *CxtI = nullptr);
   InstructionCost getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src,

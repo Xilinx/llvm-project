@@ -3,7 +3,6 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/Specifiers.h"
 #include "clang/Lex/Lexer.h"
-#include "llvm/ADT/StringSwitch.h"
 
 using namespace clang;
 
@@ -531,6 +530,14 @@ JSONNodeDumper::createCXXBaseSpecifier(const CXXBaseSpecifier &BS) {
 
 void JSONNodeDumper::VisitTypedefType(const TypedefType *TT) {
   JOS.attribute("decl", createBareDeclRef(TT->getDecl()));
+  if (!TT->typeMatchesDecl())
+    JOS.attribute("type", createQualType(TT->desugar()));
+}
+
+void JSONNodeDumper::VisitUsingType(const UsingType *TT) {
+  JOS.attribute("decl", createBareDeclRef(TT->getFoundDecl()));
+  if (!TT->typeMatchesDecl())
+    JOS.attribute("type", createQualType(TT->desugar()));
 }
 
 void JSONNodeDumper::VisitFunctionType(const FunctionType *T) {
@@ -900,6 +907,11 @@ void JSONNodeDumper::VisitCXXRecordDecl(const CXXRecordDecl *RD) {
         JOS.value(createCXXBaseSpecifier(Spec));
     });
   }
+}
+
+void JSONNodeDumper::VisitHLSLBufferDecl(const HLSLBufferDecl *D) {
+  VisitNamedDecl(D);
+  JOS.attribute("bufferKind", D->isCBuffer() ? "cbuffer" : "tbuffer");
 }
 
 void JSONNodeDumper::VisitTemplateTypeParmDecl(const TemplateTypeParmDecl *D) {

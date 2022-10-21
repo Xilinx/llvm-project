@@ -186,13 +186,9 @@ BinaryContext::createBinaryContext(const ObjectFile *File, bool IsPIC,
     Large = true;
   unsigned LSDAEncoding =
       Large ? dwarf::DW_EH_PE_absptr : dwarf::DW_EH_PE_udata4;
-  unsigned TTypeEncoding =
-      Large ? dwarf::DW_EH_PE_absptr : dwarf::DW_EH_PE_udata4;
   if (IsPIC) {
     LSDAEncoding = dwarf::DW_EH_PE_pcrel |
                    (Large ? dwarf::DW_EH_PE_sdata8 : dwarf::DW_EH_PE_sdata4);
-    TTypeEncoding = dwarf::DW_EH_PE_indirect | dwarf::DW_EH_PE_pcrel |
-                    (Large ? dwarf::DW_EH_PE_sdata8 : dwarf::DW_EH_PE_sdata4);
   }
 
   std::unique_ptr<MCDisassembler> DisAsm(
@@ -236,7 +232,6 @@ BinaryContext::createBinaryContext(const ObjectFile *File, bool IsPIC,
       std::move(InstructionPrinter), std::move(MIA), nullptr, std::move(MRI),
       std::move(DisAsm));
 
-  BC->TTypeEncoding = TTypeEncoding;
   BC->LSDAEncoding = LSDAEncoding;
 
   BC->MAB = std::unique_ptr<MCAsmBackend>(
@@ -390,6 +385,12 @@ BinaryContext::handleAddressRef(uint64_t Address, BinaryFunction &BF,
     // can pull this constant island and emit it as part of this function
     // too.
     auto IslandIter = AddressToConstantIslandMap.lower_bound(Address);
+
+    if (IslandIter != AddressToConstantIslandMap.begin() &&
+        (IslandIter == AddressToConstantIslandMap.end() ||
+         IslandIter->first > Address))
+      --IslandIter;
+
     if (IslandIter != AddressToConstantIslandMap.end()) {
       if (MCSymbol *IslandSym =
               IslandIter->second->getOrCreateProxyIslandAccess(Address, BF)) {
@@ -2199,7 +2200,7 @@ BinaryContext::calculateEmittedSize(BinaryFunction &BF, bool FixBranches) {
 
   using LabelRange = std::pair<const MCSymbol *, const MCSymbol *>;
   SmallVector<LabelRange> SplitLabels;
-  for (const FunctionFragment FF : BF.getLayout().getSplitFragments()) {
+  for (FunctionFragment &FF : BF.getLayout().getSplitFragments()) {
     MCSymbol *const SplitStartLabel = LocalCtx->createTempSymbol();
     MCSymbol *const SplitEndLabel = LocalCtx->createTempSymbol();
     SplitLabels.emplace_back(SplitStartLabel, SplitEndLabel);

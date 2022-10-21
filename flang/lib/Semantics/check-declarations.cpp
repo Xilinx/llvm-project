@@ -96,6 +96,12 @@ private:
   bool InFunction() const {
     return innermostSymbol_ && IsFunction(*innermostSymbol_);
   }
+  bool InInterface() const {
+    const SubprogramDetails *subp{innermostSymbol_
+            ? innermostSymbol_->detailsIf<SubprogramDetails>()
+            : nullptr};
+    return subp && subp->isInterface();
+  }
   template <typename... A>
   void SayWithDeclaration(const Symbol &symbol, A &&...x) {
     if (parser::Message * msg{messages_.Say(std::forward<A>(x)...)}) {
@@ -201,7 +207,9 @@ void CheckHelper::Check(
 }
 
 void CheckHelper::Check(const Symbol &symbol) {
-  if (symbol.name().size() > common::maxNameLen) {
+  if (symbol.name().size() > common::maxNameLen &&
+      &symbol == &symbol.GetUltimate() &&
+      !FindModuleFileContaining(symbol.owner())) {
     messages_.Say(symbol.name(),
         "%s has length %d, which is greater than the maximum name length "
         "%d"_port_en_US,
@@ -245,35 +253,43 @@ void CheckHelper::Check(const Symbol &symbol) {
     CheckPointer(symbol);
   }
   if (InPure()) {
-    if (IsSaved(symbol)) {
-      if (IsInitialized(symbol)) {
-        messages_.Say(
-            "A pure subprogram may not initialize a variable"_err_en_US);
-      } else {
-        messages_.Say(
-            "A pure subprogram may not have a variable with the SAVE attribute"_err_en_US);
+    if (InInterface()) {
+      // Declarations in interface definitions "have no effect" if they
+      // are not pertinent to the characteristics of the procedure.
+      // Restrictions on entities in pure procedure interfaces don't need
+      // enforcement.
+    } else {
+      if (IsSaved(symbol)) {
+        if (IsInitialized(symbol)) {
+          messages_.Say(
+              "A pure subprogram may not initialize a variable"_err_en_US);
+        } else {
+          messages_.Say(
+              "A pure subprogram may not have a variable with the SAVE attribute"_err_en_US);
+        }
+      }
+      if (!IsDummy(symbol) && !IsFunctionResult(symbol)) {
+        if (IsPolymorphicAllocatable(symbol)) {
+          SayWithDeclaration(symbol,
+              "Deallocation of polymorphic object '%s' is not permitted in a pure subprogram"_err_en_US,
+              symbol.name());
+        } else if (derived) {
+          if (auto bad{FindPolymorphicAllocatableUltimateComponent(*derived)}) {
+            SayWithDeclaration(*bad,
+                "Deallocation of polymorphic object '%s%s' is not permitted in a pure subprogram"_err_en_US,
+                symbol.name(), bad.BuildResultDesignatorName());
+          }
+        }
       }
     }
-    if (symbol.attrs().test(Attr::VOLATILE)) {
+    if (symbol.attrs().test(Attr::VOLATILE) &&
+        (IsDummy(symbol) || !InInterface())) {
       messages_.Say(
           "A pure subprogram may not have a variable with the VOLATILE attribute"_err_en_US);
     }
     if (IsProcedure(symbol) && !IsPureProcedure(symbol) && IsDummy(symbol)) {
       messages_.Say(
           "A dummy procedure of a pure subprogram must be pure"_err_en_US);
-    }
-    if (!IsDummy(symbol) && !IsFunctionResult(symbol)) {
-      if (IsPolymorphicAllocatable(symbol)) {
-        SayWithDeclaration(symbol,
-            "Deallocation of polymorphic object '%s' is not permitted in a pure subprogram"_err_en_US,
-            symbol.name());
-      } else if (derived) {
-        if (auto bad{FindPolymorphicAllocatableUltimateComponent(*derived)}) {
-          SayWithDeclaration(*bad,
-              "Deallocation of polymorphic object '%s%s' is not permitted in a pure subprogram"_err_en_US,
-              symbol.name(), bad.BuildResultDesignatorName());
-        }
-      }
     }
   }
   if (type) { // Section 7.2, paragraph 7
@@ -616,7 +632,8 @@ void CheckHelper::CheckObjectEntity(
       messages_.Say("A dummy argument must not be initialized"_err_en_US);
     } else if (IsFunctionResult(symbol)) {
       messages_.Say("A function result must not be initialized"_err_en_US);
-    } else if (IsInBlankCommon(symbol)) {
+    } else if (IsInBlankCommon(symbol) &&
+        !FindModuleFileContaining(symbol.owner())) {
       messages_.Say(
           "A variable in blank COMMON should not be initialized"_port_en_US);
     }
@@ -813,16 +830,17 @@ void CheckHelper::CheckProcEntity(
   if (symbol.attrs().test(Attr::POINTER)) {
     CheckPointerInitialization(symbol);
     if (const Symbol * interface{details.interface().symbol()}) {
-      if (interface->attrs().test(Attr::INTRINSIC)) {
+      const Symbol &ultimate{interface->GetUltimate()};
+      if (ultimate.attrs().test(Attr::INTRINSIC)) {
         if (const auto intrinsic{
                 context_.intrinsics().IsSpecificIntrinsicFunction(
-                    interface->name().ToString())};
+                    ultimate.name().ToString())};
             !intrinsic || intrinsic->isRestrictedSpecific) { // C1515
           messages_.Say(
               "Intrinsic procedure '%s' is not an unrestricted specific "
               "intrinsic permitted for use as the definition of the interface "
               "to procedure pointer '%s'"_err_en_US,
-              interface->name(), symbol.name());
+              ultimate.name(), symbol.name());
         }
       } else if (IsElementalProcedure(*interface)) {
         messages_.Say("Procedure pointer '%s' may not be ELEMENTAL"_err_en_US,
@@ -1187,15 +1205,22 @@ void CheckHelper::CheckGeneric(
 void CheckHelper::CheckSpecificsAreDistinguishable(
     const Symbol &generic, const GenericDetails &details) {
   GenericKind kind{details.kind()};
-  const SymbolVector &specifics{details.specificProcs()};
-  std::size_t count{specifics.size()};
-  if (count < 2 || !kind.IsName()) {
+  if (!kind.IsName()) {
     return;
   }
   DistinguishabilityHelper helper{context_};
-  for (const Symbol &specific : specifics) {
+  for (const Symbol &specific : details.specificProcs()) {
     if (const Procedure * procedure{Characterize(specific)}) {
-      helper.Add(generic, kind, specific, *procedure);
+      if (procedure->HasExplicitInterface()) {
+        helper.Add(generic, kind, specific, *procedure);
+      } else {
+        if (auto *msg{messages_.Say(specific.name(),
+                "Specific procedure '%s' of generic interface '%s' must have an explicit interface"_err_en_US,
+                specific.name(), generic.name())}) {
+          msg->Attach(
+              generic.name(), "Definition of '%s'"_en_US, generic.name());
+        }
+      }
     }
   }
   helper.Check(generic.owner());
@@ -1956,7 +1981,8 @@ void CheckHelper::CheckBindC(const Symbol &symbol) {
         }
       }
     }
-    if (derived->componentNames().empty()) { // C1805
+    if (derived->componentNames().empty() &&
+        !FindModuleFileContaining(symbol.owner())) { // C1805
       messages_.Say(symbol.name(),
           "A derived type with the BIND attribute is empty"_port_en_US);
     }

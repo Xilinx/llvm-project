@@ -59,6 +59,7 @@ public:
                        Attribute metadata = Attribute());
 
   // Types.
+  FloatType getFloat8E5M2Type();
   FloatType getBF16Type();
   FloatType getF16Type();
   FloatType getF32Type();
@@ -69,7 +70,10 @@ public:
   IndexType getIndexType();
 
   IntegerType getI1Type();
+  IntegerType getI2Type();
+  IntegerType getI4Type();
   IntegerType getI8Type();
+  IntegerType getI16Type();
   IntegerType getI32Type();
   IntegerType getI64Type();
   IntegerType getIntegerType(unsigned width);
@@ -482,8 +486,7 @@ public:
 
   /// Overload to create or fold a single result operation.
   template <typename OpTy, typename... Args>
-  typename std::enable_if<OpTy::template hasTrait<OpTrait::OneResult>(),
-                          Value>::type
+  std::enable_if_t<OpTy::template hasTrait<OpTrait::OneResult>(), Value>
   createOrFold(Location location, Args &&...args) {
     SmallVector<Value, 1> results;
     createOrFold<OpTy>(results, location, std::forward<Args>(args)...);
@@ -492,8 +495,7 @@ public:
 
   /// Overload to create or fold a zero result operation.
   template <typename OpTy, typename... Args>
-  typename std::enable_if<OpTy::template hasTrait<OpTrait::ZeroResults>(),
-                          OpTy>::type
+  std::enable_if_t<OpTy::template hasTrait<OpTrait::ZeroResults>(), OpTy>
   createOrFold(Location location, Args &&...args) {
     auto op = create<OpTy>(location, std::forward<Args>(args)...);
     SmallVector<Value, 0> unused;

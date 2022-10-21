@@ -69,7 +69,6 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/Sequence.h"
-#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -126,6 +125,7 @@
 #include <cstdlib>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -8091,7 +8091,7 @@ unsigned ScalarEvolution::getSmallConstantTripMultiple(const Loop *L) {
     unsigned Multiple = getSmallConstantTripMultiple(L, ExitingBB);
     if (!Res)
       Res = Multiple;
-    Res = (unsigned)GreatestCommonDivisor64(*Res, Multiple);
+    Res = (unsigned)std::gcd(*Res, Multiple);
   }
   return Res.value_or(1);
 }
@@ -8382,8 +8382,41 @@ void ScalarEvolution::forgetValue(Value *V) {
   forgetMemoizedResults(ToForget);
 }
 
-void ScalarEvolution::forgetLoopDispositions(const Loop *L) {
-  LoopDispositions.clear();
+void ScalarEvolution::forgetLoopDispositions() { LoopDispositions.clear(); }
+
+void ScalarEvolution::forgetBlockAndLoopDispositions(Value *V) {
+  // Unless a specific value is passed to invalidation, completely clear both
+  // caches.
+  if (!V) {
+    BlockDispositions.clear();
+    LoopDispositions.clear();
+    return;
+  }
+
+  if (!isSCEVable(V->getType()))
+    return;
+
+  const SCEV *S = getExistingSCEV(V);
+  if (!S)
+    return;
+
+  // Invalidate the block and loop dispositions cached for S. Dispositions of
+  // S's users may change if S's disposition changes (i.e. a user may change to
+  // loop-invariant, if S changes to loop invariant), so also invalidate
+  // dispositions of S's users recursively.
+  SmallVector<const SCEV *, 8> Worklist = {S};
+  SmallPtrSet<const SCEV *, 8> Seen = {S};
+  while (!Worklist.empty()) {
+    const SCEV *Curr = Worklist.pop_back_val();
+    if (!LoopDispositions.erase(Curr) && !BlockDispositions.erase(S))
+      continue;
+
+    auto Users = SCEVUsers.find(Curr);
+    if (Users != SCEVUsers.end())
+      for (const auto *User : Users->second)
+        if (Seen.insert(User).second)
+          Worklist.push_back(User);
+  }
 }
 
 /// Get the exact loop backedge taken count considering all loop exits. A
@@ -13970,6 +14003,24 @@ void ScalarEvolution::verify() const {
   };
   VerifyBECountUsers(/* Predicated */ false);
   VerifyBECountUsers(/* Predicated */ true);
+
+  // Verify intergity of loop disposition cache.
+  for (const auto &It : LoopDispositions) {
+    const SCEV *S = It.first;
+    auto &Values = It.second;
+    for (auto &V : Values) {
+      auto CachedDisposition = V.getInt();
+      const auto *Loop = V.getPointer();
+      const auto RecomputedDisposition = SE2.getLoopDisposition(S, Loop);
+      if (CachedDisposition != RecomputedDisposition) {
+        dbgs() << "Cached disposition of " << *S << " for loop " << *Loop
+               << " is incorrect: cached "
+               << loopDispositionToStr(CachedDisposition) << ", actual "
+               << loopDispositionToStr(RecomputedDisposition) << "\n";
+        std::abort();
+      }
+    }
+  }
 }
 
 bool ScalarEvolution::invalidate(

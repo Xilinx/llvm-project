@@ -111,9 +111,15 @@ SVal ExprEngine::makeElementRegion(ProgramStateRef State, SVal LValue,
   return LValue;
 }
 
+// In case when the prvalue is returned from the function (kind is one of
+// SimpleReturnedValueKind, CXX17ElidedCopyReturnedValueKind), then
+// it's materialization happens in context of the caller.
+// We pass BldrCtx explicitly, as currBldrCtx always refers to callee's context.
 SVal ExprEngine::computeObjectUnderConstruction(
-    const Expr *E, ProgramStateRef State, const LocationContext *LCtx,
-    const ConstructionContext *CC, EvalCallOptions &CallOpts, unsigned Idx) {
+    const Expr *E, ProgramStateRef State, const NodeBuilderContext *BldrCtx,
+    const LocationContext *LCtx, const ConstructionContext *CC,
+    EvalCallOptions &CallOpts, unsigned Idx) {
+
   SValBuilder &SVB = getSValBuilder();
   MemRegionManager &MRMgr = SVB.getRegionManager();
   ASTContext &ACtx = SVB.getContext();
@@ -171,13 +177,14 @@ SVal ExprEngine::computeObjectUnderConstruction(
         if (const SubRegion *MR =
                 dyn_cast_or_null<SubRegion>(V.getAsRegion())) {
           if (NE->isArray()) {
-            // TODO: In fact, we need to call the constructor for every
-            // allocated element, not just the first one!
             CallOpts.IsArrayCtorOrDtor = true;
 
-            auto R = MRMgr.getElementRegion(NE->getType()->getPointeeType(),
-                                            svalBuilder.makeArrayIndex(Idx), MR,
-                                            SVB.getContext());
+            auto Ty = NE->getType()->getPointeeType();
+            while (const auto *AT = getContext().getAsArrayType(Ty))
+              Ty = AT->getElementType();
+
+            auto R = MRMgr.getElementRegion(Ty, svalBuilder.makeArrayIndex(Idx),
+                                            MR, SVB.getContext());
 
             return loc::MemRegionVal(R);
           }
@@ -209,8 +216,11 @@ SVal ExprEngine::computeObjectUnderConstruction(
           CallerLCtx = CallerLCtx->getParent();
           assert(!isa<BlockInvocationContext>(CallerLCtx));
         }
+
+        NodeBuilderContext CallerBldrCtx(getCoreEngine(),
+                                         SFC->getCallSiteBlock(), CallerLCtx);
         return computeObjectUnderConstruction(
-            cast<Expr>(SFC->getCallSite()), State, CallerLCtx,
+            cast<Expr>(SFC->getCallSite()), State, &CallerBldrCtx, CallerLCtx,
             RTC->getConstructionContext(), CallOpts);
       } else {
         // We are on the top frame of the analysis. We do not know where is the
@@ -250,7 +260,7 @@ SVal ExprEngine::computeObjectUnderConstruction(
       EvalCallOptions PreElideCallOpts = CallOpts;
 
       SVal V = computeObjectUnderConstruction(
-          TCC->getConstructorAfterElision(), State, LCtx,
+          TCC->getConstructorAfterElision(), State, BldrCtx, LCtx,
           TCC->getConstructionContextAfterElision(), CallOpts);
 
       // FIXME: This definition of "copy elision has not failed" is unreliable.
@@ -318,7 +328,7 @@ SVal ExprEngine::computeObjectUnderConstruction(
       CallEventManager &CEMgr = getStateManager().getCallEventManager();
       auto getArgLoc = [&](CallEventRef<> Caller) -> Optional<SVal> {
         const LocationContext *FutureSFC =
-            Caller->getCalleeStackFrame(currBldrCtx->blockCount());
+            Caller->getCalleeStackFrame(BldrCtx->blockCount());
         // Return early if we are unable to reliably foresee
         // the future stack frame.
         if (!FutureSFC)
@@ -337,7 +347,7 @@ SVal ExprEngine::computeObjectUnderConstruction(
         // because this-argument is implemented as a normal argument in
         // operator call expressions but not in operator declarations.
         const TypedValueRegion *TVR = Caller->getParameterLocation(
-            *Caller->getAdjustedParameterIndex(Idx), currBldrCtx->blockCount());
+            *Caller->getAdjustedParameterIndex(Idx), BldrCtx->blockCount());
         if (!TVR)
           return None;
 
@@ -605,6 +615,27 @@ void ExprEngine::handleConstructor(const Expr *E,
 
     unsigned Idx = 0;
     if (CE->getType()->isArrayType() || AILE) {
+
+      auto isZeroSizeArray = [&] {
+        uint64_t Size = 1;
+
+        if (const auto *CAT = dyn_cast<ConstantArrayType>(CE->getType()))
+          Size = getContext().getConstantArrayElementCount(CAT);
+        else if (AILE)
+          Size = getContext().getArrayInitLoopExprElementCount(AILE);
+
+        return Size == 0;
+      };
+
+      // No element construction will happen in a 0 size array.
+      if (isZeroSizeArray()) {
+        StmtNodeBuilder Bldr(Pred, destNodes, *currBldrCtx);
+        static SimpleProgramPointTag T{"ExprEngine",
+                                       "Skipping 0 size array construction"};
+        Bldr.generateNode(CE, Pred, State, &T);
+        return;
+      }
+
       Idx = getIndexOfElementToConstruct(State, CE, LCtx).value_or(0u);
       State = setIndexOfElementToConstruct(State, CE, LCtx, Idx + 1);
     }
@@ -621,8 +652,8 @@ void ExprEngine::handleConstructor(const Expr *E,
     }
 
     // The target region is found from construction context.
-    std::tie(State, Target) =
-        handleConstructionContext(CE, State, LCtx, CC, CallOpts, Idx);
+    std::tie(State, Target) = handleConstructionContext(
+        CE, State, currBldrCtx, LCtx, CC, CallOpts, Idx);
     break;
   }
   case CXXConstructExpr::CK_VirtualBase: {
@@ -1163,6 +1194,16 @@ void ExprEngine::VisitLambdaExpr(const LambdaExpr *LE, ExplodedNode *Pred,
       const Expr *InitExpr = *i;
 
       assert(InitExpr && "Capture missing initialization expression");
+
+      // Capturing a 0 length array is a no-op, so we ignore it to get a more
+      // accurate analysis. If it's not ignored, it would set the default
+      // binding of the lambda to 'Unknown', which can lead to falsely detecting
+      // 'Uninitialized' values as 'Unknown' and not reporting a warning.
+      const auto FTy = FieldForCapture->getType();
+      if (FTy->isConstantArrayType() &&
+          getContext().getConstantArrayElementCount(
+              getContext().getAsConstantArrayType(FTy)) == 0)
+        continue;
 
       // With C++17 copy elision the InitExpr can be anything, so instead of
       // pattern matching all cases, we simple check if the current field is

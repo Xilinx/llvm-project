@@ -11,7 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PassDetail.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
@@ -31,6 +32,11 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/WithColor.h"
 #include <algorithm>
+
+namespace mlir {
+#define GEN_PASS_DEF_LINALGSTRUCTURALFUSION
+#include "mlir/Dialect/Linalg/Passes.h.inc"
+} // namespace mlir
 
 #define DEBUG_TYPE "linalg-structural-fusion"
 
@@ -241,8 +247,8 @@ static SubgraphOp fuseProducer(SubgraphOp target, Operation *producer) {
   // Determine which captures will still be needed and what is dropped.
   SmallVector<Value> newCaptures;
   DenseMap<BlockArgument, unsigned> argToResultIdx;
-  for (unsigned idx = 0; idx < target.captures().size(); ++idx) {
-    auto capture = target.captures()[idx];
+  for (unsigned idx = 0; idx < target.getCaptures().size(); ++idx) {
+    auto capture = target.getCaptures()[idx];
     if (capture.getDefiningOp() == producer) {
       // Capture will be replaced by op result.
       argToResultIdx.try_emplace(target.getCaptureArgs()[idx],
@@ -261,16 +267,16 @@ static SubgraphOp fuseProducer(SubgraphOp target, Operation *producer) {
   OpBuilder builder(target);
   auto result = builder.create<SubgraphOp>(
       target.getLoc(),
-      /*resultType=*/target.result() ? target.result().getType() : Type{},
+      /*resultType=*/target.getResult() ? target.getResult().getType() : Type{},
       newCaptures,
       [&](OpBuilder &builder, Location loc, BlockAndValueMapping &captures) {
         // Clone the op to be prepended into the new block.
         auto prepended = builder.insert(producer->clone(captures));
 
         // Remap the capture arguments of the old Subgraph.
-        for (unsigned idx = 0; idx < target.captures().size(); ++idx) {
+        for (unsigned idx = 0; idx < target.getCaptures().size(); ++idx) {
           captures.map(target.getCaptureArgs()[idx],
-                       captures.lookup(target.captures()[idx]));
+                       captures.lookup(target.getCaptures()[idx]));
         }
 
         // Update the capture mapping with results of the prepended op.
@@ -364,10 +370,10 @@ static SubgraphOp fuseConsumer(SubgraphOp target, Operation *consumer) {
   assert(canFuseConsumer(target, consumer));
 
   // Ensure that all operands of consumer are captured.
-  auto newCaptures = llvm::to_vector(target.captures());
+  auto newCaptures = llvm::to_vector(target.getCaptures());
   collectUses(consumer, consumer, newCaptures);
   llvm::erase_if(newCaptures,
-                 [&](Value capture) { return capture == target.result(); });
+                 [&](Value capture) { return capture == target.getResult(); });
 
   // Create the new Subgraph.
   OpBuilder builder(consumer);
@@ -379,9 +385,9 @@ static SubgraphOp fuseConsumer(SubgraphOp target, Operation *consumer) {
       newCaptures,
       [&](OpBuilder &builder, Location loc, BlockAndValueMapping &captures) {
         // Remap the capture arguments of the old Subgraph.
-        for (unsigned idx = 0; idx < target.captures().size(); ++idx) {
+        for (unsigned idx = 0; idx < target.getCaptures().size(); ++idx) {
           captures.map(target.getCaptureArgs()[idx],
-                       captures.lookup(target.captures()[idx]));
+                       captures.lookup(target.getCaptures()[idx]));
         }
 
         // Clone the contents of the old body (without the terminator).
@@ -392,7 +398,7 @@ static SubgraphOp fuseConsumer(SubgraphOp target, Operation *consumer) {
         // If the old fused op had a result, add it to the mapping.
         auto terminator = target.getBody().front().getTerminator();
         if (terminator->getNumOperands())
-          captures.map(target.result(),
+          captures.map(target.getResult(),
                        captures.lookup(terminator->getOperand(0)));
 
         // Clone the op to be appended to the new block.
@@ -478,7 +484,7 @@ static FailureOr<Strategy> parseStrategy(ArrayRef<std::string> tactics) {
 }
 
 struct LinalgStructuralFusionPass
-    : public LinalgStructuralFusionBase<LinalgStructuralFusionPass> {
+    : public impl::LinalgStructuralFusionBase<LinalgStructuralFusionPass> {
   void runOnOperation() override {
     if (!strategy) {
       if (!strategyString.empty()) {
@@ -675,11 +681,11 @@ private:
 
   FailureOr<SubgraphOp> fuseConsumer(SubgraphOp target, OperatorClass filter,
                                   WorkingSet &work, bool longestAncestor) {
-    if (!target.result())
+    if (!target.getResult())
       return failure();
 
-    assert(!target.result().getUsers().empty());
-    Operation *candidate = *target.result().getUsers().begin();
+    assert(!target.getResult().getUsers().empty());
+    Operation *candidate = *target.getResult().getUsers().begin();
     if (!matches(candidate, filter) || !canFuseConsumer(target, candidate) ||
         (longestAncestor && !isLongestAncestor(work, target, candidate)))
       return failure();

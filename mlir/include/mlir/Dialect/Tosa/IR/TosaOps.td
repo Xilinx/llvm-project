@@ -420,6 +420,7 @@ def Tosa_AddOp : Tosa_Op<"add", [
   );
 
   let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -541,6 +542,8 @@ def Tosa_DivOp : Tosa_Op<"div", [
   let results = (outs
     Tosa_Int32Tensor:$output
   );
+
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -736,6 +739,7 @@ def Tosa_MulOp : Tosa_Op<"mul", [
   );
 
   let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -784,6 +788,8 @@ def Tosa_SubOp : Tosa_Op<"sub", [
   let results = (outs
     Tosa_Tensor:$output
   );
+
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1137,6 +1143,8 @@ def Tosa_EqualOp : Tosa_Op<"equal", [InferTensorType, ResultsBroadcastableShape,
     /// InferTypeOpInterface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
   }];
+
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1160,6 +1168,8 @@ def Tosa_GreaterOp : Tosa_Op<"greater", [
   let results = (outs
     I1Tensor:$output
   );
+
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1183,6 +1193,8 @@ def Tosa_GreaterEqualOp : Tosa_Op<"greater_equal", [
   let results = (outs
     I1Tensor:$output
   );
+
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1452,6 +1464,8 @@ def Tosa_ReverseOp: Tosa_Op<"reverse", [
   let results = (outs
     Tosa_Tensor1Dto4D:$output
   );
+
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1602,25 +1616,26 @@ def Tosa_ResizeOp : Tosa_Op<"resize", [
 
   let description = [{
     Resizes a tensor. Resize is only allowed in the H and W dimensions. In
-    expected use, stride_y is approximately (IH<<shift)/OH and stride_x is
-    approximately (IW<<shift)/OW.  OH and OW are also supplied as inputs since
-    there may be off by one errors if calculating OH and OW from the strides.
+    expected use, The height dimension is scaled by factor (scale_y_n/scale_y_d).
+    And the width dimension is scaled by factor (scale_x_n/scale_x_d). Thus the
+    output dimensions can be derived from the input dimensions by inverting the
+    scale. And the [order_y, border_x] values adjust the output size to allow
+    fractional sampling beyond integer input position (IH-1,IW-1).
   }];
 
   let arguments = (ins
     Tosa_Tensor4D:$input,
-    Tosa_IntArrayAttr2:$output_size,
-    Tosa_IntArrayAttr2:$stride,
+    Tosa_IntArrayAttr4:$scale,
     Tosa_IntArrayAttr2:$offset,
-    I32Attr:$shift,
-    Tosa_Fp32ArrayAttr2:$stride_fp,
-    Tosa_Fp32ArrayAttr2:$offset_fp,
+    Tosa_IntArrayAttr2:$border,
     Tosa_ResizeTypeAttr:$mode
   );
 
   let results = (outs
     Tosa_Tensor4D:$output
   );
+
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//

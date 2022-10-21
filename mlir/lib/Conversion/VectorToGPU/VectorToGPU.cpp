@@ -10,17 +10,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <type_traits>
-
-#include "NvGpuSupport.h"
 #include "mlir/Conversion/VectorToGPU/VectorToGPU.h"
 
-#include "../PassDetail.h"
+#include <type_traits>
+
 #include "mlir/Analysis/SliceAnalysis.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/NVGPU/IR/NVGPUDialect.h"
+#include "mlir/Dialect/NVGPU/Utils/MMAUtils.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -30,6 +30,11 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/TypeSwitch.h"
+
+namespace mlir {
+#define GEN_PASS_DEF_CONVERTVECTORTOGPU
+#include "mlir/Conversion/Passes.h.inc"
+} // namespace mlir
 
 using namespace mlir;
 
@@ -62,7 +67,7 @@ static void getXferIndices(OpBuilder &b, TransferOpType xferOp,
 // Return true if the contract op can be convert to MMA matmul.
 static bool contractSupportsMMAMatrixType(vector::ContractionOp contract,
                                           bool useNvGpu) {
-  if (llvm::size(contract.getMasks()) != 0)
+  if (!contract.getMasks().empty())
     return false;
 
   using MapList = ArrayRef<ArrayRef<AffineExpr>>;
@@ -70,9 +75,9 @@ static bool contractSupportsMMAMatrixType(vector::ContractionOp contract,
   AffineExpr m, n, k;
   bindDims(contract.getContext(), m, n, k);
   auto iteratorTypes = contract.getIteratorTypes().getValue();
-  if (!(isParallelIterator(iteratorTypes[0]) &&
-        isParallelIterator(iteratorTypes[1]) &&
-        isReductionIterator(iteratorTypes[2])))
+  if (!(vector::isParallelIterator(iteratorTypes[0]) &&
+        vector::isParallelIterator(iteratorTypes[1]) &&
+        vector::isReductionIterator(iteratorTypes[2])))
     return false;
 
   // The contract needs to represent a matmul to be able to convert to
@@ -292,9 +297,9 @@ struct PrepareContractToGPUMMA
     static constexpr std::array<int64_t, 2> perm = {1, 0};
     auto iteratorTypes = op.getIteratorTypes().getValue();
     SmallVector<AffineMap, 4> maps = op.getIndexingMapsArray();
-    if (!(isParallelIterator(iteratorTypes[0]) &&
-          isParallelIterator(iteratorTypes[1]) &&
-          isReductionIterator(iteratorTypes[2])))
+    if (!(vector::isParallelIterator(iteratorTypes[0]) &&
+          vector::isParallelIterator(iteratorTypes[1]) &&
+          vector::isReductionIterator(iteratorTypes[2])))
       return failure();
     //
     // Two outer parallel, one inner reduction (matmat flavor).
@@ -882,7 +887,7 @@ LogicalResult mlir::convertVectorToNVVMCompatibleMMASync(Operation *rootOp) {
 namespace {
 
 struct ConvertVectorToGPUPass
-    : public ConvertVectorToGPUBase<ConvertVectorToGPUPass> {
+    : public impl::ConvertVectorToGPUBase<ConvertVectorToGPUPass> {
 
   explicit ConvertVectorToGPUPass(bool useNvGpu_) {
     useNvGpu.setValue(useNvGpu_);
