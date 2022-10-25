@@ -202,7 +202,8 @@ static bool canFuseProducer(SubgraphOp target, Operation *producer) {
     return false;
 
   // - if producer will be duplicated, it must not have any side-effects
-  return !mustDuplicateProducer(target, producer) || isSideEffectFree(producer);
+  return !mustDuplicateProducer(target, producer) ||
+         isMemoryEffectFree(producer);
 }
 
 /// Gets the index of the result that @p value has at the defining op.

@@ -37,6 +37,21 @@ add_header(
 )
 
 add_header(
+  sys_auxv_macros
+  HDR
+    sys-auxv-macros.h
+)
+
+add_header(
+  sys_ioctl_macros
+  HDR
+    sys-ioctl-macros.h
+  DEPENDS
+    .linux.sys_ioctl_macros
+)
+
+
+add_header(
   sys_stat_macros
   HDR
     sys-stat-macros.h
@@ -66,6 +81,14 @@ add_header(
     sys-resource-macros.h
   DEPENDS
     .linux.sys_resource_macros
+)
+
+add_header(
+  sys_time_macros
+  HDR
+    sys-time-macros.h
+  DEPENDS
+    .linux.sys_time_macros
 )
 
 add_header(

@@ -25,7 +25,7 @@ include "mlir/Interfaces/ViewLikeInterface.td"
 class Linalg_Op<string mnemonic, list<Trait> traits = []> :
     Op<Linalg_Dialect, mnemonic, traits>;
 
-def Linalg_YieldOp : Linalg_Op<"yield", [NoSideEffect, ReturnLike, Terminator]>,
+def Linalg_YieldOp : Linalg_Op<"yield", [Pure, ReturnLike, Terminator]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "Linalg yield operation";
   let description = [{
@@ -44,7 +44,7 @@ def Linalg_YieldOp : Linalg_Op<"yield", [NoSideEffect, ReturnLike, Terminator]>,
   let hasVerifier = 1;
 }
 
-def Linalg_IndexOp : Linalg_Op<"index", [NoSideEffect]>,
+def Linalg_IndexOp : Linalg_Op<"index", [Pure]>,
     Arguments<(ins ConfinedAttr<I64Attr, [IntMinValue<0>]>:$dim)>,
     Results<(outs Index:$result)> {
   let summary = "linalg index operation";
@@ -88,7 +88,7 @@ def Linalg_IndexOp : Linalg_Op<"index", [NoSideEffect]>,
   let hasVerifier = 1;
 }
 
-def Linalg_SoftmaxOp : Linalg_Op<"softmax", [NoSideEffect]> {
+def Linalg_SoftmaxOp : Linalg_Op<"softmax", [Pure]> {
   let arguments = (ins AnyTensor:$input,
                        I64Attr:$dim);
   let results = (outs AnyTensor:$result);
@@ -100,7 +100,7 @@ def Linalg_SoftmaxOp : Linalg_Op<"softmax", [NoSideEffect]> {
   let hasVerifier = 1;
 }
 
-def Linalg_GlobalAveragePool2DOp : Linalg_Op<"globalaveragepool2d", [NoSideEffect]> {
+def Linalg_GlobalAveragePool2DOp : Linalg_Op<"globalaveragepool2d", [Pure]> {
   let arguments = (ins AnyTensor:$input);
   let results = (outs AnyTensor:$result);
   let summary = "linalg globalaveragepool2d operation";
