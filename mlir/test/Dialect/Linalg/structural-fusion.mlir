@@ -237,10 +237,10 @@ func.func @unfuse_conv_2d_lrelu_maxpool(%ifm : tensor<1x1024x15x15xf32>) -> tens
         {
             dilations = dense<1> : tensor<2xi64>,
             strides = dense<1> : tensor<2xi64>,
-            mp_kernel_size = dense<2> : tensor<2xi64>,
-            mp_strides = dense<2> : tensor<2xi64>,
-            mp_dilations = dense<1> : tensor<2xi64>,
-            mp_padding = dense<[0, 1, 0, 1]> : tensor<4xi64>
+            mpKernelSize = dense<2> : tensor<2xi64>,
+            mpStrides = dense<2> : tensor<2xi64>,
+            mpDilations = dense<1> : tensor<2xi64>,
+            mpPadding = dense<[0, 1, 0, 1]> : tensor<4xi64>
         }
         ins(%ifm, %weights, %bias, %alpha : tensor<1x1024x15x15xf32>, tensor<1024x1024x3x3xf32>, tensor<1024xf32>, f32)
         outs(%init : tensor<1x1024x7x7xf32>)
@@ -282,10 +282,10 @@ func.func @unfuse_conv_2d_relu_maxpool(%ifm : tensor<1x1024x15x15xf32>) -> tenso
         {
             dilations = dense<1> : tensor<2xi64>,
             strides = dense<1> : tensor<2xi64>,
-            mp_kernel_size = dense<2> : tensor<2xi64>,
-            mp_strides = dense<2> : tensor<2xi64>,
-            mp_dilations = dense<1> : tensor<2xi64>,
-            mp_padding = dense<[0, 1, 0, 1]> : tensor<4xi64>
+            mpKernelSize = dense<2> : tensor<2xi64>,
+            mpStrides = dense<2> : tensor<2xi64>,
+            mpDilations = dense<1> : tensor<2xi64>,
+            mpPadding = dense<[0, 1, 0, 1]> : tensor<4xi64>
         }
         ins(%ifm, %weights, %bias : tensor<1x1024x15x15xf32>, tensor<1024x1024x3x3xf32>, tensor<1024xf32>)
         outs(%init : tensor<1x1024x7x7xf32>)

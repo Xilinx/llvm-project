@@ -67,10 +67,10 @@ def conv_2d_lrelu_maxpool(
     O=TensorDef(U, S.N, S.F, S.OH, S.OW, output=True),
     strides=IndexAttrDef(S.SH, S.SW, default=[1, 1]),
     dilations=IndexAttrDef(S.DH, S.DW, default=[1, 1]),
-    mp_kernel_size=IndexAttrDef(S.MKH, S.MKW, default=[1, 1]),
-    mp_strides=IndexAttrDef(S.MSH, S.MSW, default=[1, 1]),
-    mp_padding=IndexAttrDef(S.MPHL, S.MPHH, S.MPWL, S.MPWH, default=[0, 0, 0, 0]),
-    mp_dilations=IndexAttrDef(S.MDH, S.MDW, default=[1, 1])):
+    mpKernelSize=IndexAttrDef(S.MKH, S.MKW, default=[1, 1]),
+    mpStrides=IndexAttrDef(S.MSH, S.MSW, default=[1, 1]),
+    mpPadding=IndexAttrDef(S.MPHL, S.MPHH, S.MPWL, S.MPWH, default=[0, 0, 0, 0]),
+    mpDilations=IndexAttrDef(S.MDH, S.MDW, default=[1, 1])):
   """Performs fused 2-D convolution, leaky-relu and max-pool.
   Layout:
     * Input: NCHW.
@@ -93,10 +93,10 @@ def conv_2d_relu_maxpool(
     O=TensorDef(U, S.N, S.F, S.OH, S.OW, output=True),
     strides=IndexAttrDef(S.SH, S.SW, default=[1, 1]),
     dilations=IndexAttrDef(S.DH, S.DW, default=[1, 1]),
-    mp_kernel_size=IndexAttrDef(S.MKH, S.MKW, default=[1, 1]),
-    mp_strides=IndexAttrDef(S.MSH, S.MSW, default=[1, 1]),
-    mp_padding=IndexAttrDef(S.MPHL, S.MPHH, S.MPWL, S.MPWH, default=[0, 0, 0, 0]),
-    mp_dilations=IndexAttrDef(S.MDH, S.MDW, default=[1, 1])):
+    mpKernelSize=IndexAttrDef(S.MKH, S.MKW, default=[1, 1]),
+    mpStrides=IndexAttrDef(S.MSH, S.MSW, default=[1, 1]),
+    mpPadding=IndexAttrDef(S.MPHL, S.MPHH, S.MPWL, S.MPWH, default=[0, 0, 0, 0]),
+    mpDilations=IndexAttrDef(S.MDH, S.MDW, default=[1, 1])):
   """Performs fused 2-D convolution, leaky-relu and max-pool.
   Layout:
     * Input: NCHW.

@@ -466,8 +466,8 @@ struct Conv2DActivationMaxpoolOpLowering : OpRewritePattern<T> {
                         /*K=*/rewriter.create<tensor::EmptyOp>(
                             op.getLoc(), poolSize, elementTy)};
       NamedAttribute attributes[] = {
-          rewriter.getNamedAttr("dilations", op->getAttr("mp_dilations")),
-          rewriter.getNamedAttr("strides", op->getAttr("mp_strides"))};
+          rewriter.getNamedAttr("dilations", op->getAttr("mpDilations")),
+          rewriter.getNamedAttr("strides", op->getAttr("mpStrides"))};
       rewriter.replaceOpWithNewOp<PoolingNchwMaxOp>(
           op,
           /*resultTensorTypes=*/op.getOutputOperand(0)->get().getType(), inputs,
