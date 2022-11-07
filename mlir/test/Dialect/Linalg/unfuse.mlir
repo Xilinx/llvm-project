@@ -425,7 +425,7 @@ func.func @unfuse_globalaveragepool2d(%ifm : tensor<1x2048x7x7xf32>) -> tensor<1
 
     // CHECK: %[[accu:.+]] = arith.constant dense<0.000000e+00> : tensor<1x2048x1x1xf32>
     // CHECK: %[[div:.+]] = arith.constant dense<4.900000e+01> : tensor<1x2048x1x1xf32>
-    // CHECK: %[[krnl:.+]] = linalg.init_tensor [7, 7] : tensor<7x7xf32>
+    // CHECK: %[[krnl:.+]] = tensor.empty() : tensor<7x7xf32>
     // CHECK: %[[sum:.+]] = linalg.pooling_nchw_sum {dilations = dense<1> : vector<2xi64>, strides = dense<1> : vector<2xi64>} ins(%arg0, %0 : tensor<1x2048x7x7xf32>, tensor<7x7xf32>) outs(%[[accu]] : tensor<1x2048x1x1xf32>) -> tensor<1x2048x1x1xf32>
     // CHECK: %[[out:.+]] = arith.divf %[[sum]], %[[div]] : tensor<1x2048x1x1xf32>
 
@@ -443,9 +443,9 @@ func.func @unfuse_linear(%input: tensor<1x2048xf32>, %weights: tensor<1000x2048x
     %init = tensor.splat %zero : tensor<1x1000xf32>
     %result = linalg.linear ins(%input, %weights, %bias: tensor<1x2048xf32>, tensor<1000x2048xf32>, tensor<1000xf32>) outs(%init: tensor<1x1000xf32>) -> tensor<1x1000xf32>
 
-// CHECK:  %[[tweightshape:.+]] = linalg.init_tensor [2048, 1000] : tensor<2048x1000xf32>
+// CHECK:  %[[tweightshape:.+]] = tensor.empty() : tensor<2048x1000xf32>
 // CHECK:  %[[tweights:.+]] = linalg.transpose2d ins(%arg1 : tensor<1000x2048xf32>) outs(%0 : tensor<2048x1000xf32>) -> tensor<2048x1000xf32>
-// CHECK:  %[[bias2dshape:.+]] = linalg.init_tensor [1, 1000] : tensor<1x1000xf32>
+// CHECK:  %[[bias2dshape:.+]] = tensor.empty() : tensor<1x1000xf32>
 // CHECK:  %[[bias2d:.+]] = linalg.broadcast_1d_to_2d ins(%arg2 : tensor<1000xf32>) outs(%2 : tensor<1x1000xf32>) -> tensor<1x1000xf32>
 // CHECK:  %[[out:.+]] = linalg.matmul ins(%[[input]], %[[tweights]] : tensor<1x2048xf32>, tensor<2048x1000xf32>) outs(%[[bias2d]] : tensor<1x1000xf32>) -> tensor<1x1000xf32
 // CHECK: return %[[out]]

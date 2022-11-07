@@ -16,12 +16,12 @@
 // CHECK:             ^bb0(%[[VAL_6:.*]]: index, %[[VAL_7:.*]]: index, %[[VAL_8:.*]]: index, %[[VAL_9:.*]]: index):
 // CHECK:               tensor.yield %[[VAL_4]] : f32
 // CHECK:             } : tensor<1x3x416x416xf32> to tensor<1x3x418x418xf32>
-// CHECK:             %[[VAL_10:.*]] = linalg.init_tensor [1, 16, 416, 416] : tensor<1x16x416x416xf32>
+// CHECK:             %[[VAL_10:.*]] = tensor.empty() : tensor<1x16x416x416xf32>
 // CHECK:             %[[VAL_11:.*]] = arith.constant dense<1.000000e+00> : tensor<16xf32>
 // CHECK:             %[[VAL_12:.*]] = arith.constant dense<1.000000e+00> : tensor<16x3x3x3xf32>
 // CHECK:             %[[VAL_13:.*]] = arith.constant 0.000000e+00 : f32
-// CHECK:             %[[VAL_14:.*]] = linalg.init_tensor [1, 16, 208, 208] : tensor<1x16x208x208xf32>
-// CHECK:             %[[VAL_15:.*]] = linalg.init_tensor [2, 2] : tensor<2x2xf32>
+// CHECK:             %[[VAL_14:.*]] = tensor.empty() : tensor<1x16x208x208xf32>
+// CHECK:             %[[VAL_15:.*]] = tensor.empty() : tensor<2x2xf32>
 // CHECK:             %[[VAL_16:.*]] = linalg.broadcast_bias_2d_fchw ins(%[[VAL_11]] : tensor<16xf32>) outs(%[[VAL_10]] : tensor<1x16x416x416xf32>) -> tensor<1x16x416x416xf32>
 // CHECK:             %[[VAL_17:.*]] = linalg.conv_2d_nchw_fchw {dilations = dense<1> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} ins(%[[VAL_18:.*]], %[[VAL_12]] : tensor<1x3x418x418xf32>, tensor<16x3x3x3xf32>) outs(%[[VAL_16]] : tensor<1x16x416x416xf32>) -> tensor<1x16x416x416xf32>
 // CHECK:             %[[VAL_19:.*]] = linalg.lrelu_2d_nchw ins(%[[VAL_17]], %[[VAL_13]] : tensor<1x16x416x416xf32>, f32) outs(%[[VAL_17]] : tensor<1x16x416x416xf32>) -> tensor<1x16x416x416xf32>
@@ -34,9 +34,9 @@ func.func @forward(%arg0: tensor<1x3x416x416xf32>) -> tensor<1x16x208x208xf32> {
   %cst_0 = arith.constant dense<1.000000e+00> : tensor<16xf32>
   %cst_1 = arith.constant 0.000000e+00 : f32
   %cst_2 = arith.constant dense<1.000000e+00> : tensor<16x3x3x3xf32>
-  %0 = linalg.init_tensor [2, 2] : tensor<2x2xf32>
-  %1 = linalg.init_tensor [1, 16, 416, 416] : tensor<1x16x416x416xf32>
-  %42 = linalg.init_tensor [1, 16, 208, 208] : tensor<1x16x208x208xf32>
+  %0 = tensor.empty() : tensor<2x2xf32>
+  %1 = tensor.empty() : tensor<1x16x416x416xf32>
+  %42 = tensor.empty() : tensor<1x16x208x208xf32>
   %2 = linalg.broadcast_bias_2d_fchw ins(%cst_0 : tensor<16xf32>) outs(%1 : tensor<1x16x416x416xf32>) -> tensor<1x16x416x416xf32>
   %3 = tensor.pad %arg0 low[0, 0, 1, 1] high[0, 0, 1, 1] {
       ^bb0(%arg8: index, %arg9: index, %arg10: index, %arg11: index):
@@ -54,7 +54,7 @@ func.func @forward(%arg0: tensor<1x3x416x416xf32>) -> tensor<1x16x208x208xf32> {
 // CHECK-SAME:                                    %[[VAL_0:.*]]: tensor<1x1024x10x10xf32>,
 // CHECK-SAME:                                    %[[VAL_1:.*]]: tensor<1x1024x8x8xf32>) -> tensor<1x1024x8x8xf32> {
 // CHECK:           %[[VAL_2:.*]] = linalg.subgraph(%[[VAL_3:.*]] = %[[VAL_0]] : tensor<1x1024x10x10xf32>, %[[VAL_4:.*]] = %[[VAL_1]] : tensor<1x1024x8x8xf32>) {
-// CHECK:             %[[VAL_5:.*]] = linalg.init_tensor [1, 1024, 8, 8] : tensor<1x1024x8x8xf32>
+// CHECK:             %[[VAL_5:.*]] = tensor.empty() : tensor<1x1024x8x8xf32>
 // CHECK:             %[[VAL_6:.*]] = arith.constant dense<3.000000e-01> : tensor<1024xf32>
 // CHECK:             %[[VAL_7:.*]] = arith.constant dense<5.000000e-01> : tensor<1024x1024x3x3xf32>
 // CHECK:             %[[VAL_8:.*]] = linalg.broadcast_bias_2d_fchw ins(%[[VAL_6]] : tensor<1024xf32>) outs(%[[VAL_5]] : tensor<1x1024x8x8xf32>) -> tensor<1x1024x8x8xf32>
@@ -83,7 +83,7 @@ func.func @unfuse_conv_2d_tensor_add(%ifm : tensor<1x1024x10x10xf32>, %summand :
 // CHECK-SAME:                              %[[VAL_0:.*]]: tensor<1x1024x17x17xf32>) -> tensor<1x1024x7x7xf32> {
 // CHECK:           %[[VAL_1:.*]] = linalg.subgraph(%[[VAL_2:.*]] = %[[VAL_0]] : tensor<1x1024x17x17xf32>) {
 // CHECK:             %[[VAL_3:.*]] = arith.constant 0.000000e+00 : f32
-// CHECK:             %[[VAL_4:.*]] = linalg.init_tensor [1, 1024, 7, 7] : tensor<1x1024x7x7xf32>
+// CHECK:             %[[VAL_4:.*]] = tensor.empty() : tensor<1x1024x7x7xf32>
 // CHECK:             %[[VAL_5:.*]] = arith.constant dense<3.000000e-01> : tensor<1024xf32>
 // CHECK:             %[[VAL_6:.*]] = arith.constant dense<5.000000e-01> : tensor<1024x1024x3x3xf32>
 // CHECK:             %[[VAL_7:.*]] = linalg.broadcast_bias_2d_fchw ins(%[[VAL_5]] : tensor<1024xf32>) outs(%[[VAL_4]] : tensor<1x1024x7x7xf32>) -> tensor<1x1024x7x7xf32>
@@ -113,7 +113,7 @@ func.func @unfuse_conv_2d_relu(%ifm : tensor<1x1024x17x17xf32>) -> tensor<1x1024
 // CHECK-SAME:                                         %[[VAL_1:.*]]: tensor<1x1024x7x7xf32>) -> tensor<1x1024x7x7xf32> {
 // CHECK:           %[[VAL_2:.*]] = linalg.subgraph(%[[VAL_3:.*]] = %[[VAL_0]] : tensor<1x1024x17x17xf32>, %[[VAL_4:.*]] = %[[VAL_1]] : tensor<1x1024x7x7xf32>) {
 // CHECK:             %[[VAL_5:.*]] = arith.constant 0.000000e+00 : f32
-// CHECK:             %[[VAL_6:.*]] = linalg.init_tensor [1, 1024, 7, 7] : tensor<1x1024x7x7xf32>
+// CHECK:             %[[VAL_6:.*]] = tensor.empty() : tensor<1x1024x7x7xf32>
 // CHECK:             %[[VAL_7:.*]] = arith.constant dense<3.000000e-01> : tensor<1024xf32>
 // CHECK:             %[[VAL_8:.*]] = arith.constant dense<5.000000e-01> : tensor<1024x1024x3x3xf32>
 // CHECK:             %[[VAL_9:.*]] = linalg.broadcast_bias_2d_fchw ins(%[[VAL_7]] : tensor<1024xf32>) outs(%[[VAL_6]] : tensor<1x1024x7x7xf32>) -> tensor<1x1024x7x7xf32>
@@ -144,7 +144,7 @@ func.func @unfuse_conv_2d_tensor_add_relu(%ifm : tensor<1x1024x17x17xf32>, %summ
 // CHECK:           %[[VAL_1:.*]] = linalg.subgraph(%[[VAL_2:.*]] = %[[VAL_0]] : tensor<1x1024x15x15xf32>) {
 // CHECK:             %[[VAL_3:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK:             %[[VAL_4:.*]] = arith.constant 2.000000e-02 : f32
-// CHECK:             %[[VAL_5:.*]] = linalg.init_tensor [1, 1024, 13, 13] : tensor<1x1024x13x13xf32>
+// CHECK:             %[[VAL_5:.*]] = tensor.empty() : tensor<1x1024x13x13xf32>
 // CHECK:             %[[VAL_6:.*]] = arith.constant dense<3.000000e-01> : tensor<1024xf32>
 // CHECK:             %[[VAL_7:.*]] = arith.constant dense<5.000000e-01> : tensor<1024x1024x3x3xf32>
 // CHECK:             %[[VAL_8:.*]] = linalg.broadcast_bias_2d_fchw ins(%[[VAL_6]] : tensor<1024xf32>) outs(%[[VAL_5]] : tensor<1x1024x13x13xf32>) -> tensor<1x1024x13x13xf32>
@@ -176,7 +176,7 @@ func.func @unfuse_conv_2d_lrelu(%ifm : tensor<1x1024x15x15xf32>) -> tensor<1x102
 // CHECK:           %[[VAL_2:.*]] = linalg.subgraph(%[[VAL_3:.*]] = %[[VAL_0]] : tensor<1x1024x15x15xf32>, %[[VAL_4:.*]] = %[[VAL_1]] : tensor<1x1024x13x13xf32>) {
 // CHECK:             %[[VAL_5:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK:             %[[VAL_6:.*]] = arith.constant 2.000000e-02 : f32
-// CHECK:             %[[VAL_7:.*]] = linalg.init_tensor [1, 1024, 13, 13] : tensor<1x1024x13x13xf32>
+// CHECK:             %[[VAL_7:.*]] = tensor.empty() : tensor<1x1024x13x13xf32>
 // CHECK:             %[[VAL_8:.*]] = arith.constant dense<3.000000e-01> : tensor<1024xf32>
 // CHECK:             %[[VAL_9:.*]] = arith.constant dense<5.000000e-01> : tensor<1024x1024x3x3xf32>
 // CHECK:             %[[VAL_10:.*]] = linalg.broadcast_bias_2d_fchw ins(%[[VAL_8]] : tensor<1024xf32>) outs(%[[VAL_7]] : tensor<1x1024x13x13xf32>) -> tensor<1x1024x13x13xf32>
@@ -206,14 +206,14 @@ func.func @unfuse_conv_2d_tensor_add_lrelu(%ifm : tensor<1x1024x15x15xf32>, %sum
 // CHECK-LABEL:   func @unfuse_conv_2d_lrelu_maxpool(
 // CHECK-SAME:                                       %[[VAL_0:.*]]: tensor<1x1024x15x15xf32>) -> tensor<1x1024x7x7xf32> {
 // CHECK:           %[[VAL_1:.*]] = linalg.subgraph(%[[VAL_2:.*]] = %[[VAL_0]] : tensor<1x1024x15x15xf32>) {
-// CHECK:             %[[VAL_3:.*]] = linalg.init_tensor [1, 1024, 13, 13] : tensor<1x1024x13x13xf32>
+// CHECK:             %[[VAL_3:.*]] = tensor.empty() : tensor<1x1024x13x13xf32>
 // CHECK:             %[[VAL_4:.*]] = arith.constant dense<3.000000e-01> : tensor<1024xf32>
 // CHECK:             %[[VAL_5:.*]] = arith.constant dense<5.000000e-01> : tensor<1024x1024x3x3xf32>
 // CHECK:             %[[VAL_6:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK:             %[[VAL_7:.*]] = arith.constant 2.000000e-02 : f32
 // CHECK:             %[[VAL_8:.*]] = arith.constant 0xFF800000 : f32
 // CHECK:             %[[VAL_9:.*]] = arith.constant dense<0.000000e+00> : tensor<1x1024x7x7xf32>
-// CHECK:             %[[VAL_10:.*]] = linalg.init_tensor [2, 2] : tensor<2x2xf32>
+// CHECK:             %[[VAL_10:.*]] = tensor.empty() : tensor<2x2xf32>
 // CHECK:             %[[VAL_11:.*]] = linalg.broadcast_bias_2d_fchw ins(%[[VAL_4]] : tensor<1024xf32>) outs(%[[VAL_3]] : tensor<1x1024x13x13xf32>) -> tensor<1x1024x13x13xf32>
 // CHECK:             %[[VAL_12:.*]] = linalg.conv_2d_nchw_fchw {dilations = dense<1> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} ins(%[[VAL_2]], %[[VAL_5]] : tensor<1x1024x15x15xf32>, tensor<1024x1024x3x3xf32>) outs(%[[VAL_11]] : tensor<1x1024x13x13xf32>) -> tensor<1x1024x13x13xf32>
 // CHECK:             %[[VAL_13:.*]] = linalg.lrelu_2d_nchw ins(%[[VAL_12]], %[[VAL_7]] : tensor<1x1024x13x13xf32>, f32) outs(%[[VAL_12]] : tensor<1x1024x13x13xf32>) -> tensor<1x1024x13x13xf32>
@@ -253,13 +253,13 @@ func.func @unfuse_conv_2d_lrelu_maxpool(%ifm : tensor<1x1024x15x15xf32>) -> tens
 // CHECK-LABEL:   func @unfuse_conv_2d_relu_maxpool(
 // CHECK-SAME:                                      %[[VAL_0:.*]]: tensor<1x1024x15x15xf32>) -> tensor<1x1024x7x7xf32> {
 // CHECK:           %[[VAL_1:.*]] = linalg.subgraph(%[[VAL_2:.*]] = %[[VAL_0]] : tensor<1x1024x15x15xf32>) {
-// CHECK:             %[[VAL_3:.*]] = linalg.init_tensor [1, 1024, 13, 13] : tensor<1x1024x13x13xf32>
+// CHECK:             %[[VAL_3:.*]] = tensor.empty() : tensor<1x1024x13x13xf32>
 // CHECK:             %[[VAL_4:.*]] = arith.constant dense<3.000000e-01> : tensor<1024xf32>
 // CHECK:             %[[VAL_5:.*]] = arith.constant dense<5.000000e-01> : tensor<1024x1024x3x3xf32>
 // CHECK:             %[[VAL_6:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK:             %[[VAL_7:.*]] = arith.constant 0xFF800000 : f32
 // CHECK:             %[[VAL_8:.*]] = arith.constant dense<0.000000e+00> : tensor<1x1024x7x7xf32>
-// CHECK:             %[[VAL_9:.*]] = linalg.init_tensor [2, 2] : tensor<2x2xf32>
+// CHECK:             %[[VAL_9:.*]] = tensor.empty() : tensor<2x2xf32>
 // CHECK:             %[[VAL_10:.*]] = linalg.broadcast_bias_2d_fchw ins(%[[VAL_4]] : tensor<1024xf32>) outs(%[[VAL_3]] : tensor<1x1024x13x13xf32>) -> tensor<1x1024x13x13xf32>
 // CHECK:             %[[VAL_11:.*]] = linalg.conv_2d_nchw_fchw {dilations = dense<1> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} ins(%[[VAL_2]], %[[VAL_5]] : tensor<1x1024x15x15xf32>, tensor<1024x1024x3x3xf32>) outs(%[[VAL_10]] : tensor<1x1024x13x13xf32>) -> tensor<1x1024x13x13xf32>
 // CHECK:             %[[VAL_12:.*]] = linalg.relu_2d_nchw ins(%[[VAL_11]] : tensor<1x1024x13x13xf32>) outs(%[[VAL_11]] : tensor<1x1024x13x13xf32>) -> tensor<1x1024x13x13xf32>

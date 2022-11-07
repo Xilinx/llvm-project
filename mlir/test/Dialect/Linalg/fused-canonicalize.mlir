@@ -68,7 +68,7 @@ func.func @erase_dead(%arg0: tensor<3x3xf32>) -> tensor<3x3xf32> {
     }
     // No side-effects
     %0 = linalg.subgraph () {
-        %0 = linalg.init_tensor [3, 3] : tensor<3x3xf32>
+        %0 = tensor.empty() : tensor<3x3xf32>
         linalg.yield %0 : tensor<3x3xf32>
     } -> tensor<3x3xf32>
     // Read-only side-effects
