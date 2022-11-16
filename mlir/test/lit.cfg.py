@@ -74,6 +74,9 @@ tools = [
 if config.enable_spirv_cpu_runner:
   tools.extend(['mlir-spirv-cpu-runner'])
 
+if config.enable_tosa_cpu_runner:
+  tools.extend(['mlir-tosa-cpu-runner'])
+
 # The following tools are optional
 tools.extend([
     ToolSubst('toyc-ch1', unresolved='ignore'),
