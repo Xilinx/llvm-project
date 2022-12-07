@@ -24,6 +24,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
 
@@ -694,6 +695,50 @@ struct LinearLowering : OpRewritePattern<LinearOp> {
                                           ValueRange{input, transposeWeightsOp},
                                           broadcastBiasOp);
 
+    return success();
+  }
+};
+
+struct LinearReluLowering : OpRewritePattern<LinearReluOp> {
+  using OpRewritePattern<LinearReluOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(LinearReluOp op,
+                                PatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    Value weights = op.getOperand(1);
+    Value bias = op.getOperand(2);
+
+    auto weightsType = weights.getType().cast<RankedTensorType>();
+    auto biasType = bias.getType().cast<RankedTensorType>();
+    auto outputType = op->getResult(0).getType().cast<RankedTensorType>();
+
+    // Create a linalg op that transposes the weights tensor
+    // The transposedWeights is simply used to describe the output shape.
+    llvm::ArrayRef<int64_t> weightsShape = weightsType.getShape();
+    Value transposedWeights = rewriter.create<tensor::EmptyOp>(
+        loc,
+        ArrayRef<int64_t>{weightsShape[1], weightsShape[0]},
+        weightsType.getElementType());
+    Value transposeWeightsOp =
+        rewriter.create<Transpose2DOp>(loc, weights, transposedWeights)
+            ->getResult(0);
+
+    // Create a linalg op that broadcasts the 1D bias values across
+    // the 2nd dimension
+    Value broadcastedBias = rewriter.create<tensor::EmptyOp>(
+        loc, outputType.getShape(), biasType.getElementType());
+    Value broadcastBiasOp =
+        rewriter.create<Broadcast1DTo2DOp>(loc, bias, broadcastedBias)
+            ->getResult(0);
+
+    auto linearResult = rewriter.create<MatmulOp>(loc,
+                  outputType, ValueRange{op.getOperand(0), transposeWeightsOp},
+                  broadcastBiasOp).getResult(0);
+
+    rewriter.replaceOpWithNewOp<Relu2DNchwOp>(
+        op,
+        /*resultTensorTypes=*/linearResult.getType(),
+        /*inputs=*/linearResult,
+        /*outputs=*/linearResult);
     return success();
   }
 };

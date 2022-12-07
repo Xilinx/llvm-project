@@ -1377,3 +1377,23 @@ def fill_rng_2d(min=ScalarDef(F64),
   scaling = (max - min) * inv_range
   O[D.m, D.n] = TypeFn.cast_signed(
       T, (offset + TypeFn.cast_signed(F64, rand2)) * scaling + min)
+
+@linalg_structured_op
+def linear_relu(
+    I=TensorDef(T1, S.W, S.H),
+    W=TensorDef(T1,  S.K, S.H),
+    B=TensorDef(T1,  S.K),
+    O=TensorDef(T1,  S.W, S.K, output=True)):
+  """Performs a linear/fully-connected + relu operation
+
+  This is a long description that I'll fill later
+
+  Layout:
+    * I: WH (Input)
+    * W: WH (Weights)
+    * B: H  (Bias)
+  """
+  domain(D.W, D.H, D.K)
+  # implementation is incorrect the addition of the bias should happen after
+  # the multiplication, not on each element
+  O[D.W, D.K] += I[D.W, D.H]*W[D.K, D.H] + B[D.K] 
