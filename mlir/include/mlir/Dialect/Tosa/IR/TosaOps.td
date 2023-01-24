@@ -764,6 +764,8 @@ def Tosa_PowOp : Tosa_Op<"pow", [
   let results = (outs
     Tosa_Tensor:$z
   );
+
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1057,6 +1059,8 @@ def Tosa_ReciprocalOp : Tosa_Op<"reciprocal", [
   let results = (outs
     Tosa_Tensor:$output
   );
+
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1080,6 +1084,8 @@ def Tosa_RsqrtOp : Tosa_Op<"rsqrt", [
   let results = (outs
     Tosa_Tensor:$output
   );
+
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//

@@ -474,12 +474,32 @@ OpFoldResult AddOp::fold(ArrayRef<Attribute> operands) {
   auto resultTy = getType().dyn_cast<RankedTensorType>();
   if (!lhsTy || !rhsTy || !resultTy)
     return {};
-  if (lhsTy != rhsTy)
-    return {};
-
+  
   auto resultETy = resultTy.getElementType();
   auto lhsAttr = operands[0].dyn_cast_or_null<DenseElementsAttr>();
   auto rhsAttr = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+
+  if (lhsTy == resultTy) {
+    if (rhsAttr && rhsAttr.isSplat() && resultETy.isa<FloatType>()) {
+      if (rhsAttr.getSplatValue<APFloat>().isZero())
+        return getInput1();
+    }
+  }
+
+  if (lhsTy != rhsTy) {
+    if (lhsAttr && rhsAttr) {
+      if (lhsTy == resultTy && rhsAttr.isSplat()) {
+        APFloat r = rhsAttr.getSplatValue<APFloat>();
+        std::vector<APFloat> v;
+        v.resize(lhsAttr.size(), APFloat(0.0));
+        for(int i=0;i<lhsAttr.size(); ++i) {
+          v[i] = lhsAttr.getValues<APFloat>()[i] + r;
+        }
+        return DenseElementsAttr::get(resultTy, v);
+      }
+    }
+  }
+    
 
   if (lhsAttr && lhsAttr.isSplat() && resultETy.isa<FloatType>()) {
     if (lhsAttr.getSplatValue<APFloat>().isZero())
@@ -883,7 +903,62 @@ OpFoldResult ResizeOp::fold(ArrayRef<Attribute> operands) {
   return input;
 }
 
-OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult RsqrtOp::fold(FoldAdaptor adaptor) {
+  auto inputTy = getInput1().getType().dyn_cast<RankedTensorType>();
+  auto outputTy = getType().dyn_cast<RankedTensorType>();
+
+  if (!inputTy || !outputTy)
+    return {};
+
+  if (inputTy != outputTy)
+    return {};
+
+  auto operand = adaptor.getInput1().dyn_cast_or_null<ElementsAttr>();
+  if (!operand)
+    return {};
+  
+  if (!inputTy.getElementType().isF32())
+    return {};
+
+  std::vector<float> v;
+  v.resize(operand.size());
+  for(int i=0;i<operand.size(); ++i) {
+    v[i] = 1.0 / sqrt(operand.getValues<float>()[i]);
+  }
+  return DenseElementsAttr::get(outputTy, ArrayRef<float>{v});
+}
+
+OpFoldResult PowOp::fold(FoldAdaptor adaptor) {
+  auto inputTy = getInput1().getType().dyn_cast<RankedTensorType>();
+  auto input2Ty = getInput2().getType().dyn_cast<RankedTensorType>();
+  auto outputTy = getType().dyn_cast<RankedTensorType>();
+
+  if (!inputTy || !input2Ty || !outputTy)
+    return {};
+
+  if (inputTy != outputTy || input2Ty != outputTy)
+    return {};
+
+  auto operand1 = adaptor.getInput1().dyn_cast_or_null<ElementsAttr>();
+  if (!operand1)
+    return {};
+
+  auto operand2 = adaptor.getInput2().dyn_cast_or_null<ElementsAttr>();
+  if (!operand2)
+    return {};
+  
+  if (!operand1.getElementType().isF32() || !operand2.getElementType().isF32())
+    return {};
+
+  std::vector<float> v;
+  v.resize(operand1.size());
+  for(int i=0;i<operand1.size(); ++i) {
+    v[i] = pow(operand1.getValues<float>()[i], operand2.getValues<float>()[i]);
+  }
+  return DenseElementsAttr::get(outputTy, ArrayRef<float>{v});
+}
+
+OpFoldResult ReverseOp::fold(FoldAdaptor adaptor) {
   auto operand = getInput();
   auto operandTy = operand.getType().cast<ShapedType>();
   auto axis = getAxis();
@@ -898,7 +973,21 @@ OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
-OpFoldResult SliceOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ReciprocalOp::fold(FoldAdaptor adaptor) {
+  auto src = adaptor.getInput1().dyn_cast_or_null<mlir::DenseElementsAttr>();
+  
+  if (!src)
+    return nullptr;
+
+  std::vector<float> v;
+  v.resize(src.getNumElements());
+  for(int i=0; i< src.getNumElements(); ++i)
+    v[i] = 1.0 / src.getValues<float>()[i];
+
+  return mlir::DenseElementsAttr::get(src.getType(), ArrayRef(v));
+}
+
+OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
   auto inputTy = getInput().getType().dyn_cast<RankedTensorType>();
   auto outputTy = getType().dyn_cast<RankedTensorType>();
 
