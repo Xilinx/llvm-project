@@ -903,6 +903,7 @@ OpFoldResult ResizeOp::fold(ArrayRef<Attribute> operands) {
   return input;
 }
 
+#if 0
 OpFoldResult RsqrtOp::fold(FoldAdaptor adaptor) {
   auto inputTy = getInput1().getType().dyn_cast<RankedTensorType>();
   auto outputTy = getType().dyn_cast<RankedTensorType>();
@@ -958,7 +959,22 @@ OpFoldResult PowOp::fold(FoldAdaptor adaptor) {
   return DenseElementsAttr::get(outputTy, ArrayRef<float>{v});
 }
 
-OpFoldResult ReverseOp::fold(FoldAdaptor adaptor) {
+OpFoldResult ReciprocalOp::fold(FoldAdaptor adaptor) {
+  auto src = adaptor.getInput1().dyn_cast_or_null<mlir::DenseElementsAttr>();
+  
+  if (!src)
+    return nullptr;
+
+  std::vector<float> v;
+  v.resize(src.getNumElements());
+  for(int i=0; i< src.getNumElements(); ++i)
+    v[i] = 1.0 / src.getValues<float>()[i];
+
+  return mlir::DenseElementsAttr::get(src.getType(), ArrayRef(v));
+}
+#endif
+
+OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
   auto operand = getInput();
   auto operandTy = operand.getType().cast<ShapedType>();
   auto axis = getAxis();
@@ -973,21 +989,8 @@ OpFoldResult ReverseOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
-OpFoldResult ReciprocalOp::fold(FoldAdaptor adaptor) {
-  auto src = adaptor.getInput1().dyn_cast_or_null<mlir::DenseElementsAttr>();
-  
-  if (!src)
-    return nullptr;
 
-  std::vector<float> v;
-  v.resize(src.getNumElements());
-  for(int i=0; i< src.getNumElements(); ++i)
-    v[i] = 1.0 / src.getValues<float>()[i];
-
-  return mlir::DenseElementsAttr::get(src.getType(), ArrayRef(v));
-}
-
-OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
+OpFoldResult SliceOp::fold(ArrayRef<Attribute> operands) {
   auto inputTy = getInput().getType().dyn_cast<RankedTensorType>();
   auto outputTy = getType().dyn_cast<RankedTensorType>();
 
