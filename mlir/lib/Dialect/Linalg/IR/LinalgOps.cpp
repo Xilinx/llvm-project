@@ -675,54 +675,55 @@ void SubgraphOp::print(OpAsmPrinter &p) {
   };
 }
 
-
 /// Parses a captured SSA operand.
 ///
 /// Format:
 ///     ssa-id `=` ssa-id `:` type
-static ParseResult parseCapture(
-    OpAsmParser &p,
-    OpAsmParser::UnresolvedOperand &arg,
-    OpAsmParser::UnresolvedOperand &src,
-    Type &type)
-{
-    // ssa-id `=` ssa-id `:` type
-    if (p.parseOperand(arg)) return failure();
-    if (p.parseEqual()) return failure();
-    if (p.parseOperand(src)) return failure();
-    if (p.parseColon()) return failure();
-    if (p.parseType(type)) return failure();
+static ParseResult parseCapture(OpAsmParser &p,
+                                OpAsmParser::UnresolvedOperand &arg,
+                                OpAsmParser::UnresolvedOperand &src,
+                                Type &type) {
+  // ssa-id `=` ssa-id `:` type
+  if (p.parseOperand(arg))
+    return failure();
+  if (p.parseEqual())
+    return failure();
+  if (p.parseOperand(src))
+    return failure();
+  if (p.parseColon())
+    return failure();
+  if (p.parseType(type))
+    return failure();
 
-    return success();
+  return success();
 }
 
 /// Parses a comma-separated list of zero or more captured SSA operands.
 ///
 /// Format:
 ///     `(` [ capture { `,` capture } ] `)`
-static ParseResult parseCaptures(
-    OpAsmParser &p,
-    SmallVectorImpl<OpAsmParser::Argument> &args,
-    SmallVectorImpl<Value> &srcs)
-{
-    // `(` [ capture { `,` capture } ] `)`
-    return p.parseCommaSeparatedList(
-        OpAsmParser::Delimiter::Paren,
-        [&]() -> ParseResult {
-            auto &arg = args.emplace_back();
-            OpAsmParser::UnresolvedOperand src;
-            if (parseCapture(p, arg.ssaName, src, arg.type)) return failure();
-            if (p.resolveOperand(src, arg.type, srcs)) return failure();
-            return success();
-        });
+static ParseResult parseCaptures(OpAsmParser &p,
+                                 SmallVectorImpl<OpAsmParser::Argument> &args,
+                                 SmallVectorImpl<Value> &srcs) {
+  // `(` [ capture { `,` capture } ] `)`
+  return p.parseCommaSeparatedList(
+      OpAsmParser::Delimiter::Paren, [&]() -> ParseResult {
+        auto &arg = args.emplace_back();
+        OpAsmParser::UnresolvedOperand src;
+        if (parseCapture(p, arg.ssaName, src, arg.type))
+          return failure();
+        if (p.resolveOperand(src, arg.type, srcs))
+          return failure();
+        return success();
+      });
 }
-
 
 ParseResult SubgraphOp::parse(OpAsmParser &p, OperationState &state) {
   SmallVector<OpAsmParser::Argument> captureArgs;
 
   // (%arg0 = %capture0 : type, ...)
-  if (parseCaptures(p, captureArgs, state.operands)) return failure();
+  if (parseCaptures(p, captureArgs, state.operands))
+    return failure();
 
   // attr-dict-with-keyword
   if (p.parseOptionalAttrDictWithKeyword(state.attributes))
@@ -767,17 +768,18 @@ LogicalResult SubgraphOp::verify() {
     if (yield.getOperand(0).getType() != getResult().getType())
       return yield.emitOpError("type of yield operand (")
              << yield.getOperand(0).getType()
-             << ") does not match result type (" << getResult().getType() << ")";
+             << ") does not match result type (" << getResult().getType()
+             << ")";
   }
 
   return success();
 }
 
-using BodyBuilder = void(OpBuilder &, Location, BlockAndValueMapping &);
+using BodyBuilder = void(OpBuilder &, Location, IRMapping &);
 
-void SubgraphOp::build(OpBuilder &builder, OperationState &state, Type resultType,
-                    ValueRange captures,
-                    function_ref<BodyBuilder> bodyBuilder) {
+void SubgraphOp::build(OpBuilder &builder, OperationState &state,
+                       Type resultType, ValueRange captures,
+                       function_ref<BodyBuilder> bodyBuilder) {
   if (resultType)
     state.types.push_back(resultType);
 
@@ -797,7 +799,7 @@ void SubgraphOp::build(OpBuilder &builder, OperationState &state, Type resultTyp
   auto body =
       builder.createBlock(region, region->end(), captureTypes, captureLocs);
 
-  BlockAndValueMapping captureMapping;
+  IRMapping captureMapping;
   for (unsigned idx = 0; idx < captures.size(); ++idx) {
     captureMapping.map(state.operands[idx], body->getArgument(idx));
   }
@@ -805,8 +807,8 @@ void SubgraphOp::build(OpBuilder &builder, OperationState &state, Type resultTyp
 }
 
 void SubgraphOp::build(OpBuilder &builder, OperationState &state,
-                    ValueRange captures,
-                    function_ref<BodyBuilder> bodyBuilder) {
+                       ValueRange captures,
+                       function_ref<BodyBuilder> bodyBuilder) {
   build(builder, state, Type{}, captures, bodyBuilder);
 }
 
@@ -845,10 +847,11 @@ struct DropUnusedResult : OpRewritePattern<SubgraphOp> {
 
     // Replace this op with a new op that does not have any results.
     auto newOp = rewriter.create<SubgraphOp>(op.getLoc(), op.getCaptures());
-    BlockAndValueMapping removedArgs;
+    IRMapping removedArgs;
     op.getBody().cloneInto(&newOp.getBodyRegion(), removedArgs);
     rewriter.setInsertionPointToEnd(&newOp.getBody().front());
-    rewriter.replaceOpWithNewOp<YieldOp>(newOp.getBody().front().getTerminator());
+    rewriter.replaceOpWithNewOp<YieldOp>(
+        newOp.getBody().front().getTerminator());
     rewriter.eraseOp(op);
 
     return success();
@@ -880,8 +883,9 @@ struct EraseEmptySubgraph : OpRewritePattern<SubgraphOp> {
 } // namespace
 
 void SubgraphOp::getCanonicalizationPatterns(RewritePatternSet &results,
-                                          MLIRContext *context) {
-  results.add<DropUnusedCaptures, DropUnusedResult, EraseEmptySubgraph>(context);
+                                             MLIRContext *context) {
+  results.add<DropUnusedCaptures, DropUnusedResult, EraseEmptySubgraph>(
+      context);
 }
 
 OperatorClass SubgraphOp::getOperatorClass() { return OperatorClass::None; }
@@ -935,9 +939,9 @@ OperandRange SubgraphOp::getSuccessorEntryOperands(Optional<unsigned> index) {
   return getCaptures();
 }
 
-void SubgraphOp::getSuccessorRegions(Optional<unsigned> index,
-                                  ArrayRef<Attribute> operands,
-                                  SmallVectorImpl<RegionSuccessor> &regions) {
+void SubgraphOp::getSuccessorRegions(
+    Optional<unsigned> index, ArrayRef<Attribute> operands,
+    SmallVectorImpl<RegionSuccessor> &regions) {
   if (index.has_value()) {
     assert(index.value() == 0 && "invalid region index");
 
@@ -2456,7 +2460,7 @@ struct OperatorClassInterfaceFallback
     // Known ops
     //
 
-    if (mlir::detail::isConstantLike(op) || isa<tensor::EmptyOp>(op))
+    if (matchPattern(op, m_Constant()) || isa<tensor::EmptyOp>(op))
       return OperatorClass::Constant;
     if (isa<ApplyBias2DFchwOp, tensor::SplatOp, linalg::BroadcastBias2DFchwOp,
             linalg::FillOp>(op))

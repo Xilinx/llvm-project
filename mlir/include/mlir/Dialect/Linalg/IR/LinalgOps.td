@@ -159,10 +159,10 @@ def Linalg_SubgraphOp
     OpBuilder<(ins
       "Type":$resultType,
       "ValueRange":$captures,
-      CArg<"function_ref<void(OpBuilder &, Location, BlockAndValueMapping &)>", "nullptr">:$bodyBuilder)>,
+      CArg<"function_ref<void(OpBuilder &, Location, IRMapping &)>", "nullptr">:$bodyBuilder)>,
     OpBuilder<(ins
       "ValueRange":$captures,
-      CArg<"function_ref<void(OpBuilder &, Location, BlockAndValueMapping &)>", "nullptr">:$bodyBuilder)>
+      CArg<"function_ref<void(OpBuilder &, Location, IRMapping &)>", "nullptr">:$bodyBuilder)>
   ];
   let skipDefaultBuilders = 1;
 
@@ -171,15 +171,15 @@ def Linalg_SubgraphOp
       return getBody().getArguments();
     }
 
-    BlockAndValueMapping getCaptureMapping() {
-      BlockAndValueMapping result;
+    IRMapping getCaptureMapping() {
+      IRMapping result;
       for (unsigned idx = 0; idx < getCaptures().size(); ++idx) {
         result.map(getCaptures()[idx], getCaptureArgs()[idx]);
       }
       return result;
     }
-    BlockAndValueMapping getUnCaptureMapping() {
-      BlockAndValueMapping result;
+    IRMapping getUnCaptureMapping() {
+      IRMapping result;
       for (unsigned idx = 0; idx < getCaptures().size(); ++idx) {
         result.map(getCaptureArgs()[idx], getCaptures()[idx]);
       }
