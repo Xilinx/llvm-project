@@ -17,8 +17,12 @@ set(TARGET_LIBC_ENTRYPOINTS
     libc.src.ctype.tolower
     libc.src.ctype.toupper
 
+    # errno.h entrypoints
+    libc.src.errno.errno
+
     # string.h entrypoints
     libc.src.string.bcmp
+    libc.src.string.bcopy
     libc.src.string.bzero
     libc.src.string.memccpy
     libc.src.string.memchr
@@ -30,6 +34,8 @@ set(TARGET_LIBC_ENTRYPOINTS
     libc.src.string.memset
     libc.src.string.stpcpy
     libc.src.string.stpncpy
+    libc.src.string.strcasecmp
+    libc.src.string.strcasestr
     libc.src.string.strcat
     libc.src.string.strchr
     libc.src.string.strcmp
@@ -38,6 +44,7 @@ set(TARGET_LIBC_ENTRYPOINTS
     libc.src.string.strlcat
     libc.src.string.strlcpy
     libc.src.string.strlen
+    libc.src.string.strncasecmp
     libc.src.string.strncat
     libc.src.string.strncmp
     libc.src.string.strncpy

@@ -10,11 +10,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "CodeGenTarget.h"
+#include "CodeGenHwModes.h"
 #include "CodeGenSchedule.h"
+#include "CodeGenTarget.h"
 #include "PredicateExpander.h"
-#include "llvm/ADT/SmallPtrSet.h"
+#include "TableGenBackends.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/MC/MCInstrItineraries.h"
@@ -1862,7 +1864,7 @@ void SubtargetEmitter::run(raw_ostream &OS) {
   if (NumFeatures)
     OS << Target << "FeatureKV, ";
   else
-    OS << "None, ";
+    OS << "std::nullopt, ";
   if (NumProcs)
     OS << Target << "SubTypeKV, ";
   else
@@ -1953,11 +1955,11 @@ void SubtargetEmitter::run(raw_ostream &OS) {
      << "StringRef TuneCPU, StringRef FS)\n"
      << "  : TargetSubtargetInfo(TT, CPU, TuneCPU, FS, ";
   if (NumFeatures)
-    OS << "makeArrayRef(" << Target << "FeatureKV, " << NumFeatures << "), ";
+    OS << "ArrayRef(" << Target << "FeatureKV, " << NumFeatures << "), ";
   else
-    OS << "None, ";
+    OS << "std::nullopt, ";
   if (NumProcs)
-    OS << "makeArrayRef(" << Target << "SubTypeKV, " << NumProcs << "), ";
+    OS << "ArrayRef(" << Target << "SubTypeKV, " << NumProcs << "), ";
   else
     OS << "None, ";
   OS << '\n'; OS.indent(24);

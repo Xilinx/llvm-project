@@ -1,6 +1,18 @@
 add_subdirectory(linux)
 
 add_header(
+  generic_error_number_macros
+  HDR
+    generic-error-number-macros.h
+)
+
+add_header(
+  null_macro
+  HDR
+    null-macro.h
+)
+
+add_header(
   fcntl_macros
   HDR
     fcntl-macros.h
@@ -93,6 +105,14 @@ add_header(
   sys_select_macros
   HDR
     sys-select-macros.h
+)
+
+add_header(
+  sys_socket_macros
+  HDR
+    sys-socket-macros.h
+  DEPENDS
+    .linux.sys_socket_macros
 )
 
 add_header(

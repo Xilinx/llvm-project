@@ -1130,7 +1130,8 @@ void llvm::thinLTOFinalizeInModule(Module &TheModule,
     // It is illegal for comdats to contain declarations.
     auto *GO = dyn_cast_or_null<GlobalObject>(&GV);
     if (GO && GO->isDeclarationForLinker() && GO->hasComdat()) {
-      NonPrevailingComdats.insert(GO->getComdat());
+      if (GO->getComdat()->getName() == GO->getName())
+        NonPrevailingComdats.insert(GO->getComdat());
       GO->setComdat(nullptr);
     }
   };
@@ -1372,8 +1373,9 @@ Expected<bool> FunctionImporter::importFunctions(
     if (Error Err = Mover.move(std::move(SrcModule),
                                GlobalsToImport.getArrayRef(), nullptr,
                                /*IsPerformingImport=*/true))
-      report_fatal_error(Twine("Function Import: link error: ") +
-                         toString(std::move(Err)));
+      return createStringError(errc::invalid_argument,
+                               Twine("Function Import: link error: ") +
+                                   toString(std::move(Err)));
 
     ImportedCount += GlobalsToImport.size();
     NumImportedModules++;

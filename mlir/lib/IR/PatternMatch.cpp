@@ -7,7 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/IRMapping.h"
 
 using namespace mlir;
 
@@ -217,6 +217,10 @@ void PDLPatternModule::registerRewriteFunction(StringRef name,
 // RewriterBase
 //===----------------------------------------------------------------------===//
 
+bool RewriterBase::Listener::classof(const OpBuilder::Listener *base) {
+  return base->getKind() == OpBuilder::ListenerBase::Kind::RewriterBaseListener;
+}
+
 RewriterBase::~RewriterBase() {
   // Out of line to provide a vtable anchor for the class.
 }
@@ -231,13 +235,14 @@ void RewriterBase::replaceOpWithIf(
   assert(op->getNumResults() == newValues.size() &&
          "incorrect number of values to replace operation");
 
-  // Notify the rewriter subclass that we're about to replace this root.
-  notifyRootReplaced(op, newValues);
+  // Notify the listener that we're about to replace this op.
+  if (auto *rewriteListener = dyn_cast_if_present<Listener>(listener))
+    rewriteListener->notifyOperationReplaced(op, newValues);
 
   // Replace each use of the results when the functor is true.
   bool replacedAllUses = true;
   for (auto it : llvm::zip(op->getResults(), newValues)) {
-    std::get<0>(it).replaceUsesWithIf(std::get<1>(it), functor);
+    replaceUsesWithIf(std::get<0>(it), std::get<1>(it), functor);
     replacedAllUses &= std::get<0>(it).use_empty();
   }
   if (allUsesReplaced)
@@ -259,14 +264,19 @@ void RewriterBase::replaceOpWithinBlock(Operation *op, ValueRange newValues,
 /// values. The number of provided values must match the number of results of
 /// the operation.
 void RewriterBase::replaceOp(Operation *op, ValueRange newValues) {
-  // Notify the rewriter subclass that we're about to replace this root.
-  notifyRootReplaced(op, newValues);
-
   assert(op->getNumResults() == newValues.size() &&
          "incorrect # of replacement values");
-  op->replaceAllUsesWith(newValues);
 
-  notifyOperationRemoved(op);
+  // Notify the listener that we're about to remove this op.
+  if (auto *rewriteListener = dyn_cast_if_present<Listener>(listener))
+    rewriteListener->notifyOperationReplaced(op, newValues);
+
+  // Replace results one-by-one. Also notifies the listener of modifications.
+  for (auto it : llvm::zip(op->getResults(), newValues))
+    replaceAllUsesWith(std::get<0>(it), std::get<1>(it));
+
+  if (auto *rewriteListener = dyn_cast_if_present<Listener>(listener))
+    rewriteListener->notifyOperationRemoved(op);
   op->erase();
 }
 
@@ -274,7 +284,8 @@ void RewriterBase::replaceOp(Operation *op, ValueRange newValues) {
 /// the given operation *must* be known to be dead.
 void RewriterBase::eraseOp(Operation *op) {
   assert(op->use_empty() && "expected 'op' to have no uses");
-  notifyOperationRemoved(op);
+  if (auto *rewriteListener = dyn_cast_if_present<Listener>(listener))
+    rewriteListener->notifyOperationRemoved(op);
   op->erase();
 }
 
@@ -284,6 +295,12 @@ void RewriterBase::eraseBlock(Block *block) {
     eraseOp(&op);
   }
   block->erase();
+}
+
+void RewriterBase::finalizeRootUpdate(Operation *op) {
+  // Notify the listener that the operation was modified.
+  if (auto *rewriteListener = dyn_cast_if_present<Listener>(listener))
+    rewriteListener->notifyOperationModified(op);
 }
 
 /// Merge the operations of block 'source' into the end of block 'dest'.
@@ -300,13 +317,24 @@ void RewriterBase::mergeBlocks(Block *source, Block *dest,
 
   // Replace all of the successor arguments with the provided values.
   for (auto it : llvm::zip(source->getArguments(), argValues))
-    std::get<0>(it).replaceAllUsesWith(std::get<1>(it));
+    replaceAllUsesWith(std::get<0>(it), std::get<1>(it));
 
   // Splice the operations of the 'source' block into the 'dest' block and erase
   // it.
   dest->getOperations().splice(dest->end(), source->getOperations());
   source->dropAllUses();
   source->erase();
+}
+
+/// Find uses of `from` and replace them with `to` if the `functor` returns
+/// true. It also marks every modified uses and notifies the rewriter that an
+/// in-place operation modification is about to happen.
+void RewriterBase::replaceUsesWithIf(Value from, Value to,
+                                     function_ref<bool(OpOperand &)> functor) {
+  for (OpOperand &operand : llvm::make_early_inc_range(from.getUses())) {
+    if (functor(operand))
+      updateRootInPlace(operand.getOwner(), [&]() { operand.set(to); });
+  }
 }
 
 // Merge the operations of block 'source' before the operation 'op'. Source
@@ -366,12 +394,12 @@ void RewriterBase::inlineRegionBefore(Region &region, Block *before) {
 /// control to the region and passing it the correct block arguments.
 void RewriterBase::cloneRegionBefore(Region &region, Region &parent,
                                      Region::iterator before,
-                                     BlockAndValueMapping &mapping) {
+                                     IRMapping &mapping) {
   region.cloneInto(&parent, before, mapping);
 }
 void RewriterBase::cloneRegionBefore(Region &region, Region &parent,
                                      Region::iterator before) {
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   cloneRegionBefore(region, parent, before, mapping);
 }
 void RewriterBase::cloneRegionBefore(Region &region, Block *before) {

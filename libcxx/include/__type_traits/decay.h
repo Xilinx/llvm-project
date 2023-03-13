@@ -42,7 +42,7 @@ public:
     typedef _LIBCPP_NODEBUG typename conditional
                      <
                          is_array<_Up>::value,
-                         __remove_extent_t<_Up>*,
+                         __add_pointer_t<__remove_extent_t<_Up> >,
                          typename conditional
                          <
                               is_function<_Up>::value,
@@ -62,7 +62,7 @@ public:
 };
 #endif // __has_builtin(__decay)
 
-#if _LIBCPP_STD_VER > 11
+#if _LIBCPP_STD_VER >= 14
 template <class _Tp> using decay_t = typename decay<_Tp>::type;
 #endif
 

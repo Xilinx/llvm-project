@@ -14,12 +14,20 @@
 #include "llvm/ADT/StringSet.h"
 #include "llvm/BinaryFormat/Wasm.h"
 #include "llvm/Support/CachePruning.h"
+#include <optional>
+
+namespace llvm::CodeGenOpt {
+enum Level : int;
+} // namespace llvm::CodeGenOpt
 
 namespace lld {
 namespace wasm {
 
 // For --unresolved-symbols.
 enum class UnresolvedPolicy { ReportError, Warn, Ignore, ImportDynamic };
+
+// For --build-id.
+enum class BuildIdKind { None, Fast, Sha1, Hexstring, Uuid };
 
 // This struct contains the global configuration for the linker.
 // Most fields are direct mapping from the command line options
@@ -39,12 +47,12 @@ struct Configuration {
   bool extendedConst;
   bool growableTable;
   bool gcSections;
-  llvm::Optional<std::pair<llvm::StringRef, llvm::StringRef>> memoryImport;
-  llvm::Optional<llvm::StringRef> memoryExport;
+  std::optional<std::pair<llvm::StringRef, llvm::StringRef>> memoryImport;
+  std::optional<llvm::StringRef> memoryExport;
   bool sharedMemory;
   bool importTable;
   bool importUndefined;
-  llvm::Optional<bool> is64;
+  std::optional<bool> is64;
   bool mergeDataSegments;
   bool pie;
   bool printGcSections;
@@ -62,10 +70,12 @@ struct Configuration {
   uint64_t zStackSize;
   unsigned ltoPartitions;
   unsigned ltoo;
+  llvm::CodeGenOpt::Level ltoCgo;
   unsigned optimize;
   llvm::StringRef thinLTOJobs;
   bool ltoDebugPassManager;
   UnresolvedPolicy unresolvedSymbols;
+  BuildIdKind buildId = BuildIdKind::None;
 
   llvm::StringRef entry;
   llvm::StringRef mapFile;
@@ -77,8 +87,9 @@ struct Configuration {
   std::vector<llvm::StringRef> requiredExports;
   llvm::SmallVector<llvm::StringRef, 0> searchPaths;
   llvm::CachePruningPolicy thinLTOCachePolicy;
-  llvm::Optional<std::vector<std::string>> features;
-  llvm::Optional<std::vector<std::string>> extraFeatures;
+  std::optional<std::vector<std::string>> features;
+  std::optional<std::vector<std::string>> extraFeatures;
+  llvm::SmallVector<uint8_t, 0> buildIdVector;
 
   // The following config options do not directly correspond to any
   // particular command line options.

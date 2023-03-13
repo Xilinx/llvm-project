@@ -55,8 +55,7 @@ module attributes {"test.name" = "Normal function call"} {
 module attributes {"test.name" = "Invoke call"} {
   // CHECK-LABEL: ---- CallGraph ----
   // CHECK: - Node : 'llvm.func' {{.*}} sym_name = "invokeLandingpad"
-  // CHECK-DAG: -- Call-Edge : 'llvm.func' {{.*}} sym_name = "foo"
-  // CHECK-DAG: -- Call-Edge : 'llvm.func' {{.*}} sym_name = "bar"
+  // CHECK-DAG: -- Call-Edge : <Unknown-Callee-Node>
 
   // CHECK: -- SCCs --
   llvm.mlir.global external constant @_ZTIi() : !llvm.ptr<i8>
@@ -78,7 +77,7 @@ module attributes {"test.name" = "Invoke call"} {
 
   ^bb1:
     %10 = llvm.landingpad cleanup (catch %3 : !llvm.ptr<ptr<i8>>) (catch %6 : !llvm.ptr<i8>) (filter %2 : !llvm.array<1 x i8>) : !llvm.struct<(ptr<i8>, i32)>
-    %11 = llvm.intr.eh.typeid.for %6 : i32
+    %11 = llvm.intr.eh.typeid.for %6 : (!llvm.ptr<i8>) -> i32
     llvm.resume %10 : !llvm.struct<(ptr<i8>, i32)>
 
   ^bb2:

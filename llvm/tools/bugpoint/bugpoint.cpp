@@ -121,10 +121,7 @@ static void AddOptimizationPasses(legacy::FunctionPassManager &FPM,
   Builder.OptLevel = OptLevel;
   Builder.SizeLevel = SizeLevel;
 
-  if (OptLevel > 1)
-    Builder.Inliner = createFunctionInliningPass(OptLevel, SizeLevel, false);
-  else
-    Builder.Inliner = createAlwaysInlinerLegacyPass();
+  Builder.Inliner = createAlwaysInlinerLegacyPass();
 
   Builder.populateFunctionPassManager(FPM);
   Builder.populateModulePassManager(FPM);
@@ -148,7 +145,6 @@ int main(int argc, char **argv) {
   initializeAnalysis(Registry);
   initializeTransformUtils(Registry);
   initializeInstCombine(Registry);
-  initializeAggressiveInstCombine(Registry);
   initializeTarget(Registry);
 
   if (std::getenv("bar") == (char*) -1) {

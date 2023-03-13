@@ -33,6 +33,7 @@ add_flang_library(flangFrontend
   FIRCodeGen
   FIRTransforms
   HLFIRDialect
+  HLFIRTransforms
   MLIRTransforms
   MLIRLLVMToLLVMIRTranslation
   MLIRSCFToControlFlow
@@ -47,6 +48,7 @@ add_flang_library(flangFrontend
   Option
   Support
   Target
+  TargetParser
   FrontendOpenACC
   FrontendOpenMP
 )

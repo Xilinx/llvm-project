@@ -167,6 +167,8 @@ private:
 
   SDValue performUCharToFloatCombine(SDNode *N,
                                      DAGCombinerInfo &DCI) const;
+  SDValue performFCopySignCombine(SDNode *N, DAGCombinerInfo &DCI) const;
+
   SDValue performSHLPtrCombine(SDNode *N,
                                unsigned AS,
                                EVT MemVT,
@@ -291,14 +293,14 @@ public:
   bool allowsMisalignedMemoryAccessesImpl(
       unsigned Size, unsigned AddrSpace, Align Alignment,
       MachineMemOperand::Flags Flags = MachineMemOperand::MONone,
-      bool *IsFast = nullptr) const;
+      unsigned *IsFast = nullptr) const;
 
   bool allowsMisalignedMemoryAccesses(
       LLT Ty, unsigned AddrSpace, Align Alignment,
       MachineMemOperand::Flags Flags = MachineMemOperand::MONone,
-      bool *IsFast = nullptr) const override {
+      unsigned *IsFast = nullptr) const override {
     if (IsFast)
-      *IsFast = false;
+      *IsFast = 0;
     return allowsMisalignedMemoryAccessesImpl(Ty.getSizeInBits(), AddrSpace,
                                               Alignment, Flags, IsFast);
   }
@@ -306,7 +308,7 @@ public:
   bool allowsMisalignedMemoryAccesses(
       EVT VT, unsigned AS, Align Alignment,
       MachineMemOperand::Flags Flags = MachineMemOperand::MONone,
-      bool *IsFast = nullptr) const override;
+      unsigned *IsFast = nullptr) const override;
 
   EVT getOptimalMemOpType(const MemOp &Op,
                           const AttributeList &FuncAttributes) const override;
@@ -396,7 +398,6 @@ public:
   EmitInstrWithCustomInserter(MachineInstr &MI,
                               MachineBasicBlock *BB) const override;
 
-  bool hasBitPreservingFPLogic(EVT VT) const override;
   bool hasAtomicFaddRtnForTy(SDValue &Op) const;
   bool enableAggressiveFMAFusion(EVT VT) const override;
   bool enableAggressiveFMAFusion(LLT Ty) const override;

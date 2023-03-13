@@ -15,6 +15,7 @@
 #include "bolt/RuntimeLibs/InstrumentationRuntimeLibrary.h"
 #include "bolt/Utils/Utils.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/RWMutex.h"
 #include <stack>
 
 #define DEBUG_TYPE "bolt-instrumentation"
@@ -181,19 +182,16 @@ Instrumentation::createInstrumentationSnippet(BinaryContext &BC, bool IsLeaf) {
   return CounterInstrs;
 }
 
-namespace {
-
 // Helper instruction sequence insertion function
-BinaryBasicBlock::iterator insertInstructions(InstructionListType &Instrs,
-                                              BinaryBasicBlock &BB,
-                                              BinaryBasicBlock::iterator Iter) {
+static BinaryBasicBlock::iterator
+insertInstructions(InstructionListType &Instrs, BinaryBasicBlock &BB,
+                   BinaryBasicBlock::iterator Iter) {
   for (MCInst &NewInst : Instrs) {
     Iter = BB.insertInstruction(Iter, NewInst);
     ++Iter;
   }
   return Iter;
 }
-} // namespace
 
 void Instrumentation::instrumentLeafNode(BinaryBasicBlock &BB,
                                          BinaryBasicBlock::iterator Iter,
@@ -217,7 +215,7 @@ void Instrumentation::instrumentIndirectTarget(BinaryBasicBlock &BB,
   BinaryContext &BC = FromFunction.getBinaryContext();
   bool IsTailCall = BC.MIB->isTailCall(*Iter);
   InstructionListType CounterInstrs = BC.MIB->createInstrumentedIndirectCall(
-      *Iter, IsTailCall,
+      std::move(*Iter),
       IsTailCall ? IndTailCallHandlerExitBBFunction->getSymbol()
                  : IndCallHandlerExitBBFunction->getSymbol(),
       IndCallSiteID, &*BC.Ctx);
@@ -298,7 +296,7 @@ void Instrumentation::instrumentFunction(BinaryFunction &Function,
 
   FunctionDescription *FuncDesc = nullptr;
   {
-    std::unique_lock<std::shared_timed_mutex> L(FDMutex);
+    std::unique_lock<llvm::sys::RWMutex> L(FDMutex);
     Summary->FunctionDescriptions.emplace_back();
     FuncDesc = &Summary->FunctionDescriptions.back();
   }
@@ -359,12 +357,13 @@ void Instrumentation::instrumentFunction(BinaryFunction &Function,
   // instructions to protect the red zone
   bool IsLeafFunction = true;
   DenseSet<const BinaryBasicBlock *> InvokeBlocks;
-  for (auto BBI = Function.begin(), BBE = Function.end(); BBI != BBE; ++BBI) {
-    for (auto I = BBI->begin(), E = BBI->end(); I != E; ++I) {
-      if (BC.MIB->isCall(*I)) {
-        if (BC.MIB->isInvoke(*I))
-          InvokeBlocks.insert(&*BBI);
-        IsLeafFunction = false;
+  for (const BinaryBasicBlock &BB : Function) {
+    for (const MCInst &Inst : BB) {
+      if (BC.MIB->isCall(Inst)) {
+        if (BC.MIB->isInvoke(Inst))
+          InvokeBlocks.insert(&BB);
+        if (!BC.MIB->isTailCall(Inst))
+          IsLeafFunction = false;
       }
     }
   }

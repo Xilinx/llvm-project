@@ -33,18 +33,6 @@ FunctionPass *createAlignmentFromAssumptionsPass();
 
 //===----------------------------------------------------------------------===//
 //
-// AnnotationRemarks - Emit remarks for !annotation metadata.
-//
-FunctionPass *createAnnotationRemarksLegacyPass();
-
-//===----------------------------------------------------------------------===//
-//
-// SCCP - Sparse conditional constant propagation.
-//
-FunctionPass *createSCCPPass();
-
-//===----------------------------------------------------------------------===//
-//
 // RedundantDbgInstElimination - This pass removes redundant dbg intrinsics
 // without modifying the CFG of the function.  It is a FunctionPass.
 //
@@ -111,7 +99,7 @@ FunctionPass *createBitTrackingDCEPass();
 //
 // SROA - Replace aggregates or pieces of aggregates with scalar SSA values.
 //
-FunctionPass *createSROAPass();
+FunctionPass *createSROAPass(bool PreserveCFG = true);
 
 //===----------------------------------------------------------------------===//
 //
@@ -151,19 +139,6 @@ Pass *createLoopPredicationPass();
 
 //===----------------------------------------------------------------------===//
 //
-// LoopInterchange - This pass interchanges loops to provide a more
-// cache-friendly memory access patterns.
-//
-Pass *createLoopInterchangePass();
-
-//===----------------------------------------------------------------------===//
-//
-// LoopFlatten - This pass flattens nested loops into a single loop.
-//
-FunctionPass *createLoopFlattenPass();
-
-//===----------------------------------------------------------------------===//
-//
 // LoopStrengthReduce - This pass is strength reduces GEP instructions that use
 // a loop's canonical induction variable as one of their indices.
 //
@@ -191,33 +166,9 @@ Pass *createSimpleLoopUnrollPass(int OptLevel = 2, bool OnlyWhenForced = false,
 
 //===----------------------------------------------------------------------===//
 //
-// LoopUnrollAndJam - This pass is a simple loop unroll and jam pass.
-//
-Pass *createLoopUnrollAndJamPass(int OptLevel = 2);
-
-//===----------------------------------------------------------------------===//
-//
-// LoopReroll - This pass is a simple loop rerolling pass.
-//
-Pass *createLoopRerollPass();
-
-//===----------------------------------------------------------------------===//
-//
 // LoopRotate - This pass is a simple loop rotating pass.
 //
 Pass *createLoopRotatePass(int MaxHeaderSize = -1, bool PrepareForLTO = false);
-
-//===----------------------------------------------------------------------===//
-//
-// LoopIdiom - This pass recognizes and replaces idioms in loops.
-//
-Pass *createLoopIdiomPass();
-
-//===----------------------------------------------------------------------===//
-//
-// LoopVersioningLICM - This pass is a loop versioning pass for LICM.
-//
-Pass *createLoopVersioningLICMPass();
 
 //===----------------------------------------------------------------------===//
 //
@@ -322,12 +273,6 @@ FunctionPass *createNewGVNPass();
 
 //===----------------------------------------------------------------------===//
 //
-// DivRemPairs - Hoist/decompose integer division and remainder instructions.
-//
-FunctionPass *createDivRemPairsPass();
-
-//===----------------------------------------------------------------------===//
-//
 // MemCpyOpt - This pass performs optimizations related to eliminating memcpy
 // calls and/or combining multiple stores into memset's.
 //
@@ -335,23 +280,9 @@ FunctionPass *createMemCpyOptPass();
 
 //===----------------------------------------------------------------------===//
 //
-// LoopDeletion - This pass performs DCE of non-infinite loops that it
-// can prove are dead.
-//
-Pass *createLoopDeletionPass();
-
-//===----------------------------------------------------------------------===//
-//
 // ConstantHoisting - This pass prepares a function for expensive constants.
 //
 FunctionPass *createConstantHoistingPass();
-
-//===----------------------------------------------------------------------===//
-//
-// ConstraintElimination - This pass eliminates conditions based on found
-//                         constraints.
-//
-FunctionPass *createConstraintEliminationPass();
 
 //===----------------------------------------------------------------------===//
 //
@@ -493,30 +424,6 @@ FunctionPass *createNaryReassociatePass();
 
 //===----------------------------------------------------------------------===//
 //
-// LoopDistribute - Distribute loops.
-//
-FunctionPass *createLoopDistributePass();
-
-//===----------------------------------------------------------------------===//
-//
-// LoopFuse - Fuse loops.
-//
-FunctionPass *createLoopFusePass();
-
-//===----------------------------------------------------------------------===//
-//
-// LoopLoadElimination - Perform loop-aware load elimination.
-//
-FunctionPass *createLoopLoadEliminationPass();
-
-//===----------------------------------------------------------------------===//
-//
-// LoopVersioning - Perform loop multi-versioning.
-//
-FunctionPass *createLoopVersioningPass();
-
-//===----------------------------------------------------------------------===//
-//
 // LoopDataPrefetch - Perform data prefetching in loops.
 //
 FunctionPass *createLoopDataPrefetchPass();
@@ -534,13 +441,6 @@ FunctionPass *createLibCallsShrinkWrapPass();
 // primarily to help other loop passes.
 //
 Pass *createLoopSimplifyCFGPass();
-
-//===----------------------------------------------------------------------===//
-//
-// WarnMissedTransformations - This pass emits warnings for leftover forced
-// transformations.
-//
-Pass *createWarnMissedTransformationsPass();
 
 //===----------------------------------------------------------------------===//
 //

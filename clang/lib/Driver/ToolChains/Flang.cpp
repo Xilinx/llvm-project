@@ -56,7 +56,15 @@ void Flang::addOtherOptions(const ArgList &Args, ArgStringList &CmdArgs) const {
                   {options::OPT_module_dir, options::OPT_fdebug_module_writer,
                    options::OPT_fintrinsic_modules_path, options::OPT_pedantic,
                    options::OPT_std_EQ, options::OPT_W_Joined,
-                   options::OPT_fconvert_EQ, options::OPT_fpass_plugin_EQ});
+                   options::OPT_fconvert_EQ, options::OPT_fpass_plugin_EQ,
+                   options::OPT_funderscoring, options::OPT_fno_underscoring});
+
+  Arg *stackArrays =
+      Args.getLastArg(options::OPT_Ofast, options::OPT_fstack_arrays,
+                      options::OPT_fno_stack_arrays);
+  if (stackArrays &&
+      !stackArrays->getOption().matches(options::OPT_fno_stack_arrays))
+    CmdArgs.push_back("-fstack-arrays");
 }
 
 void Flang::addPicOptions(const ArgList &Args, ArgStringList &CmdArgs) const {
@@ -78,6 +86,32 @@ void Flang::addPicOptions(const ArgList &Args, ArgStringList &CmdArgs) const {
     if (IsPIE)
       CmdArgs.push_back("-pic-is-pie");
   }
+}
+
+void Flang::addTargetOptions(const ArgList &Args,
+                             ArgStringList &CmdArgs) const {
+  const ToolChain &TC = getToolChain();
+  const llvm::Triple &Triple = TC.getEffectiveTriple();
+  const Driver &D = TC.getDriver();
+
+  std::string CPU = getCPUName(D, Args, Triple);
+  if (!CPU.empty()) {
+    CmdArgs.push_back("-target-cpu");
+    CmdArgs.push_back(Args.MakeArgString(CPU));
+  }
+
+  // Add the target features.
+  switch (TC.getArch()) {
+  default:
+    break;
+  case llvm::Triple::aarch64:
+    [[fallthrough]];
+  case llvm::Triple::x86_64:
+    getTargetFeatures(D, Triple, Args, CmdArgs, /*ForAs*/ false);
+    break;
+  }
+
+  // TODO: Add target specific flags, ABI, mtune option etc.
 }
 
 static void addFloatingPointOptions(const Driver &D, const ArgList &Args,
@@ -150,10 +184,41 @@ static void addFloatingPointOptions(const Driver &D, const ArgList &Args,
     case options::OPT_fno_reciprocal_math:
       ReciprocalMath = false;
       break;
+    case options::OPT_Ofast:
+      [[fallthrough]];
+    case options::OPT_ffast_math:
+      HonorINFs = false;
+      HonorNaNs = false;
+      AssociativeMath = true;
+      ReciprocalMath = true;
+      ApproxFunc = true;
+      SignedZeros = false;
+      FPContract = "fast";
+      break;
+    case options::OPT_fno_fast_math:
+      HonorINFs = true;
+      HonorNaNs = true;
+      AssociativeMath = false;
+      ReciprocalMath = false;
+      ApproxFunc = false;
+      SignedZeros = true;
+      // -fno-fast-math should undo -ffast-math so I return FPContract to the
+      // default. It is important to check it is "fast" (the default) so that
+      // --ffp-contract=off -fno-fast-math --> -ffp-contract=off
+      if (FPContract == "fast")
+        FPContract = "";
+      break;
     }
 
     // If we handled this option claim it
     A->claim();
+  }
+
+  if (!HonorINFs && !HonorNaNs && AssociativeMath && ReciprocalMath &&
+      ApproxFunc && !SignedZeros &&
+      (FPContract == "fast" || FPContract == "")) {
+    CmdArgs.push_back("-ffast-math");
+    return;
   }
 
   if (!FPContract.empty())
@@ -243,6 +308,9 @@ void Flang::ConstructJob(Compilation &C, const JobAction &JA,
   // Floating point related options
   addFloatingPointOptions(D, Args, CmdArgs);
 
+  // Add target args, features, etc.
+  addTargetOptions(Args, CmdArgs);
+
   // Add other compile options
   addOtherOptions(Args, CmdArgs);
 
@@ -261,11 +329,20 @@ void Flang::ConstructJob(Compilation &C, const JobAction &JA,
     A->render(Args, CmdArgs);
   }
 
+  // Remove any unsupported gfortran diagnostic options
+  for (const Arg *A : Args.filtered(options::OPT_flang_ignored_w_Group)) {
+    A->claim();
+    D.Diag(diag::warn_drv_unsupported_diag_option_for_flang)
+        << A->getOption().getName();
+  }
+
   // Optimization level for CodeGen.
   if (const Arg *A = Args.getLastArg(options::OPT_O_Group)) {
     if (A->getOption().matches(options::OPT_O4)) {
       CmdArgs.push_back("-O3");
       D.Diag(diag::warn_O4_is_O3);
+    } else if (A->getOption().matches(options::OPT_Ofast)) {
+      CmdArgs.push_back("-O3");
     } else {
       A->render(Args, CmdArgs);
     }

@@ -247,9 +247,13 @@ void TextOutputSection::finalize() {
     // from the current position to the position where the thunks are inserted
     // grows. So leave room for a bunch of thunks.
     unsigned slop = 256 * thunkSize;
-    while (finalIdx < endIdx && addr + size + inputs[finalIdx]->getSize() <
-                                    isecVA + forwardBranchRange - slop)
+    while (finalIdx < endIdx) {
+      uint64_t expectedNewSize = alignTo(addr + size, inputs[finalIdx]->align) +
+                               inputs[finalIdx]->getSize();
+      if (expectedNewSize >= isecVA + forwardBranchRange - slop)
+        break;
       finalizeOne(inputs[finalIdx++]);
+    }
 
     if (!isec->hasCallSites)
       continue;

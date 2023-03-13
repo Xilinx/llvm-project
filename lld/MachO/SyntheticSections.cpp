@@ -105,7 +105,7 @@ static uint32_t cpuSubtype() {
   if (config->outputType == MH_EXECUTE && !config->staticLink &&
       target->cpuSubtype == CPU_SUBTYPE_X86_64_ALL &&
       config->platform() == PLATFORM_MACOS &&
-      config->platformInfo.minimum >= VersionTuple(10, 5))
+      config->platformInfo.target.MinDeployment >= VersionTuple(10, 5))
     subtype |= CPU_SUBTYPE_LIB64;
 
   return subtype;
@@ -1641,7 +1641,7 @@ void CStringSection::finalizeContents() {
       // See comment above DeduplicatedCStringSection for how alignment is
       // handled.
       uint32_t pieceAlign = 1
-                            << countTrailingZeros(isec->align | piece.inSecOff);
+                            << llvm::countr_zero(isec->align | piece.inSecOff);
       offset = alignTo(offset, pieceAlign);
       piece.outSecOff = offset;
       isec->isFinal = true;
@@ -1698,7 +1698,7 @@ void DeduplicatedCStringSection::finalizeContents() {
         continue;
       auto s = isec->getCachedHashStringRef(i);
       assert(isec->align != 0);
-      uint8_t trailingZeros = countTrailingZeros(isec->align | piece.inSecOff);
+      uint8_t trailingZeros = llvm::countr_zero(isec->align | piece.inSecOff);
       auto it = stringOffsetMap.insert(
           std::make_pair(s, StringOffset(trailingZeros)));
       if (!it.second && it.first->second.trailingZeros < trailingZeros)

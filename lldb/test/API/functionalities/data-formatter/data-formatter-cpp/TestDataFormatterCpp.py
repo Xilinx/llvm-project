@@ -102,17 +102,17 @@ class CppDataFormatterTestCase(TestBase):
 
         # check that rdar://problem/10011145 (Standard summary format for
         # char[] doesn't work as the result of "expr".) is solved
-        self.expect("p strarr",
+        self.expect("expression strarr",
                     substrs=['arr = "Hello world!'])
 
         self.expect("frame variable strptr",
                     substrs=['ptr = "Hello world!"'])
 
-        self.expect("p strptr",
+        self.expect("expression strptr",
                     substrs=['ptr = "Hello world!"'])
 
         self.expect(
-            "p (char*)\"1234567890123456789012345678901234567890123456789012345678901234ABC\"",
+            "expression (char*)\"1234567890123456789012345678901234567890123456789012345678901234ABC\"",
             substrs=[
                 '(char *) $',
                 ' = ptr = ',
@@ -285,3 +285,16 @@ class CppDataFormatterTestCase(TestBase):
             matching=False,
             substrs=['(int) iAmInt = 0x00000001'])
         self.expect("frame variable iAmInt", substrs=['(int) iAmInt = 1'])
+
+        # Check that pointer to members are correctly formatted
+        self.expect(
+            "frame variable member_ptr",
+            substrs=['member_ptr = 0x'])
+        self.expect(
+            "frame variable member_func_ptr",
+            substrs=['member_func_ptr = 0x',
+                     '(a.out`IUseCharStar::member_func(int) at main.cpp:61)'])
+        self.expect(
+            "frame variable ref_to_member_func_ptr",
+            substrs=['ref_to_member_func_ptr = 0x',
+                     '(a.out`IUseCharStar::member_func(int) at main.cpp:61)'])

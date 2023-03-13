@@ -14,6 +14,7 @@
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/StringExtras.h"
@@ -50,30 +51,76 @@ using namespace llvm;
 static_assert(APFloatBase::integerPartWidth % 4 == 0, "Part width must be divisible by 4!");
 
 namespace llvm {
-  /* Represents floating point arithmetic semantics.  */
-  struct fltSemantics {
-    /* The largest E such that 2^E is representable; this matches the
-       definition of IEEE 754.  */
-    APFloatBase::ExponentType maxExponent;
 
-    /* The smallest E such that 2^E is a normalized number; this
-       matches the definition of IEEE 754.  */
-    APFloatBase::ExponentType minExponent;
+// How the nonfinite values Inf and NaN are represented.
+enum class fltNonfiniteBehavior {
+  // Represents standard IEEE 754 behavior. A value is nonfinite if the
+  // exponent field is all 1s. In such cases, a value is Inf if the
+  // significand bits are all zero, and NaN otherwise
+  IEEE754,
 
-    /* Number of bits in the significand.  This includes the integer
-       bit.  */
-    unsigned int precision;
+  // This behavior is present in the Float8ExMyFN* types (Float8E4M3FN,
+  // Float8E5M2FNUZ, and Float8E4M3FNUZ). There is no representation for Inf,
+  // and operations that would ordinarily produce Inf produce NaN instead.
+  // The details of the NaN representation(s) in this form are determined by the
+  // `fltNanEncoding` enum. We treat all NaNs as quiet, as the available
+  // encodings do not distinguish between signalling and quiet NaN.
+  NanOnly,
+};
 
-    /* Number of bits actually used in the semantics. */
-    unsigned int sizeInBits;
+// How NaN values are represented. This is curently only used in combination
+// with fltNonfiniteBehavior::NanOnly, and using a variant other than IEEE
+// while having IEEE non-finite behavior is liable to lead to unexpected
+// results.
+enum class fltNanEncoding {
+  // Represents the standard IEEE behavior where a value is NaN if its
+  // exponent is all 1s and the significand is non-zero.
+  IEEE,
 
-    // Returns true if any number described by this semantics can be precisely
-    // represented by the specified semantics.
-    bool isRepresentableBy(const fltSemantics &S) const {
-      return maxExponent <= S.maxExponent && minExponent >= S.minExponent &&
-             precision <= S.precision;
-    }
-  };
+  // Represents the behavior in the Float8E4M3 floating point type where NaN is
+  // represented by having the exponent and mantissa set to all 1s.
+  // This behavior matches the FP8 E4M3 type described in
+  // https://arxiv.org/abs/2209.05433. We treat both signed and unsigned NaNs
+  // as non-signalling, although the paper does not state whether the NaN
+  // values are signalling or not.
+  AllOnes,
+
+  // Represents the behavior in Float8E{5,4}E{2,3}FNUZ floating point types
+  // where NaN is represented by a sign bit of 1 and all 0s in the exponent
+  // and mantissa (i.e. the negative zero encoding in a IEEE float). Since
+  // there is only one NaN value, it is treated as quiet NaN. This matches the
+  // behavior described in https://arxiv.org/abs/2206.02915 .
+  NegativeZero,
+};
+
+/* Represents floating point arithmetic semantics.  */
+struct fltSemantics {
+  /* The largest E such that 2^E is representable; this matches the
+     definition of IEEE 754.  */
+  APFloatBase::ExponentType maxExponent;
+
+  /* The smallest E such that 2^E is a normalized number; this
+     matches the definition of IEEE 754.  */
+  APFloatBase::ExponentType minExponent;
+
+  /* Number of bits in the significand.  This includes the integer
+     bit.  */
+  unsigned int precision;
+
+  /* Number of bits actually used in the semantics. */
+  unsigned int sizeInBits;
+
+  fltNonfiniteBehavior nonFiniteBehavior = fltNonfiniteBehavior::IEEE754;
+
+  fltNanEncoding nanEncoding = fltNanEncoding::IEEE;
+  // Returns true if any number described by this semantics can be precisely
+  // represented by the specified semantics. Does not take into account
+  // the value of fltNonfiniteBehavior.
+  bool isRepresentableBy(const fltSemantics &S) const {
+    return maxExponent <= S.maxExponent && minExponent >= S.minExponent &&
+           precision <= S.precision;
+  }
+};
 
   static const fltSemantics semIEEEhalf = {15, -14, 11, 16};
   static const fltSemantics semBFloat = {127, -126, 8, 16};
@@ -81,6 +128,16 @@ namespace llvm {
   static const fltSemantics semIEEEdouble = {1023, -1022, 53, 64};
   static const fltSemantics semIEEEquad = {16383, -16382, 113, 128};
   static const fltSemantics semFloat8E5M2 = {15, -14, 3, 8};
+  static const fltSemantics semFloat8E5M2FNUZ = {15,
+                                                 -15,
+                                                 3,
+                                                 8,
+                                                 fltNonfiniteBehavior::NanOnly,
+                                                 fltNanEncoding::NegativeZero};
+  static const fltSemantics semFloat8E4M3FN = {
+      8, -6, 4, 8, fltNonfiniteBehavior::NanOnly, fltNanEncoding::AllOnes};
+  static const fltSemantics semFloat8E4M3FNUZ = {
+      7, -7, 4, 8, fltNonfiniteBehavior::NanOnly, fltNanEncoding::NegativeZero};
   static const fltSemantics semX87DoubleExtended = {16383, -16382, 64, 80};
   static const fltSemantics semBogus = {0, 0, 0, 0};
 
@@ -138,6 +195,12 @@ namespace llvm {
       return PPCDoubleDouble();
     case S_Float8E5M2:
       return Float8E5M2();
+    case S_Float8E5M2FNUZ:
+      return Float8E5M2FNUZ();
+    case S_Float8E4M3FN:
+      return Float8E4M3FN();
+    case S_Float8E4M3FNUZ:
+      return Float8E4M3FNUZ();
     case S_x87DoubleExtended:
       return x87DoubleExtended();
     }
@@ -160,6 +223,12 @@ namespace llvm {
       return S_PPCDoubleDouble;
     else if (&Sem == &llvm::APFloat::Float8E5M2())
       return S_Float8E5M2;
+    else if (&Sem == &llvm::APFloat::Float8E5M2FNUZ())
+      return S_Float8E5M2FNUZ;
+    else if (&Sem == &llvm::APFloat::Float8E4M3FN())
+      return S_Float8E4M3FN;
+    else if (&Sem == &llvm::APFloat::Float8E4M3FNUZ())
+      return S_Float8E4M3FNUZ;
     else if (&Sem == &llvm::APFloat::x87DoubleExtended())
       return S_x87DoubleExtended;
     else
@@ -183,6 +252,13 @@ namespace llvm {
     return semPPCDoubleDouble;
   }
   const fltSemantics &APFloatBase::Float8E5M2() { return semFloat8E5M2; }
+  const fltSemantics &APFloatBase::Float8E5M2FNUZ() {
+    return semFloat8E5M2FNUZ;
+  }
+  const fltSemantics &APFloatBase::Float8E4M3FN() { return semFloat8E4M3FN; }
+  const fltSemantics &APFloatBase::Float8E4M3FNUZ() {
+    return semFloat8E4M3FNUZ;
+  }
   const fltSemantics &APFloatBase::x87DoubleExtended() {
     return semX87DoubleExtended;
   }
@@ -223,6 +299,16 @@ namespace llvm {
   }
   unsigned int APFloatBase::semanticsSizeInBits(const fltSemantics &semantics) {
     return semantics.sizeInBits;
+  }
+  unsigned int APFloatBase::semanticsIntSizeInBits(const fltSemantics &semantics,
+                                                   bool isSigned) {
+    // The max FP value is pow(2, MaxExponent) * (1 + MaxFraction), so we need
+    // at least one more bit than the MaxExponent to hold the max FP value.
+    unsigned int MinBitWidth = semanticsMaxExponent(semantics) + 1;
+    // Extra sign bit needed.
+    if (isSigned)
+      ++MinBitWidth;
+    return MinBitWidth;
   }
 
   unsigned APFloatBase::getSizeInBits(const fltSemantics &Sem) {
@@ -482,7 +568,7 @@ trailingHexadecimalFraction(StringRef::iterator p, StringRef::iterator end,
 
   /* If we ran off the end it is exactly zero or one-half, otherwise
      a little more.  */
-  if (hexDigit == -1U)
+  if (hexDigit == UINT_MAX)
     return digitValue == 0 ? lfExactlyZero: lfExactlyHalf;
   else
     return digitValue == 0 ? lfLessThanHalf: lfMoreThanHalf;
@@ -499,7 +585,7 @@ lostFractionThroughTruncation(const APFloatBase::integerPart *parts,
 
   lsb = APInt::tcLSB(parts, partCount);
 
-  /* Note this is guaranteed true if bits == 0, or LSB == -1U.  */
+  /* Note this is guaranteed true if bits == 0, or LSB == UINT_MAX.  */
   if (bits <= lsb)
     return lfExactlyZero;
   if (bits == lsb + 1)
@@ -769,6 +855,20 @@ void IEEEFloat::makeNaN(bool SNaN, bool Negative, const APInt *fill) {
   integerPart *significand = significandParts();
   unsigned numParts = partCount();
 
+  APInt fill_storage;
+  if (semantics->nonFiniteBehavior == fltNonfiniteBehavior::NanOnly) {
+    // Finite-only types do not distinguish signalling and quiet NaN, so
+    // make them all signalling.
+    SNaN = false;
+    if (semantics->nanEncoding == fltNanEncoding::NegativeZero) {
+      sign = true;
+      fill_storage = APInt::getZero(semantics->precision - 1);
+    } else {
+      fill_storage = APInt::getAllOnes(semantics->precision - 1);
+    }
+    fill = &fill_storage;
+  }
+
   // Set the significand bits to the fill.
   if (!fill || fill->getNumWords() < numParts)
     APInt::tcSet(significand, 0, numParts);
@@ -796,6 +896,9 @@ void IEEEFloat::makeNaN(bool SNaN, bool Negative, const APInt *fill) {
     // conventionally, this is the next bit down from the QNaN bit.
     if (APInt::tcIsZero(significand, numParts))
       APInt::tcSetBit(significand, QNaNBit - 1);
+  } else if (semantics->nanEncoding == fltNanEncoding::NegativeZero) {
+    // The only NaN is a quiet NaN, and it has no bits sets in the significand.
+    // Do nothing.
   } else {
     // We always have to set the QNaN bit to make it a QNaN.
     APInt::tcSetBit(significand, QNaNBit);
@@ -847,6 +950,11 @@ bool IEEEFloat::isSmallest() const {
     significandMSB() == 0;
 }
 
+bool IEEEFloat::isSmallestNormalized() const {
+  return getCategory() == fcNormal && exponent == semantics->minExponent &&
+         isSignificandAllZerosExceptMSB();
+}
+
 bool IEEEFloat::isSignificandAllOnes() const {
   // Test if the significand excluding the integral bit is all ones. This allows
   // us to test for binade boundaries.
@@ -864,6 +972,33 @@ bool IEEEFloat::isSignificandAllOnes() const {
   const integerPart HighBitFill =
     ~integerPart(0) << (integerPartWidth - NumHighBits);
   if (~(Parts[PartCount - 1] | HighBitFill))
+    return false;
+
+  return true;
+}
+
+bool IEEEFloat::isSignificandAllOnesExceptLSB() const {
+  // Test if the significand excluding the integral bit is all ones except for
+  // the least significant bit.
+  const integerPart *Parts = significandParts();
+
+  if (Parts[0] & 1)
+    return false;
+
+  const unsigned PartCount = partCountForBits(semantics->precision);
+  for (unsigned i = 0; i < PartCount - 1; i++) {
+    if (~Parts[i] & ~unsigned{!i})
+      return false;
+  }
+
+  // Set the unused high bits to all ones when we compare.
+  const unsigned NumHighBits =
+      PartCount * integerPartWidth - semantics->precision + 1;
+  assert(NumHighBits <= integerPartWidth && NumHighBits > 0 &&
+         "Can not have more high bits to fill than integerPartWidth");
+  const integerPart HighBitFill = ~integerPart(0)
+                                  << (integerPartWidth - NumHighBits);
+  if (~(Parts[PartCount - 1] | HighBitFill | 0x1))
     return false;
 
   return true;
@@ -892,11 +1027,35 @@ bool IEEEFloat::isSignificandAllZeros() const {
   return true;
 }
 
+bool IEEEFloat::isSignificandAllZerosExceptMSB() const {
+  const integerPart *Parts = significandParts();
+  const unsigned PartCount = partCountForBits(semantics->precision);
+
+  for (unsigned i = 0; i < PartCount - 1; i++) {
+    if (Parts[i])
+      return false;
+  }
+
+  const unsigned NumHighBits =
+      PartCount * integerPartWidth - semantics->precision + 1;
+  return Parts[PartCount - 1] == integerPart(1)
+                                     << (integerPartWidth - NumHighBits);
+}
+
 bool IEEEFloat::isLargest() const {
-  // The largest number by magnitude in our format will be the floating point
-  // number with maximum exponent and with significand that is all ones.
-  return isFiniteNonZero() && exponent == semantics->maxExponent
-    && isSignificandAllOnes();
+  if (semantics->nonFiniteBehavior == fltNonfiniteBehavior::NanOnly &&
+      semantics->nanEncoding == fltNanEncoding::AllOnes) {
+    // The largest number by magnitude in our format will be the floating point
+    // number with maximum exponent and with significand that is all ones except
+    // the LSB.
+    return isFiniteNonZero() && exponent == semantics->maxExponent &&
+           isSignificandAllOnesExceptLSB();
+  } else {
+    // The largest number by magnitude in our format will be the floating point
+    // number with maximum exponent and with significand that is all ones.
+    return isFiniteNonZero() && exponent == semantics->maxExponent &&
+           isSignificandAllOnes();
+  }
 }
 
 bool IEEEFloat::isInteger() const {
@@ -1315,7 +1474,10 @@ IEEEFloat::opStatus IEEEFloat::handleOverflow(roundingMode rounding_mode) {
       rounding_mode == rmNearestTiesToAway ||
       (rounding_mode == rmTowardPositive && !sign) ||
       (rounding_mode == rmTowardNegative && sign)) {
-    category = fcInfinity;
+    if (semantics->nonFiniteBehavior == fltNonfiniteBehavior::NanOnly)
+      makeNaN(false, sign);
+    else
+      category = fcInfinity;
     return (opStatus) (opOverflow | opInexact);
   }
 
@@ -1324,6 +1486,9 @@ IEEEFloat::opStatus IEEEFloat::handleOverflow(roundingMode rounding_mode) {
   exponent = semantics->maxExponent;
   tcSetLeastSignificantBits(significandParts(), partCount(),
                             semantics->precision);
+  if (semantics->nonFiniteBehavior == fltNonfiniteBehavior::NanOnly &&
+      semantics->nanEncoding == fltNanEncoding::AllOnes)
+    APInt::tcClearBit(significandParts(), 0);
 
   return opInexact;
 }
@@ -1423,6 +1588,13 @@ IEEEFloat::opStatus IEEEFloat::normalize(roundingMode rounding_mode,
     }
   }
 
+  // The all-ones values is an overflow if NaN is all ones. If NaN is
+  // represented by negative zero, then it is a valid finite value.
+  if (semantics->nonFiniteBehavior == fltNonfiniteBehavior::NanOnly &&
+      semantics->nanEncoding == fltNanEncoding::AllOnes &&
+      exponent == semantics->maxExponent && isSignificandAllOnes())
+    return handleOverflow(rounding_mode);
+
   /* Now round the number according to rounding_mode given the lost
      fraction.  */
 
@@ -1430,8 +1602,11 @@ IEEEFloat::opStatus IEEEFloat::normalize(roundingMode rounding_mode,
      underflow for exact results.  */
   if (lost_fraction == lfExactlyZero) {
     /* Canonicalize zeroes.  */
-    if (omsb == 0)
+    if (omsb == 0) {
       category = fcZero;
+      if (semantics->nanEncoding == fltNanEncoding::NegativeZero)
+        sign = false;
+    }
 
     return opOK;
   }
@@ -1449,16 +1624,24 @@ IEEEFloat::opStatus IEEEFloat::normalize(roundingMode rounding_mode,
       /* Renormalize by incrementing the exponent and shifting our
          significand right one.  However if we already have the
          maximum exponent we overflow to infinity.  */
-      if (exponent == semantics->maxExponent) {
-        category = fcInfinity;
-
-        return (opStatus) (opOverflow | opInexact);
-      }
+      if (exponent == semantics->maxExponent)
+        // Invoke overflow handling with a rounding mode that will guarantee
+        // that the result gets turned into the correct infinity representation.
+        // This is needed instead of just setting the category to infinity to
+        // account for 8-bit floating point types that have no inf, only NaN.
+        return handleOverflow(sign ? rmTowardNegative : rmTowardPositive);
 
       shiftSignificandRight(1);
 
       return opInexact;
     }
+
+    // The all-ones values is an overflow if NaN is all ones. If NaN is
+    // represented by negative zero, then it is a valid finite value.
+    if (semantics->nonFiniteBehavior == fltNonfiniteBehavior::NanOnly &&
+        semantics->nanEncoding == fltNanEncoding::AllOnes &&
+        exponent == semantics->maxExponent && isSignificandAllOnes())
+      return handleOverflow(rounding_mode);
   }
 
   /* The normal case - we were and are not denormal, and any
@@ -1470,8 +1653,11 @@ IEEEFloat::opStatus IEEEFloat::normalize(roundingMode rounding_mode,
   assert(omsb < semantics->precision);
 
   /* Canonicalize zeroes.  */
-  if (omsb == 0)
+  if (omsb == 0) {
     category = fcZero;
+    if (semantics->nanEncoding == fltNanEncoding::NegativeZero)
+      sign = false;
+  }
 
   /* The fcZero case is a denormal that underflowed to zero.  */
   return (opStatus) (opUnderflow | opInexact);
@@ -1679,7 +1865,10 @@ IEEEFloat::opStatus IEEEFloat::divideSpecials(const IEEEFloat &rhs) {
     return opOK;
 
   case PackCategoriesIntoKey(fcNormal, fcZero):
-    category = fcInfinity;
+    if (semantics->nonFiniteBehavior == fltNonfiniteBehavior::NanOnly)
+      makeNaN(false, sign);
+    else
+      category = fcInfinity;
     return opDivByZero;
 
   case PackCategoriesIntoKey(fcInfinity, fcInfinity):
@@ -1770,6 +1959,11 @@ IEEEFloat::opStatus IEEEFloat::remainderSpecials(const IEEEFloat &rhs) {
 
 /* Change sign.  */
 void IEEEFloat::changeSign() {
+  // With NaN-as-negative-zero, neither NaN or negative zero can change
+  // their signs.
+  if (semantics->nanEncoding == fltNanEncoding::NegativeZero &&
+      (isZero() || isNaN()))
+    return;
   /* Look mummy, this one's easy.  */
   sign = !sign;
 }
@@ -1799,6 +1993,9 @@ IEEEFloat::opStatus IEEEFloat::addOrSubtract(const IEEEFloat &rhs,
   if (category == fcZero) {
     if (rhs.category != fcZero || (sign == rhs.sign) == subtract)
       sign = (rounding_mode == rmTowardNegative);
+    // NaN-in-negative-zero means zeros need to be normalized to +0.
+    if (semantics->nanEncoding == fltNanEncoding::NegativeZero)
+      sign = false;
   }
 
   return fs;
@@ -1824,6 +2021,8 @@ IEEEFloat::opStatus IEEEFloat::multiply(const IEEEFloat &rhs,
   sign ^= rhs.sign;
   fs = multiplySpecials(rhs);
 
+  if (isZero() && semantics->nanEncoding == fltNanEncoding::NegativeZero)
+    sign = false;
   if (isFiniteNonZero()) {
     lostFraction lost_fraction = multiplySignificand(rhs);
     fs = normalize(rounding_mode, lost_fraction);
@@ -1842,6 +2041,8 @@ IEEEFloat::opStatus IEEEFloat::divide(const IEEEFloat &rhs,
   sign ^= rhs.sign;
   fs = divideSpecials(rhs);
 
+  if (isZero() && semantics->nanEncoding == fltNanEncoding::NegativeZero)
+    sign = false;
   if (isFiniteNonZero()) {
     lostFraction lost_fraction = divideSignificand(rhs);
     fs = normalize(rounding_mode, lost_fraction);
@@ -1950,8 +2151,13 @@ IEEEFloat::opStatus IEEEFloat::remainder(const IEEEFloat &rhs) {
     }
   }
 
-  if (isZero())
+  if (isZero()) {
     sign = origSign;    // IEEE754 requires this
+    if (semantics->nanEncoding == fltNanEncoding::NegativeZero)
+      // But some 8-bit floats only have positive 0.
+      sign = false;
+  }
+
   else
     sign ^= origSign;
   return fs;
@@ -1965,16 +2171,22 @@ IEEEFloat::opStatus IEEEFloat::mod(const IEEEFloat &rhs) {
 
   while (isFiniteNonZero() && rhs.isFiniteNonZero() &&
          compareAbsoluteValue(rhs) != cmpLessThan) {
-    IEEEFloat V = scalbn(rhs, ilogb(*this) - ilogb(rhs), rmNearestTiesToEven);
-    if (compareAbsoluteValue(V) == cmpLessThan)
-      V = scalbn(V, -1, rmNearestTiesToEven);
+    int Exp = ilogb(*this) - ilogb(rhs);
+    IEEEFloat V = scalbn(rhs, Exp, rmNearestTiesToEven);
+    // V can overflow to NaN with fltNonfiniteBehavior::NanOnly, so explicitly
+    // check for it.
+    if (V.isNaN() || compareAbsoluteValue(V) == cmpLessThan)
+      V = scalbn(rhs, Exp - 1, rmNearestTiesToEven);
     V.sign = sign;
 
     fs = subtract(V, rmNearestTiesToEven);
     assert(fs==opOK);
   }
-  if (isZero())
+  if (isZero()) {
     sign = origSign; // fmod requires this
+    if (semantics->nanEncoding == fltNanEncoding::NegativeZero)
+      sign = false;
+  }
   return fs;
 }
 
@@ -2002,8 +2214,11 @@ IEEEFloat::opStatus IEEEFloat::fusedMultiplyAdd(const IEEEFloat &multiplicand,
     /* If two numbers add (exactly) to zero, IEEE 754 decrees it is a
        positive zero unless rounding to minus infinity, except that
        adding two like-signed zeroes gives that zero.  */
-    if (category == fcZero && !(fs & opUnderflow) && sign != addend.sign)
+    if (category == fcZero && !(fs & opUnderflow) && sign != addend.sign) {
       sign = (rounding_mode == rmTowardNegative);
+      if (semantics->nanEncoding == fltNanEncoding::NegativeZero)
+        sign = false;
+    }
   } else {
     fs = multiplySpecials(multiplicand);
 
@@ -2194,6 +2409,7 @@ IEEEFloat::opStatus IEEEFloat::convert(const fltSemantics &toSemantics,
   opStatus fs;
   int shift;
   const fltSemantics &fromSemantics = *semantics;
+  bool is_signaling = isSignaling();
 
   lostFraction = lfExactlyZero;
   newPartCount = partCountForBits(toSemantics.precision + 1);
@@ -2235,7 +2451,9 @@ IEEEFloat::opStatus IEEEFloat::convert(const fltSemantics &toSemantics,
   }
 
   // If this is a truncation, perform the shift before we narrow the storage.
-  if (shift < 0 && (isFiniteNonZero() || category==fcNaN))
+  if (shift < 0 && (isFiniteNonZero() ||
+                    (category == fcNaN && semantics->nonFiniteBehavior !=
+                                              fltNonfiniteBehavior::NanOnly)))
     lostFraction = shiftRight(significandParts(), oldPartCount, -shift);
 
   // Fix the storage so it can hold to new value.
@@ -2269,6 +2487,19 @@ IEEEFloat::opStatus IEEEFloat::convert(const fltSemantics &toSemantics,
     fs = normalize(rounding_mode, lostFraction);
     *losesInfo = (fs != opOK);
   } else if (category == fcNaN) {
+    if (semantics->nonFiniteBehavior == fltNonfiniteBehavior::NanOnly) {
+      *losesInfo =
+          fromSemantics.nonFiniteBehavior != fltNonfiniteBehavior::NanOnly;
+      makeNaN(false, sign);
+      return is_signaling ? opInvalidOp : opOK;
+    }
+
+    // If NaN is negative zero, we need to create a new NaN to avoid converting
+    // NaN to -Inf.
+    if (fromSemantics.nanEncoding == fltNanEncoding::NegativeZero &&
+        semantics->nanEncoding != fltNanEncoding::NegativeZero)
+      makeNaN(false, false);
+
     *losesInfo = lostFraction != lfExactlyZero || X86SpecialNan;
 
     // For x87 extended precision, we want to make a NaN, not a special NaN if
@@ -2279,12 +2510,25 @@ IEEEFloat::opStatus IEEEFloat::convert(const fltSemantics &toSemantics,
     // Convert of sNaN creates qNaN and raises an exception (invalid op).
     // This also guarantees that a sNaN does not become Inf on a truncation
     // that loses all payload bits.
-    if (isSignaling()) {
+    if (is_signaling) {
       makeQuiet();
       fs = opInvalidOp;
     } else {
       fs = opOK;
     }
+  } else if (category == fcInfinity &&
+             semantics->nonFiniteBehavior == fltNonfiniteBehavior::NanOnly) {
+    makeNaN(false, sign);
+    *losesInfo = true;
+    fs = opInexact;
+  } else if (category == fcZero &&
+             semantics->nanEncoding == fltNanEncoding::NegativeZero) {
+    // Negative zero loses info, but positive zero doesn't.
+    *losesInfo =
+        fromSemantics.nanEncoding != fltNanEncoding::NegativeZero && sign;
+    fs = *losesInfo ? opInexact : opOK;
+    // NaN is negative zero means -0 -> +0, which can lose information
+    sign = false;
   } else {
     *losesInfo = false;
     fs = opOK;
@@ -2525,7 +2769,7 @@ IEEEFloat::convertFromZeroExtendedInteger(const integerPart *parts,
                                           unsigned int width, bool isSigned,
                                           roundingMode rounding_mode) {
   unsigned int partCount = partCountForBits(width);
-  APInt api = APInt(width, makeArrayRef(parts, partCount));
+  APInt api = APInt(width, ArrayRef(parts, partCount));
 
   sign = false;
   if (isSigned && APInt::tcExtractBit(parts, width - 1)) {
@@ -2571,7 +2815,7 @@ IEEEFloat::convertFromHexadecimalString(StringRef s,
     }
 
     hex_value = hexDigitValue(*p);
-    if (hex_value == -1U)
+    if (hex_value == UINT_MAX)
       break;
 
     p++;
@@ -2752,9 +2996,11 @@ IEEEFloat::convertFromDecimalString(StringRef str, roundingMode rounding_mode) {
   if (D.firstSigDigit == str.end() || decDigitValue(*D.firstSigDigit) >= 10U) {
     category = fcZero;
     fs = opOK;
+    if (semantics->nanEncoding == fltNanEncoding::NegativeZero)
+      sign = false;
 
-  /* Check whether the normalized exponent is high enough to overflow
-     max during the log-rebasing in the max-exponent check below. */
+    /* Check whether the normalized exponent is high enough to overflow
+       max during the log-rebasing in the max-exponent check below. */
   } else if (D.normalizedExponent - 1 > INT_MAX / 42039) {
     fs = handleOverflow(rounding_mode);
 
@@ -3382,6 +3628,87 @@ APInt IEEEFloat::convertFloat8E5M2APFloatToAPInt() const {
                    (mysignificand & 0x3)));
 }
 
+APInt IEEEFloat::convertFloat8E5M2FNUZAPFloatToAPInt() const {
+  assert(semantics == (const llvm::fltSemantics *)&semFloat8E5M2FNUZ);
+  assert(partCount() == 1);
+
+  uint32_t myexponent, mysignificand;
+
+  if (isFiniteNonZero()) {
+    myexponent = exponent + 16; // bias
+    mysignificand = (uint32_t)*significandParts();
+    if (myexponent == 1 && !(mysignificand & 0x4))
+      myexponent = 0; // denormal
+  } else if (category == fcZero) {
+    myexponent = 0;
+    mysignificand = 0;
+  } else if (category == fcInfinity) {
+    myexponent = 0;
+    mysignificand = 0;
+  } else {
+    assert(category == fcNaN && "Unknown category!");
+    myexponent = 0;
+    mysignificand = (uint32_t)*significandParts();
+  }
+
+  return APInt(8, (((sign & 1) << 7) | ((myexponent & 0x1f) << 2) |
+                   (mysignificand & 0x3)));
+}
+
+APInt IEEEFloat::convertFloat8E4M3FNAPFloatToAPInt() const {
+  assert(semantics == (const llvm::fltSemantics *)&semFloat8E4M3FN);
+  assert(partCount() == 1);
+
+  uint32_t myexponent, mysignificand;
+
+  if (isFiniteNonZero()) {
+    myexponent = exponent + 7; // bias
+    mysignificand = (uint32_t)*significandParts();
+    if (myexponent == 1 && !(mysignificand & 0x8))
+      myexponent = 0; // denormal
+  } else if (category == fcZero) {
+    myexponent = 0;
+    mysignificand = 0;
+  } else if (category == fcInfinity) {
+    myexponent = 0xf;
+    mysignificand = 0;
+  } else {
+    assert(category == fcNaN && "Unknown category!");
+    myexponent = 0xf;
+    mysignificand = (uint32_t)*significandParts();
+  }
+
+  return APInt(8, (((sign & 1) << 7) | ((myexponent & 0xf) << 3) |
+                   (mysignificand & 0x7)));
+}
+
+APInt IEEEFloat::convertFloat8E4M3FNUZAPFloatToAPInt() const {
+  assert(semantics == (const llvm::fltSemantics *)&semFloat8E4M3FNUZ);
+  assert(partCount() == 1);
+
+  uint32_t myexponent, mysignificand;
+
+  if (isFiniteNonZero()) {
+    myexponent = exponent + 8; // bias
+    mysignificand = (uint32_t)*significandParts();
+    if (myexponent == 1 && !(mysignificand & 0x8))
+      myexponent = 0; // denormal
+  } else if (category == fcZero) {
+    myexponent = 0;
+    mysignificand = 0;
+  } else if (category == fcInfinity) {
+    myexponent = 0;
+    mysignificand = 0;
+  } else {
+    assert(category == fcNaN && "Unknown category!");
+    myexponent = 0;
+    mysignificand = (uint32_t)*significandParts();
+  }
+
+  return APInt(8, (((sign & 1) << 7) | ((myexponent & 0xf) << 3) |
+                   (mysignificand & 0x7)));
+}
+
 // This function creates an APInt that is just a bit map of the floating
 // point constant as it would appear in memory.  It is not a conversion,
 // and treating the result as a normal integer is unlikely to be useful.
@@ -3407,6 +3734,15 @@ APInt IEEEFloat::bitcastToAPInt() const {
 
   if (semantics == (const llvm::fltSemantics *)&semFloat8E5M2)
     return convertFloat8E5M2APFloatToAPInt();
+
+  if (semantics == (const llvm::fltSemantics *)&semFloat8E5M2FNUZ)
+    return convertFloat8E5M2FNUZAPFloatToAPInt();
+
+  if (semantics == (const llvm::fltSemantics *)&semFloat8E4M3FN)
+    return convertFloat8E4M3FNAPFloatToAPInt();
+
+  if (semantics == (const llvm::fltSemantics *)&semFloat8E4M3FNUZ)
+    return convertFloat8E4M3FNUZAPFloatToAPInt();
 
   assert(semantics == (const llvm::fltSemantics*)&semX87DoubleExtended &&
          "unknown format!");
@@ -3663,10 +3999,85 @@ void IEEEFloat::initFromFloat8E5M2APInt(const APInt &api) {
   }
 }
 
-/// Treat api as containing the bits of a floating point number.  Currently
-/// we infer the floating point type from the size of the APInt.  The
-/// isIEEE argument distinguishes between PPC128 and IEEE128 (not meaningful
-/// when the size is anything else).
+void IEEEFloat::initFromFloat8E5M2FNUZAPInt(const APInt &api) {
+  uint32_t i = (uint32_t)*api.getRawData();
+  uint32_t myexponent = (i >> 2) & 0x1f;
+  uint32_t mysignificand = i & 0x3;
+
+  initialize(&semFloat8E5M2FNUZ);
+  assert(partCount() == 1);
+
+  sign = i >> 7;
+  if (myexponent == 0 && mysignificand == 0 && sign == 0) {
+    makeZero(sign);
+  } else if (myexponent == 0 && mysignificand == 0 && sign == 1) {
+    category = fcNaN;
+    exponent = exponentNaN();
+    *significandParts() = mysignificand;
+  } else {
+    category = fcNormal;
+    exponent = myexponent - 16; // bias
+    *significandParts() = mysignificand;
+    if (myexponent == 0) // denormal
+      exponent = -15;
+    else
+      *significandParts() |= 0x4; // integer bit
+  }
+}
+
+void IEEEFloat::initFromFloat8E4M3FNAPInt(const APInt &api) {
+  uint32_t i = (uint32_t)*api.getRawData();
+  uint32_t myexponent = (i >> 3) & 0xf;
+  uint32_t mysignificand = i & 0x7;
+
+  initialize(&semFloat8E4M3FN);
+  assert(partCount() == 1);
+
+  sign = i >> 7;
+  if (myexponent == 0 && mysignificand == 0) {
+    makeZero(sign);
+  } else if (myexponent == 0xf && mysignificand == 7) {
+    category = fcNaN;
+    exponent = exponentNaN();
+    *significandParts() = mysignificand;
+  } else {
+    category = fcNormal;
+    exponent = myexponent - 7; // bias
+    *significandParts() = mysignificand;
+    if (myexponent == 0) // denormal
+      exponent = -6;
+    else
+      *significandParts() |= 0x8; // integer bit
+  }
+}
+
+void IEEEFloat::initFromFloat8E4M3FNUZAPInt(const APInt &api) {
+  uint32_t i = (uint32_t)*api.getRawData();
+  uint32_t myexponent = (i >> 3) & 0xf;
+  uint32_t mysignificand = i & 0x7;
+
+  initialize(&semFloat8E4M3FNUZ);
+  assert(partCount() == 1);
+
+  sign = i >> 7;
+  if (myexponent == 0 && mysignificand == 0 && sign == 0) {
+    makeZero(sign);
+  } else if (myexponent == 0 && mysignificand == 0 && sign == 1) {
+    category = fcNaN;
+    exponent = exponentNaN();
+    *significandParts() = mysignificand;
+  } else {
+    category = fcNormal;
+    exponent = myexponent - 8; // bias
+    *significandParts() = mysignificand;
+    if (myexponent == 0) // denormal
+      exponent = -7;
+    else
+      *significandParts() |= 0x8; // integer bit
+  }
+}
+
+/// Treat api as containing the bits of a floating point number.
 void IEEEFloat::initFromAPInt(const fltSemantics *Sem, const APInt &api) {
   assert(api.getBitWidth() == Sem->sizeInBits);
   if (Sem == &semIEEEhalf)
@@ -3685,6 +4096,12 @@ void IEEEFloat::initFromAPInt(const fltSemantics *Sem, const APInt &api) {
     return initFromPPCDoubleDoubleAPInt(api);
   if (Sem == &semFloat8E5M2)
     return initFromFloat8E5M2APInt(api);
+  if (Sem == &semFloat8E5M2FNUZ)
+    return initFromFloat8E5M2FNUZAPInt(api);
+  if (Sem == &semFloat8E4M3FN)
+    return initFromFloat8E4M3FNAPInt(api);
+  if (Sem == &semFloat8E4M3FNUZ)
+    return initFromFloat8E4M3FNUZAPInt(api);
 
   llvm_unreachable(nullptr);
 }
@@ -3712,6 +4129,10 @@ void IEEEFloat::makeLargest(bool Negative) {
   significand[PartCount - 1] = (NumUnusedHighBits < integerPartWidth)
                                    ? (~integerPart(0) >> NumUnusedHighBits)
                                    : 0;
+
+  if (semantics->nonFiniteBehavior == fltNonfiniteBehavior::NanOnly &&
+      semantics->nanEncoding == fltNanEncoding::AllOnes)
+    significand[0] &= ~integerPart(1);
 }
 
 /// Make this number the smallest magnitude denormal number in the given
@@ -3737,8 +4158,7 @@ void IEEEFloat::makeSmallestNormalized(bool Negative) {
   zeroSignificand();
   sign = Negative;
   exponent = semantics->minExponent;
-  significandParts()[partCountForBits(semantics->precision) - 1] |=
-      (((integerPart)1) << ((semantics->precision - 1) % integerPartWidth));
+  APInt::tcSetBit(significandParts(), semantics->precision - 1);
 }
 
 IEEEFloat::IEEEFloat(const fltSemantics &Sem, const APInt &API) {
@@ -3874,9 +4294,9 @@ void IEEEFloat::toString(SmallVectorImpl<char> &Str, unsigned FormatPrecision,
 
   // Decompose the number into an APInt and an exponent.
   int exp = exponent - ((int) semantics->precision - 1);
-  APInt significand(semantics->precision,
-                    makeArrayRef(significandParts(),
-                                 partCountForBits(semantics->precision)));
+  APInt significand(
+      semantics->precision,
+      ArrayRef(significandParts(), partCountForBits(semantics->precision)));
 
   // Set FormatPrecision if zero.  We want to do this before we
   // truncate trailing zeros, as those are part of the precision.
@@ -3892,7 +4312,7 @@ void IEEEFloat::toString(SmallVectorImpl<char> &Str, unsigned FormatPrecision,
   }
 
   // Ignore trailing binary zeros.
-  int trailingZeros = significand.countTrailingZeros();
+  int trailingZeros = significand.countr_zero();
   exp += trailingZeros;
   significand.lshrInPlace(trailingZeros);
 
@@ -3937,6 +4357,11 @@ void IEEEFloat::toString(SmallVectorImpl<char> &Str, unsigned FormatPrecision,
 
   // Fill the buffer.
   unsigned precision = significand.getBitWidth();
+  if (precision < 4) {
+    // We need enough precision to store the value 10.
+    precision = 4;
+    significand = significand.zext(precision);
+  }
   APInt ten(precision, 10);
   APInt digit(precision, 0);
 
@@ -4085,6 +4510,8 @@ bool IEEEFloat::getExactInverse(APFloat *inv) const {
 bool IEEEFloat::isSignaling() const {
   if (!isNaN())
     return false;
+  if (semantics->nonFiniteBehavior == fltNonfiniteBehavior::NanOnly)
+    return false;
 
   // IEEE-754R 2008 6.2.1: A signaling NaN bit string should be encoded with the
   // first bit of the trailing significand being 0.
@@ -4132,15 +4559,23 @@ IEEEFloat::opStatus IEEEFloat::next(bool nextDown) {
       APInt::tcSet(significandParts(), 0, partCount());
       category = fcZero;
       exponent = 0;
+      if (semantics->nanEncoding == fltNanEncoding::NegativeZero)
+        sign = false;
       break;
     }
 
-    // nextUp(getLargest()) == INFINITY
     if (isLargest() && !isNegative()) {
-      APInt::tcSet(significandParts(), 0, partCount());
-      category = fcInfinity;
-      exponent = semantics->maxExponent + 1;
-      break;
+      if (semantics->nonFiniteBehavior == fltNonfiniteBehavior::NanOnly) {
+        // nextUp(getLargest()) == NAN
+        makeNaN();
+        break;
+      } else {
+        // nextUp(getLargest()) == INFINITY
+        APInt::tcSet(significandParts(), 0, partCount());
+        category = fcInfinity;
+        exponent = semantics->maxExponent + 1;
+        break;
+      }
     }
 
     // nextUp(normal) == normal + inc.
@@ -4212,6 +4647,11 @@ IEEEFloat::opStatus IEEEFloat::next(bool nextDown) {
 }
 
 APFloatBase::ExponentType IEEEFloat::exponentNaN() const {
+  if (semantics->nonFiniteBehavior == fltNonfiniteBehavior::NanOnly) {
+    if (semantics->nanEncoding == fltNanEncoding::NegativeZero)
+      return semantics->minExponent;
+    return semantics->maxExponent;
+  }
   return semantics->maxExponent + 1;
 }
 
@@ -4224,6 +4664,11 @@ APFloatBase::ExponentType IEEEFloat::exponentZero() const {
 }
 
 void IEEEFloat::makeInf(bool Negative) {
+  if (semantics->nonFiniteBehavior == fltNonfiniteBehavior::NanOnly) {
+    // There is no Inf, so make NaN instead.
+    makeNaN(false, Negative);
+    return;
+  }
   category = fcInfinity;
   sign = Negative;
   exponent = exponentInf();
@@ -4233,13 +4678,18 @@ void IEEEFloat::makeInf(bool Negative) {
 void IEEEFloat::makeZero(bool Negative) {
   category = fcZero;
   sign = Negative;
+  if (semantics->nanEncoding == fltNanEncoding::NegativeZero) {
+    // Merge negative zero to positive because 0b10000...000 is used for NaN
+    sign = false;
+  }
   exponent = exponentZero();
   APInt::tcSet(significandParts(), 0, partCount());
 }
 
 void IEEEFloat::makeQuiet() {
   assert(isNaN());
-  APInt::tcSetBit(significandParts(), semantics->precision - 2);
+  if (semantics->nonFiniteBehavior != fltNonfiniteBehavior::NanOnly)
+    APInt::tcSetBit(significandParts(), semantics->precision - 2);
 }
 
 int ilogb(const IEEEFloat &Arg) {
@@ -4274,7 +4724,7 @@ IEEEFloat scalbn(IEEEFloat X, int Exp, IEEEFloat::roundingMode RoundingMode) {
   int MaxIncrement = MaxExp - (MinExp - SignificandBits) + 1;
 
   // Clamp to one past the range ends to let normalize handle overlflow.
-  X.exponent += std::min(std::max(Exp, -MaxIncrement - 1), MaxIncrement);
+  X.exponent += std::clamp(Exp, -MaxIncrement - 1, MaxIncrement);
   X.normalize(RoundingMode, lfExactlyZero);
   if (X.isNaN())
     X.makeQuiet();
@@ -4815,6 +5265,15 @@ bool DoubleAPFloat::isSmallest() const {
   return Tmp.compare(*this) == cmpEqual;
 }
 
+bool DoubleAPFloat::isSmallestNormalized() const {
+  if (getCategory() != fcNormal)
+    return false;
+
+  DoubleAPFloat Tmp(*this);
+  Tmp.makeSmallestNormalized(this->isNegative());
+  return Tmp.compare(*this) == cmpEqual;
+}
+
 bool DoubleAPFloat::isLargest() const {
   if (getCategory() != fcNormal)
     return false;
@@ -4900,6 +5359,19 @@ APFloat::APFloat(const fltSemantics &Semantics, StringRef S)
   auto StatusOrErr = convertFromString(S, rmNearestTiesToEven);
   assert(StatusOrErr && "Invalid floating point representation");
   consumeError(StatusOrErr.takeError());
+}
+
+FPClassTest APFloat::classify() const {
+  if (isZero())
+    return isNegative() ? fcNegZero : fcPosZero;
+  if (isNormal())
+    return isNegative() ? fcNegNormal : fcPosNormal;
+  if (isDenormal())
+    return isNegative() ? fcNegSubnormal : fcPosSubnormal;
+  if (isInfinity())
+    return isNegative() ? fcNegInf : fcPosInf;
+  assert(isNaN() && "Other class of FP constant");
+  return isSignaling() ? fcSNan : fcQNan;
 }
 
 APFloat::opStatus APFloat::convert(const fltSemantics &ToSemantics,

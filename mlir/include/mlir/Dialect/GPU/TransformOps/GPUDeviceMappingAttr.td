@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Defines the attribute used to map loops to gpu. 
+// Defines the attribute used to map loops to gpu.
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,8 +26,9 @@ def ThreadsEnum : I64EnumAttr<"Threads", "threads for loop mapping", [
   let cppNamespace = "::mlir::gpu";
 }
 
-def GPUThreadMappingAttr 
-    : GPU_Attr<"GPUThreadMapping", "thread", [ DeviceMappingAttrInterface ]> {
+def GPUThreadMappingAttr
+    : GPU_Attr<"GPUThreadMapping", "thread", [
+      DeclareAttrInterfaceMethods<DeviceMappingAttrInterface> ]> {
   let parameters = (ins
     EnumParameter<ThreadsEnum>:$thread
   );
@@ -35,10 +36,31 @@ def GPUThreadMappingAttr
   let description = [{
     An attribute that allows defining thread parallelism for GPU devices.
 
-    Thread (aka work item) are grouped into a thread blocks where block may be 
-    described by a 1-, 2-, or 3-dimensional rectangle. This attribute indicates 
-    that thread parallelism is desired. It can be consumed by lowering to 
+    Thread (aka work item) are grouped into a thread blocks where block may be
+    described by a 1-, 2-, or 3-dimensional rectangle. This attribute indicates
+    that thread parallelism is desired. It can be consumed by lowering to
     generate GPU.
+  }];
+}
+
+def WarpsEnum : I64EnumAttr<"Warps", "threads for loop mapping", [
+    DimX, DimY, DimZ]> {
+  let cppNamespace = "::mlir::gpu";
+}
+
+def GPUWarpMappingAttr : GPU_Attr<"GPUWarpMapping", "warp", [
+  DeclareAttrInterfaceMethods<DeviceMappingAttrInterface> ] >  {
+  let parameters = (ins
+    EnumParameter<WarpsEnum>:$warp
+  );
+  let assemblyFormat = "`<` params `>`";
+  let description = [{
+    An attribute that allows defining thread block parallelism for GPU devices.
+
+    Warp (aka subgroup) are grouped into a grid where grid may be
+    described by a 1-, 2-, or 3-dimensional rectangle. This attribute indicates
+    that thread block parallelism is desired. It can be consumed by lowering to
+    generate GPU code.
   }];
 }
 
@@ -47,7 +69,8 @@ def BlocksEnum : I64EnumAttr<"Blocks", "threads for loop mapping", [
   let cppNamespace = "::mlir::gpu";
 }
 
-def GPUBlockMappingAttr : GPU_Attr<"GPUBlockMapping", "block", [ DeviceMappingAttrInterface ] >  {
+def GPUBlockMappingAttr : GPU_Attr<"GPUBlockMapping", "block", [
+  DeclareAttrInterfaceMethods<DeviceMappingAttrInterface> ] >  {
   let parameters = (ins
     EnumParameter<BlocksEnum>:$block
   );
@@ -55,11 +78,30 @@ def GPUBlockMappingAttr : GPU_Attr<"GPUBlockMapping", "block", [ DeviceMappingAt
   let description = [{
     An attribute that allows defining thread block parallelism for GPU devices.
 
-    Thread blocks (aka work-group) are grouped into a grid where grid may be 
-    described by a 1-, 2-, or 3-dimensional rectangle. This attribute indicates 
+    Thread blocks (aka work-group) are grouped into a grid where grid may be
+    described by a 1-, 2-, or 3-dimensional rectangle. This attribute indicates
     that thread block parallelism is desired. It can be consumed by lowering to
     generate GPU code.
   }];
 }
+
+
+def GPUMemorySpaceMappingAttr : GPU_Attr<"GPUMemorySpaceMapping", "memory_space", [
+  DeclareAttrInterfaceMethods<DeviceMappingAttrInterface> ] >  {
+  let parameters = (ins
+    EnumParameter<GPU_AddressSpaceEnum>:$address_space
+  );
+  let assemblyFormat = "`<` params `>`";
+  let description = [{
+    An attribute that allows defining memory hierarchy for GPU devices.
+
+    GPU Memory has three memory space, global, workgroup, and private. The global memory
+    is visible to all workitems and workgroups, the workgroup memory is only available for workitems
+    within a workgroup, and private memory is only visible to a single workitem. This attribute indicates
+    that using memory hiearchy is desired. It can be consumed by lowering to
+    move data to a specific address space in GPU code.
+  }];
+}
+
 
 #endif // GPU_DEVICE_MAPPING_ATTR

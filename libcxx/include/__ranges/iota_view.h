@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
+
 #ifndef _LIBCPP___RANGES_IOTA_VIEW_H
 #define _LIBCPP___RANGES_IOTA_VIEW_H
 
@@ -39,12 +40,12 @@
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
-#if _LIBCPP_STD_VER > 17
+#if _LIBCPP_STD_VER >= 20
 
 namespace ranges {
   template<class _Int>
   struct __get_wider_signed {
-    static auto __call() {
+    consteval static auto __call() {
            if constexpr (sizeof(_Int) < sizeof(short)) return type_identity<short>{};
       else if constexpr (sizeof(_Int) < sizeof(int))   return type_identity<int>{};
       else if constexpr (sizeof(_Int) < sizeof(long))  return type_identity<long>{};
@@ -402,7 +403,7 @@ inline namespace __cpo {
 } // namespace views
 } // namespace ranges
 
-#endif // _LIBCPP_STD_VER > 17
+#endif // _LIBCPP_STD_VER >= 20
 
 _LIBCPP_END_NAMESPACE_STD
 

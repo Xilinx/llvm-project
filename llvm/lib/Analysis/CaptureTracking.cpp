@@ -179,25 +179,10 @@ namespace {
       if (EphValues.contains(I))
         return false;
 
-      if (!EarliestCapture) {
+      if (!EarliestCapture)
         EarliestCapture = I;
-      } else if (EarliestCapture->getParent() == I->getParent()) {
-        if (I->comesBefore(EarliestCapture))
-          EarliestCapture = I;
-      } else {
-        BasicBlock *CurrentBB = I->getParent();
-        BasicBlock *EarliestBB = EarliestCapture->getParent();
-        if (DT.dominates(EarliestBB, CurrentBB)) {
-          // EarliestCapture already comes before the current use.
-        } else if (DT.dominates(CurrentBB, EarliestBB)) {
-          EarliestCapture = I;
-        } else {
-          // Otherwise find the nearest common dominator and use its terminator.
-          auto *NearestCommonDom =
-              DT.findNearestCommonDominator(CurrentBB, EarliestBB);
-          EarliestCapture = NearestCommonDom->getTerminator();
-        }
-      }
+      else
+        EarliestCapture = DT.findNearestCommonDominator(EarliestCapture, I);
       Captured = true;
 
       // Return false to continue analysis; we need to see all potential
@@ -418,12 +403,7 @@ UseCaptureKind llvm::DetermineUseCaptureKind(
           return UseCaptureKind::NO_CAPTURE;
       }
     }
-    // Comparison against value stored in global variable. Given the pointer
-    // does not escape, its value cannot be guessed and stored separately in a
-    // global variable.
-    auto *LI = dyn_cast<LoadInst>(I->getOperand(OtherIdx));
-    if (LI && isa<GlobalVariable>(LI->getPointerOperand()))
-      return UseCaptureKind::NO_CAPTURE;
+
     // Otherwise, be conservative. There are crazy ways to capture pointers
     // using comparisons.
     return UseCaptureKind::MAY_CAPTURE;

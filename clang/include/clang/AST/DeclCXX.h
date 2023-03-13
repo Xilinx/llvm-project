@@ -357,11 +357,11 @@ private:
     }
 
     ArrayRef<CXXBaseSpecifier> bases() const {
-      return llvm::makeArrayRef(getBases(), NumBases);
+      return llvm::ArrayRef(getBases(), NumBases);
     }
 
     ArrayRef<CXXBaseSpecifier> vbases() const {
-      return llvm::makeArrayRef(getVBases(), NumVBases);
+      return llvm::ArrayRef(getVBases(), NumVBases);
     }
 
   private:
@@ -410,9 +410,11 @@ private:
     /// or within a data member initializer.
     LazyDeclPtr ContextDecl;
 
-    /// The list of captures, both explicit and implicit, for this
-    /// lambda.
-    Capture *Captures = nullptr;
+    /// The lists of captures, both explicit and implicit, for this
+    /// lambda. One list is provided for each merged copy of the lambda.
+    /// The first list corresponds to the canonical definition.
+    /// The destructor is registered by AddCaptureList when necessary.
+    llvm::TinyPtrVector<Capture*> Captures;
 
     /// The type of the call method.
     TypeSourceInfo *MethodTyInfo;
@@ -430,6 +432,9 @@ private:
       Aggregate = false;
       PlainOldData = false;
     }
+
+    // Add a list of captures.
+    void AddCaptureList(ASTContext &Ctx, Capture *CaptureList);
   };
 
   struct DefinitionData *dataPtr() const {
@@ -1058,6 +1063,11 @@ public:
   ///
   /// \note No entries will be added for init-captures, as they do not capture
   /// variables.
+  ///
+  /// \note If multiple versions of the lambda are merged together, they may
+  /// have different variable declarations corresponding to the same capture.
+  /// In that case, all of those variable declarations will be added to the
+  /// Captures list, so it may have more than one variable listed per field.
   void
   getCaptureFields(llvm::DenseMap<const ValueDecl *, FieldDecl *> &Captures,
                    FieldDecl *&ThisCapture) const;
@@ -1070,7 +1080,9 @@ public:
   }
 
   capture_const_iterator captures_begin() const {
-    return isLambda() ? getLambdaData().Captures : nullptr;
+    if (!isLambda()) return nullptr;
+    LambdaDefinitionData &LambdaData = getLambdaData();
+    return LambdaData.Captures.empty() ? nullptr : LambdaData.Captures.front();
   }
 
   capture_const_iterator captures_end() const {
@@ -1079,6 +1091,11 @@ public:
   }
 
   unsigned capture_size() const { return getLambdaData().NumCaptures; }
+
+  const LambdaCapture *getCapture(unsigned I) const {
+    assert(isLambda() && I < capture_size() && "invalid index for capture");
+    return captures_begin() + I;
+  }
 
   using conversion_iterator = UnresolvedSetIterator;
 
@@ -1812,6 +1829,20 @@ public:
 
   TypeSourceInfo *getLambdaTypeInfo() const {
     return getLambdaData().MethodTyInfo;
+  }
+
+  void setLambdaTypeInfo(TypeSourceInfo *TS) {
+    assert(DefinitionData && DefinitionData->IsLambda &&
+           "setting lambda property of non-lambda class");
+    auto &DL = static_cast<LambdaDefinitionData &>(*DefinitionData);
+    DL.MethodTyInfo = TS;
+  }
+
+  void setLambdaIsGeneric(bool IsGeneric) {
+    assert(DefinitionData && DefinitionData->IsLambda &&
+           "setting lambda property of non-lambda class");
+    auto &DL = static_cast<LambdaDefinitionData &>(*DefinitionData);
+    DL.IsGenericLambda = IsGeneric;
   }
 
   // Determine whether this type is an Interface Like type for
@@ -3727,7 +3758,7 @@ public:
   /// Get the set of using declarations that this pack expanded into. Note that
   /// some of these may still be unresolved.
   ArrayRef<NamedDecl *> expansions() const {
-    return llvm::makeArrayRef(getTrailingObjects<NamedDecl *>(), NumExpansions);
+    return llvm::ArrayRef(getTrailingObjects<NamedDecl *>(), NumExpansions);
   }
 
   static UsingPackDecl *Create(ASTContext &C, DeclContext *DC,
@@ -4097,7 +4128,7 @@ public:
                                                unsigned NumBindings);
 
   ArrayRef<BindingDecl *> bindings() const {
-    return llvm::makeArrayRef(getTrailingObjects<BindingDecl *>(), NumBindings);
+    return llvm::ArrayRef(getTrailingObjects<BindingDecl *>(), NumBindings);
   }
 
   void printName(raw_ostream &OS, const PrintingPolicy &Policy) const override;

@@ -14,6 +14,7 @@
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Utils/IndexingUtils.h"
 
 using namespace mlir;
 using namespace mlir::tensor;
@@ -44,7 +45,7 @@ SmallVector<Value> mlir::tensor::createDynamicDimValues(OpBuilder &b,
   auto tensorTy = rankedTensor.getType().cast<RankedTensorType>();
   SmallVector<Value> dynamicDims;
   for (const auto &en : llvm::enumerate(tensorTy.getShape())) {
-    if (en.value() == ShapedType::kDynamicSize)
+    if (en.value() == ShapedType::kDynamic)
       dynamicDims.push_back(
           b.create<tensor::DimOp>(loc, rankedTensor, en.index()));
   }
@@ -64,4 +65,23 @@ mlir::tensor::createDimValues(OpBuilder &b, Location loc, Value rankedTensor) {
     }
   }
   return dims;
+}
+
+FailureOr<RankedTensorType>
+mlir::tensor::computeTransposedType(RankedTensorType rankedTensorType,
+                                    ArrayRef<int64_t> transposeVector) {
+  if (transposeVector.empty())
+    return rankedTensorType;
+  if (!isPermutationVector(transposeVector) ||
+      transposeVector.size() != static_cast<size_t>(rankedTensorType.getRank()))
+    return failure();
+
+  SmallVector<int64_t> transposedShape(rankedTensorType.getShape().begin(),
+                                       rankedTensorType.getShape().end());
+  applyPermutationToVector(transposedShape, transposeVector);
+
+  using RTTBuilder = RankedTensorType::Builder;
+  RankedTensorType transposedTensorType =
+      RTTBuilder(rankedTensorType).setShape(transposedShape);
+  return transposedTensorType;
 }

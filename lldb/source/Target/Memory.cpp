@@ -234,11 +234,11 @@ size_t MemoryCache::Read(addr_t addr, void *dst, size_t dst_len,
           return dst_len - bytes_left;
 
         if (process_bytes_read != cache_line_byte_size) {
+          data_buffer_heap_up->SetByteSize(process_bytes_read);
           if (process_bytes_read < data_buffer_heap_up->GetByteSize()) {
             dst_len -= data_buffer_heap_up->GetByteSize() - process_bytes_read;
             bytes_left = process_bytes_read;
           }
-          data_buffer_heap_up->SetByteSize(process_bytes_read);
         }
         m_L2_cache[curr_addr] = DataBufferSP(data_buffer_heap_up.release());
         // We have read data and put it into the cache, continue through the
@@ -332,9 +332,9 @@ AllocatedMemoryCache::AllocatedMemoryCache(Process &process)
 
 AllocatedMemoryCache::~AllocatedMemoryCache() = default;
 
-void AllocatedMemoryCache::Clear() {
+void AllocatedMemoryCache::Clear(bool deallocate_memory) {
   std::lock_guard<std::recursive_mutex> guard(m_mutex);
-  if (m_process.IsAlive()) {
+  if (m_process.IsAlive() && deallocate_memory) {
     PermissionsToBlockMap::iterator pos, end = m_memory_map.end();
     for (pos = m_memory_map.begin(); pos != end; ++pos)
       m_process.DoDeallocateMemory(pos->second->GetBaseAddress());

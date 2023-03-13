@@ -8,6 +8,7 @@
 
 #include "CodeGenInstruction.h"
 #include "CodeGenTarget.h"
+#include "TableGenBackends.h"
 #include "llvm/ADT/IndexedMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -300,8 +301,7 @@ void PseudoLoweringEmitter::emitLoweringEmitter(raw_ostream &o) {
 
 void PseudoLoweringEmitter::run(raw_ostream &o) {
   StringRef Classes[] = {"PseudoInstExpansion", "Instruction"};
-  std::vector<Record *> Insts =
-      Records.getAllDerivedDefinitions(makeArrayRef(Classes));
+  std::vector<Record *> Insts = Records.getAllDerivedDefinitions(Classes);
 
   // Process the pseudo expansion definitions, validating them as we do so.
   Records.startTimer("Process definitions");
@@ -320,4 +320,4 @@ void EmitPseudoLowering(RecordKeeper &RK, raw_ostream &OS) {
   PseudoLoweringEmitter(RK).run(OS);
 }
 
-} // End llvm namespace
+} // namespace llvm

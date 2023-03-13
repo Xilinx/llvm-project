@@ -186,8 +186,11 @@ private:
                       SmallPtrSet<Instruction *, 16> *InstructionsProcessed);
 
   /// Check if this load/store access is misaligned accesses.
+  /// Returns a \p RelativeSpeed of an operation if allowed suitable to
+  /// compare to another result for the same \p AddressSpace and potentially
+  /// different \p Alignment and \p SzInBytes.
   bool accessIsMisaligned(unsigned SzInBytes, unsigned AddressSpace,
-                          Align Alignment);
+                          Align Alignment, unsigned &RelativeSpeed);
 };
 
 class LoadStoreVectorizerLegacyPass : public FunctionPass {
@@ -343,8 +346,8 @@ bool Vectorizer::areConsecutivePointers(Value *PtrA, Value *PtrB,
   // stripAndAccumulateInBoundsConstantOffsets should properly handle a
   // possible overflow and the value should fit into a smallest data type
   // used in the cast/gep chain.
-  assert(OffsetA.getMinSignedBits() <= NewPtrBitWidth &&
-         OffsetB.getMinSignedBits() <= NewPtrBitWidth);
+  assert(OffsetA.getSignificantBits() <= NewPtrBitWidth &&
+         OffsetB.getSignificantBits() <= NewPtrBitWidth);
 
   OffsetA = OffsetA.sextOrTrunc(NewPtrBitWidth);
   OffsetB = OffsetB.sextOrTrunc(NewPtrBitWidth);
@@ -1078,8 +1081,14 @@ bool Vectorizer::vectorizeStoreChain(
   InstructionsProcessed->insert(Chain.begin(), Chain.end());
 
   // If the store is going to be misaligned, don't vectorize it.
-  if (accessIsMisaligned(SzInBytes, AS, Alignment)) {
+  unsigned RelativeSpeed;
+  if (accessIsMisaligned(SzInBytes, AS, Alignment, RelativeSpeed)) {
     if (S0->getPointerAddressSpace() != DL.getAllocaAddrSpace()) {
+      unsigned SpeedBefore;
+      accessIsMisaligned(EltSzInBytes, AS, Alignment, SpeedBefore);
+      if (SpeedBefore > RelativeSpeed)
+        return false;
+
       auto Chains = splitOddVectorElts(Chain, Sz);
       bool Vectorized = false;
       Vectorized |= vectorizeStoreChain(Chains.first, InstructionsProcessed);
@@ -1231,8 +1240,14 @@ bool Vectorizer::vectorizeLoadChain(
   InstructionsProcessed->insert(Chain.begin(), Chain.end());
 
   // If the load is going to be misaligned, don't vectorize it.
-  if (accessIsMisaligned(SzInBytes, AS, Alignment)) {
+  unsigned RelativeSpeed;
+  if (accessIsMisaligned(SzInBytes, AS, Alignment, RelativeSpeed)) {
     if (L0->getPointerAddressSpace() != DL.getAllocaAddrSpace()) {
+      unsigned SpeedBefore;
+      accessIsMisaligned(EltSzInBytes, AS, Alignment, SpeedBefore);
+      if (SpeedBefore > RelativeSpeed)
+        return false;
+
       auto Chains = splitOddVectorElts(Chain, Sz);
       bool Vectorized = false;
       Vectorized |= vectorizeLoadChain(Chains.first, InstructionsProcessed);
@@ -1316,15 +1331,15 @@ bool Vectorizer::vectorizeLoadChain(
 }
 
 bool Vectorizer::accessIsMisaligned(unsigned SzInBytes, unsigned AddressSpace,
-                                    Align Alignment) {
+                                    Align Alignment, unsigned &RelativeSpeed) {
+  RelativeSpeed = 0;
   if (Alignment.value() % SzInBytes == 0)
     return false;
 
-  bool Fast = false;
   bool Allows = TTI.allowsMisalignedMemoryAccesses(F.getParent()->getContext(),
                                                    SzInBytes * 8, AddressSpace,
-                                                   Alignment, &Fast);
+                                                   Alignment, &RelativeSpeed);
   LLVM_DEBUG(dbgs() << "LSV: Target said misaligned is allowed? " << Allows
-                    << " and fast? " << Fast << "\n";);
-  return !Allows || !Fast;
+                    << " with relative speed = " << RelativeSpeed << '\n';);
+  return !Allows || !RelativeSpeed;
 }

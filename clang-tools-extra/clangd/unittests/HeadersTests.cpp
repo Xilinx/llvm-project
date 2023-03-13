@@ -16,6 +16,7 @@
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/CompilerInvocation.h"
 #include "clang/Frontend/FrontendActions.h"
+#include "clang/Tooling/Inclusions/HeaderIncludes.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -23,6 +24,7 @@
 #include "llvm/Testing/Support/Error.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include <optional>
 
 namespace clang {
 namespace clangd {
@@ -117,7 +119,8 @@ protected:
     return Path.value_or("");
   }
 
-  llvm::Optional<TextEdit> insert(llvm::StringRef VerbatimHeader) {
+  std::optional<TextEdit> insert(llvm::StringRef VerbatimHeader,
+                                 tooling::IncludeDirective Directive) {
     Clang = setupClang();
     PreprocessOnlyAction Action;
     EXPECT_TRUE(
@@ -126,7 +129,7 @@ protected:
     IncludeInserter Inserter(MainFile, /*Code=*/"", format::getLLVMStyle(),
                              CDB.getCompileCommand(MainFile)->Directory,
                              &Clang->getPreprocessor().getHeaderSearchInfo());
-    auto Edit = Inserter.insert(VerbatimHeader);
+    auto Edit = Inserter.insert(VerbatimHeader, Directive);
     Action.EndSourceFile();
     return Edit;
   }
@@ -192,6 +195,36 @@ TEST_F(HeadersTest, OnlyCollectInclusionsInMain) {
   EXPECT_THAT(Includes.includeDepth(getID(BarHeader, Includes)),
               UnorderedElementsAre(Distance(getID(BarHeader, Includes), 0u),
                                    Distance(getID(BazHeader, Includes), 1u)));
+}
+
+TEST_F(HeadersTest, CacheBySpellingIsBuiltForMainInclusions) {
+  std::string FooHeader = testPath("foo.h");
+  FS.Files[FooHeader] = R"cpp(
+  void foo();
+)cpp";
+  std::string BarHeader = testPath("bar.h");
+  FS.Files[BarHeader] = R"cpp(
+  void bar();
+)cpp";
+  std::string BazHeader = testPath("baz.h");
+  FS.Files[BazHeader] = R"cpp(
+  void baz();
+)cpp";
+  FS.Files[MainFile] = R"cpp(
+#include "foo.h"
+#include "bar.h"
+#include "baz.h"
+)cpp";
+  auto Includes = collectIncludes();
+  EXPECT_THAT(Includes.MainFileIncludes,
+              UnorderedElementsAre(written("\"foo.h\""), written("\"bar.h\""),
+                                   written("\"baz.h\"")));
+  EXPECT_THAT(Includes.mainFileIncludesWithSpelling("\"foo.h\""),
+              UnorderedElementsAre(&Includes.MainFileIncludes[0]));
+  EXPECT_THAT(Includes.mainFileIncludesWithSpelling("\"bar.h\""),
+              UnorderedElementsAre(&Includes.MainFileIncludes[1]));
+  EXPECT_THAT(Includes.mainFileIncludesWithSpelling("\"baz.h\""),
+              UnorderedElementsAre(&Includes.MainFileIncludes[2]));
 }
 
 TEST_F(HeadersTest, PreambleIncludesPresentOnce) {
@@ -330,9 +363,13 @@ TEST_F(HeadersTest, DontInsertDuplicateResolved) {
 }
 
 TEST_F(HeadersTest, PreferInserted) {
-  auto Edit = insert("<y>");
-  EXPECT_TRUE(Edit);
-  EXPECT_TRUE(StringRef(Edit->newText).contains("<y>"));
+  auto Edit = insert("<y>", tooling::IncludeDirective::Include);
+  ASSERT_TRUE(Edit);
+  EXPECT_EQ(Edit->newText, "#include <y>\n");
+
+  Edit = insert("\"header.h\"", tooling::IncludeDirective::Import);
+  ASSERT_TRUE(Edit);
+  EXPECT_EQ(Edit->newText, "#import \"header.h\"\n");
 }
 
 TEST(Headers, NoHeaderSearchInfo) {
@@ -353,7 +390,7 @@ TEST(Headers, NoHeaderSearchInfo) {
   EXPECT_EQ(Inserter.shouldInsertInclude(HeaderPath, Verbatim), true);
 
   EXPECT_EQ(Inserter.calculateIncludePath(Inserting, "sub2/main2.cpp"),
-            llvm::None);
+            std::nullopt);
 }
 
 TEST_F(HeadersTest, PresumedLocations) {
@@ -445,18 +482,6 @@ TEST_F(HeadersTest, HasIWYUPragmas) {
   EXPECT_TRUE(Includes.hasIWYUExport(getID("export.h", Includes)));
   EXPECT_TRUE(Includes.hasIWYUExport(getID("begin_exports.h", Includes)));
   EXPECT_FALSE(Includes.hasIWYUExport(getID("none.h", Includes)));
-}
-
-TEST(Headers, ParseIWYUPragma) {
-  EXPECT_THAT(parseIWYUPragma("// IWYU pragma: keep"), HasValue(Eq("keep")));
-  EXPECT_THAT(parseIWYUPragma("// IWYU pragma: keep\netc"),
-              HasValue(Eq("keep")));
-  EXPECT_EQ(parseIWYUPragma("/* IWYU pragma: keep"), llvm::None)
-      << "Only // comments supported!";
-  EXPECT_EQ(parseIWYUPragma("//  IWYU pragma: keep"), llvm::None)
-      << "Sensitive to whitespace";
-  EXPECT_EQ(parseIWYUPragma("// IWYU pragma:keep"), llvm::None)
-      << "Sensitive to whitespace";
 }
 
 } // namespace

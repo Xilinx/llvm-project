@@ -40,6 +40,7 @@ set(POLLY_COMPONENTS
     Object
     ProfileData
     Target
+    TargetParser
     Vectorize
 )
 
@@ -71,7 +72,6 @@ add_llvm_pass_plugin(Polly
   CodeGen/IRBuilder.cpp
   CodeGen/Utils.cpp
   CodeGen/RuntimeDebugBuilder.cpp
-  CodeGen/CodegenCleanup.cpp
   CodeGen/PerfMonitor.cpp
   ${GPGPU_CODEGEN_FILES}
   Exchange/JSONExporter.cpp

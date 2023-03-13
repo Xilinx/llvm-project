@@ -17,7 +17,6 @@
 #include "mlir/Dialect/SPIRV/IR/SPIRVOps.h"
 #include "mlir/Dialect/SPIRV/IR/SPIRVTypes.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Debug.h"
 
@@ -115,8 +114,14 @@ wrapInStructAndGetPointer(Type elementType, spirv::StorageClass storageClass) {
 // Type Conversion
 //===----------------------------------------------------------------------===//
 
+static spirv::ScalarType getIndexType(MLIRContext *ctx,
+                                      const SPIRVConversionOptions &options) {
+  return cast<spirv::ScalarType>(
+      IntegerType::get(ctx, options.use64bitIndex ? 64 : 32));
+}
+
 Type SPIRVTypeConverter::getIndexType() const {
-  return IntegerType::get(getContext(), options.use64bitIndex ? 64 : 32);
+  return ::getIndexType(getContext(), options);
 }
 
 MLIRContext *SPIRVTypeConverter::getContext() const {
@@ -129,8 +134,8 @@ bool SPIRVTypeConverter::allows(spirv::Capability capability) {
 
 // TODO: This is a utility function that should probably be exposed by the
 // SPIR-V dialect. Keeping it local till the use case arises.
-static Optional<int64_t> getTypeNumBytes(const SPIRVConversionOptions &options,
-                                         Type type) {
+static std::optional<int64_t>
+getTypeNumBytes(const SPIRVConversionOptions &options, Type type) {
   if (type.isa<spirv::ScalarType>()) {
     auto bitWidth = type.getIntOrFloatBitWidth();
     // According to the SPIR-V spec:
@@ -140,14 +145,14 @@ static Optional<int64_t> getTypeNumBytes(const SPIRVConversionOptions &options,
     // non-externally visible shader Storage Classes: Workgroup, CrossWorkgroup,
     // Private, Function, Input, and Output."
     if (bitWidth == 1)
-      return llvm::None;
+      return std::nullopt;
     return bitWidth / 8;
   }
 
   if (auto vecType = type.dyn_cast<VectorType>()) {
     auto elementSize = getTypeNumBytes(options, vecType.getElementType());
     if (!elementSize)
-      return llvm::None;
+      return std::nullopt;
     return vecType.getNumElements() * *elementSize;
   }
 
@@ -158,23 +163,23 @@ static Optional<int64_t> getTypeNumBytes(const SPIRVConversionOptions &options,
     SmallVector<int64_t, 4> strides;
     if (!memRefType.hasStaticShape() ||
         failed(getStridesAndOffset(memRefType, strides, offset)))
-      return llvm::None;
+      return std::nullopt;
 
     // To get the size of the memref object in memory, the total size is the
     // max(stride * dimension-size) computed for all dimensions times the size
     // of the element.
     auto elementSize = getTypeNumBytes(options, memRefType.getElementType());
     if (!elementSize)
-      return llvm::None;
+      return std::nullopt;
 
     if (memRefType.getRank() == 0)
       return elementSize;
 
     auto dims = memRefType.getShape();
-    if (llvm::is_contained(dims, ShapedType::kDynamicSize) ||
-        offset == MemRefType::getDynamicStrideOrOffset() ||
-        llvm::is_contained(strides, MemRefType::getDynamicStrideOrOffset()))
-      return llvm::None;
+    if (llvm::is_contained(dims, ShapedType::kDynamic) ||
+        ShapedType::isDynamic(offset) ||
+        llvm::is_contained(strides, ShapedType::kDynamic))
+      return std::nullopt;
 
     int64_t memrefSize = -1;
     for (const auto &shape : enumerate(dims))
@@ -185,11 +190,11 @@ static Optional<int64_t> getTypeNumBytes(const SPIRVConversionOptions &options,
 
   if (auto tensorType = type.dyn_cast<TensorType>()) {
     if (!tensorType.hasStaticShape())
-      return llvm::None;
+      return std::nullopt;
 
     auto elementSize = getTypeNumBytes(options, tensorType.getElementType());
     if (!elementSize)
-      return llvm::None;
+      return std::nullopt;
 
     int64_t size = *elementSize;
     for (auto shape : tensorType.getShape())
@@ -199,14 +204,14 @@ static Optional<int64_t> getTypeNumBytes(const SPIRVConversionOptions &options,
   }
 
   // TODO: Add size computation for other types.
-  return llvm::None;
+  return std::nullopt;
 }
 
 /// Converts a scalar `type` to a suitable type under the given `targetEnv`.
-static Type convertScalarType(const spirv::TargetEnv &targetEnv,
-                              const SPIRVConversionOptions &options,
-                              spirv::ScalarType type,
-                              Optional<spirv::StorageClass> storageClass = {}) {
+static Type
+convertScalarType(const spirv::TargetEnv &targetEnv,
+                  const SPIRVConversionOptions &options, spirv::ScalarType type,
+                  std::optional<spirv::StorageClass> storageClass = {}) {
   // Get extension and capability requirements for the given type.
   SmallVector<ArrayRef<spirv::Extension>, 1> extensions;
   SmallVector<ArrayRef<spirv::Capability>, 2> capabilities;
@@ -242,18 +247,36 @@ static Type convertScalarType(const spirv::TargetEnv &targetEnv,
                           intType.getSignedness());
 }
 
+/// Returns a type with the same shape but with any index element type converted
+/// to the matching integer type. This is a noop when the element type is not
+/// the index type.
+static ShapedType
+convertIndexElementType(ShapedType type,
+                        const SPIRVConversionOptions &options) {
+  Type indexType = dyn_cast<IndexType>(type.getElementType());
+  if (!indexType)
+    return type;
+
+  return type.clone(getIndexType(type.getContext(), options));
+}
+
 /// Converts a vector `type` to a suitable type under the given `targetEnv`.
-static Type convertVectorType(const spirv::TargetEnv &targetEnv,
-                              const SPIRVConversionOptions &options,
-                              VectorType type,
-                              Optional<spirv::StorageClass> storageClass = {}) {
-  auto scalarType = type.getElementType().cast<spirv::ScalarType>();
+static Type
+convertVectorType(const spirv::TargetEnv &targetEnv,
+                  const SPIRVConversionOptions &options, VectorType type,
+                  std::optional<spirv::StorageClass> storageClass = {}) {
+  type = cast<VectorType>(convertIndexElementType(type, options));
+  auto scalarType = dyn_cast_or_null<spirv::ScalarType>(type.getElementType());
+  if (!scalarType) {
+    LLVM_DEBUG(llvm::dbgs()
+               << type << " illegal: cannot convert non-scalar element type\n");
+    return nullptr;
+  }
+
   if (type.getRank() <= 1 && type.getNumElements() == 1)
     return convertScalarType(targetEnv, options, scalarType, storageClass);
 
   if (!spirv::CompositeType::isValid(type)) {
-    // TODO: Vector types with more than four elements can be translated into
-    // array types.
     LLVM_DEBUG(llvm::dbgs() << type << " illegal: > 4-element unimplemented\n");
     return nullptr;
   }
@@ -292,15 +315,16 @@ static Type convertTensorType(const spirv::TargetEnv &targetEnv,
     return nullptr;
   }
 
-  auto scalarType = type.getElementType().dyn_cast<spirv::ScalarType>();
+  type = cast<TensorType>(convertIndexElementType(type, options));
+  auto scalarType = dyn_cast_or_null<spirv::ScalarType>(type.getElementType());
   if (!scalarType) {
     LLVM_DEBUG(llvm::dbgs()
                << type << " illegal: cannot convert non-scalar element type\n");
     return nullptr;
   }
 
-  Optional<int64_t> scalarSize = getTypeNumBytes(options, scalarType);
-  Optional<int64_t> tensorSize = getTypeNumBytes(options, type);
+  std::optional<int64_t> scalarSize = getTypeNumBytes(options, scalarType);
+  std::optional<int64_t> tensorSize = getTypeNumBytes(options, type);
   if (!scalarSize || !tensorSize) {
     LLVM_DEBUG(llvm::dbgs()
                << type << " illegal: cannot deduce element count\n");
@@ -311,7 +335,8 @@ static Type convertTensorType(const spirv::TargetEnv &targetEnv,
   auto arrayElemType = convertScalarType(targetEnv, options, scalarType);
   if (!arrayElemType)
     return nullptr;
-  Optional<int64_t> arrayElemSize = getTypeNumBytes(options, arrayElemType);
+  std::optional<int64_t> arrayElemSize =
+      getTypeNumBytes(options, arrayElemType);
   if (!arrayElemSize) {
     LLVM_DEBUG(llvm::dbgs()
                << type << " illegal: cannot deduce converted element size\n");
@@ -339,7 +364,8 @@ static Type convertBoolMemrefType(const spirv::TargetEnv &targetEnv,
       convertScalarType(targetEnv, options, elementType, storageClass);
   if (!arrayElemType)
     return nullptr;
-  Optional<int64_t> arrayElemSize = getTypeNumBytes(options, arrayElemType);
+  std::optional<int64_t> arrayElemSize =
+      getTypeNumBytes(options, arrayElemType);
   if (!arrayElemSize) {
     LLVM_DEBUG(llvm::dbgs()
                << type << " illegal: cannot deduce converted element size\n");
@@ -396,6 +422,9 @@ static Type convertMemrefType(const spirv::TargetEnv &targetEnv,
   } else if (auto scalarType = elementType.dyn_cast<spirv::ScalarType>()) {
     arrayElemType =
         convertScalarType(targetEnv, options, scalarType, storageClass);
+  } else if (auto indexType = elementType.dyn_cast<IndexType>()) {
+    type = convertIndexElementType(type, options).cast<MemRefType>();
+    arrayElemType = type.getElementType();
   } else {
     LLVM_DEBUG(
         llvm::dbgs()
@@ -406,7 +435,8 @@ static Type convertMemrefType(const spirv::TargetEnv &targetEnv,
   if (!arrayElemType)
     return nullptr;
 
-  Optional<int64_t> arrayElemSize = getTypeNumBytes(options, arrayElemType);
+  std::optional<int64_t> arrayElemSize =
+      getTypeNumBytes(options, arrayElemType);
   if (!arrayElemSize) {
     LLVM_DEBUG(llvm::dbgs()
                << type << " illegal: cannot deduce converted element size\n");
@@ -426,7 +456,7 @@ static Type convertMemrefType(const spirv::TargetEnv &targetEnv,
     return wrapInStructAndGetPointer(arrayType, storageClass);
   }
 
-  Optional<int64_t> memrefSize = getTypeNumBytes(options, type);
+  std::optional<int64_t> memrefSize = getTypeNumBytes(options, type);
   if (!memrefSize) {
     LLVM_DEBUG(llvm::dbgs()
                << type << " illegal: cannot deduce element count\n");
@@ -458,13 +488,13 @@ SPIRVTypeConverter::SPIRVTypeConverter(spirv::TargetEnvAttr targetAttr,
 
   addConversion([this](IndexType /*indexType*/) { return getIndexType(); });
 
-  addConversion([this](IntegerType intType) -> Optional<Type> {
+  addConversion([this](IntegerType intType) -> std::optional<Type> {
     if (auto scalarType = intType.dyn_cast<spirv::ScalarType>())
       return convertScalarType(this->targetEnv, this->options, scalarType);
     return Type();
   });
 
-  addConversion([this](FloatType floatType) -> Optional<Type> {
+  addConversion([this](FloatType floatType) -> std::optional<Type> {
     if (auto scalarType = floatType.dyn_cast<spirv::ScalarType>())
       return convertScalarType(this->targetEnv, this->options, scalarType);
     return Type();
@@ -531,7 +561,7 @@ FuncOpConversion::matchAndRewrite(func::FuncOp funcOp, OpAdaptor adaptor,
 
   // Copy over all attributes other than the function name and type.
   for (const auto &namedAttr : funcOp->getAttrs()) {
-    if (namedAttr.getName() != FunctionOpInterface::getTypeAttrName() &&
+    if (namedAttr.getName() != funcOp.getFunctionTypeAttrName() &&
         namedAttr.getName() != SymbolTable::getSymbolAttrName())
       newFuncOp->setAttr(namedAttr.getName(), namedAttr.getValue());
   }
@@ -708,7 +738,7 @@ Value spirv::getPushConstantValue(Operation *op, unsigned elementCount,
       loc, integerType, builder.getI32IntegerAttr(offset));
   auto addrOp = builder.create<spirv::AddressOfOp>(loc, varOp);
   auto acOp = builder.create<spirv::AccessChainOp>(
-      loc, addrOp, llvm::makeArrayRef({zeroOp, offsetOp}));
+      loc, addrOp, llvm::ArrayRef({zeroOp, offsetOp}));
   return builder.create<spirv::LoadOp>(loc, acOp);
 }
 
@@ -749,8 +779,8 @@ Value mlir::spirv::getVulkanElementPtr(SPIRVTypeConverter &typeConverter,
   int64_t offset;
   SmallVector<int64_t, 4> strides;
   if (failed(getStridesAndOffset(baseType, strides, offset)) ||
-      llvm::is_contained(strides, MemRefType::getDynamicStrideOrOffset()) ||
-      offset == MemRefType::getDynamicStrideOrOffset()) {
+      llvm::is_contained(strides, ShapedType::kDynamic) ||
+      ShapedType::isDynamic(offset)) {
     return nullptr;
   }
 
@@ -780,8 +810,8 @@ Value mlir::spirv::getOpenCLElementPtr(SPIRVTypeConverter &typeConverter,
   int64_t offset;
   SmallVector<int64_t, 4> strides;
   if (failed(getStridesAndOffset(baseType, strides, offset)) ||
-      llvm::is_contained(strides, MemRefType::getDynamicStrideOrOffset()) ||
-      offset == MemRefType::getDynamicStrideOrOffset()) {
+      llvm::is_contained(strides, ShapedType::kDynamic) ||
+      ShapedType::isDynamic(offset)) {
     return nullptr;
   }
 
@@ -845,7 +875,7 @@ bool SPIRVConversionTarget::isLegalOp(Operation *op) {
   // QueryMinVersionInterface/QueryMaxVersionInterface are available to all
   // SPIR-V versions.
   if (auto minVersionIfx = dyn_cast<spirv::QueryMinVersionInterface>(op)) {
-    Optional<spirv::Version> minVersion = minVersionIfx.getMinVersion();
+    std::optional<spirv::Version> minVersion = minVersionIfx.getMinVersion();
     if (minVersion && *minVersion > this->targetEnv.getVersion()) {
       LLVM_DEBUG(llvm::dbgs()
                  << op->getName() << " illegal: requiring min version "
@@ -854,7 +884,7 @@ bool SPIRVConversionTarget::isLegalOp(Operation *op) {
     }
   }
   if (auto maxVersionIfx = dyn_cast<spirv::QueryMaxVersionInterface>(op)) {
-    Optional<spirv::Version> maxVersion = maxVersionIfx.getMaxVersion();
+    std::optional<spirv::Version> maxVersion = maxVersionIfx.getMaxVersion();
     if (maxVersion && *maxVersion < this->targetEnv.getVersion()) {
       LLVM_DEBUG(llvm::dbgs()
                  << op->getName() << " illegal: requiring max version "

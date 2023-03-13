@@ -586,20 +586,6 @@ namespace {
                                                   includeBriefComments());
         
         CXCompletionResult R;
-        switch (Results[I].Kind) {
-        case CodeCompletionResult::RK_Declaration:
-          R.ResultKind = CXCompletionResult_Declaration;
-          break;
-        case CodeCompletionResult::RK_Keyword:
-          R.ResultKind = CXCompletionResult_Keyword;
-          break;
-        case CodeCompletionResult::RK_Macro:
-          R.ResultKind = CXCompletionResult_Macro;
-          break;
-        case CodeCompletionResult::RK_Pattern:
-          R.ResultKind = CXCompletionResult_Pattern;
-          break;
-        }
         R.CursorKind = Results[I].CursorKind;
         R.CompletionString = StoredCompletion;
         StoredResults.push_back(R);
@@ -680,7 +666,6 @@ namespace {
                                                 includeBriefComments(), Braced);
 
         CXCompletionResult R;
-        R.ResultKind = CXCompletionResult_Declaration;
         R.CursorKind = CXCursor_OverloadCandidate;
         R.CompletionString = StoredCompletion;
         StoredResults.push_back(R);
@@ -884,7 +869,7 @@ CXCodeCompleteResults *clang_codeCompleteAt(CXTranslationUnit TU,
   auto CodeCompleteAtImpl = [=, &result]() {
     result = clang_codeCompleteAt_Impl(
         TU, complete_filename, complete_line, complete_column,
-        llvm::makeArrayRef(unsaved_files, num_unsaved_files), options);
+        llvm::ArrayRef(unsaved_files, num_unsaved_files), options);
   };
 
   llvm::CrashRecoveryContext CRC;
