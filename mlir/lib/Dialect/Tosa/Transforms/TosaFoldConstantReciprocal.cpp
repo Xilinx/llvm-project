@@ -46,12 +46,10 @@ struct TosaFoldConstantReciprocal : public OpRewritePattern<ReciprocalOp> {
 
     // Compute the reciprocal for each tensor element
     llvm::SmallVector<APFloat, 1> transformedValues;
-    // We already know the amount of values we will insert, reserver space for
+    // We already know the amount of values we will insert, reserve space for
     // all of them to avoid dynamic resizing
     transformedValues.reserve(inputValues.getNumElements());
-    for (auto it = inputValues.value_begin<APFloat>();
-         it != inputValues.value_end<APFloat>(); it++) {
-      auto val = *it;
+    for (auto val : inputValues.getValues<APFloat>()) {
       auto recipVal = computeReciprocal(val, inputValues.getElementType());
       transformedValues.push_back(recipVal);
     }
