@@ -484,6 +484,13 @@ createLinalgBodyCalculationForElementwiseOp(Operation *op, ValueRange args,
 
       auto clamped = clampFloatHelper(loc, rounded, intMin, intMax, rewriter);
 
+      if (dstTy.isUnsignedInteger()) {
+        auto cast = rewriter.create<arith::FPToUIOp>(
+          loc, rewriter.getIntegerType(dstTy.getIntOrFloatBitWidth()), clamped);
+        return rewriter.create<UnrealizedConversionCastOp>(
+          loc, dstTy, cast->getResult(0)).getResult(0);
+      }
+
       return rewriter.create<arith::FPToSIOp>(loc, dstTy, clamped);
     }
 
