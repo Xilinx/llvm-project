@@ -18,6 +18,7 @@
 #include <llvm/ADT/FloatingPointMode.h>
 #include <llvm/ADT/SmallVector.h>
 #include <mlir/IR/BuiltinAttributes.h>
+#include <mlir/Support/LogicalResult.h>
 
 using namespace mlir;
 using namespace mlir::tosa;
@@ -38,10 +39,9 @@ struct TosaFoldConstantReciprocal : public OpRewritePattern<ReciprocalOp> {
     return recip;
   }
 
-  ConstOp replaceTensorWithReciprocal(ConstOp tensorToReplace,
-                                      const DenseElementsAttr &inputValues,
-                                      PatternRewriter &rewriter) const {
-
+  DenseElementsAttr
+  replaceTensorWithReciprocal(ConstOp tensorToReplace,
+                              const DenseElementsAttr &inputValues) const {
     // TODO it would be nicer to do this in-place
 
     // Compute the reciprocal for each tensor element
@@ -57,9 +57,7 @@ struct TosaFoldConstantReciprocal : public OpRewritePattern<ReciprocalOp> {
     // Replace the current tensor with one containing the computed reciprocals
     auto newTensor =
         DenseElementsAttr::get(inputValues.getType(), transformedValues);
-    auto newOp = rewriter.replaceOpWithNewOp<ConstOp>(
-        tensorToReplace, newTensor.getType(), newTensor);
-    return newOp;
+    return newTensor;
   }
 
   LogicalResult matchAndRewrite(ReciprocalOp recip,
@@ -116,14 +114,10 @@ struct TosaFoldConstantReciprocal : public OpRewritePattern<ReciprocalOp> {
     }
 
     // Create a new tensor with the updated values
-    auto newOp =
-        replaceTensorWithReciprocal(definingConstOp, inputValues, rewriter);
+    auto newTensor = replaceTensorWithReciprocal(definingConstOp, inputValues);
 
     // Replace the use of the reciprocal with the transformed tensor
-    auto updateUse = [&recip, &newOp]() { recip->replaceAllUsesWith(newOp); };
-    rewriter.updateRootInPlace(*(recip->getUsers().begin()), updateUse);
-    // Remove the reciprocal operation
-    rewriter.eraseOp(recip);
+    rewriter.replaceOpWithNewOp<ConstOp>(recip, newTensor.getType(), newTensor);
     return success();
   }
 };
