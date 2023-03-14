@@ -98,11 +98,17 @@ struct TosaFoldConstantReciprocal : public OpRewritePattern<ReciprocalOp> {
       return success();
     }
 
+    if (!isa<ConstOp>(inputTensor.getDefiningOp())) {
+      return rewriter.notifyMatchFailure(recip,
+                                         "The reciprocal can only be folded if "
+                                         "it operates on a TOSA constant");
+    }
+    auto definingConstOp = cast<ConstOp>(inputTensor.getDefiningOp());
+
     // Our transformation replaces the input tensor with the transformed tensor.
     // If the input has several users we need to keep the input. This can
     // result in a significantly increased memory usage, such that we currently
     // refrain from applying the transformation in that case.
-    auto definingConstOp = cast<ConstOp>(inputTensor.getDefiningOp());
     if (!definingConstOp->hasOneUse()) {
       return rewriter.notifyMatchFailure(
           recip, "Currently, reciprocals will only be folded if the input "
