@@ -31,7 +31,6 @@ struct TosaFoldConstantReciprocal : public OpRewritePattern<ReciprocalOp> {
       APFloat::rmNearestTiesToEven;
 
   APFloat computeReciprocal(const APFloat &floatVal, Type floatTy) const {
-
     auto recipAttr = FloatAttr::get(floatTy, 1.0);
     APFloat recip = recipAttr.getValue();
     recip.divide(floatVal, reciprocalRoundingMode);
@@ -46,7 +45,10 @@ struct TosaFoldConstantReciprocal : public OpRewritePattern<ReciprocalOp> {
     // TODO it would be nicer to do this in-place
 
     // Compute the reciprocal for each tensor element
-    llvm::SmallVector<APFloat, 10> transformedValues;
+    llvm::SmallVector<APFloat, 1> transformedValues;
+    // We already know the amount of values we will insert, reserver space for
+    // all of them to avoid dynamic resizing
+    transformedValues.reserve(inputValues.getNumElements());
     for (auto it = inputValues.value_begin<APFloat>();
          it != inputValues.value_end<APFloat>(); it++) {
       auto val = *it;
@@ -64,7 +66,6 @@ struct TosaFoldConstantReciprocal : public OpRewritePattern<ReciprocalOp> {
 
   LogicalResult matchAndRewrite(ReciprocalOp recip,
                                 PatternRewriter &rewriter) const override {
-
     auto inputTensor = recip.getInput1();
     auto elemType = inputTensor.getType().getElementType();
     // TOSA only allows for floats as inputs to the reciprocal operation, so
@@ -85,7 +86,6 @@ struct TosaFoldConstantReciprocal : public OpRewritePattern<ReciprocalOp> {
     // In case we have a splat, we only need to calculate the reciprocal once
     // and update the tensor to the transformed splat value.
     if (auto splatAttrs = dyn_cast<SplatElementsAttr>(inputValues)) {
-
       // Transform the splat value
       auto splatVal = splatAttrs.getSplatValue<APFloat>();
       auto newSplatRecipAttr = computeReciprocal(splatVal, elemType);
