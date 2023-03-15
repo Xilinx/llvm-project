@@ -146,6 +146,8 @@ DenseIntElementsAttr Builder::getIndexVectorAttr(ArrayRef<int64_t> values) {
       values);
 }
 
+broken
+
 DenseBoolArrayAttr Builder::getDenseBoolArrayAttr(ArrayRef<bool> values) {
   return DenseBoolArrayAttr::get(context, values);
 }
