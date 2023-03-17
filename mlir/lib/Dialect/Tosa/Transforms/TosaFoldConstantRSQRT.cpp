@@ -55,7 +55,7 @@ struct TosaFoldConstantRSQRT : public OpRewritePattern<RsqrtOp> {
     // Reject non-float or non-dense tensors
     auto foldable =
         notifyIfNotConstantFloatTosaTensor(inputTensor, rsqrt, rewriter);
-    if (foldable.failed()) {
+    if (failed(foldable)) {
       return foldable;
     }
 

@@ -49,7 +49,7 @@ mlir::tosa::notifyIfNotConstantFloatTosaTensor(TypedValue<TensorType> toCheck,
                                                TosaOp location,
                                                PatternRewriter &rewriter) {
   auto floatCheck = notifyIfNotFloat(toCheck, location, rewriter);
-  if (floatCheck.failed()) {
+  if (failed(floatCheck)) {
     return floatCheck;
   }
   return notifyIfNoTosaDenseConstantTensor(toCheck, location, rewriter);

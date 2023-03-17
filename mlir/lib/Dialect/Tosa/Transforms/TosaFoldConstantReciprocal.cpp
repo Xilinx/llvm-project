@@ -37,7 +37,7 @@ struct TosaFoldConstantReciprocal : public OpRewritePattern<ReciprocalOp> {
     // Check that we can apply folding
     auto preCondCheck =
         notifyIfNotConstantFloatTosaTensor(inputTensor, recip, rewriter);
-    if (preCondCheck.failed()) {
+    if (failed(preCondCheck)) {
       return preCondCheck;
     }
 
