@@ -1,0 +1,33 @@
+name: MLIR Tests
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  push:
+    ignore-forks: true
+    paths:
+      - 'mlir/**'
+      - '.github/workflows/mlir-tests.yml'
+      - '.github/workflows/llvm-project-tests.yml'
+  pull_request:
+    ignore-forks: true
+    paths:
+      - 'mlir/**'
+      - '.github/workflows/mlir-tests.yml'
+      - '.github/workflows/llvm-project-tests.yml'
+
+concurrency:
+  # Skip intermediate builds: always.
+  # Cancel intermediate builds: only if it is a pull request build.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+
+jobs:
+  check_mlir:
+    name: Test mlir
+    uses: ./.github/workflows/llvm-project-tests.yml
+    with:
+      build_target: check-mlir
+      projects: mlir
