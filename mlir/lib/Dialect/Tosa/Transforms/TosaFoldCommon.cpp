@@ -34,11 +34,11 @@ DenseElementsAttr mlir::tosa::applyElementWise(
   // all of them to avoid dynamic resizing
   transformedValues.reserve(toTransform.getNumElements());
   for (auto val : toTransform.getValues<llvm::APFloat>()) {
-    auto recipVal = toApply(val, toTransform.getElementType());
-    transformedValues.push_back(recipVal);
+    auto transformedVal = toApply(val, toTransform.getElementType());
+    transformedValues.push_back(transformedVal);
   }
 
-  // Replace the current tensor with one containing the computed reciprocals
+  // Replace the current tensor with one containing the computed values
   auto newTensor =
       DenseElementsAttr::get(toTransform.getType(), transformedValues);
   return newTensor;
