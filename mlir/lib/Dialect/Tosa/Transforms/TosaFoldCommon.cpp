@@ -12,9 +12,9 @@
 
 #include "mlir/Dialect/Tosa/Transforms/TosaFoldCommon.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
-#include <algorithm>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/SmallVector.h>
+#include <algorithm>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Matchers.h>
@@ -155,13 +155,13 @@ SmallVector<int64_t> mlir::tosa::offsetToIndex(DimensionType shape,
 
 SmallVector<int64_t>
 mlir::tosa::getBroadcastedIndex(DimensionType desiredShape,
-                                DimensionType toBeBroadcasted,
+                                DimensionType toBeBroadcastedShape,
                                 DimensionType index) {
   SmallVector<int64_t> broadCasted;
   broadCasted.reserve(desiredShape.size());
   for (size_t i = 0; i < desiredShape.size(); i++) {
     auto toInsert = 0;
-    if (toBeBroadcasted[i] == desiredShape[i]) {
+    if (toBeBroadcastedShape[i] == desiredShape[i]) {
       toInsert = index[i];
     }
     broadCasted.push_back(toInsert);
@@ -170,12 +170,16 @@ mlir::tosa::getBroadcastedIndex(DimensionType desiredShape,
 }
 
 OffsetType mlir::tosa::getBroadcastedOffset(DimensionType desiredShape,
-                                            DimensionType toBeBroadcasted,
+                                            DimensionType toBeBroadcastedShape,
                                             OffsetType offset) {
+  // Simply return the offset if the shapes are equal.
+  if (desiredShape.equals(toBeBroadcastedShape)) {
+    return offset;
+  }
   auto indexInTarget = offsetToIndex(desiredShape, offset);
   auto indexBroadcasted =
-      getBroadcastedIndex(desiredShape, toBeBroadcasted, indexInTarget);
-  return indexToOffset(toBeBroadcasted, indexBroadcasted);
+      getBroadcastedIndex(desiredShape, toBeBroadcastedShape, indexInTarget);
+  return indexToOffset(toBeBroadcastedShape, indexBroadcasted);
 }
 
 APFloat mlir::tosa::computeReciprocal(const APFloat &floatVal, Type floatTy) {

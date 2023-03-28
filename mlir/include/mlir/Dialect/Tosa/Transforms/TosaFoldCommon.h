@@ -36,22 +36,23 @@ DenseElementsAttr applyElementWise(
 /// tensors. If the input tensors do not match \p targetType, broadcasting is
 /// applied.
 DenseElementsAttr applyElementWise(
-    const DenseElementsAttr &, const DenseElementsAttr &, TensorType targetType,
+    const DenseElementsAttr &first, const DenseElementsAttr &second,
+    TensorType targetType,
     const std::function<APFloat(const APFloat &, const APFloat &)> &toApply);
 
 /// Function that checks if \p toCheck is a dense TOSA constant float tensor.
 LogicalResult notifyIfNotConstantFloatTosaTensor(TypedValue<TensorType> toCheck,
                                                  TosaOp location,
-                                                 PatternRewriter &);
+                                                 PatternRewriter &rewriter);
 
 /// Function that checks if \p toCheck is a dense TOSA constant tensor.
 LogicalResult notifyIfNoTosaDenseConstantTensor(TypedValue<TensorType> toCheck,
                                                 TosaOp location,
-                                                PatternRewriter &);
+                                                PatternRewriter &rewriter);
 
 /// Function that checks if the type contained in \p toCheck is float.
 LogicalResult notifyIfNotFloat(TypedValue<TensorType> toCheck, TosaOp location,
-                               PatternRewriter &);
+                               PatternRewriter &rewriter);
 
 /// Compute the offset in \p shape which corresponds to the given \p index.
 OffsetType indexToOffset(DimensionType shape, DimensionType index);
@@ -60,18 +61,20 @@ OffsetType indexToOffset(DimensionType shape, DimensionType index);
 SmallVector<int64_t> offsetToIndex(DimensionType shape, OffsetType offset);
 
 /// Given an \p index into \p desiredShape, compute the corresponding index into
-/// \p toBeBroadcasted.
+/// \p toBeBroadcastedShape.
+/// \returns broadcasted index into \p toBeBroadcastedShape.
 SmallVector<int64_t> getBroadcastedIndex(DimensionType desiredShape,
-                                         DimensionType toBeBroadcasted,
+                                         DimensionType toBeBroadcastedShape,
                                          DimensionType index);
 /// Given an \p offset into \p desiredShape, compute the corresponding offset
-/// into \p toBeBroadcasted.
+/// into \p toBeBroadcastedShape.
+/// \returns broadcasted offset into \p toBeBroadcastedShape.
 OffsetType getBroadcastedOffset(DimensionType desiredShape,
-                                DimensionType toBeBroadcasted,
+                                DimensionType toBeBroadcastedShape,
                                 OffsetType offset);
 
 /// Function to compute the reciprocal.
-APFloat computeReciprocal(const APFloat &, Type);
+APFloat computeReciprocal(const APFloat &floatVal, Type floatTy);
 
 } // namespace tosa
 } // namespace mlir
