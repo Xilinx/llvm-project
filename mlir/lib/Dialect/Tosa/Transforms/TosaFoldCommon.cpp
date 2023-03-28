@@ -13,6 +13,8 @@
 #include "mlir/Dialect/Tosa/Transforms/TosaFoldCommon.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include <llvm/ADT/APFloat.h>
+#include <llvm/ADT/SmallVector.h>
+#include <algorithm>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Matchers.h>
@@ -41,6 +43,42 @@ DenseElementsAttr mlir::tosa::applyElementWise(
   // Replace the current tensor with one containing the computed values
   auto newTensor =
       DenseElementsAttr::get(toTransform.getType(), transformedValues);
+  return newTensor;
+}
+
+DenseElementsAttr mlir::tosa::applyElementWise(
+    const DenseElementsAttr &first, const DenseElementsAttr &second,
+    TensorType targetType,
+    const std::function<APFloat(const APFloat &, const APFloat &)> &toApply) {
+  // Make sure to use the correct values in case broadcasting is required
+  SmallVector<APFloat> transformedValues;
+  // We already know the amount of values we will insert, reserve space for
+  // all of them to avoid dynamic resizing
+  auto targetSize = 1;
+  auto targetShape = targetType.getShape();
+  for (const auto &dimSize : targetShape) {
+    targetSize *= dimSize;
+  }
+  transformedValues.reserve(targetSize);
+
+  // Apply the given function to each pair of values from the input tensors.
+  // Make sure to broadcast the offsets properly.
+  auto firstIt = first.getValues<APFloat>();
+  auto firstShape = first.getType().getShape();
+  auto secondIt = second.getValues<APFloat>();
+  auto secondShape = second.getType().getShape();
+  for (auto offset = 0; offset < targetSize; offset++) {
+    OffsetType offsetInTargetFirst =
+        getBroadcastedOffset(targetShape, firstShape, offset);
+    OffsetType offsetInTargetSecond =
+        getBroadcastedOffset(targetShape, secondShape, offset);
+    auto res =
+        toApply(firstIt[offsetInTargetFirst], secondIt[offsetInTargetSecond]);
+    transformedValues.push_back(res);
+  }
+
+  // Generate a tensor with the computed values.
+  auto newTensor = DenseElementsAttr::get(targetType, transformedValues);
   return newTensor;
 }
 
@@ -89,6 +127,59 @@ LogicalResult mlir::tosa::notifyIfNotFloat(TypedValue<TensorType> toCheck,
   return rewriter.notifyMatchFailure(location,
                                      "Unexpected input tensor type: the "
                                      "TOSA spec only allows floats");
+}
+
+OffsetType mlir::tosa::indexToOffset(DimensionType shape, DimensionType index) {
+  OffsetType offset = 0;
+  for (size_t i = 0; i < shape.size(); i++) {
+    offset = offset * shape[i] + index[i];
+  }
+  return offset;
+}
+
+SmallVector<int64_t> mlir::tosa::offsetToIndex(DimensionType shape,
+                                               OffsetType offset) {
+  auto rank = shape.size();
+  // The rank of the index will be equal to the rank of the shape
+  SmallVector<int64_t> resultIndex;
+  resultIndex.reserve(rank);
+  // Compute all the index values from the last to the first one, reverse the
+  // vector afterwards as there is no convenient push_front.
+  for (int32_t i = rank - 1; i >= 0; i--) {
+    resultIndex.push_back(offset % shape[i]);
+    offset /= shape[i];
+  }
+  std::reverse(resultIndex.begin(), resultIndex.end());
+  return resultIndex;
+}
+
+SmallVector<int64_t>
+mlir::tosa::getBroadcastedIndex(DimensionType desiredShape,
+                                DimensionType toBeBroadcastedShape,
+                                DimensionType index) {
+  SmallVector<int64_t> broadCasted;
+  broadCasted.reserve(desiredShape.size());
+  for (size_t i = 0; i < desiredShape.size(); i++) {
+    auto toInsert = 0;
+    if (toBeBroadcastedShape[i] == desiredShape[i]) {
+      toInsert = index[i];
+    }
+    broadCasted.push_back(toInsert);
+  }
+  return broadCasted;
+}
+
+OffsetType mlir::tosa::getBroadcastedOffset(DimensionType desiredShape,
+                                            DimensionType toBeBroadcastedShape,
+                                            OffsetType offset) {
+  // Simply return the offset if the shapes are equal.
+  if (desiredShape.equals(toBeBroadcastedShape)) {
+    return offset;
+  }
+  auto indexInTarget = offsetToIndex(desiredShape, offset);
+  auto indexBroadcasted =
+      getBroadcastedIndex(desiredShape, toBeBroadcastedShape, indexInTarget);
+  return indexToOffset(toBeBroadcastedShape, indexBroadcasted);
 }
 
 APFloat mlir::tosa::computeReciprocal(const APFloat &floatVal, Type floatTy) {
