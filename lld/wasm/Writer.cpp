@@ -45,8 +45,7 @@
 using namespace llvm;
 using namespace llvm::wasm;
 
-namespace lld {
-namespace wasm {
+namespace lld::wasm {
 static constexpr int stackAlignment = 16;
 static constexpr int heapAlignment = 16;
 
@@ -568,7 +567,7 @@ void Writer::populateTargetFeatures() {
   if (config->isPic) {
     // This should not be necessary because all PIC objects should
     // contain the mutable-globals feature.
-    // TODO(https://bugs.llvm.org/show_bug.cgi?id=52339)
+    // TODO (https://github.com/llvm/llvm-project/issues/51681)
     allowed.insert("mutable-globals");
   }
 
@@ -1865,5 +1864,4 @@ void Writer::createHeader() {
 
 void writeResult() { Writer().run(); }
 
-} // namespace wasm
-} // namespace lld
+} // namespace wasm::lld

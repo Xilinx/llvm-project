@@ -852,6 +852,22 @@ void Parser::ParseMicrosoftTypeAttributes(ParsedAttributes &attrs) {
   }
 }
 
+void Parser::ParseWebAssemblyFuncrefTypeAttribute(ParsedAttributes &attrs) {
+  assert(Tok.is(tok::kw___funcref));
+  SourceLocation StartLoc = Tok.getLocation();
+  if (!getTargetInfo().getTriple().isWasm()) {
+    ConsumeToken();
+    Diag(StartLoc, diag::err_wasm_funcref_not_wasm);
+    return;
+  }
+
+  IdentifierInfo *AttrName = Tok.getIdentifierInfo();
+  SourceLocation AttrNameLoc = ConsumeToken();
+  attrs.addNew(AttrName, AttrNameLoc, /*ScopeName=*/nullptr,
+               /*ScopeLoc=*/SourceLocation{}, /*Args=*/nullptr, /*numArgs=*/0,
+               ParsedAttr::AS_Keyword);
+}
+
 void Parser::DiagnoseAndSkipExtendedMicrosoftTypeAttributes() {
   SourceLocation StartLoc = Tok.getLocation();
   SourceLocation EndLoc = SkipExtendedMicrosoftTypeAttributes();
@@ -3380,6 +3396,8 @@ void Parser::ParseDeclarationSpecifiers(
         goto DoneWithDeclSpec;
 
       CXXScopeSpec SS;
+      if (TemplateInfo.TemplateParams)
+        SS.setTemplateParamLists(*TemplateInfo.TemplateParams);
       Actions.RestoreNestedNameSpecifierAnnotation(Tok.getAnnotationValue(),
                                                    Tok.getAnnotationRange(),
                                                    SS);
@@ -3475,7 +3493,8 @@ void Parser::ParseDeclarationSpecifiers(
                                      &SS) &&
           isConstructorDeclarator(/*Unqualified=*/false,
                                   /*DeductionGuide=*/false,
-                                  DS.isFriendSpecified()))
+                                  DS.isFriendSpecified(),
+                                  &TemplateInfo))
         goto DoneWithDeclSpec;
 
       // C++20 [temp.spec] 13.9/6.
@@ -3840,6 +3859,10 @@ void Parser::ParseDeclarationSpecifiers(
     case tok::kw___regcall:
     case tok::kw___vectorcall:
       ParseMicrosoftTypeAttributes(DS.getAttributes());
+      continue;
+
+    case tok::kw___funcref:
+      ParseWebAssemblyFuncrefTypeAttribute(DS.getAttributes());
       continue;
 
     // Borland single token adornments.
@@ -4957,6 +4980,7 @@ void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
     assert(TemplateInfo.TemplateParams && "no template parameters");
     TParams = MultiTemplateParamsArg(TemplateInfo.TemplateParams->data(),
                                      TemplateInfo.TemplateParams->size());
+    SS.setTemplateParamLists(TParams);
   }
 
   if (!Name && TUK != Sema::TUK_Definition) {
@@ -5405,7 +5429,7 @@ bool Parser::isTypeSpecifierQualifier() {
   case tok::kw___read_only:
   case tok::kw___read_write:
   case tok::kw___write_only:
-
+  case tok::kw___funcref:
   case tok::kw_groupshared:
     return true;
 
@@ -5670,6 +5694,7 @@ bool Parser::isDeclarationSpecifier(
 #define GENERIC_IMAGE_TYPE(ImgType, Id) case tok::kw_##ImgType##_t:
 #include "clang/Basic/OpenCLImageTypes.def"
 
+  case tok::kw___funcref:
   case tok::kw_groupshared:
     return true;
 
@@ -5679,11 +5704,15 @@ bool Parser::isDeclarationSpecifier(
 }
 
 bool Parser::isConstructorDeclarator(bool IsUnqualified, bool DeductionGuide,
-                                     DeclSpec::FriendSpecified IsFriend) {
+                                     DeclSpec::FriendSpecified IsFriend,
+                                     const ParsedTemplateInfo *TemplateInfo) {
   TentativeParsingAction TPA(*this);
 
   // Parse the C++ scope specifier.
   CXXScopeSpec SS;
+  if (TemplateInfo && TemplateInfo->TemplateParams)
+    SS.setTemplateParamLists(*TemplateInfo->TemplateParams);
+
   if (ParseOptionalCXXScopeSpecifier(SS, /*ObjectType=*/nullptr,
                                      /*ObjectHasErrors=*/false,
                                      /*EnteringContext=*/true)) {
@@ -5931,6 +5960,12 @@ void Parser::ParseTypeQualifierListOpt(
         continue;
       }
       goto DoneWithTypeQuals;
+
+    case tok::kw___funcref:
+      ParseWebAssemblyFuncrefTypeAttribute(DS.getAttributes());
+      continue;
+      goto DoneWithTypeQuals;
+
     case tok::kw___pascal:
       if (AttrReqs & AR_VendorAttributesParsed) {
         ParseBorlandTypeAttributes(DS.getAttributes());
@@ -6075,6 +6110,7 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
     bool EnteringContext = D.getContext() == DeclaratorContext::File ||
                            D.getContext() == DeclaratorContext::Member;
     CXXScopeSpec SS;
+    SS.setTemplateParamLists(D.getTemplateParameterLists());
     ParseOptionalCXXScopeSpecifier(SS, /*ObjectType=*/nullptr,
                                    /*ObjectHasErrors=*/false, EnteringContext);
 

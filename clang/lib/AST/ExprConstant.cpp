@@ -7668,6 +7668,11 @@ public:
 
       if (!CalleeLV.getLValueOffset().isZero())
         return Error(Callee);
+      if (CalleeLV.isNullPointer()) {
+        Info.FFDiag(Callee, diag::note_constexpr_null_callee)
+            << const_cast<Expr *>(Callee);
+        return false;
+      }
       FD = dyn_cast_or_null<FunctionDecl>(
           CalleeLV.getLValueBase().dyn_cast<const ValueDecl *>());
       if (!FD)
@@ -10917,7 +10922,7 @@ bool ArrayExprEvaluator::VisitCXXConstructExpr(const CXXConstructExpr *E,
         for (unsigned I = OldElts; I < N; ++I)
           Value->getArrayInitializedElt(I) = Filler;
 
-      if (HasTrivialConstructor && N == FinalSize) {
+      if (HasTrivialConstructor && N == FinalSize && FinalSize != 1) {
         // If we have a trivial constructor, only evaluate it once and copy
         // the result into all the array elements.
         APValue &FirstResult = Value->getArrayInitializedElt(0);
