@@ -73,6 +73,26 @@ func.func @reciprocal_div_neg_infinity() -> tensor<f32> {
   return %1 : tensor<f32>
 }
 
+// CHECK-LABEL: @reciprocal_div_underflow
+func.func @reciprocal_div_underflow() -> tensor<2xf16> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}-0.{{0*}}e+00, 0.{{0*}}e+00
+  // CHECK-NOT: tosa.reciprocal
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value = dense<[-6.0e+15, 6.0e+15]> : tensor<2xf16>} : () -> tensor<2xf16>
+  %1 = "tosa.reciprocal"(%0) : (tensor<2xf16>) -> tensor<2xf16>
+  return %1 : tensor<2xf16>
+}
+
+// CHECK-LABEL: @reciprocal_div_overflow
+func.func @reciprocal_div_overflow() -> tensor<2xf16> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}0x7C00, 0xFC00
+  // CHECK-NOT: tosa.reciprocal
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value = dense<[0.0000001, -0.0000001]> : tensor<2xf16>} : () -> tensor<2xf16>
+  %1 = "tosa.reciprocal"(%0) : (tensor<2xf16>) -> tensor<2xf16>
+  return %1 : tensor<2xf16>
+}
+
 // CHECK-LABEL: @reciprocal_no_fold
 // The folding optimization works only intra-procedurally, so we won't be able
 // to fold anything here
