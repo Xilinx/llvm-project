@@ -23,28 +23,51 @@
 using namespace mlir;
 using namespace mlir::tosa;
 
-namespace {
-static constexpr llvm::RoundingMode reciprocalRoundingMode =
-    APFloat::rmNearestTiesToEven;
-} // namespace
-
+template <class SrcValType, class TargetValType, class TargetType>
 DenseElementsAttr mlir::tosa::applyElementWise(
     const DenseElementsAttr &toTransform,
-    const std::function<llvm::APFloat(const llvm::APFloat &, Type)> &toApply) {
-  llvm::SmallVector<llvm::APFloat, 1> transformedValues;
+    const std::function<TargetValType(const SrcValType &, TargetType)> &toApply,
+    TargetType targetType) {
+  SmallVector<TargetValType> transformedValues;
   // We already know the amount of values we will insert, reserve space for
   // all of them to avoid dynamic resizing
   transformedValues.reserve(toTransform.getNumElements());
-  for (auto val : toTransform.getValues<llvm::APFloat>()) {
-    auto transformedVal = toApply(val, toTransform.getElementType());
+  for (auto val : toTransform.getValues<SrcValType>()) {
+    auto transformedVal = toApply(val, targetType);
     transformedValues.push_back(transformedVal);
   }
 
+  auto inShape = toTransform.getType();
+  auto outTy = inShape.cloneWith(None, targetType);
+
   // Replace the current tensor with one containing the computed values
-  auto newTensor =
-      DenseElementsAttr::get(toTransform.getType(), transformedValues);
+  auto newTensor = DenseElementsAttr::get(outTy, transformedValues);
   return newTensor;
 }
+
+template DenseElementsAttr
+mlir::tosa::applyElementWise<APFloat, APFloat, FloatType>(
+    const DenseElementsAttr &toTransform,
+    const std::function<APFloat(const APFloat &, FloatType)> &toApply,
+    FloatType targetType);
+
+template DenseElementsAttr
+mlir::tosa::applyElementWise<APInt, APFloat, FloatType>(
+    const DenseElementsAttr &toTransform,
+    const std::function<APFloat(const APInt &, FloatType)> &toApply,
+    FloatType targetType);
+
+template DenseElementsAttr
+mlir::tosa::applyElementWise<APFloat, APInt, IntegerType>(
+    const DenseElementsAttr &toTransform,
+    const std::function<APInt(const APFloat &, IntegerType)> &toApply,
+    IntegerType targetType);
+
+template DenseElementsAttr
+mlir::tosa::applyElementWise<APInt, APInt, IntegerType>(
+    const DenseElementsAttr &toTransform,
+    const std::function<APInt(const APInt &, IntegerType)> &toApply,
+    IntegerType targetType);
 
 DenseElementsAttr mlir::tosa::applyElementWise(
     const DenseElementsAttr &first, const DenseElementsAttr &second,
@@ -182,10 +205,11 @@ OffsetType mlir::tosa::getBroadcastedOffset(DimensionType desiredShape,
   return indexToOffset(toBeBroadcastedShape, indexBroadcasted);
 }
 
-APFloat mlir::tosa::computeReciprocal(const APFloat &floatVal, Type floatTy) {
+APFloat mlir::tosa::computeReciprocal(const APFloat &floatVal,
+                                      FloatType floatTy) {
   auto recipAttr = FloatAttr::get(floatTy, 1.0);
   APFloat recip = recipAttr.getValue();
-  recip.divide(floatVal, reciprocalRoundingMode);
+  recip.divide(floatVal, tosaRoundingMode);
 
   return recip;
 }

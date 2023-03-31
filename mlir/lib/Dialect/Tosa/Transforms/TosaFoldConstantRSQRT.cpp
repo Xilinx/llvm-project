@@ -32,7 +32,7 @@ struct TosaFoldConstantRSQRT : public OpRewritePattern<RsqrtOp> {
 
   using OpRewritePattern::OpRewritePattern;
 
-  static APFloat computeRSQRT(const APFloat &apFloatVal, Type floatTy) {
+  static APFloat computeRSQRT(const APFloat &apFloatVal, FloatType floatTy) {
     // The result for negative values (apart from zero) is always NaN
     if (apFloatVal.isNegative() && !apFloatVal.isNegZero()) {
       return APFloat::getNaN(apFloatVal.getSemantics());
@@ -72,7 +72,9 @@ struct TosaFoldConstantRSQRT : public OpRewritePattern<RsqrtOp> {
     }
 
     // Create a new tensor with the updated values
-    auto newTensor = applyElementWise(inputValues, &computeRSQRT);
+    auto newTensor = applyElementWise<APFloat, APFloat, FloatType>(
+        inputValues, &computeRSQRT,
+        cast<FloatType>(inputValues.getElementType()));
 
     // Replace the use of the reciprocal with the transformed tensor
     rewriter.replaceOpWithNewOp<ConstOp>(rsqrt, newTensor.getType(), newTensor);
@@ -84,6 +86,7 @@ struct TosaFoldConstantRSQRT : public OpRewritePattern<RsqrtOp> {
 } // namespace
 
 void mlir::tosa::populateTosaFoldConstantRSQRTPatterns(
+
     MLIRContext *ctx, RewritePatternSet &patterns) {
   patterns.add<TosaFoldConstantRSQRT>(ctx);
 }
