@@ -95,14 +95,12 @@ struct TosaFoldConstantCast : public OpRewritePattern<CastOp> {
       return;
     }
 
-    for (auto val : elements.getValues<APFloat>()) {
-      // Report encountered NaNs once
-      if (val.isNaN()) {
-        location->emitWarning(
-            "Float tensor is casted to integer and it contains NaN values. The "
-            "cast results in an unspecified value.");
-        return;
-      }
+    // Report encountered NaNs
+    auto checkNan = [](const APFloat &val) { return val.isNaN(); };
+    if (any_of(elements.getValues<APFloat>(), checkNan)) {
+      location->emitWarning(
+          "Float tensor is casted to integer and it contains NaN values. The "
+          "cast results in an unspecified value.");
     }
   }
 
