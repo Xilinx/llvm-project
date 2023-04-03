@@ -34,7 +34,7 @@ struct TosaFoldConstantCast : public OpRewritePattern<CastOp> {
   static APFloat convertIntToFloat(const APInt &toConvert,
                                    FloatType targetType) {
     APFloat res(targetType.getFloatSemantics());
-    res.convertFromAPInt(toConvert, true, tosaRoundingMode);
+    res.convertFromAPInt(toConvert, true /* isSigned */, tosaRoundingMode);
     return res;
   }
 
@@ -64,12 +64,15 @@ struct TosaFoldConstantCast : public OpRewritePattern<CastOp> {
     // The result of this conversion should be an integer which might still be
     // outside of the target integer range.
     auto floatSize = APFloat::getSizeInBits(toConvert.getSemantics());
-    APSInt converted(std::max(floatSize, targetWidth), false);
+    APSInt converted(std::max(floatSize, targetWidth), targetType.isUnsigned());
     bool ignored = false;
     toConvert.convertToInteger(converted, APFloat::rmNearestTiesToEven,
                                &ignored);
     // Clip to allowed range.
     if (targetWidth < floatSize) {
+      if (targetType.isUnsigned()) {
+        return converted.truncUSat(targetWidth);
+      }
       return converted.truncSSat(targetWidth);
     }
     return converted;
@@ -79,6 +82,9 @@ struct TosaFoldConstantCast : public OpRewritePattern<CastOp> {
     // Make sure to properly translate booleans
     if (targetType.getWidth() == 1) {
       return toConvert.isZero() ? APInt::getZero(1) : APInt::getAllOnes(1);
+    }
+    if (targetType.isUnsigned()) {
+      return toConvert.zextOrTrunc(targetType.getIntOrFloatBitWidth());
     }
     return toConvert.sextOrTrunc(targetType.getIntOrFloatBitWidth());
   }
@@ -131,6 +137,26 @@ struct TosaFoldConstantCast : public OpRewritePattern<CastOp> {
       return rewriter.notifyMatchFailure(tosaCast,
                                          "Currently, casts will only be folded "
                                          "if its input only has a single user");
+    }
+
+    // Report a match failure for unexpected types
+    if (!toType.isIntOrFloat() || !fromType.isIntOrFloat()) {
+      return rewriter.notifyMatchFailure(
+          tosaCast, "Only casts from/to int/float are supported.");
+    }
+
+    auto isUnsigned = [](Type toCheck) {
+      return isa<IntegerType>(toCheck) &&
+             cast<IntegerType>(toCheck).isUnsigned();
+    };
+    auto typesToCheck = {toType, fromType};
+    if (llvm::any_of(typesToCheck, isUnsigned)) {
+      // TOSA casts currently don't support unsigned integers.
+      // To support them by here, one could use APSInt instead of APInts,
+      // however, this causes trouble with `getValues` which does not support
+      // APSInts currently.
+      return rewriter.notifyMatchFailure(
+          tosaCast, "Cast folding from/to unsigned integers is not supported.");
     }
 
     DenseElementsAttr res;
