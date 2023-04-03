@@ -74,7 +74,9 @@ func.func @cast_fold_f32_to_i8() -> tensor<5xi8> {
 
 // CHECK-LABEL: @cast_fold_float_to_int_infinity_zero_nan
 func.func @cast_fold_float_to_int_infinity_zero_nan() -> tensor<5xi16> {
-  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}32767, -32768, 0, 0{{.*}}tensor<5xi16>
+  // Check if infinity and zero are translated properly. Don't expect any
+  // specific value for NaN, as the casted int value for NaN is unspecified.
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}32767, -32768, 0, 0, {{.*}}tensor<5xi16>
   // CHECK-NOT: tosa.cast
   // CHECK: return [[RES]]
   %0 = "tosa.const"() {value =
