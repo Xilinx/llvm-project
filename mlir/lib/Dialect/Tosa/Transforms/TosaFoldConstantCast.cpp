@@ -115,10 +115,9 @@ struct TosaFoldConstantCast : public OpRewritePattern<CastOp> {
     auto inputTensor = tosaCast.getInput();
 
     // If the input tensor is not constant, we cannot fold it.
-    auto isDenseConst =
-        notifyIfNoTosaDenseConstantTensor(inputTensor, tosaCast, rewriter);
-    if (failed(isDenseConst)) {
-      return isDenseConst;
+    if (failed(notifyIfNoTosaDenseConstantTensor(inputTensor, tosaCast,
+                                                 rewriter))) {
+      return failure();
     }
 
     auto fromType = inputTensor.getType().getElementType();
