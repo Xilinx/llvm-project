@@ -591,10 +591,6 @@ private:
     return false;
   }
 
-  bool isCpp11AttributeSpecifier(const FormatToken &Tok) {
-    return isCppAttribute(Style.isCpp(), Tok);
-  }
-
   bool parseSquare() {
     if (!CurrentToken)
       return false;
@@ -617,7 +613,7 @@ private:
 
     const bool IsInnerSquare = Contexts.back().InCpp11AttributeSpecifier;
     const bool IsCpp11AttributeSpecifier =
-        isCpp11AttributeSpecifier(*Left) || IsInnerSquare;
+        isCppAttribute(Style.isCpp(), *Left) || IsInnerSquare;
 
     // Treat C# Attributes [STAThread] much like C++ attributes [[...]].
     bool IsCSharpAttributeSpecifier =
@@ -1219,25 +1215,19 @@ private:
              !CurrentToken->isOneOf(tok::l_paren, tok::semi, tok::r_paren)) {
         if (CurrentToken->isOneOf(tok::star, tok::amp))
           CurrentToken->setType(TT_PointerOrReference);
-        auto Next = CurrentToken->getNextNonComment();
-        if (!Next)
+        consumeToken();
+        if (!CurrentToken)
+          continue;
+        if (CurrentToken->is(tok::comma) &&
+            CurrentToken->Previous->isNot(tok::kw_operator)) {
           break;
-        if (Next->is(tok::less))
-          next();
-        else
-          consumeToken();
-        assert(CurrentToken);
-        auto Previous = CurrentToken->getPreviousNonComment();
-        assert(Previous);
-        if (CurrentToken->is(tok::comma) && Previous->isNot(tok::kw_operator))
-          break;
-        if (Previous->isOneOf(TT_BinaryOperator, TT_UnaryOperator, tok::comma,
-                              tok::star, tok::arrow, tok::amp, tok::ampamp) ||
+        }
+        if (CurrentToken->Previous->isOneOf(TT_BinaryOperator, TT_UnaryOperator,
+                                            tok::comma, tok::star, tok::arrow,
+                                            tok::amp, tok::ampamp) ||
             // User defined literal.
-            Previous->TokenText.startswith("\"\"")) {
-          Previous->setType(TT_OverloadedOperator);
-          if (CurrentToken->isOneOf(tok::less, tok::greater))
-            break;
+            CurrentToken->Previous->TokenText.startswith("\"\"")) {
+          CurrentToken->Previous->setType(TT_OverloadedOperator);
         }
       }
       if (CurrentToken && CurrentToken->is(tok::l_paren))
@@ -2244,7 +2234,7 @@ private:
     if (Tok.Next->isOneOf(tok::kw_noexcept, tok::kw_volatile, tok::kw_const,
                           tok::kw_requires, tok::kw_throw, tok::arrow,
                           Keywords.kw_override, Keywords.kw_final) ||
-        isCpp11AttributeSpecifier(*Tok.Next)) {
+        isCppAttribute(Style.isCpp(), *Tok.Next)) {
       return false;
     }
 
@@ -2404,7 +2394,7 @@ private:
 
     if (!NextToken ||
         NextToken->isOneOf(tok::arrow, tok::equal, tok::kw_noexcept, tok::comma,
-                           tok::r_paren) ||
+                           tok::r_paren, TT_RequiresClause) ||
         NextToken->canBePointerOrReferenceQualifier() ||
         (NextToken->is(tok::l_brace) && !NextToken->getNextNonComment())) {
       return TT_PointerOrReference;
@@ -3762,8 +3752,9 @@ bool TokenAnnotator::spaceRequiredBetween(const AnnotatedLine &Line,
     if (Right.is(TT_BlockComment))
       return true;
     // foo() -> const Bar * override/final
-    if (Right.isOneOf(Keywords.kw_override, Keywords.kw_final,
-                      tok::kw_noexcept) &&
+    // S::foo() & noexcept/requires
+    if (Right.isOneOf(Keywords.kw_override, Keywords.kw_final, tok::kw_noexcept,
+                      TT_RequiresClause) &&
         !Right.is(TT_StartOfName)) {
       return true;
     }
@@ -4057,10 +4048,6 @@ bool TokenAnnotator::spaceRequiredBefore(const AnnotatedLine &Line,
     return true;
 
   if (Style.isCpp()) {
-    if (Left.is(TT_OverloadedOperator) &&
-        Right.isOneOf(TT_TemplateOpener, TT_TemplateCloser)) {
-      return true;
-    }
     // Space between UDL and dot: auto b = 4s .count();
     if (Right.is(tok::period) && Left.is(tok::numeric_constant))
       return true;
@@ -4352,6 +4339,11 @@ bool TokenAnnotator::spaceRequiredBefore(const AnnotatedLine &Line,
         (Left.is(TT_VerilogNumberBase) && Right.is(tok::numeric_constant))) {
       return false;
     }
+    // Don't add spaces between two at signs. Like in a coverage event.
+    // Don't add spaces between at and a sensitivity list like
+    // `@(posedge clk)`.
+    if (Left.is(tok::at) && Right.isOneOf(tok::l_paren, tok::star, tok::at))
+      return false;
     // Add space between the type name and dimension like `logic [1:0]`.
     if (Right.is(tok::l_square) &&
         Left.isOneOf(TT_VerilogDimensionedTypeName, Keywords.kw_function)) {
@@ -4424,8 +4416,6 @@ bool TokenAnnotator::spaceRequiredBefore(const AnnotatedLine &Line,
          Line.First->isOneOf(tok::kw_default, tok::kw_case))) {
       return Style.SpaceBeforeCaseColon;
     }
-    if (Line.First->isOneOf(tok::kw_default, tok::kw_case))
-      return Style.SpaceBeforeCaseColon;
     const FormatToken *Next = Right.getNextNonComment();
     if (!Next || Next->is(tok::semi))
       return false;
