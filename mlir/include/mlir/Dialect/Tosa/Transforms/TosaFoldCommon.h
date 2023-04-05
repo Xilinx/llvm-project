@@ -40,10 +40,12 @@ DenseElementsAttr applyElementWise(
 /// Apply the given transformation function on the elements of the given
 /// tensors. If the input tensors do not match \p targetType, broadcasting is
 /// applied.
+template <class FirstValType, class SecondValType, class ResultType>
 DenseElementsAttr applyElementWise(
     const DenseElementsAttr &first, const DenseElementsAttr &second,
     TensorType targetType,
-    const std::function<APFloat(const APFloat &, const APFloat &)> &toApply);
+    const std::function<ResultType(const FirstValType &, const SecondValType &)>
+        &toApply);
 
 /// Function that checks if \p toCheck is a dense TOSA constant float tensor.
 LogicalResult notifyIfNotConstantFloatTosaTensor(TypedValue<TensorType> toCheck,
@@ -77,6 +79,19 @@ SmallVector<int64_t> getBroadcastedIndex(DimensionType desiredShape,
 OffsetType getBroadcastedOffset(DimensionType desiredShape,
                                 DimensionType toBeBroadcastedShape,
                                 OffsetType offset);
+
+/// Heuristic to decide when to replace a binary operation on constants with the
+/// folded value.
+/// Folding operations on constants can lead to an increased memory usage
+/// whenever none of the inputs can be replaced but a new constant that is
+/// inserted. Hence, this will currently only suggest folding when the memory
+/// impact is negligible.
+/// The \p binaryOp and the constant values of both operands, \p valuesFirst
+/// and \p valuesSecond.
+/// \returns Whether folding should be applied.
+bool constantBinaryOpShouldBeFolded(TosaOp binaryOp,
+                                    DenseElementsAttr valuesFirst,
+                                    DenseElementsAttr valuesSecond);
 
 /// Function to compute the reciprocal.
 APFloat computeReciprocal(const APFloat &floatVal, FloatType floatTy);

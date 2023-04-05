@@ -63,6 +63,11 @@ struct TosaFoldConstantPow : public OpRewritePattern<PowOp> {
     auto baseOp = powOp.getInput1();
     auto expOp = powOp.getInput2();
 
+    if (baseOp.getType().getElementType() != expOp.getType().getElementType()) {
+      return rewriter.notifyMatchFailure(
+          powOp, "Expected type of pow arguments to match.");
+    }
+
     // Check if both tensors are constant
     auto baseIsConstCheck =
         notifyIfNotConstantFloatTosaTensor(baseOp, powOp, rewriter);
@@ -82,20 +87,14 @@ struct TosaFoldConstantPow : public OpRewritePattern<PowOp> {
     DenseElementsAttr expValues;
     matchPattern(expOp, m_Constant(&expValues));
 
-    // If both tensors are splat, we don't care for the number of users
-    if (!isa<SplatElementsAttr>(baseValues) ||
-        !isa<SplatElementsAttr>(expValues)) {
-      // Make sure that at least one of the constant input tensors can be
-      // replaced (i.e. only has a single user)
-      if (!baseOp.hasOneUse() && !expOp.hasOneUse()) {
-        return rewriter.notifyMatchFailure(
-            powOp, "Currently, pows will only be folded if at least one input "
-                   "tensor only has a single user");
-      }
+    if (!constantBinaryOpShouldBeFolded(powOp, baseValues, expValues)) {
+      return rewriter.notifyMatchFailure(
+          powOp, "Currently, pows will only be folded if this requires only "
+                 "little additional memory usage.");
     }
 
-    auto newTensor =
-        applyElementWise(baseValues, expValues, powOp.getType(), &computePower);
+    auto newTensor = applyElementWise<APFloat, APFloat, APFloat>(
+        baseValues, expValues, powOp.getType(), &computePower);
     rewriter.replaceOpWithNewOp<ConstOp>(powOp, newTensor.getType(), newTensor);
 
     return success();

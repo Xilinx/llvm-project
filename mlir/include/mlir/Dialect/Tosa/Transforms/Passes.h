@@ -29,6 +29,8 @@ void populateTosaDecomposeTransposeConv(MLIRContext *ctx,
                                         RewritePatternSet &patterns);
 void populateTosaDecomposeDepthwise(MLIRContext *ctx,
                                     RewritePatternSet &patterns);
+void populateTosaFoldConstantAddPatterns(MLIRContext *ctx,
+                                         RewritePatternSet &patterns);
 void populateTosaFoldConstantCastPatterns(MLIRContext *ctx,
                                           RewritePatternSet &patterns);
 void populateTosaFoldConstantPowPatterns(MLIRContext *ctx,

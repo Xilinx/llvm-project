@@ -50,6 +50,7 @@ struct TosaLayerwiseConstantFoldPass
     RewritePatternSet patterns(ctx);
     auto func = getOperation();
 
+    mlir::tosa::populateTosaFoldConstantAddPatterns(ctx, patterns);
     mlir::tosa::populateTosaFoldConstantCastPatterns(ctx, patterns);
     mlir::tosa::populateTosaFoldConstantPowPatterns(ctx, patterns);
     mlir::tosa::populateTosaFoldConstantReciprocalPatterns(ctx, patterns);
