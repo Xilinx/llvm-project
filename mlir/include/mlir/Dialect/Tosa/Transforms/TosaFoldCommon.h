@@ -83,11 +83,11 @@ OffsetType getBroadcastedOffset(DimensionType desiredShape,
 /// Heuristic to decide when to replace a binary operation on constants with the
 /// folded value.
 /// Folding operations on constants can lead to an increased memory usage
-/// whenever none of the inputs can be replaced but a new constant that is
-/// inserted. Hence, this will currently only suggest folding when the memory
-/// impact is negligible.
-/// The \p binaryOp and the constant values of both operands, \p valuesFirst
-/// and \p valuesSecond.
+/// whenever none of the inputs can be replaced but a new constant is inserted.
+/// Hence, this will currently only suggest folding when the memory impact is
+/// negligible.
+/// Takes the \p binaryOp and the constant values of both operands,
+/// \p valuesFirst and \p valuesSecond.
 /// \returns Whether folding should be applied.
 bool constantBinaryOpShouldBeFolded(TosaOp binaryOp,
                                     DenseElementsAttr valuesFirst,
