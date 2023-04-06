@@ -69,12 +69,14 @@ mlir::tosa::applyElementWise<APInt, APInt, IntegerType>(
     const std::function<APInt(const APInt &, IntegerType)> &toApply,
     IntegerType targetType);
 
+template <class ElementType, class ResultType>
 DenseElementsAttr mlir::tosa::applyElementWise(
     const DenseElementsAttr &first, const DenseElementsAttr &second,
     TensorType targetType,
-    const std::function<APFloat(const APFloat &, const APFloat &)> &toApply) {
+    const std::function<ResultType(const ElementType &, const ElementType &)>
+        &toApply) {
   // Make sure to use the correct values in case broadcasting is required
-  SmallVector<APFloat> transformedValues;
+  SmallVector<ResultType> transformedValues;
   // We already know the amount of values we will insert, reserve space for
   // all of them to avoid dynamic resizing
   auto targetSize = 1;
@@ -86,9 +88,9 @@ DenseElementsAttr mlir::tosa::applyElementWise(
 
   // Apply the given function to each pair of values from the input tensors.
   // Make sure to broadcast the offsets properly.
-  auto firstIt = first.getValues<APFloat>();
+  auto firstIt = first.getValues<ElementType>();
   auto firstShape = first.getType().getShape();
-  auto secondIt = second.getValues<APFloat>();
+  auto secondIt = second.getValues<ElementType>();
   auto secondShape = second.getType().getShape();
   for (auto offset = 0; offset < targetSize; offset++) {
     OffsetType offsetInTargetFirst =
@@ -104,6 +106,16 @@ DenseElementsAttr mlir::tosa::applyElementWise(
   auto newTensor = DenseElementsAttr::get(targetType, transformedValues);
   return newTensor;
 }
+
+template DenseElementsAttr mlir::tosa::applyElementWise<APFloat, APFloat>(
+    const DenseElementsAttr &first, const DenseElementsAttr &second,
+    TensorType targetType,
+    const std::function<APFloat(const APFloat &, const APFloat &)> &toApply);
+
+template DenseElementsAttr mlir::tosa::applyElementWise<APInt, APInt>(
+    const DenseElementsAttr &first, const DenseElementsAttr &second,
+    TensorType targetType,
+    const std::function<APInt(const APInt &, const APInt &)> &toApply);
 
 LogicalResult
 mlir::tosa::notifyIfNotConstantFloatTosaTensor(TypedValue<TensorType> toCheck,
@@ -203,6 +215,32 @@ OffsetType mlir::tosa::getBroadcastedOffset(DimensionType desiredShape,
   auto indexBroadcasted =
       getBroadcastedIndex(desiredShape, toBeBroadcastedShape, indexInTarget);
   return indexToOffset(toBeBroadcastedShape, indexBroadcasted);
+}
+
+bool mlir::tosa::constantBinaryOpShouldBeFolded(
+    TosaOp binaryOp, DenseElementsAttr valuesFirst,
+    DenseElementsAttr valuesSecond) {
+  assert(binaryOp->getNumOperands() == 2);
+  auto firstOp = binaryOp->getOperand(0);
+  auto secondOp = binaryOp->getOperand(1);
+
+  // If both tensors are splat, we don't care for the number of users
+  if (isa<SplatElementsAttr>(valuesFirst) &&
+      isa<SplatElementsAttr>(valuesSecond)) {
+    return true;
+  }
+
+  // If this is the only use of one of the tensors, it will be replaced an no
+  // additional memory is required.
+  if (firstOp.hasOneUse() || secondOp.hasOneUse()) {
+    return true;
+  }
+
+  // Fold it both inputs are equal and those are the only uses. Don't fold
+  // otherwise.
+  auto numUsers =
+      std::distance(firstOp.getUses().begin(), firstOp.getUses().end());
+  return firstOp == secondOp && numUsers == 2;
 }
 
 APFloat mlir::tosa::computeReciprocal(const APFloat &floatVal,

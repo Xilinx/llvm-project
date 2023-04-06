@@ -55,6 +55,16 @@ func.func @pow_fold_nan_cases() -> tensor<3xf32> {
   return %2 : tensor<3xf32>
 }
 
+// CHECK-LABEL: @pow_fold_equal_args
+func.func @pow_fold_equal_args() -> tensor<2xf16> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}2.56{{0*}}e+02, 5.8
+  // CHECK-NOT: tosa.pow
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value = dense<[4.0, 2.22]> : tensor<2xf16>} : () -> tensor<2xf16>
+  %2 = "tosa.pow"(%0, %0) : (tensor<2xf16>, tensor<2xf16>) -> tensor<2xf16>
+  return %2 : tensor<2xf16>
+}
+
 // CHECK-LABEL: @pow_fold_tensor_broadcast_exp
 func.func @pow_fold_tensor_broadcast_exp() -> tensor<3xf16> {
   // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}1.6{{0*}}e+01, 4.929690e+00, 9.609370e+00{{.*}}tensor<3xf16>
