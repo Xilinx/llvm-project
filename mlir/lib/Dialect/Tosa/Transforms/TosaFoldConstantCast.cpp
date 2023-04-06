@@ -18,8 +18,8 @@
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/APSInt.h>
-#include <llvm/Support/Debug.h>
 #include <mlir/IR/BuiltinTypes.h>
+#include <mlir/IR/MLIRContext.h>
 #include <mlir/Support/LogicalResult.h>
 
 using namespace mlir;
@@ -186,9 +186,28 @@ struct TosaFoldConstantCast : public OpRewritePattern<CastOp> {
   }
 };
 
+struct TosaFoldConstantFloatCasts : TosaFoldConstantCast {
+
+  TosaFoldConstantFloatCasts(MLIRContext *ctx) : TosaFoldConstantCast(ctx) {}
+
+  LogicalResult matchAndRewrite(CastOp tosaCast,
+                                PatternRewriter &rewriter) const override {
+    if (isa<IntegerType>(tosaCast.getInput().getType().getElementType())) {
+      return rewriter.notifyMatchFailure(
+          tosaCast, "Folding casts from int is currently disabled.");
+    }
+
+    return TosaFoldConstantCast::matchAndRewrite(tosaCast, rewriter);
+  }
+};
+
 } // namespace
 
 void mlir::tosa::populateTosaFoldConstantCastPatterns(
-    MLIRContext *ctx, RewritePatternSet &patterns) {
-  patterns.add<TosaFoldConstantCast>(ctx);
+    MLIRContext *ctx, RewritePatternSet &patterns, bool enableIntCastFolding) {
+  if (enableIntCastFolding) {
+    patterns.add<TosaFoldConstantCast>(ctx);
+  } else {
+    patterns.add<TosaFoldConstantFloatCasts>(ctx);
+  }
 }

@@ -1,4 +1,4 @@
-//===-- Passes.td - TOSA pass declarations ----*- tablegen -*-===//
+//===-- Passes.td - TOSA pass declarations -----------------*- tablegen -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -22,6 +22,10 @@ def TosaLayerwiseConstantFoldPass : Pass<"tosa-layerwise-constant-fold", "func::
   }];
 
   let constructor = "createTosaLayerwiseConstantFoldPass()";
+  let options = [
+    Option<"enableIntCastFolding", "enable-cast-folding-int-input", "bool",
+           "true", "Enable folding for casts from integer types">
+  ];
 }
 
 def TosaInferShapes : Pass<"tosa-infer-shapes", "func::FuncOp"> {
@@ -56,7 +60,7 @@ def TosaOptionalDecompositions
   : Pass<"tosa-optional-decompositions", "func::FuncOp"> {
   let summary = "Applies Tosa operations optional decompositions";
   let description = [{
-    Pass to apply the Tosa operations decompositions 
+    Pass to apply the Tosa operations decompositions
     exposed as populate functions in include/mlir/Dialect/Tosa/Transforms/Passes.h
   }];
 
