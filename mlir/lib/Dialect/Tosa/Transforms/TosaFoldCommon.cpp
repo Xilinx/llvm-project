@@ -69,11 +69,11 @@ mlir::tosa::applyElementWise<APInt, APInt, IntegerType>(
     const std::function<APInt(const APInt &, IntegerType)> &toApply,
     IntegerType targetType);
 
-template <class FirstValType, class SecondValType, class ResultType>
+template <class ElementType, class ResultType>
 DenseElementsAttr mlir::tosa::applyElementWise(
     const DenseElementsAttr &first, const DenseElementsAttr &second,
     TensorType targetType,
-    const std::function<ResultType(const FirstValType &, const SecondValType &)>
+    const std::function<ResultType(const ElementType &, const ElementType &)>
         &toApply) {
   // Make sure to use the correct values in case broadcasting is required
   SmallVector<ResultType> transformedValues;
@@ -88,9 +88,9 @@ DenseElementsAttr mlir::tosa::applyElementWise(
 
   // Apply the given function to each pair of values from the input tensors.
   // Make sure to broadcast the offsets properly.
-  auto firstIt = first.getValues<FirstValType>();
+  auto firstIt = first.getValues<ElementType>();
   auto firstShape = first.getType().getShape();
-  auto secondIt = second.getValues<SecondValType>();
+  auto secondIt = second.getValues<ElementType>();
   auto secondShape = second.getType().getShape();
   for (auto offset = 0; offset < targetSize; offset++) {
     OffsetType offsetInTargetFirst =
@@ -107,13 +107,12 @@ DenseElementsAttr mlir::tosa::applyElementWise(
   return newTensor;
 }
 
-template DenseElementsAttr
-mlir::tosa::applyElementWise<APFloat, APFloat, APFloat>(
+template DenseElementsAttr mlir::tosa::applyElementWise<APFloat, APFloat>(
     const DenseElementsAttr &first, const DenseElementsAttr &second,
     TensorType targetType,
     const std::function<APFloat(const APFloat &, const APFloat &)> &toApply);
 
-template DenseElementsAttr mlir::tosa::applyElementWise<APInt, APInt, APInt>(
+template DenseElementsAttr mlir::tosa::applyElementWise<APInt, APInt>(
     const DenseElementsAttr &first, const DenseElementsAttr &second,
     TensorType targetType,
     const std::function<APInt(const APInt &, const APInt &)> &toApply);

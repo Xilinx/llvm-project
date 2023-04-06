@@ -93,7 +93,7 @@ struct TosaFoldConstantPow : public OpRewritePattern<PowOp> {
                  "little additional memory usage.");
     }
 
-    auto newTensor = applyElementWise<APFloat, APFloat, APFloat>(
+    auto newTensor = applyElementWise<APFloat, APFloat>(
         baseValues, expValues, powOp.getType(), &computePower);
     rewriter.replaceOpWithNewOp<ConstOp>(powOp, newTensor.getType(), newTensor);
 

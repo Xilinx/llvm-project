@@ -40,11 +40,11 @@ DenseElementsAttr applyElementWise(
 /// Apply the given transformation function on the elements of the given
 /// tensors. If the input tensors do not match \p targetType, broadcasting is
 /// applied.
-template <class FirstValType, class SecondValType, class ResultType>
+template <class ElementType, class ResultType>
 DenseElementsAttr applyElementWise(
     const DenseElementsAttr &first, const DenseElementsAttr &second,
     TensorType targetType,
-    const std::function<ResultType(const FirstValType &, const SecondValType &)>
+    const std::function<ResultType(const ElementType &, const ElementType &)>
         &toApply);
 
 /// Function that checks if \p toCheck is a dense TOSA constant float tensor.

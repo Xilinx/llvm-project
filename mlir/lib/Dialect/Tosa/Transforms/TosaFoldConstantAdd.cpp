@@ -76,12 +76,12 @@ struct TosaFoldConstantAdd : public OpRewritePattern<AddOp> {
     if (isa<IntegerType>(lhsElemType)) {
       assert(isa<IntegerType>(rhsElemType) &&
              isa<IntegerType>(resultType.getElementType()));
-      newTensor = applyElementWise<APInt, APInt, APInt>(
-          lhsValues, rhsValues, resultType, &computeIntAdd);
+      newTensor = applyElementWise<APInt, APInt>(lhsValues, rhsValues,
+                                                 resultType, &computeIntAdd);
     } else {
       assert(isa<FloatType>(lhsElemType) && isa<FloatType>(rhsElemType) &&
              isa<FloatType>(resultType.getElementType()));
-      newTensor = applyElementWise<APFloat, APFloat, APFloat>(
+      newTensor = applyElementWise<APFloat, APFloat>(
           lhsValues, rhsValues, resultType, &computeFloatAdd);
     }
     rewriter.replaceOpWithNewOp<ConstOp>(addOp, newTensor.getType(), newTensor);
