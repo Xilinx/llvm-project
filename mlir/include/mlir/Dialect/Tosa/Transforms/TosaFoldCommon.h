@@ -27,10 +27,15 @@ using DimensionType = ArrayRef<int64_t>;
 /// Type for tensor offsets.
 using OffsetType = size_t;
 
+static constexpr llvm::RoundingMode tosaRoundingMode =
+    APFloat::rmNearestTiesToEven;
+
 /// Transform a tensor with the given transformation function.
+template <class SrcValType, class TargetValType, class TargetType>
 DenseElementsAttr applyElementWise(
     const DenseElementsAttr &toTransform,
-    const std::function<llvm::APFloat(const llvm::APFloat &, Type)> &toApply);
+    const std::function<TargetValType(const SrcValType &, TargetType)> &toApply,
+    TargetType targetType);
 
 /// Apply the given transformation function on the elements of the given
 /// tensors. If the input tensors do not match \p targetType, broadcasting is
@@ -74,7 +79,7 @@ OffsetType getBroadcastedOffset(DimensionType desiredShape,
                                 OffsetType offset);
 
 /// Function to compute the reciprocal.
-APFloat computeReciprocal(const APFloat &floatVal, Type floatTy);
+APFloat computeReciprocal(const APFloat &floatVal, FloatType floatTy);
 
 } // namespace tosa
 } // namespace mlir

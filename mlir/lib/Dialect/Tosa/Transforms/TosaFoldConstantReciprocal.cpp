@@ -57,7 +57,9 @@ struct TosaFoldConstantReciprocal : public OpRewritePattern<ReciprocalOp> {
     }
 
     // Create a new tensor with the updated values
-    auto newTensor = applyElementWise(inputValues, &computeReciprocal);
+    auto newTensor = applyElementWise<APFloat, APFloat, FloatType>(
+        inputValues, &computeReciprocal,
+        cast<FloatType>(inputValues.getElementType()));
 
     // Replace the use of the reciprocal with the transformed tensor
     rewriter.replaceOpWithNewOp<ConstOp>(recip, newTensor.getType(), newTensor);
