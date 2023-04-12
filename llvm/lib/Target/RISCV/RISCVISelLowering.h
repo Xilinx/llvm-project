@@ -334,6 +334,7 @@ enum NodeType : unsigned {
   STRICT_FSUB_VL,
   STRICT_FMUL_VL,
   STRICT_FDIV_VL,
+  STRICT_FSQRT_VL,
   STRICT_FP_EXTEND_VL,
 
   // WARNING: Do not add anything in the end unless you want the node to
@@ -393,7 +394,7 @@ public:
                           SmallVectorImpl<Use *> &Ops) const override;
   bool shouldScalarizeBinop(SDValue VecOp) const override;
   bool isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const override;
-  bool isLegalZfaFPImm(const APFloat &Imm, EVT VT) const;
+  int getLegalZfaFPImm(const APFloat &Imm, EVT VT) const;
   bool isFPImmLegal(const APFloat &Imm, EVT VT,
                     bool ForCodeSize) const override;
   bool isExtractSubvectorCheap(EVT ResVT, EVT SrcVT,

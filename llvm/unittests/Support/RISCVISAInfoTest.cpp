@@ -109,7 +109,7 @@ TEST(ParseArchString, RejectsUpperCase) {
 TEST(ParseArchString, RejectsInvalidBaseISA) {
   for (StringRef Input : {"rv32", "rv64", "rv65i"}) {
     EXPECT_EQ(toString(RISCVISAInfo::parseArchString(Input, true).takeError()),
-              "string must begin with rv32{i,e,g} or rv64{i,g}");
+              "string must begin with rv32{i,e,g} or rv64{i,e,g}");
   }
   for (StringRef Input : {"rv32j", "rv64k", "rv32_i"}) {
     EXPECT_EQ(toString(RISCVISAInfo::parseArchString(Input, true).takeError()),
@@ -118,11 +118,9 @@ TEST(ParseArchString, RejectsInvalidBaseISA) {
 }
 
 TEST(ParseArchString, RejectsUnsupportedBaseISA) {
-  EXPECT_EQ(toString(RISCVISAInfo::parseArchString("rv64e", true).takeError()),
-            "standard user-level extension 'e' requires 'rv32'");
   for (StringRef Input : {"rv128i", "rv128g"}) {
     EXPECT_EQ(toString(RISCVISAInfo::parseArchString(Input, true).takeError()),
-              "string must begin with rv32{i,e,g} or rv64{i,g}");
+              "string must begin with rv32{i,e,g} or rv64{i,e,g}");
   }
 }
 
@@ -141,7 +139,7 @@ TEST(ParseArchString, AcceptsSupportedBaseISAsAndSetsXLenAndFLen) {
   RISCVISAInfo &InfoRV32E = **MaybeRV32E;
   RISCVISAInfo::OrderedExtensionMap ExtsRV32E = InfoRV32E.getExtensions();
   EXPECT_EQ(ExtsRV32E.size(), 1UL);
-  EXPECT_TRUE(ExtsRV32E.at("e") == (RISCVExtensionInfo{1, 9}));
+  EXPECT_TRUE(ExtsRV32E.at("e") == (RISCVExtensionInfo{2, 0}));
   EXPECT_EQ(InfoRV32E.getXLen(), 32U);
   EXPECT_EQ(InfoRV32E.getFLen(), 0U);
 
@@ -166,6 +164,15 @@ TEST(ParseArchString, AcceptsSupportedBaseISAsAndSetsXLenAndFLen) {
   EXPECT_TRUE(ExtsRV64I.at("i") == (RISCVExtensionInfo{2, 0}));
   EXPECT_EQ(InfoRV64I.getXLen(), 64U);
   EXPECT_EQ(InfoRV64I.getFLen(), 0U);
+
+  auto MaybeRV64E = RISCVISAInfo::parseArchString("rv64e", true);
+  ASSERT_THAT_EXPECTED(MaybeRV64E, Succeeded());
+  RISCVISAInfo &InfoRV64E = **MaybeRV64E;
+  RISCVISAInfo::OrderedExtensionMap ExtsRV64E = InfoRV64E.getExtensions();
+  EXPECT_EQ(ExtsRV64E.size(), 1UL);
+  EXPECT_TRUE(ExtsRV64E.at("e") == (RISCVExtensionInfo{2, 0}));
+  EXPECT_EQ(InfoRV64E.getXLen(), 64U);
+  EXPECT_EQ(InfoRV64E.getFLen(), 0U);
 
   auto MaybeRV64G = RISCVISAInfo::parseArchString("rv64g", true);
   ASSERT_THAT_EXPECTED(MaybeRV64G, Succeeded());
@@ -272,11 +279,22 @@ TEST(ParseArchString, RejectsUnrecognizedExtensionVersionsByDefault) {
             "unsupported version number 10.10 for extension 'zifencei'");
 }
 
-TEST(ParseArchString, RejectsUnrecognisedBaseISAVersionEvenWithIgnoreUnknown) {
-  EXPECT_EQ(
-      toString(RISCVISAInfo::parseArchString("rv64i1p0", true, false, true)
-                   .takeError()),
-      "unsupported version number 1.0 for extension 'i'");
+TEST(ParseArchString,
+     UsesDefaultVersionForUnrecognisedBaseISAVersionWithIgnoreUnknown) {
+  for (StringRef Input : {"rv32i0p1", "rv32i99p99", "rv64i0p1", "rv64i99p99"}) {
+    auto MaybeISAInfo = RISCVISAInfo::parseArchString(Input, true, false, true);
+    ASSERT_THAT_EXPECTED(MaybeISAInfo, Succeeded());
+    RISCVISAInfo::OrderedExtensionMap Exts = (*MaybeISAInfo)->getExtensions();
+    EXPECT_EQ(Exts.size(), 1UL);
+    EXPECT_TRUE(Exts.at("i") == (RISCVExtensionInfo{2, 0}));
+  }
+  for (StringRef Input : {"rv32e0p1", "rv32e99p99", "rv64e0p1", "rv64e99p99"}) {
+    auto MaybeISAInfo = RISCVISAInfo::parseArchString(Input, true, false, true);
+    ASSERT_THAT_EXPECTED(MaybeISAInfo, Succeeded());
+    RISCVISAInfo::OrderedExtensionMap Exts = (*MaybeISAInfo)->getExtensions();
+    EXPECT_EQ(Exts.size(), 1UL);
+    EXPECT_TRUE(Exts.at("e") == (RISCVExtensionInfo{2, 0}));
+  }
 }
 
 TEST(ParseArchString,
@@ -438,4 +456,11 @@ TEST(ToFeatureVector, IIsDroppedAndExperimentalExtensionsArePrefixed) {
   ASSERT_THAT_EXPECTED(MaybeISAInfo2, Succeeded());
   EXPECT_THAT((*MaybeISAInfo2)->toFeatureVector(),
               ElementsAre("+e", "+experimental-zihintntl", "+xventanacondops"));
+}
+
+TEST(ToFeatureVector, UnsupportedExtensionsAreDropped) {
+  auto MaybeISAInfo =
+      RISCVISAInfo::parseNormalizedArchString("rv64i2p0_m2p0_xmadeup1p0");
+  ASSERT_THAT_EXPECTED(MaybeISAInfo, Succeeded());
+  EXPECT_THAT((*MaybeISAInfo)->toFeatureVector(), ElementsAre("+m"));
 }

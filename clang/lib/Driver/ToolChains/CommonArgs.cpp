@@ -957,7 +957,7 @@ void tools::linkSanitizerRuntimeDeps(const ToolChain &TC,
   CmdArgs.push_back(getAsNeededOption(TC, false));
   // There's no libpthread or librt on RTEMS & Android.
   if (TC.getTriple().getOS() != llvm::Triple::RTEMS &&
-      !TC.getTriple().isAndroid()) {
+      !TC.getTriple().isAndroid() && !TC.getTriple().isOHOSFamily()) {
     CmdArgs.push_back("-lpthread");
     if (!TC.getTriple().isOSOpenBSD())
       CmdArgs.push_back("-lrt");
@@ -1381,6 +1381,10 @@ tools::ParsePICArgs(const ToolChain &ToolChain, const ArgList &Args) {
     }
   }
 
+  // OHOS-specific defaults for PIC/PIE
+  if (Triple.isOHOSFamily() && Triple.getArch() == llvm::Triple::aarch64)
+    PIC = true;
+
   // OpenBSD-specific defaults for PIE
   if (Triple.isOSOpenBSD()) {
     switch (ToolChain.getArch()) {
@@ -1667,6 +1671,12 @@ static LibGccType getLibGccType(const ToolChain &TC, const Driver &D,
 static void AddUnwindLibrary(const ToolChain &TC, const Driver &D,
                              ArgStringList &CmdArgs, const ArgList &Args) {
   ToolChain::UnwindLibType UNW = TC.GetUnwindLibType(Args);
+  // By default OHOS binaries are linked statically to libunwind.
+  if (TC.getTriple().isOHOSFamily() && UNW == ToolChain::UNW_CompilerRT) {
+    CmdArgs.push_back("-l:libunwind.a");
+    return;
+  }
+
   // Targets that don't use unwind libraries.
   if ((TC.getTriple().isAndroid() && UNW == ToolChain::UNW_Libgcc) ||
       TC.getTriple().isOSIAMCU() || TC.getTriple().isOSBinFormatWasm() ||
@@ -2167,26 +2177,13 @@ void tools::AddStaticDeviceLibs(Compilation *C, const Tool *T,
 
 static llvm::opt::Arg *
 getAMDGPUCodeObjectArgument(const Driver &D, const llvm::opt::ArgList &Args) {
-  // The last of -mcode-object-v3, -mno-code-object-v3 and
-  // -mcode-object-version=<version> wins.
-  return Args.getLastArg(options::OPT_mcode_object_v3_legacy,
-                         options::OPT_mno_code_object_v3_legacy,
-                         options::OPT_mcode_object_version_EQ);
+  return Args.getLastArg(options::OPT_mcode_object_version_EQ);
 }
 
 void tools::checkAMDGPUCodeObjectVersion(const Driver &D,
                                          const llvm::opt::ArgList &Args) {
   const unsigned MinCodeObjVer = 2;
   const unsigned MaxCodeObjVer = 5;
-
-  // Emit warnings for legacy options even if they are overridden.
-  if (Args.hasArg(options::OPT_mno_code_object_v3_legacy))
-    D.Diag(diag::warn_drv_deprecated_arg) << "-mno-code-object-v3"
-                                          << "-mcode-object-version=2";
-
-  if (Args.hasArg(options::OPT_mcode_object_v3_legacy))
-    D.Diag(diag::warn_drv_deprecated_arg) << "-mcode-object-v3"
-                                          << "-mcode-object-version=3";
 
   if (auto *CodeObjArg = getAMDGPUCodeObjectArgument(D, Args)) {
     if (CodeObjArg->getOption().getID() ==
@@ -2204,17 +2201,8 @@ void tools::checkAMDGPUCodeObjectVersion(const Driver &D,
 unsigned tools::getAMDGPUCodeObjectVersion(const Driver &D,
                                            const llvm::opt::ArgList &Args) {
   unsigned CodeObjVer = 4; // default
-  if (auto *CodeObjArg = getAMDGPUCodeObjectArgument(D, Args)) {
-    if (CodeObjArg->getOption().getID() ==
-        options::OPT_mno_code_object_v3_legacy) {
-      CodeObjVer = 2;
-    } else if (CodeObjArg->getOption().getID() ==
-               options::OPT_mcode_object_v3_legacy) {
-      CodeObjVer = 3;
-    } else {
-      StringRef(CodeObjArg->getValue()).getAsInteger(0, CodeObjVer);
-    }
-  }
+  if (auto *CodeObjArg = getAMDGPUCodeObjectArgument(D, Args))
+    StringRef(CodeObjArg->getValue()).getAsInteger(0, CodeObjVer);
   return CodeObjVer;
 }
 
