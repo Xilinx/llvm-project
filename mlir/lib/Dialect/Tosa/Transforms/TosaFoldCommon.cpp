@@ -117,6 +117,53 @@ template DenseElementsAttr mlir::tosa::applyElementWise<APInt, APInt>(
     TensorType targetType,
     const std::function<APInt(const APInt &, const APInt &)> &toApply);
 
+template <class ElementTypeA, class ElementTypeB, class ElementTypeC, class ResultType>
+DenseElementsAttr mlir::tosa::applyElementWise(
+    const DenseElementsAttr &first, const DenseElementsAttr &second, const DenseElementsAttr &third,
+    TensorType targetType,
+    const std::function<ResultType(const ElementTypeA &, const ElementTypeB &, const ElementTypeC &)>
+        &toApply) {
+  // Make sure to use the correct values in case broadcasting is required
+  SmallVector<ResultType> transformedValues;
+  // We already know the amount of values we will insert, reserve space for
+  // all of them to avoid dynamic resizing
+  auto targetSize = 1;
+  auto targetShape = targetType.getShape();
+  for (const auto &dimSize : targetShape) {
+    targetSize *= dimSize;
+  }
+  transformedValues.reserve(targetSize);
+
+  // Apply the given function to each pair of values from the input tensors.
+  // Make sure to broadcast the offsets properly.
+  auto firstIt = first.getValues<ElementTypeA>();
+  auto firstShape = first.getType().getShape();
+  auto secondIt = second.getValues<ElementTypeB>();
+  auto secondShape = second.getType().getShape();
+  auto thirdIt = third.getValues<ElementTypeB>();
+  auto thirdShape = third.getType().getShape();
+  for (auto offset = 0; offset < targetSize; offset++) {
+    OffsetType offsetInTargetFirst =
+        getBroadcastedOffset(targetShape, firstShape, offset);
+    OffsetType offsetInTargetSecond =
+        getBroadcastedOffset(targetShape, secondShape, offset);
+    OffsetType offsetInTargetThird =
+        getBroadcastedOffset(targetShape, thirdShape, offset);
+    auto res =
+        toApply(firstIt[offsetInTargetFirst], secondIt[offsetInTargetSecond], thirdIt[offsetInTargetThird]);
+    transformedValues.push_back(res);
+  }
+
+  // Generate a tensor with the computed values.
+  auto newTensor = DenseElementsAttr::get(targetType, transformedValues);
+  return newTensor;
+}
+
+template DenseElementsAttr mlir::tosa::applyElementWise<APFloat, APInt, APInt, APFloat>(
+    const DenseElementsAttr &, const DenseElementsAttr &, const DenseElementsAttr &,
+    TensorType targetType,
+    const std::function<APFloat(const APFloat &, const APInt &, const APInt &)> &toApply);
+
 LogicalResult
 mlir::tosa::notifyIfNotConstantFloatTosaTensor(TypedValue<TensorType> toCheck,
                                                TosaOp location,

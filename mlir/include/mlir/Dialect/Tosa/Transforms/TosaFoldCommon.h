@@ -47,6 +47,17 @@ DenseElementsAttr applyElementWise(
     const std::function<ResultType(const ElementType &, const ElementType &)>
         &toApply);
 
+
+/// Apply the given transformation function on the elements of the given
+/// tensors. If the input tensors do not match \p targetType, broadcasting is
+/// applied.
+template <class ElementTypeA, class ElementTypeB, class ElementTypeC, class ResultType>
+DenseElementsAttr applyElementWise(
+    const DenseElementsAttr &first, const DenseElementsAttr &second, const DenseElementsAttr &third,
+    TensorType targetType,
+    const std::function<ResultType(const ElementTypeA &, const ElementTypeB &, const ElementTypeC &)>
+        &toApply);
+
 /// Function that checks if \p toCheck is a dense TOSA constant float tensor.
 LogicalResult notifyIfNotConstantFloatTosaTensor(TypedValue<TensorType> toCheck,
                                                  TosaOp location,
