@@ -19,6 +19,7 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/TarWriter.h"
 #include "llvm/Support/raw_ostream.h"
+#include <optional>
 
 #define DEBUG_TYPE "lld"
 
@@ -55,13 +56,13 @@ void InputFile::checkArch(Triple::ArchType arch) const {
 
 std::unique_ptr<llvm::TarWriter> tar;
 
-Optional<MemoryBufferRef> readFile(StringRef path) {
+std::optional<MemoryBufferRef> readFile(StringRef path) {
   log("Loading: " + path);
 
   auto mbOrErr = MemoryBuffer::getFile(path);
   if (auto ec = mbOrErr.getError()) {
     error("cannot open " + path + ": " + ec.message());
-    return None;
+    return std::nullopt;
   }
   std::unique_ptr<MemoryBuffer> &mb = *mbOrErr;
   MemoryBufferRef mbref = mb->getMemBufferRef();
@@ -440,7 +441,7 @@ void ObjFile::parse(bool ignoreComdats) {
   // called directly (i.e. only address taken) don't have to match the defined
   // function's signature.  We cannot do this for directly called functions
   // because those signatures are checked at validation times.
-  // See https://bugs.llvm.org/show_bug.cgi?id=40412
+  // See https://github.com/llvm/llvm-project/issues/39758
   std::vector<bool> isCalledDirectly(wasmObj->getNumberOfSymbols(), false);
   for (const SectionRef &sec : wasmObj->sections()) {
     const WasmSection &section = wasmObj->getWasmSection(sec);
@@ -739,8 +740,8 @@ static Symbol *createBitcodeSymbol(const std::vector<bool> &keptComdats,
   if (objSym.isUndefined() || excludedByComdat) {
     flags |= WASM_SYMBOL_UNDEFINED;
     if (objSym.isExecutable())
-      return symtab->addUndefinedFunction(name, None, None, flags, &f, nullptr,
-                                          true);
+      return symtab->addUndefinedFunction(name, std::nullopt, std::nullopt,
+                                          flags, &f, nullptr, true);
     return symtab->addUndefinedData(name, flags, &f);
   }
 
@@ -790,7 +791,8 @@ void BitcodeFile::parse() {
   }
   checkArch(t.getArch());
   std::vector<bool> keptComdats;
-  // TODO Support nodeduplicate https://bugs.llvm.org/show_bug.cgi?id=50531
+  // TODO Support nodeduplicate
+  // https://github.com/llvm/llvm-project/issues/49875
   for (std::pair<StringRef, Comdat::SelectionKind> s : obj->getComdatTable())
     keptComdats.push_back(symtab->addComdat(s.first));
 

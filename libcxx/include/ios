@@ -220,6 +220,7 @@ storage-class-specifier const error_category& iostream_category() noexcept;
 #include <__ios/fpos.h>
 #include <__locale>
 #include <__utility/swap.h>
+#include <__verbose_abort>
 #include <system_error>
 #include <version>
 
@@ -229,7 +230,7 @@ storage-class-specifier const error_category& iostream_category() noexcept;
 #include <iosfwd>
 
 #if !defined(_LIBCPP_HAS_NO_ATOMIC_HEADER)
-#include <atomic>     // for __xindex_
+#  include <__atomic/atomic.h> // for __xindex_
 #endif
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
@@ -448,11 +449,10 @@ public:
 
 _LIBCPP_NORETURN inline _LIBCPP_INLINE_VISIBILITY
 void __throw_failure(char const* __msg) {
-#ifndef _LIBCPP_NO_EXCEPTIONS
+#ifndef _LIBCPP_HAS_NO_EXCEPTIONS
     throw ios_base::failure(__msg);
 #else
-    ((void)__msg);
-    _VSTD::abort();
+    _LIBCPP_VERBOSE_ABORT("ios_base::failure was thrown in -fno-exceptions mode with message \"%s\"", __msg);
 #endif
 }
 
@@ -766,7 +766,7 @@ inline _LIBCPP_INLINE_VISIBILITY
 char
 basic_ios<_CharT, _Traits>::narrow(char_type __c, char __dfault) const
 {
-    return use_facet<ctype<char_type> >(getloc()).narrow(__c, __dfault);
+    return std::use_facet<ctype<char_type> >(getloc()).narrow(__c, __dfault);
 }
 
 template <class _CharT, class _Traits>
@@ -774,7 +774,7 @@ inline _LIBCPP_INLINE_VISIBILITY
 _CharT
 basic_ios<_CharT, _Traits>::widen(char __c) const
 {
-    return use_facet<ctype<char_type> >(getloc()).widen(__c);
+    return std::use_facet<ctype<char_type> >(getloc()).widen(__c);
 }
 
 template <class _CharT, class _Traits>
@@ -1039,6 +1039,7 @@ defaultfloat(ios_base& __str)
 _LIBCPP_END_NAMESPACE_STD
 
 #if !defined(_LIBCPP_REMOVE_TRANSITIVE_INCLUDES) && _LIBCPP_STD_VER <= 20
+#  include <atomic>
 #  include <concepts>
 #  include <cstddef>
 #  include <cstdlib>

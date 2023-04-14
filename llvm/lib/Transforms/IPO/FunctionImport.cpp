@@ -1130,7 +1130,8 @@ void llvm::thinLTOFinalizeInModule(Module &TheModule,
     // It is illegal for comdats to contain declarations.
     auto *GO = dyn_cast_or_null<GlobalObject>(&GV);
     if (GO && GO->isDeclarationForLinker() && GO->hasComdat()) {
-      NonPrevailingComdats.insert(GO->getComdat());
+      if (GO->getComdat()->getName() == GO->getName())
+        NonPrevailingComdats.insert(GO->getComdat());
       GO->setComdat(nullptr);
     }
   };
@@ -1372,8 +1373,9 @@ Expected<bool> FunctionImporter::importFunctions(
     if (Error Err = Mover.move(std::move(SrcModule),
                                GlobalsToImport.getArrayRef(), nullptr,
                                /*IsPerformingImport=*/true))
-      report_fatal_error(Twine("Function Import: link error: ") +
-                         toString(std::move(Err)));
+      return createStringError(errc::invalid_argument,
+                               Twine("Function Import: link error: ") +
+                                   toString(std::move(Err)));
 
     ImportedCount += GlobalsToImport.size();
     NumImportedModules++;
@@ -1433,7 +1435,7 @@ static bool doImportingForModule(Module &M) {
   if (renameModuleForThinLTO(M, *Index, /*ClearDSOLocalOnDeclarations=*/false,
                              /*GlobalsToImport=*/nullptr)) {
     errs() << "Error renaming module\n";
-    return false;
+    return true;
   }
 
   // Perform the import now.
@@ -1448,10 +1450,10 @@ static bool doImportingForModule(Module &M) {
   if (!Result) {
     logAllUnhandledErrors(Result.takeError(), errs(),
                           "Error importing module: ");
-    return false;
+    return true;
   }
 
-  return *Result;
+  return true;
 }
 
 PreservedAnalyses FunctionImportPass::run(Module &M,

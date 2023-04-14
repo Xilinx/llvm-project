@@ -15,6 +15,7 @@
 #include "mlir/Dialect/Math/Transforms/Passes.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 using namespace mlir;
@@ -54,6 +55,17 @@ static LogicalResult convertTanhOp(math::TanhOp op, PatternRewriter &rewriter) {
   return success();
 }
 
+static LogicalResult convertTanOp(math::TanOp op, PatternRewriter &rewriter) {
+  ImplicitLocOpBuilder b(op->getLoc(), rewriter);
+  Value operand = op.getOperand();
+  Type type = operand.getType();
+  Value sin = b.create<math::SinOp>(type, operand);
+  Value cos = b.create<math::CosOp>(type, operand);
+  Value div = b.create<arith::DivFOp>(type, sin, cos);
+  rewriter.replaceOp(op, div);
+  return success();
+}
+
 static LogicalResult convertCtlzOp(math::CountLeadingZerosOp op,
                                    PatternRewriter &rewriter) {
   auto operand = op.getOperand();
@@ -71,40 +83,32 @@ static LogicalResult convertCtlzOp(math::CountLeadingZerosOp op,
   SmallVector<Type> types = {elementTy, elementTy, elementTy};
   SmallVector<Location> locations = {loc, loc, loc};
 
-  auto whileOp = rewriter.create<scf::WhileOp>(loc, types, operands);
-  Block *before =
-      rewriter.createBlock(&whileOp.getBefore(), {}, types, locations);
-  Block *after =
-      rewriter.createBlock(&whileOp.getAfter(), {}, types, locations);
+  auto whileOp = rewriter.create<scf::WhileOp>(
+      loc, types, operands,
+      [&](OpBuilder &beforeBuilder, Location beforeLoc, ValueRange args) {
+        // The conditional block of the while loop.
+        Value input = args[0];
+        Value zero = args[2];
 
-  // The conditional block of the while loop.
-  {
-    rewriter.setInsertionPointToStart(&whileOp.getBefore().front());
-    Value input = before->getArgument(0);
-    Value zero = before->getArgument(2);
+        Value inputNotZero = beforeBuilder.create<arith::CmpIOp>(
+            loc, arith::CmpIPredicate::ne, input, zero);
+        beforeBuilder.create<scf::ConditionOp>(loc, inputNotZero, args);
+      },
+      [&](OpBuilder &afterBuilder, Location afterLoc, ValueRange args) {
+        // The body of the while loop: shift right until reaching a value of 0.
+        Value input = args[0];
+        Value leadingZeros = args[1];
 
-    Value inputNotZero = rewriter.create<arith::CmpIOp>(
-        loc, arith::CmpIPredicate::ne, input, zero);
-    rewriter.create<scf::ConditionOp>(loc, inputNotZero,
-                                      before->getArguments());
-  }
+        auto one = afterBuilder.create<arith::ConstantOp>(
+            loc, IntegerAttr::get(elementTy, 1));
+        auto shifted =
+            afterBuilder.create<arith::ShRUIOp>(loc, resultTy, input, one);
+        auto leadingZerosMinusOne = afterBuilder.create<arith::SubIOp>(
+            loc, resultTy, leadingZeros, one);
 
-  // The body of the while loop: shift right until reaching a value of 0.
-  {
-    rewriter.setInsertionPointToStart(&whileOp.getAfter().front());
-    Value input = after->getArgument(0);
-    Value leadingZeros = after->getArgument(1);
-
-    auto one =
-        rewriter.create<arith::ConstantOp>(loc, IntegerAttr::get(elementTy, 1));
-    auto shifted = rewriter.create<arith::ShRUIOp>(loc, resultTy, input, one);
-    auto leadingZerosMinusOne =
-        rewriter.create<arith::SubIOp>(loc, resultTy, leadingZeros, one);
-
-    rewriter.create<scf::YieldOp>(
-        loc,
-        ValueRange({shifted, leadingZerosMinusOne, after->getArgument(2)}));
-  }
+        afterBuilder.create<scf::YieldOp>(
+            loc, ValueRange({shifted, leadingZerosMinusOne, args[2]}));
+      });
 
   rewriter.setInsertionPointAfter(whileOp);
   rewriter.replaceOp(op, whileOp->getResult(1));
@@ -113,6 +117,10 @@ static LogicalResult convertCtlzOp(math::CountLeadingZerosOp op,
 
 void mlir::populateExpandCtlzPattern(RewritePatternSet &patterns) {
   patterns.add(convertCtlzOp);
+}
+
+void mlir::populateExpandTanPattern(RewritePatternSet &patterns) {
+  patterns.add(convertTanOp);
 }
 
 void mlir::populateExpandTanhPattern(RewritePatternSet &patterns) {

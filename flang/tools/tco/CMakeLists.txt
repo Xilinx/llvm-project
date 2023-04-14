@@ -8,10 +8,12 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 target_link_libraries(tco PRIVATE
   FIRCodeGen
   FIRDialect
+  FIRDialectSupport
   FIRSupport
   FIRTransforms
   FIRBuilder
   HLFIRDialect
+  HLFIRTransforms
   ${dialect_libs}
   MLIRIR
   MLIRLLVMDialect

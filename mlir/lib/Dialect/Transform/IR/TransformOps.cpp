@@ -11,7 +11,6 @@
 #include "mlir/Dialect/Transform/IR/TransformDialect.h"
 #include "mlir/Dialect/Transform/IR/TransformInterfaces.h"
 #include "mlir/Dialect/Transform/IR/TransformTypes.h"
-#include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
@@ -19,11 +18,22 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/Debug.h"
+#include <optional>
 
 #define DEBUG_TYPE "transform-dialect"
 #define DBGS() (llvm::dbgs() << "[" DEBUG_TYPE "] ")
 
 using namespace mlir;
+
+static ParseResult parseSequenceOpOperands(
+    OpAsmParser &parser, std::optional<OpAsmParser::UnresolvedOperand> &root,
+    Type &rootType,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &extraBindings,
+    SmallVectorImpl<Type> &extraBindingTypes);
+static void printSequenceOpOperands(OpAsmPrinter &printer, Operation *op,
+                                    Value root, Type rootType,
+                                    ValueRange extraBindings,
+                                    TypeRange extraBindingTypes);
 
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Transform/IR/TransformOps.cpp.inc"
@@ -33,14 +43,6 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 namespace {
-/// A simple pattern rewriter that can be constructed from a context. This is
-/// necessary to apply patterns to a specific op locally.
-class TrivialPatternRewriter : public PatternRewriter {
-public:
-  explicit TrivialPatternRewriter(MLIRContext *context)
-      : PatternRewriter(context) {}
-};
-
 /// A TransformState extension that keeps track of compiled PDL pattern sets.
 /// This is intended to be used along the WithPDLPatterns op. The extension
 /// can be constructed given an operation that has a SymbolTable trait and
@@ -86,17 +88,19 @@ LogicalResult PatternApplicatorExtension::findAllMatches(
     if (!patternOp)
       return failure();
 
+    // Copy the pattern operation into a new module that is compiled and
+    // consumed by the PDL interpreter.
     OwningOpRef<ModuleOp> pdlModuleOp = ModuleOp::create(patternOp.getLoc());
-    patternOp->moveBefore(pdlModuleOp->getBody(),
-                          pdlModuleOp->getBody()->end());
+    auto builder = OpBuilder::atBlockEnd(pdlModuleOp->getBody());
+    builder.clone(*patternOp);
     PDLPatternModule patternModule(std::move(pdlModuleOp));
 
     // Merge in the hooks owned by the dialect. Make a copy as they may be
     // also used by the following operations.
     auto *dialect =
         root->getContext()->getLoadedDialect<transform::TransformDialect>();
-    for (const auto &pair : dialect->getPDLConstraintHooks())
-      patternModule.registerConstraintFunction(pair.first(), pair.second);
+    for (const auto &[name, constraintFn] : dialect->getPDLConstraintHooks())
+      patternModule.registerConstraintFunction(name, constraintFn);
 
     // Register a noop rewriter because PDL requires patterns to end with some
     // rewrite call.
@@ -109,6 +113,13 @@ LogicalResult PatternApplicatorExtension::findAllMatches(
   }
 
   PatternApplicator applicator(it->second);
+  // We want to discourage direct use of PatternRewriter in APIs but In this
+  // very specific case, an IRRewriter is not enough.
+  struct TrivialPatternRewriter : public PatternRewriter {
+  public:
+    explicit TrivialPatternRewriter(MLIRContext *context)
+        : PatternRewriter(context) {}
+  };
   TrivialPatternRewriter rewriter(root->getContext());
   applicator.applyDefaultCostModel();
   root->walk([&](Operation *op) {
@@ -124,8 +135,8 @@ LogicalResult PatternApplicatorExtension::findAllMatches(
 // AlternativesOp
 //===----------------------------------------------------------------------===//
 
-OperandRange
-transform::AlternativesOp::getSuccessorEntryOperands(Optional<unsigned> index) {
+OperandRange transform::AlternativesOp::getSuccessorEntryOperands(
+    std::optional<unsigned> index) {
   if (index && getOperation()->getNumOperands() == 1)
     return getOperation()->getOperands();
   return OperandRange(getOperation()->operand_end(),
@@ -133,7 +144,7 @@ transform::AlternativesOp::getSuccessorEntryOperands(Optional<unsigned> index) {
 }
 
 void transform::AlternativesOp::getSuccessorRegions(
-    Optional<unsigned> index, ArrayRef<Attribute> operands,
+    std::optional<unsigned> index, ArrayRef<Attribute> operands,
     SmallVectorImpl<RegionSuccessor> &regions) {
   for (Region &alternative : llvm::drop_begin(
            getAlternatives(), index.has_value() ? *index + 1 : 0)) {
@@ -247,6 +258,17 @@ transform::AlternativesOp::apply(transform::TransformResults &results,
   return emitSilenceableError() << "all alternatives failed";
 }
 
+void transform::AlternativesOp::getEffects(
+    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  consumesHandle(getOperands(), effects);
+  producesHandle(getResults(), effects);
+  for (Region *region : getRegions()) {
+    if (!region->empty())
+      producesHandle(region->front().getArguments(), effects);
+  }
+  modifiesPayload(effects);
+}
+
 LogicalResult transform::AlternativesOp::verify() {
   for (Region &alternative : getAlternatives()) {
     Block &block = alternative.front();
@@ -264,12 +286,11 @@ LogicalResult transform::AlternativesOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// ForeachOp
+// CastOp
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure
-transform::CastOp::applyToOne(Operation *target,
-                              SmallVectorImpl<Operation *> &results,
+transform::CastOp::applyToOne(Operation *target, ApplyToEachResultList &results,
                               transform::TransformState &state) {
   results.push_back(target);
   return DiagnosedSilenceableFailure::success();
@@ -278,7 +299,7 @@ transform::CastOp::applyToOne(Operation *target,
 void transform::CastOp::getEffects(
     SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
   onlyReadsPayload(effects);
-  consumesHandle(getInput(), effects);
+  onlyReadsHandle(getInput(), effects);
   producesHandle(getOutput(), effects);
 }
 
@@ -288,7 +309,8 @@ bool transform::CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
   return llvm::all_of(
       std::initializer_list<Type>{inputs.front(), outputs.front()},
       [](Type ty) {
-        return ty.isa<pdl::OperationType, transform::TransformTypeInterface>();
+        return ty
+            .isa<pdl::OperationType, transform::TransformHandleTypeInterface>();
       });
 }
 
@@ -345,7 +367,7 @@ void transform::ForeachOp::getEffects(
 }
 
 void transform::ForeachOp::getSuccessorRegions(
-    Optional<unsigned> index, ArrayRef<Attribute> operands,
+    std::optional<unsigned> index, ArrayRef<Attribute> operands,
     SmallVectorImpl<RegionSuccessor> &regions) {
   Region *bodyRegion = &getBody();
   if (!index) {
@@ -360,7 +382,7 @@ void transform::ForeachOp::getSuccessorRegions(
 }
 
 OperandRange
-transform::ForeachOp::getSuccessorEntryOperands(Optional<unsigned> index) {
+transform::ForeachOp::getSuccessorEntryOperands(std::optional<unsigned> index) {
   // The iteration variable op handle is mapped to a subset (one op to be
   // precise) of the payload ops of the ForeachOp operand.
   assert(index && *index == 0 && "unexpected region index");
@@ -377,9 +399,9 @@ LogicalResult transform::ForeachOp::verify() {
     return emitOpError() << "expects the same number of results as the "
                             "terminator has operands";
   for (Value v : yieldOp.getOperands())
-    if (!v.getType().isa<TransformTypeInterface>())
-      return yieldOp->emitOpError(
-          "expects operands to have types implementing TransformTypeInterface");
+    if (!v.getType().isa<TransformHandleTypeInterface>())
+      return yieldOp->emitOpError("expects operands to have types implementing "
+                                  "TransformHandleTypeInterface");
   return success();
 }
 
@@ -407,6 +429,52 @@ DiagnosedSilenceableFailure transform::GetClosestIsolatedParentOp::apply(
 }
 
 //===----------------------------------------------------------------------===//
+// GetConsumersOfResult
+//===----------------------------------------------------------------------===//
+
+DiagnosedSilenceableFailure
+transform::GetConsumersOfResult::apply(transform::TransformResults &results,
+                                       transform::TransformState &state) {
+  int64_t resultNumber = getResultNumber();
+  ArrayRef<Operation *> payloadOps = state.getPayloadOps(getTarget());
+  if (payloadOps.empty()) {
+    results.set(getResult().cast<OpResult>(), {});
+    return DiagnosedSilenceableFailure::success();
+  }
+  if (payloadOps.size() != 1)
+    return emitDefiniteFailure()
+           << "handle must be mapped to exactly one payload op";
+
+  Operation *target = payloadOps.front();
+  if (target->getNumResults() <= resultNumber)
+    return emitDefiniteFailure() << "result number overflow";
+  results.set(getResult().cast<OpResult>(),
+              llvm::to_vector(target->getResult(resultNumber).getUsers()));
+  return DiagnosedSilenceableFailure::success();
+}
+
+//===----------------------------------------------------------------------===//
+// GetDefiningOp
+//===----------------------------------------------------------------------===//
+
+DiagnosedSilenceableFailure
+transform::GetDefiningOp::apply(transform::TransformResults &results,
+                                transform::TransformState &state) {
+  SmallVector<Operation *> definingOps;
+  for (Value v : state.getPayloadValues(getTarget())) {
+    if (v.isa<BlockArgument>()) {
+      DiagnosedSilenceableFailure diag =
+          emitSilenceableError() << "cannot get defining op of block argument";
+      diag.attachNote(v.getLoc()) << "target value";
+      return diag;
+    }
+    definingOps.push_back(v.getDefiningOp());
+  }
+  results.set(getResult().cast<OpResult>(), definingOps);
+  return DiagnosedSilenceableFailure::success();
+}
+
+//===----------------------------------------------------------------------===//
 // GetProducerOfOperand
 //===----------------------------------------------------------------------===//
 
@@ -426,13 +494,33 @@ transform::GetProducerOfOperand::apply(transform::TransformResults &results,
           << "could not find a producer for operand number: " << operandNumber
           << " of " << *target;
       diag.attachNote(target->getLoc()) << "target op";
-      results.set(getResult().cast<OpResult>(),
-                  SmallVector<mlir::Operation *>{});
       return diag;
     }
     producers.push_back(producer);
   }
   results.set(getResult().cast<OpResult>(), producers);
+  return DiagnosedSilenceableFailure::success();
+}
+
+//===----------------------------------------------------------------------===//
+// GetResultOp
+//===----------------------------------------------------------------------===//
+
+DiagnosedSilenceableFailure
+transform::GetResultOp::apply(transform::TransformResults &results,
+                              transform::TransformState &state) {
+  int64_t resultNumber = getResultNumber();
+  SmallVector<Value> opResults;
+  for (Operation *target : state.getPayloadOps(getTarget())) {
+    if (resultNumber >= target->getNumResults()) {
+      DiagnosedSilenceableFailure diag =
+          emitSilenceableError() << "targeted op does not have enough results";
+      diag.attachNote(target->getLoc()) << "target op";
+      return diag;
+    }
+    opResults.push_back(target->getOpResult(resultNumber));
+  }
+  results.setValues(getResult().cast<OpResult>(), opResults);
   return DiagnosedSilenceableFailure::success();
 }
 
@@ -456,16 +544,21 @@ transform::MergeHandlesOp::apply(transform::TransformResults &results,
   return DiagnosedSilenceableFailure::success();
 }
 
+bool transform::MergeHandlesOp::allowsRepeatedHandleOperands() {
+  // Handles may be the same if deduplicating is enabled.
+  return getDeduplicate();
+}
+
 void transform::MergeHandlesOp::getEffects(
     SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
-  consumesHandle(getHandles(), effects);
+  onlyReadsHandle(getHandles(), effects);
   producesHandle(getResult(), effects);
 
   // There are no effects on the Payload IR as this is only a handle
   // manipulation.
 }
 
-OpFoldResult transform::MergeHandlesOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult transform::MergeHandlesOp::fold(FoldAdaptor adaptor) {
   if (getDeduplicate() || getHandles().size() != 1)
     return {};
 
@@ -495,10 +588,6 @@ transform::SplitHandlesOp::apply(transform::TransformResults &results,
       getHandle() ? state.getPayloadOps(getHandle()).size() : 0;
   int64_t expectedNumResultHandles = getNumResultHandles();
   if (numResultHandles != expectedNumResultHandles) {
-    // Failing case needs to propagate gracefully for both suppress and
-    // propagate modes.
-    for (int64_t idx = 0; idx < expectedNumResultHandles; ++idx)
-      results.set(getResults()[idx].cast<OpResult>(), {});
     // Empty input handle corner case: always propagates empty handles in both
     // suppress and propagate modes.
     if (numResultHandles == 0)
@@ -518,7 +607,7 @@ transform::SplitHandlesOp::apply(transform::TransformResults &results,
 
 void transform::SplitHandlesOp::getEffects(
     SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
-  consumesHandle(getHandle(), effects);
+  onlyReadsHandle(getHandle(), effects);
   producesHandle(getResults(), effects);
   // There are no effects on the Payload IR as this is only a handle
   // manipulation.
@@ -563,12 +652,23 @@ transform::ReplicateOp::apply(transform::TransformResults &results,
   unsigned numRepetitions = state.getPayloadOps(getPattern()).size();
   for (const auto &en : llvm::enumerate(getHandles())) {
     Value handle = en.value();
-    ArrayRef<Operation *> current = state.getPayloadOps(handle);
-    SmallVector<Operation *> payload;
-    payload.reserve(numRepetitions * current.size());
-    for (unsigned i = 0; i < numRepetitions; ++i)
-      llvm::append_range(payload, current);
-    results.set(getReplicated()[en.index()].cast<OpResult>(), payload);
+    if (handle.getType().isa<TransformHandleTypeInterface>()) {
+      ArrayRef<Operation *> current = state.getPayloadOps(handle);
+      SmallVector<Operation *> payload;
+      payload.reserve(numRepetitions * current.size());
+      for (unsigned i = 0; i < numRepetitions; ++i)
+        llvm::append_range(payload, current);
+      results.set(getReplicated()[en.index()].cast<OpResult>(), payload);
+    } else {
+      assert(handle.getType().isa<TransformParamTypeInterface>() &&
+             "expected param type");
+      ArrayRef<Attribute> current = state.getParams(handle);
+      SmallVector<Attribute> params;
+      params.reserve(numRepetitions * current.size());
+      for (unsigned i = 0; i < numRepetitions; ++i)
+        llvm::append_range(params, current);
+      results.setParams(getReplicated()[en.index()].cast<OpResult>(), params);
+    }
   }
   return DiagnosedSilenceableFailure::success();
 }
@@ -576,7 +676,7 @@ transform::ReplicateOp::apply(transform::TransformResults &results,
 void transform::ReplicateOp::getEffects(
     SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
   onlyReadsHandle(getPattern(), effects);
-  consumesHandle(getHandles(), effects);
+  onlyReadsHandle(getHandles(), effects);
   producesHandle(getReplicated(), effects);
 }
 
@@ -613,6 +713,76 @@ transform::SequenceOp::apply(transform::TransformResults &results,
   // values produced by the sequence op.
   forwardTerminatorOperands(getBodyBlock(), state, results);
   return DiagnosedSilenceableFailure::success();
+}
+
+static ParseResult parseSequenceOpOperands(
+    OpAsmParser &parser, std::optional<OpAsmParser::UnresolvedOperand> &root,
+    Type &rootType,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &extraBindings,
+    SmallVectorImpl<Type> &extraBindingTypes) {
+  OpAsmParser::UnresolvedOperand rootOperand;
+  OptionalParseResult hasRoot = parser.parseOptionalOperand(rootOperand);
+  if (!hasRoot.has_value()) {
+    root = std::nullopt;
+    return success();
+  }
+  if (failed(hasRoot.value()))
+    return failure();
+  root = rootOperand;
+
+  if (succeeded(parser.parseOptionalComma())) {
+    if (failed(parser.parseOperandList(extraBindings)))
+      return failure();
+  }
+  if (failed(parser.parseColon()))
+    return failure();
+
+  // The paren is truly optional.
+  (void)parser.parseOptionalLParen();
+
+  if (failed(parser.parseType(rootType))) {
+    return failure();
+  }
+
+  if (!extraBindings.empty()) {
+    if (parser.parseComma() || parser.parseTypeList(extraBindingTypes))
+      return failure();
+  }
+
+  if (extraBindingTypes.size() != extraBindings.size()) {
+    return parser.emitError(parser.getNameLoc(),
+                            "expected types to be provided for all operands");
+  }
+
+  // The paren is truly optional.
+  (void)parser.parseOptionalRParen();
+  return success();
+}
+
+static void printSequenceOpOperands(OpAsmPrinter &printer, Operation *op,
+                                    Value root, Type rootType,
+                                    ValueRange extraBindings,
+                                    TypeRange extraBindingTypes) {
+  if (!root)
+    return;
+
+  printer << root;
+  bool hasExtras = !extraBindings.empty();
+  if (hasExtras) {
+    printer << ", ";
+    printer.printOperands(extraBindings);
+  }
+
+  printer << " : ";
+  if (hasExtras)
+    printer << "(";
+
+  printer << rootType;
+  if (hasExtras) {
+    printer << ", ";
+    llvm::interleaveComma(extraBindingTypes, printer.getStream());
+    printer << ")";
+  }
 }
 
 /// Returns `true` if the given op operand may be consuming the handle value in
@@ -652,13 +822,22 @@ checkDoubleConsume(Value value,
 }
 
 LogicalResult transform::SequenceOp::verify() {
-  // Check if the block argument has more than one consuming use.
-  for (BlockArgument argument : getBodyBlock()->getArguments()) {
-    auto report = [&]() {
-      return (emitOpError() << "block argument #" << argument.getArgNumber());
-    };
-    if (failed(checkDoubleConsume(argument, report)))
+  assert(getBodyBlock()->getNumArguments() >= 1 &&
+         "the number of arguments must have been verified to be more than 1 by "
+         "PossibleTopLevelTransformOpTrait");
+
+  if (!getRoot() && !getExtraBindings().empty()) {
+    return emitOpError()
+           << "does not expect extra operands when used as top-level";
+  }
+
+  // Check if a block argument has more than one consuming use.
+  for (BlockArgument arg : getBodyBlock()->getArguments()) {
+    if (failed(checkDoubleConsume(arg, [this, arg]() {
+          return (emitOpError() << "block argument #" << arg.getArgNumber());
+        }))) {
       return failure();
+    }
   }
 
   // Check properties of the nested operations they cannot check themselves.
@@ -692,25 +871,37 @@ LogicalResult transform::SequenceOp::verify() {
   return success();
 }
 
-void transform::SequenceOp::getEffects(
-    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
-  auto *mappingResource = TransformMappingResource::get();
-  effects.emplace_back(MemoryEffects::Read::get(), getRoot(), mappingResource);
+/// Appends to `effects` the memory effect instances on `target` with the same
+/// resource and effect as the ones the operation `iface` having on `source`.
+static void
+remapEffects(MemoryEffectOpInterface iface, BlockArgument source, Value target,
+             SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  SmallVector<MemoryEffects::EffectInstance> nestedEffects;
+  iface.getEffectsOnValue(source, nestedEffects);
+  for (const auto &effect : nestedEffects)
+    effects.emplace_back(effect.getEffect(), target, effect.getResource());
+}
 
-  for (Value result : getResults()) {
-    effects.emplace_back(MemoryEffects::Allocate::get(), result,
-                         mappingResource);
-    effects.emplace_back(MemoryEffects::Write::get(), result, mappingResource);
-  }
+namespace {
+template <typename T>
+using has_get_extra_bindings = decltype(std::declval<T &>().getExtraBindings());
+} // namespace
 
-  if (!getRoot()) {
-    for (Operation &op : *getBodyBlock()) {
+/// Populate `effects` with transform dialect memory effects for the potential
+/// top-level operation. Such operations have recursive effects from nested
+/// operations. When they have an operand, we can additionally remap effects on
+/// the block argument to be effects on the operand.
+template <typename OpTy>
+static void getPotentialTopLevelEffects(
+    OpTy operation, SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  transform::onlyReadsHandle(operation->getOperands(), effects);
+  transform::producesHandle(operation->getResults(), effects);
+
+  if (!operation.getRoot()) {
+    for (Operation &op : *operation.getBodyBlock()) {
       auto iface = dyn_cast<MemoryEffectOpInterface>(&op);
-      if (!iface) {
-        // TODO: fill all possible effects; or require ops to actually implement
-        // the memory effect interface always
-        assert(false);
-      }
+      if (!iface)
+        continue;
 
       SmallVector<MemoryEffects::EffectInstance, 2> nestedEffects;
       iface.getEffects(effects);
@@ -718,34 +909,46 @@ void transform::SequenceOp::getEffects(
     return;
   }
 
-  // Carry over all effects on the argument of the entry block as those on the
-  // operand, this is the same value just remapped.
-  for (Operation &op : *getBodyBlock()) {
+  // Carry over all effects on arguments of the entry block as those on the
+  // operands, this is the same value just remapped.
+  for (Operation &op : *operation.getBodyBlock()) {
     auto iface = dyn_cast<MemoryEffectOpInterface>(&op);
-    if (!iface) {
-      // TODO: fill all possible effects; or require ops to actually implement
-      // the memory effect interface always
-      assert(false);
+    if (!iface)
+      continue;
+
+    remapEffects(iface, operation.getBodyBlock()->getArgument(0),
+                 operation.getRoot(), effects);
+    if constexpr (llvm::is_detected<has_get_extra_bindings, OpTy>::value) {
+      for (auto [source, target] :
+           llvm::zip(operation.getBodyBlock()->getArguments().drop_front(),
+                     operation.getExtraBindings())) {
+        remapEffects(iface, source, target, effects);
+      }
     }
 
-    SmallVector<MemoryEffects::EffectInstance, 2> nestedEffects;
-    iface.getEffectsOnValue(getBodyBlock()->getArgument(0), nestedEffects);
-    for (const auto &effect : nestedEffects)
-      effects.emplace_back(effect.getEffect(), getRoot(), effect.getResource());
+    SmallVector<MemoryEffects::EffectInstance> nestedEffects;
+    iface.getEffectsOnResource(transform::PayloadIRResource::get(),
+                               nestedEffects);
+    llvm::append_range(effects, nestedEffects);
   }
 }
 
-OperandRange
-transform::SequenceOp::getSuccessorEntryOperands(Optional<unsigned> index) {
+void transform::SequenceOp::getEffects(
+    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  getPotentialTopLevelEffects(*this, effects);
+}
+
+OperandRange transform::SequenceOp::getSuccessorEntryOperands(
+    std::optional<unsigned> index) {
   assert(index && *index == 0 && "unexpected region index");
-  if (getOperation()->getNumOperands() == 1)
+  if (getOperation()->getNumOperands() > 0)
     return getOperation()->getOperands();
   return OperandRange(getOperation()->operand_end(),
                       getOperation()->operand_end());
 }
 
 void transform::SequenceOp::getSuccessorRegions(
-    Optional<unsigned> index, ArrayRef<Attribute> operands,
+    std::optional<unsigned> index, ArrayRef<Attribute> operands,
     SmallVectorImpl<RegionSuccessor> &regions) {
   if (!index) {
     Region *bodyRegion = &getBody();
@@ -765,6 +968,75 @@ void transform::SequenceOp::getRegionInvocationBounds(
   bounds.emplace_back(1, 1);
 }
 
+template <typename FnTy>
+static void buildSequenceBody(OpBuilder &builder, OperationState &state,
+                              Type bbArgType, TypeRange extraBindingTypes,
+                              FnTy bodyBuilder) {
+  SmallVector<Type> types;
+  types.reserve(1 + extraBindingTypes.size());
+  types.push_back(bbArgType);
+  llvm::append_range(types, extraBindingTypes);
+
+  OpBuilder::InsertionGuard guard(builder);
+  Region *region = state.regions.back().get();
+  Block *bodyBlock =
+      builder.createBlock(region, region->begin(), types,
+                          SmallVector<Location>(types.size(), state.location));
+
+  // Populate body.
+  builder.setInsertionPointToStart(bodyBlock);
+  if constexpr (llvm::function_traits<FnTy>::num_args == 3) {
+    bodyBuilder(builder, state.location, bodyBlock->getArgument(0));
+  } else {
+    bodyBuilder(builder, state.location, bodyBlock->getArgument(0),
+                bodyBlock->getArguments().drop_front());
+  }
+}
+
+void transform::SequenceOp::build(OpBuilder &builder, OperationState &state,
+                                  TypeRange resultTypes,
+                                  FailurePropagationMode failurePropagationMode,
+                                  Value root,
+                                  SequenceBodyBuilderFn bodyBuilder) {
+  build(builder, state, resultTypes, failurePropagationMode, root,
+        /*extra_bindings=*/ValueRange());
+  Type bbArgType = root.getType();
+  buildSequenceBody(builder, state, bbArgType,
+                    /*extraBindingTypes=*/TypeRange(), bodyBuilder);
+}
+
+void transform::SequenceOp::build(OpBuilder &builder, OperationState &state,
+                                  TypeRange resultTypes,
+                                  FailurePropagationMode failurePropagationMode,
+                                  Value root, ValueRange extraBindings,
+                                  SequenceBodyBuilderArgsFn bodyBuilder) {
+  build(builder, state, resultTypes, failurePropagationMode, root,
+        extraBindings);
+  buildSequenceBody(builder, state, root.getType(), extraBindings.getTypes(),
+                    bodyBuilder);
+}
+
+void transform::SequenceOp::build(OpBuilder &builder, OperationState &state,
+                                  TypeRange resultTypes,
+                                  FailurePropagationMode failurePropagationMode,
+                                  Type bbArgType,
+                                  SequenceBodyBuilderFn bodyBuilder) {
+  build(builder, state, resultTypes, failurePropagationMode, /*root=*/Value(),
+        /*extra_bindings=*/ValueRange());
+  buildSequenceBody(builder, state, bbArgType,
+                    /*extraBindingTypes=*/TypeRange(), bodyBuilder);
+}
+
+void transform::SequenceOp::build(OpBuilder &builder, OperationState &state,
+                                  TypeRange resultTypes,
+                                  FailurePropagationMode failurePropagationMode,
+                                  Type bbArgType, TypeRange extraBindingTypes,
+                                  SequenceBodyBuilderArgsFn bodyBuilder) {
+  build(builder, state, resultTypes, failurePropagationMode, /*root=*/Value(),
+        /*extra_bindings=*/ValueRange());
+  buildSequenceBody(builder, state, bbArgType, extraBindingTypes, bodyBuilder);
+}
+
 //===----------------------------------------------------------------------===//
 // WithPDLPatternsOp
 //===----------------------------------------------------------------------===//
@@ -772,8 +1044,6 @@ void transform::SequenceOp::getRegionInvocationBounds(
 DiagnosedSilenceableFailure
 transform::WithPDLPatternsOp::apply(transform::TransformResults &results,
                                     transform::TransformState &state) {
-  OwningOpRef<ModuleOp> pdlModuleOp =
-      ModuleOp::create(getOperation()->getLoc());
   TransformOpInterface transformOp = nullptr;
   for (Operation &nested : getBody().front()) {
     if (!isa<pdl::PatternOp>(nested)) {
@@ -790,6 +1060,11 @@ transform::WithPDLPatternsOp::apply(transform::TransformResults &results,
   if (failed(mapBlockArguments(state)))
     return DiagnosedSilenceableFailure::definiteFailure();
   return state.applyTransform(transformOp);
+}
+
+void transform::WithPDLPatternsOp::getEffects(
+    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  getPotentialTopLevelEffects(*this, effects);
 }
 
 LogicalResult transform::WithPDLPatternsOp::verify() {
@@ -824,6 +1099,12 @@ LogicalResult transform::WithPDLPatternsOp::verify() {
     return diag;
   }
 
+  if (!topLevelOp) {
+    InFlightDiagnostic diag = emitOpError()
+                              << "expects at least one non-pattern op";
+    return diag;
+  }
+
   return success();
 }
 
@@ -848,19 +1129,19 @@ void transform::PrintOp::build(OpBuilder &builder, OperationState &result,
 DiagnosedSilenceableFailure
 transform::PrintOp::apply(transform::TransformResults &results,
                           transform::TransformState &state) {
-  llvm::errs() << "[[[ IR printer: ";
+  llvm::outs() << "[[[ IR printer: ";
   if (getName().has_value())
-    llvm::errs() << *getName() << " ";
+    llvm::outs() << *getName() << " ";
 
   if (!getTarget()) {
-    llvm::errs() << "top-level ]]]\n" << *state.getTopLevel() << "\n";
+    llvm::outs() << "top-level ]]]\n" << *state.getTopLevel() << "\n";
     return DiagnosedSilenceableFailure::success();
   }
 
-  llvm::errs() << "]]]\n";
+  llvm::outs() << "]]]\n";
   ArrayRef<Operation *> targets = state.getPayloadOps(getTarget());
   for (Operation *target : targets)
-    llvm::errs() << *target << "\n";
+    llvm::outs() << *target << "\n";
 
   return DiagnosedSilenceableFailure::success();
 }
@@ -873,4 +1154,13 @@ void transform::PrintOp::getEffects(
   // There is no resource for stderr file descriptor, so just declare print
   // writes into the default resource.
   effects.emplace_back(MemoryEffects::Write::get());
+}
+
+//===----------------------------------------------------------------------===//
+// YieldOp
+//===----------------------------------------------------------------------===//
+
+void transform::YieldOp::getEffects(
+    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  onlyReadsHandle(getOperands(), effects);
 }

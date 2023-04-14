@@ -10,11 +10,14 @@
 #define MLIR_DIALECT_VECTOR_TRANSFORMS_VECTORREWRITEPATTERNS_H
 
 #include <utility>
+#include <optional>
 
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Dialect/Vector/Transforms/VectorTransformsEnums.h.inc"
 #include "mlir/Dialect/Vector/Utils/VectorUtils.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Support/LogicalResult.h"
 
 namespace mlir {
 class RewritePatternSet;
@@ -24,48 +27,6 @@ namespace vector {
 //===----------------------------------------------------------------------===//
 // Vector transformation options exposed as auxiliary structs.
 //===----------------------------------------------------------------------===//
-/// Enum to control the lowering of `vector.transpose` operations.
-enum class VectorTransposeLowering {
-  /// Lower transpose into element-wise extract and inserts.
-  EltWise = 0,
-  /// Lower 2-D transpose to `vector.flat_transpose`, maps 1-1 to LLVM matrix
-  /// intrinsics.
-  Flat = 1,
-  /// Lower 2-D transpose to `vector.shuffle`.
-  Shuffle = 2,
-};
-/// Enum to control the lowering of `vector.multi_reduction` operations.
-enum class VectorMultiReductionLowering {
-  /// Lower multi_reduction into outer-reduction and inner-parallel ops.
-  InnerParallel = 0,
-  /// Lower multi_reduction into outer-parallel and inner-reduction ops.
-  InnerReduction = 1,
-};
-/// Enum to control the lowering of `vector.contract` operations.
-enum class VectorContractLowering {
-  /// Progressively lower to finer grained `vector.contract` and dot-products.
-  Dot = 0,
-  /// Lower to `vector.matrix_multiply`, maps 1-1 to LLVM matrix intrinsics.
-  Matmul = 1,
-  /// Lower to `vector.outerproduct`.
-  OuterProduct = 2,
-  /// Lower contract with all reduction dimensions unrolled to 1 to a vector
-  /// elementwise operations.
-  ParallelArith = 3,
-};
-/// Enum to control the splitting of `vector.transfer` operations into
-/// in-bounds and out-of-bounds variants.
-enum class VectorTransferSplit {
-  /// Do not split vector transfer operations.
-  None = 0,
-  /// Split using in-bounds + out-of-bounds vector.transfer operations.
-  VectorTransfer = 1,
-  /// Split using an in-bounds vector.transfer + linalg.fill + linalg.copy
-  /// operations.
-  LinalgCopy = 2,
-  /// Do not split vector transfer operation but instead mark it as "in-bounds".
-  ForceInBounds = 3
-};
 /// Structure to control the behavior of vector transform patterns.
 struct VectorTransformsOptions {
   /// Option to control the lowering of vector.contract.
@@ -111,9 +72,10 @@ struct UnrollVectorOptions {
   }
 
   using NativeShapeFnType =
-      std::function<Optional<SmallVector<int64_t, 4>>(Operation *op)>;
+      std::function<std::optional<SmallVector<int64_t>>(Operation *op)>;
   /// Function that returns the shape of the vector to unroll to for a given
-  /// operation. The unrolling is aborted if the function returns `llvm::None`.
+  /// operation. The unrolling is aborted if the function returns
+  /// `std::nullopt`.
   NativeShapeFnType nativeShape = nullptr;
   UnrollVectorOptions &setNativeShapeFn(NativeShapeFnType fn) {
     nativeShape = std::move(fn);
@@ -122,8 +84,8 @@ struct UnrollVectorOptions {
 
   /// Set the native shape to use for unrolling.
   UnrollVectorOptions &setNativeShape(ArrayRef<int64_t> shape) {
-    SmallVector<int64_t, 4> tsShape(shape.begin(), shape.end());
-    nativeShape = [=](Operation *) -> Optional<SmallVector<int64_t, 4>> {
+    SmallVector<int64_t> tsShape(shape.begin(), shape.end());
+    nativeShape = [=](Operation *) -> std::optional<SmallVector<int64_t>> {
       return tsShape;
     };
     return *this;
@@ -134,7 +96,7 @@ struct UnrollVectorOptions {
   /// be used when unrolling the given operation into units of the native vector
   /// size.
   using UnrollTraversalOrderFnType =
-      std::function<Optional<SmallVector<int64_t>>(Operation *op)>;
+      std::function<std::optional<SmallVector<int64_t>>(Operation *op)>;
   UnrollTraversalOrderFnType traversalOrderCallback = nullptr;
   UnrollVectorOptions &
   setUnrollTraversalOrderFn(UnrollTraversalOrderFnType traversalOrderFn) {
@@ -185,6 +147,27 @@ void populateVectorContractLoweringPatterns(
     RewritePatternSet &patterns,
     VectorTransformsOptions options = VectorTransformsOptions(),
     PatternBenefit benefit = 1);
+
+/// Canonicalization of a `vector.contraction %a, %b, %c` with row-major matmul
+/// semantics to a contraction with MMT semantics (matrix matrix multiplication
+/// with the RHS transposed). This specific form is meant to have the vector
+/// operands are organized such that the reduction dimension is contiguous.
+/// Example:
+/// ```
+/// vector.contract {indexing_maps = [affine_map<(m, n, k) -> (m, k)>,
+///                                   affine_map<(m, n, k) -> (n, k)>,
+///                                   affine_map<(m, n, k) -> (m, n)>],
+///                  iterator_types = ["parallel", "parallel", "reduction"],
+///                  kind = #vector.kind<add>} %a, %b, %c : ...
+/// ```
+///
+///  The `constraint` predicate is used to decide which `vector.contraction` ops
+///  to filter out.
+void populateVectorContractCanonicalizeMatmulToMMT(
+    RewritePatternSet &patterns,
+    std::function<LogicalResult(vector::ContractionOp)> constraint =
+        [](vector::ContractionOp) { return success(); },
+    PatternBenefit = 1);
 
 /// Collect patterns to convert reduction op to vector.contract and fold
 /// transpose/broadcast ops into the contract.
@@ -350,6 +333,14 @@ void populateVectorInsertExtractStridedSliceTransforms(
 void populateVectorUnrollPatterns(RewritePatternSet &patterns,
                                   const UnrollVectorOptions &options,
                                   PatternBenefit benefit = 1);
+
+/// Expands `vector.gather` ops into a series of conditional scalar loads
+/// (`vector.load` for memrefs or `tensor.extract` for tensors). These loads are
+/// conditional to avoid out-of-bounds memory accesses and guarded with `scf.if`
+/// ops. This lowering path is intended for targets that do not feature
+/// dedicated gather ops.
+void populateVectorGatherLoweringPatterns(RewritePatternSet &patterns,
+                                          PatternBenefit benefit = 1);
 
 //===----------------------------------------------------------------------===//
 // Finer-grained patterns exposed for more control over individual lowerings.
@@ -549,12 +540,12 @@ private:
   vector::VectorTransformsOptions vectorTransformOptions;
   FilterConstraintType filter;
   // Lower one parallel dimension.
-  FailureOr<Value> lowerParallel(vector::ContractionOp op, int64_t lhsIndex,
-                                 int64_t rhsIndex,
-                                 PatternRewriter &rewriter) const;
+  FailureOr<Value> lowerParallel(PatternRewriter &rewriter,
+                                 vector::ContractionOp op, int64_t lhsIndex,
+                                 int64_t rhsIndex, Value mask) const;
   // Lower one reduction dimension.
-  FailureOr<Value> lowerReduction(vector::ContractionOp op,
-                                  PatternRewriter &rewriter) const;
+  FailureOr<Value> lowerReduction(PatternRewriter &rewriter,
+                                  vector::ContractionOp op, Value mask) const;
 };
 
 } // namespace vector

@@ -13,6 +13,9 @@
 #include "mlir/IR/PatternMatch.h"
 
 namespace mlir {
+
+struct TilingResult;
+
 namespace tensor {
 
 /// Populates `patterns` with patterns to wrap a tensor.pad op with an scf.if op
@@ -26,7 +29,7 @@ void populateSplitPaddingPatterns(RewritePatternSet &patterns,
 /// provide a mechanism to control where the application happens. With use of
 /// transform dialect that control is done within the transform dialect. Other
 /// use cases can inherit from this pattern and add necessary controls.
-FailureOr<Value> replaceExtractSliceWithTiledProducer(
+FailureOr<TilingResult> replaceExtractSliceWithTiledProducer(
     OpBuilder &builder, tensor::ExtractSliceOp sliceOp, OpResult producerOp);
 
 /// Collects patterns to merge consecutive tensor.insert_slice/extract_slice
@@ -35,6 +38,19 @@ FailureOr<Value> replaceExtractSliceWithTiledProducer(
 /// tensor.extract_slice and tensor.insert_slice ops for creating the slices.
 void populateMergeConsecutiveInsertExtractSlicePatterns(
     RewritePatternSet &patterns);
+
+/// Populates `patterns` with patterns that fold `tensor.expand_shape` and
+/// `tensor.collapse_shape` into other ops.
+void populateReassociativeReshapeFoldingPatterns(RewritePatternSet &patterns);
+
+/// Populates `patterns` with patterns that fold tensor.empty with
+/// tensor.[extract_slice|cast|expand_shape|collapse_shape].
+void populateFoldTensorEmptyPatterns(RewritePatternSet &patterns);
+
+/// Populates `patterns` with patterns that fold operations like `tensor.pad`
+/// and `tensor.extract_slice` into `tensor.pack` and `tensor.unpack` operations
+/// respectively.
+void populateFoldIntoPackAndUnpackPatterns(RewritePatternSet &patterns);
 
 } // namespace tensor
 } // namespace mlir

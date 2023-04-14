@@ -9,10 +9,10 @@
 #include "lldb/Target/UnixSignals.h"
 #include "Plugins/Process/Utility/FreeBSDSignals.h"
 #include "Plugins/Process/Utility/LinuxSignals.h"
-#include "Plugins/Process/Utility/MipsLinuxSignals.h"
 #include "Plugins/Process/Utility/NetBSDSignals.h"
 #include "lldb/Host/HostInfo.h"
 #include "lldb/Utility/ArchSpec.h"
+#include <optional>
 
 using namespace lldb_private;
 using namespace llvm;
@@ -32,17 +32,8 @@ UnixSignals::Signal::Signal(const char *name, bool default_suppress,
 lldb::UnixSignalsSP UnixSignals::Create(const ArchSpec &arch) {
   const auto &triple = arch.GetTriple();
   switch (triple.getOS()) {
-  case llvm::Triple::Linux: {
-    switch (triple.getArch()) {
-    case llvm::Triple::mips:
-    case llvm::Triple::mipsel:
-    case llvm::Triple::mips64:
-    case llvm::Triple::mips64el:
-      return std::make_shared<MipsLinuxSignals>();
-    default:
-      return std::make_shared<LinuxSignals>();
-    }
-  }
+  case llvm::Triple::Linux:
+    return std::make_shared<LinuxSignals>();
   case llvm::Triple::FreeBSD:
   case llvm::Triple::OpenBSD:
     return std::make_shared<FreeBSDSignals>();
@@ -285,9 +276,9 @@ int32_t UnixSignals::GetSignalAtIndex(int32_t index) const {
 uint64_t UnixSignals::GetVersion() const { return m_version; }
 
 std::vector<int32_t>
-UnixSignals::GetFilteredSignals(llvm::Optional<bool> should_suppress,
-                                llvm::Optional<bool> should_stop,
-                                llvm::Optional<bool> should_notify) {
+UnixSignals::GetFilteredSignals(std::optional<bool> should_suppress,
+                                std::optional<bool> should_stop,
+                                std::optional<bool> should_notify) {
   std::vector<int32_t> result;
   for (int32_t signo = GetFirstSignalNumber();
        signo != LLDB_INVALID_SIGNAL_NUMBER;
@@ -300,13 +291,13 @@ UnixSignals::GetFilteredSignals(llvm::Optional<bool> should_suppress,
 
     // If any of filtering conditions are not met, we move on to the next
     // signal.
-    if (should_suppress && signal_suppress != should_suppress.value())
+    if (should_suppress && signal_suppress != *should_suppress)
       continue;
 
-    if (should_stop && signal_stop != should_stop.value())
+    if (should_stop && signal_stop != *should_stop)
       continue;
 
-    if (should_notify && signal_notify != should_notify.value())
+    if (should_notify && signal_notify != *should_notify)
       continue;
 
     result.push_back(signo);

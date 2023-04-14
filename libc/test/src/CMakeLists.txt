@@ -30,10 +30,10 @@ add_subdirectory(__support)
 add_subdirectory(ctype)
 add_subdirectory(errno)
 add_subdirectory(fenv)
-add_subdirectory(inttypes)
 add_subdirectory(math)
 add_subdirectory(string)
 add_subdirectory(stdlib)
+add_subdirectory(inttypes)
 add_subdirectory(stdio)
 
 if(${LIBC_TARGET_OS} STREQUAL "linux")
@@ -49,9 +49,8 @@ if(NOT LLVM_LIBC_FULL_BUILD)
 endif()
 
 add_subdirectory(dirent)
-# The signal API is currently disabled as signal.h is incorrect.
-# since assert uses the signal API, we disable assert also.
-# add_subdirectory(assert)
+add_subdirectory(assert)
+add_subdirectory(network)
 add_subdirectory(setjmp)
 add_subdirectory(signal)
 add_subdirectory(spawn)
@@ -59,6 +58,15 @@ add_subdirectory(time)
 
 if(${LIBC_TARGET_OS} STREQUAL "linux")
   add_subdirectory(pthread)
+endif()
+
+if(LLVM_RUNTIMES_BUILD OR LIBC_HDRGEN_EXE)
+  # The public API test below uses tablegen to generate the test
+  # source file. Since tablegen is not available during a runtimes
+  # build, we will skip the test.
+  # If a different libc-hdrgen binary is being used, then also we
+  # skip the api-test as we cannot generate the test source file.
+  return()
 endif()
 
 set(public_test ${CMAKE_CURRENT_BINARY_DIR}/public_api_test.cpp)
@@ -89,6 +97,8 @@ add_custom_command(
 )
 
 add_custom_target(libc-api-test)
+add_dependencies(check-libc libc-api-test)
+
 set(
   allocator_entrypoints 
     libc.src.stdlib.malloc
@@ -105,8 +115,6 @@ add_integration_test(
     libc-api-test
   SRCS
     ${public_test}
-  LOADER
-    libc.loader.linux.crt1
   DEPENDS
     ${api-test-entrypoints}
 )
@@ -115,7 +123,7 @@ if(COMPILER_RESOURCE_DIR AND LLVM_LIBC_ENABLE_LINTING)
   add_custom_target(
     libc-api-test-tidy
     VERBATIM
-    COMMAND $<TARGET_FILE:clang-tidy> --system-headers
+    COMMAND ${LLVM_LIBC_CLANG_TIDY} --system-headers
       --checks=-*,llvmlibc-restrict-system-libc-headers
       "--extra-arg=-resource-dir=${COMPILER_RESOURCE_DIR}"
       --header-filter=.*

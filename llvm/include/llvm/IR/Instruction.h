@@ -16,7 +16,6 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Bitfields.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/ilist_node.h"
 #include "llvm/IR/DebugLoc.h"
@@ -129,6 +128,11 @@ public:
   /// specified instruction.
   void insertAfter(Instruction *InsertPos);
 
+  /// Inserts an unlinked instruction into \p ParentBB at position \p It and
+  /// returns the iterator of the inserted instruction.
+  SymbolTableList<Instruction>::iterator
+  insertInto(BasicBlock *ParentBB, SymbolTableList<Instruction>::iterator It);
+
   /// Unlink this instruction from its current basic block and insert it into
   /// the basic block that MovePos lives in, right before MovePos.
   void moveBefore(Instruction *MovePos);
@@ -179,10 +183,10 @@ public:
   /// its operands.
   bool isOnlyUserOfAnyOperand();
 
-  static const char* getOpcodeName(unsigned OpCode);
+  static const char *getOpcodeName(unsigned Opcode);
 
-  static inline bool isTerminator(unsigned OpCode) {
-    return OpCode >= TermOpsBegin && OpCode < TermOpsEnd;
+  static inline bool isTerminator(unsigned Opcode) {
+    return Opcode >= TermOpsBegin && Opcode < TermOpsEnd;
   }
 
   static inline bool isUnaryOp(unsigned Opcode) {
@@ -221,19 +225,19 @@ public:
     return isBitwiseLogicOp(getOpcode());
   }
 
-  /// Determine if the OpCode is one of the CastInst instructions.
-  static inline bool isCast(unsigned OpCode) {
-    return OpCode >= CastOpsBegin && OpCode < CastOpsEnd;
+  /// Determine if the Opcode is one of the CastInst instructions.
+  static inline bool isCast(unsigned Opcode) {
+    return Opcode >= CastOpsBegin && Opcode < CastOpsEnd;
   }
 
-  /// Determine if the OpCode is one of the FuncletPadInst instructions.
-  static inline bool isFuncletPad(unsigned OpCode) {
-    return OpCode >= FuncletPadOpsBegin && OpCode < FuncletPadOpsEnd;
+  /// Determine if the Opcode is one of the FuncletPadInst instructions.
+  static inline bool isFuncletPad(unsigned Opcode) {
+    return Opcode >= FuncletPadOpsBegin && Opcode < FuncletPadOpsEnd;
   }
 
-  /// Returns true if the OpCode is a terminator related to exception handling.
-  static inline bool isExceptionalTerminator(unsigned OpCode) {
-    switch (OpCode) {
+  /// Returns true if the Opcode is a terminator related to exception handling.
+  static inline bool isExceptionalTerminator(unsigned Opcode) {
+    switch (Opcode) {
     case Instruction::CatchSwitch:
     case Instruction::CatchRet:
     case Instruction::CleanupRet:
@@ -320,10 +324,10 @@ public:
   /// this API if the Instruction being modified is a call.
   void dropUnknownNonDebugMetadata(ArrayRef<unsigned> KnownIDs);
   void dropUnknownNonDebugMetadata() {
-    return dropUnknownNonDebugMetadata(None);
+    return dropUnknownNonDebugMetadata(std::nullopt);
   }
   void dropUnknownNonDebugMetadata(unsigned ID1) {
-    return dropUnknownNonDebugMetadata(makeArrayRef(ID1));
+    return dropUnknownNonDebugMetadata(ArrayRef(ID1));
   }
   void dropUnknownNonDebugMetadata(unsigned ID1, unsigned ID2) {
     unsigned IDs[] = {ID1, ID2};
@@ -378,6 +382,23 @@ public:
   /// Drops flags that may cause this instruction to evaluate to poison despite
   /// having non-poison inputs.
   void dropPoisonGeneratingFlags();
+
+  /// Return true if this instruction has poison-generating metadata.
+  bool hasPoisonGeneratingMetadata() const LLVM_READONLY;
+
+  /// Drops metadata that may generate poison.
+  void dropPoisonGeneratingMetadata();
+
+  /// Return true if this instruction has poison-generating flags or metadata.
+  bool hasPoisonGeneratingFlagsOrMetadata() const {
+    return hasPoisonGeneratingFlags() || hasPoisonGeneratingMetadata();
+  }
+
+  /// Drops flags and metadata that may generate poison.
+  void dropPoisonGeneratingFlagsAndMetadata() {
+    dropPoisonGeneratingFlags();
+    dropPoisonGeneratingMetadata();
+  }
 
   /// This function drops non-debug unknown metadata (through
   /// dropUnknownNonDebugMetadata). For calls, it also drops parameter and 

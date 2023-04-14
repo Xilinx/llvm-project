@@ -10,9 +10,10 @@
 // that are not yet supported remain commented out.
 //===----------------------------------------------------------------------===//
 
-class GCNPat<dag pattern, dag result> : Pat<pattern, result>, GCNPredicateControl {
+class GCNPat<dag pattern, dag result> : Pat<pattern, result>, GCNPredicateControl, GISelFlags;
 
-}
+let GIIgnoreCopies = 1 in
+class GCNPatIgnoreCopies<dag pattern, dag result> : GCNPat<pattern, result>;
 
 class UniformSextInreg<ValueType VT> : PatFrag<
   (ops node:$src),
@@ -122,6 +123,7 @@ def V_MOV_B64_PSEUDO : VPseudoInstSI <(outs VReg_64:$vdst),
   let isMoveImm = 1;
   let SchedRW = [Write64Bit];
   let Size = 16; // Needs maximum 2 v_mov_b32 instructions 8 byte long each.
+  let UseNamedOperandTable = 1;
 }
 
 // 64-bit vector move with dpp. Expanded post-RA.
@@ -236,12 +238,12 @@ def V_SET_INACTIVE_B64 : VPseudoInstSI <(outs VReg_64:$vdst),
 let usesCustomInserter = 1, Defs = [VCC, EXEC] in {
 def V_ADD_U64_PSEUDO : VPseudoInstSI <
   (outs VReg_64:$vdst), (ins VSrc_b64:$src0, VSrc_b64:$src1),
-  [(set VReg_64:$vdst, (getDivergentFrag<add>.ret i64:$src0, i64:$src1))]
+  [(set VReg_64:$vdst, (DivergentBinFrag<add> i64:$src0, i64:$src1))]
 >;
 
 def V_SUB_U64_PSEUDO : VPseudoInstSI <
   (outs VReg_64:$vdst), (ins VSrc_b64:$src0, VSrc_b64:$src1),
-  [(set VReg_64:$vdst, (getDivergentFrag<sub>.ret i64:$src0, i64:$src1))]
+  [(set VReg_64:$vdst, (DivergentBinFrag<sub> i64:$src0, i64:$src1))]
 >;
 } // End usesCustomInserter = 1, Defs = [VCC, EXEC]
 
@@ -367,7 +369,13 @@ def IGLP_OPT : SPseudoInstSI<(outs), (ins i32imm:$mask),
 // SI pseudo instructions. These are used by the CFG structurizer pass
 // and should be lowered to ISA instructions prior to codegen.
 
-let isTerminator = 1 in {
+// As we have enhanced control flow intrinsics to work under unstructured CFG,
+// duplicating such intrinsics can be actually treated as legal. On the contrary,
+// by making them non-duplicable, we are observing better code generation result.
+// So we choose to mark them non-duplicable in hope of getting better code
+// generation as well as simplied CFG during Machine IR optimization stage.
+
+let isTerminator = 1, isNotDuplicable = 1 in {
 
 let OtherPredicates = [EnableLateCFGStructurize] in {
  def SI_NON_UNIFORM_BRCOND_PSEUDO : CFPseudoInstSI <
@@ -417,6 +425,7 @@ def SI_END_CF : CFPseudoInstSI <
   let isAsCheapAsAMove = 1;
   let isReMaterializable = 1;
   let hasSideEffects = 1;
+  let isNotDuplicable = 1; // Not a hard requirement, see long comments above for details.
   let mayLoad = 1; // FIXME: Should not need memory flags
   let mayStore = 1;
 }
@@ -424,6 +433,7 @@ def SI_END_CF : CFPseudoInstSI <
 def SI_IF_BREAK : CFPseudoInstSI <
   (outs SReg_1:$dst), (ins SReg_1:$vcc, SReg_1:$src), []> {
   let Size = 4;
+  let isNotDuplicable = 1; // Not a hard requirement, see long comments above for details.
   let isAsCheapAsAMove = 1;
   let isReMaterializable = 1;
 }
@@ -650,6 +660,10 @@ def SI_INDIRECT_SRC_V1 : SI_INDIRECT_SRC<VGPR_32>;
 def SI_INDIRECT_SRC_V2 : SI_INDIRECT_SRC<VReg_64>;
 def SI_INDIRECT_SRC_V4 : SI_INDIRECT_SRC<VReg_128>;
 def SI_INDIRECT_SRC_V8 : SI_INDIRECT_SRC<VReg_256>;
+def SI_INDIRECT_SRC_V9 : SI_INDIRECT_SRC<VReg_288>;
+def SI_INDIRECT_SRC_V10 : SI_INDIRECT_SRC<VReg_320>;
+def SI_INDIRECT_SRC_V11 : SI_INDIRECT_SRC<VReg_352>;
+def SI_INDIRECT_SRC_V12 : SI_INDIRECT_SRC<VReg_384>;
 def SI_INDIRECT_SRC_V16 : SI_INDIRECT_SRC<VReg_512>;
 def SI_INDIRECT_SRC_V32 : SI_INDIRECT_SRC<VReg_1024>;
 
@@ -657,6 +671,10 @@ def SI_INDIRECT_DST_V1 : SI_INDIRECT_DST<VGPR_32>;
 def SI_INDIRECT_DST_V2 : SI_INDIRECT_DST<VReg_64>;
 def SI_INDIRECT_DST_V4 : SI_INDIRECT_DST<VReg_128>;
 def SI_INDIRECT_DST_V8 : SI_INDIRECT_DST<VReg_256>;
+def SI_INDIRECT_DST_V9 : SI_INDIRECT_DST<VReg_288>;
+def SI_INDIRECT_DST_V10 : SI_INDIRECT_DST<VReg_320>;
+def SI_INDIRECT_DST_V11 : SI_INDIRECT_DST<VReg_352>;
+def SI_INDIRECT_DST_V12 : SI_INDIRECT_DST<VReg_384>;
 def SI_INDIRECT_DST_V16 : SI_INDIRECT_DST<VReg_512>;
 def SI_INDIRECT_DST_V32 : SI_INDIRECT_DST<VReg_1024>;
 
@@ -698,6 +716,10 @@ def V_INDIRECT_REG_WRITE_MOVREL_B32_V3 : V_INDIRECT_REG_WRITE_MOVREL_B32_pseudo<
 def V_INDIRECT_REG_WRITE_MOVREL_B32_V4 : V_INDIRECT_REG_WRITE_MOVREL_B32_pseudo<VReg_128>;
 def V_INDIRECT_REG_WRITE_MOVREL_B32_V5 : V_INDIRECT_REG_WRITE_MOVREL_B32_pseudo<VReg_160>;
 def V_INDIRECT_REG_WRITE_MOVREL_B32_V8 : V_INDIRECT_REG_WRITE_MOVREL_B32_pseudo<VReg_256>;
+def V_INDIRECT_REG_WRITE_MOVREL_B32_V9 : V_INDIRECT_REG_WRITE_MOVREL_B32_pseudo<VReg_288>;
+def V_INDIRECT_REG_WRITE_MOVREL_B32_V10 : V_INDIRECT_REG_WRITE_MOVREL_B32_pseudo<VReg_320>;
+def V_INDIRECT_REG_WRITE_MOVREL_B32_V11 : V_INDIRECT_REG_WRITE_MOVREL_B32_pseudo<VReg_352>;
+def V_INDIRECT_REG_WRITE_MOVREL_B32_V12 : V_INDIRECT_REG_WRITE_MOVREL_B32_pseudo<VReg_384>;
 def V_INDIRECT_REG_WRITE_MOVREL_B32_V16 : V_INDIRECT_REG_WRITE_MOVREL_B32_pseudo<VReg_512>;
 def V_INDIRECT_REG_WRITE_MOVREL_B32_V32 : V_INDIRECT_REG_WRITE_MOVREL_B32_pseudo<VReg_1024>;
 
@@ -735,6 +757,10 @@ def V_INDIRECT_REG_WRITE_GPR_IDX_B32_V3 : V_INDIRECT_REG_WRITE_GPR_IDX_pseudo<VR
 def V_INDIRECT_REG_WRITE_GPR_IDX_B32_V4 : V_INDIRECT_REG_WRITE_GPR_IDX_pseudo<VReg_128>;
 def V_INDIRECT_REG_WRITE_GPR_IDX_B32_V5 : V_INDIRECT_REG_WRITE_GPR_IDX_pseudo<VReg_160>;
 def V_INDIRECT_REG_WRITE_GPR_IDX_B32_V8 : V_INDIRECT_REG_WRITE_GPR_IDX_pseudo<VReg_256>;
+def V_INDIRECT_REG_WRITE_GPR_IDX_B32_V9 : V_INDIRECT_REG_WRITE_GPR_IDX_pseudo<VReg_288>;
+def V_INDIRECT_REG_WRITE_GPR_IDX_B32_V10 : V_INDIRECT_REG_WRITE_GPR_IDX_pseudo<VReg_320>;
+def V_INDIRECT_REG_WRITE_GPR_IDX_B32_V11 : V_INDIRECT_REG_WRITE_GPR_IDX_pseudo<VReg_352>;
+def V_INDIRECT_REG_WRITE_GPR_IDX_B32_V12 : V_INDIRECT_REG_WRITE_GPR_IDX_pseudo<VReg_384>;
 def V_INDIRECT_REG_WRITE_GPR_IDX_B32_V16 : V_INDIRECT_REG_WRITE_GPR_IDX_pseudo<VReg_512>;
 def V_INDIRECT_REG_WRITE_GPR_IDX_B32_V32 : V_INDIRECT_REG_WRITE_GPR_IDX_pseudo<VReg_1024>;
 
@@ -751,6 +777,10 @@ def V_INDIRECT_REG_READ_GPR_IDX_B32_V3 : V_INDIRECT_REG_READ_GPR_IDX_pseudo<VReg
 def V_INDIRECT_REG_READ_GPR_IDX_B32_V4 : V_INDIRECT_REG_READ_GPR_IDX_pseudo<VReg_128>;
 def V_INDIRECT_REG_READ_GPR_IDX_B32_V5 : V_INDIRECT_REG_READ_GPR_IDX_pseudo<VReg_160>;
 def V_INDIRECT_REG_READ_GPR_IDX_B32_V8 : V_INDIRECT_REG_READ_GPR_IDX_pseudo<VReg_256>;
+def V_INDIRECT_REG_READ_GPR_IDX_B32_V9 : V_INDIRECT_REG_READ_GPR_IDX_pseudo<VReg_288>;
+def V_INDIRECT_REG_READ_GPR_IDX_B32_V10 : V_INDIRECT_REG_READ_GPR_IDX_pseudo<VReg_320>;
+def V_INDIRECT_REG_READ_GPR_IDX_B32_V11 : V_INDIRECT_REG_READ_GPR_IDX_pseudo<VReg_352>;
+def V_INDIRECT_REG_READ_GPR_IDX_B32_V12 : V_INDIRECT_REG_READ_GPR_IDX_pseudo<VReg_384>;
 def V_INDIRECT_REG_READ_GPR_IDX_B32_V16 : V_INDIRECT_REG_READ_GPR_IDX_pseudo<VReg_512>;
 def V_INDIRECT_REG_READ_GPR_IDX_B32_V32 : V_INDIRECT_REG_READ_GPR_IDX_pseudo<VReg_1024>;
 
@@ -784,6 +814,10 @@ defm SI_SPILL_S160 : SI_SPILL_SGPR <SReg_160>;
 defm SI_SPILL_S192 : SI_SPILL_SGPR <SReg_192>;
 defm SI_SPILL_S224 : SI_SPILL_SGPR <SReg_224>;
 defm SI_SPILL_S256 : SI_SPILL_SGPR <SReg_256>;
+defm SI_SPILL_S288 : SI_SPILL_SGPR <SReg_288>;
+defm SI_SPILL_S320 : SI_SPILL_SGPR <SReg_320>;
+defm SI_SPILL_S352 : SI_SPILL_SGPR <SReg_352>;
+defm SI_SPILL_S384 : SI_SPILL_SGPR <SReg_384>;
 defm SI_SPILL_S512 : SI_SPILL_SGPR <SReg_512>;
 defm SI_SPILL_S1024 : SI_SPILL_SGPR <SReg_1024>;
 
@@ -828,6 +862,10 @@ defm SI_SPILL_V160 : SI_SPILL_VGPR <VReg_160>;
 defm SI_SPILL_V192 : SI_SPILL_VGPR <VReg_192>;
 defm SI_SPILL_V224 : SI_SPILL_VGPR <VReg_224>;
 defm SI_SPILL_V256 : SI_SPILL_VGPR <VReg_256>;
+defm SI_SPILL_V288 : SI_SPILL_VGPR <VReg_288>;
+defm SI_SPILL_V320 : SI_SPILL_VGPR <VReg_320>;
+defm SI_SPILL_V352 : SI_SPILL_VGPR <VReg_352>;
+defm SI_SPILL_V384 : SI_SPILL_VGPR <VReg_384>;
 defm SI_SPILL_V512 : SI_SPILL_VGPR <VReg_512>;
 defm SI_SPILL_V1024 : SI_SPILL_VGPR <VReg_1024>;
 
@@ -839,6 +877,10 @@ defm SI_SPILL_A160 : SI_SPILL_VGPR <AReg_160, 1>;
 defm SI_SPILL_A192 : SI_SPILL_VGPR <AReg_192, 1>;
 defm SI_SPILL_A224 : SI_SPILL_VGPR <AReg_224, 1>;
 defm SI_SPILL_A256 : SI_SPILL_VGPR <AReg_256, 1>;
+defm SI_SPILL_A288 : SI_SPILL_VGPR <AReg_288, 1>;
+defm SI_SPILL_A320 : SI_SPILL_VGPR <AReg_320, 1>;
+defm SI_SPILL_A352 : SI_SPILL_VGPR <AReg_352, 1>;
+defm SI_SPILL_A384 : SI_SPILL_VGPR <AReg_384, 1>;
 defm SI_SPILL_A512 : SI_SPILL_VGPR <AReg_512, 1>;
 defm SI_SPILL_A1024 : SI_SPILL_VGPR <AReg_1024, 1>;
 
@@ -850,6 +892,10 @@ defm SI_SPILL_AV160 : SI_SPILL_VGPR <AV_160, 1>;
 defm SI_SPILL_AV192 : SI_SPILL_VGPR <AV_192, 1>;
 defm SI_SPILL_AV224 : SI_SPILL_VGPR <AV_224, 1>;
 defm SI_SPILL_AV256 : SI_SPILL_VGPR <AV_256, 1>;
+defm SI_SPILL_AV288 : SI_SPILL_VGPR <AV_288, 1>;
+defm SI_SPILL_AV320 : SI_SPILL_VGPR <AV_320, 1>;
+defm SI_SPILL_AV352 : SI_SPILL_VGPR <AV_352, 1>;
+defm SI_SPILL_AV384 : SI_SPILL_VGPR <AV_384, 1>;
 defm SI_SPILL_AV512 : SI_SPILL_VGPR <AV_512, 1>;
 defm SI_SPILL_AV1024 : SI_SPILL_VGPR <AV_1024, 1>;
 
@@ -1075,7 +1121,7 @@ def : VOPSelectPat <i16>;
 
 let AddedComplexity = 1 in {
 def : GCNPat <
-  (i32 (add (i32 (getDivergentFrag<ctpop>.ret i32:$popcnt)), i32:$val)),
+  (i32 (add (i32 (DivergentUnaryFrag<ctpop> i32:$popcnt)), i32:$val)),
   (V_BCNT_U32_B32_e64 $popcnt, $val)
 >;
 }
@@ -1086,7 +1132,7 @@ def : GCNPat <
 >;
 
 def : GCNPat <
-  (i16 (add (i16 (trunc (i32 (getDivergentFrag<ctpop>.ret i32:$popcnt)))), i16:$val)),
+  (i16 (add (i16 (trunc (i32 (DivergentUnaryFrag<ctpop> i32:$popcnt)))), i16:$val)),
   (V_BCNT_U32_B32_e64 $popcnt, $val)
 >;
 
@@ -1222,6 +1268,70 @@ foreach Index = 0-7 in {
   >;
   def Insert_Element_v8f32_#Index : Insert_Element <
     f32, v8f32, Index, !cast<SubRegIndex>(sub#Index)
+  >;
+}
+
+foreach Index = 0-8 in {
+  def Extract_Element_v9i32_#Index : Extract_Element <
+    i32, v9i32, Index, !cast<SubRegIndex>(sub#Index)
+  >;
+  def Insert_Element_v9i32_#Index : Insert_Element <
+    i32, v9i32, Index, !cast<SubRegIndex>(sub#Index)
+  >;
+
+  def Extract_Element_v9f32_#Index : Extract_Element <
+    f32, v9f32, Index, !cast<SubRegIndex>(sub#Index)
+  >;
+  def Insert_Element_v9f32_#Index : Insert_Element <
+    f32, v9f32, Index, !cast<SubRegIndex>(sub#Index)
+  >;
+}
+
+foreach Index = 0-9 in {
+  def Extract_Element_v10i32_#Index : Extract_Element <
+    i32, v10i32, Index, !cast<SubRegIndex>(sub#Index)
+  >;
+  def Insert_Element_v10i32_#Index : Insert_Element <
+    i32, v10i32, Index, !cast<SubRegIndex>(sub#Index)
+  >;
+
+  def Extract_Element_v10f32_#Index : Extract_Element <
+    f32, v10f32, Index, !cast<SubRegIndex>(sub#Index)
+  >;
+  def Insert_Element_v10f32_#Index : Insert_Element <
+    f32, v10f32, Index, !cast<SubRegIndex>(sub#Index)
+  >;
+}
+
+foreach Index = 0-10 in {
+  def Extract_Element_v11i32_#Index : Extract_Element <
+    i32, v11i32, Index, !cast<SubRegIndex>(sub#Index)
+  >;
+  def Insert_Element_v11i32_#Index : Insert_Element <
+    i32, v11i32, Index, !cast<SubRegIndex>(sub#Index)
+  >;
+
+  def Extract_Element_v11f32_#Index : Extract_Element <
+    f32, v11f32, Index, !cast<SubRegIndex>(sub#Index)
+  >;
+  def Insert_Element_v11f32_#Index : Insert_Element <
+    f32, v11f32, Index, !cast<SubRegIndex>(sub#Index)
+  >;
+}
+
+foreach Index = 0-11 in {
+  def Extract_Element_v12i32_#Index : Extract_Element <
+    i32, v12i32, Index, !cast<SubRegIndex>(sub#Index)
+  >;
+  def Insert_Element_v12i32_#Index : Insert_Element <
+    i32, v12i32, Index, !cast<SubRegIndex>(sub#Index)
+  >;
+
+  def Extract_Element_v12f32_#Index : Extract_Element <
+    f32, v12f32, Index, !cast<SubRegIndex>(sub#Index)
+  >;
+  def Insert_Element_v12f32_#Index : Insert_Element <
+    f32, v12f32, Index, !cast<SubRegIndex>(sub#Index)
   >;
 }
 
@@ -1481,6 +1591,30 @@ def : BitConvert <v4i64, v16f16, VReg_256>;
 def : BitConvert <v4i64, v16i16, VReg_256>;
 def : BitConvert <v4f64, v16f16, VReg_256>;
 def : BitConvert <v4f64, v16i16, VReg_256>;
+
+// 288-bit bitcast
+def : BitConvert <v9i32, v9f32, SReg_288>;
+def : BitConvert <v9f32, v9i32, SReg_288>;
+def : BitConvert <v9i32, v9f32, VReg_288>;
+def : BitConvert <v9f32, v9i32, VReg_288>;
+
+// 320-bit bitcast
+def : BitConvert <v10i32, v10f32, SReg_320>;
+def : BitConvert <v10f32, v10i32, SReg_320>;
+def : BitConvert <v10i32, v10f32, VReg_320>;
+def : BitConvert <v10f32, v10i32, VReg_320>;
+
+// 320-bit bitcast
+def : BitConvert <v11i32, v11f32, SReg_352>;
+def : BitConvert <v11f32, v11i32, SReg_352>;
+def : BitConvert <v11i32, v11f32, VReg_352>;
+def : BitConvert <v11f32, v11i32, VReg_352>;
+
+// 384-bit bitcast
+def : BitConvert <v12i32, v12f32, SReg_384>;
+def : BitConvert <v12f32, v12i32, SReg_384>;
+def : BitConvert <v12i32, v12f32, VReg_384>;
+def : BitConvert <v12f32, v12i32, VReg_384>;
 
 // 512-bit bitcast
 def : BitConvert <v16i32, v16f32, VReg_512>;
@@ -1742,7 +1876,7 @@ def : GCNPat <
 >;
 
 def : GCNPat <
-  (getDivergentFrag<fneg>.ret (v2f32 VReg_64:$src)),
+  (DivergentUnaryFrag<fneg> (v2f32 VReg_64:$src)),
   (V_PK_ADD_F32 11 /* OP_SEL_1 | NEG_LO | HEG_HI */, VReg_64:$src,
                 11 /* OP_SEL_1 | NEG_LO | HEG_HI */, 0,
                 0, 0, 0, 0, 0)
@@ -1918,48 +2052,53 @@ def BFIImm32 : PatFrag<
   }]
 >;
 
+
 // Definition from ISA doc:
 // (y & x) | (z & ~x)
-def : AMDGPUPat <
+def : AMDGPUPatIgnoreCopies <
   (DivergentBinFrag<or> (and i32:$y, i32:$x), (and i32:$z, (not i32:$x))),
-  (V_BFI_B32_e64 VSrc_b32:$x, VSrc_b32:$y, VSrc_b32:$z)
+  (V_BFI_B32_e64 (COPY_TO_REGCLASS VSrc_b32:$x, VGPR_32),
+                (COPY_TO_REGCLASS VSrc_b32:$y, VGPR_32),
+                (COPY_TO_REGCLASS VSrc_b32:$z, VGPR_32))
 >;
 
 // (y & C) | (z & ~C)
-def : AMDGPUPat <
+def : AMDGPUPatIgnoreCopies <
   (BFIImm32 i32:$x, i32:$y, i32:$z),
   (V_BFI_B32_e64 VSrc_b32:$x, VSrc_b32:$y, VSrc_b32:$z)
 >;
 
 // 64-bit version
-def : AMDGPUPat <
+def : AMDGPUPatIgnoreCopies <
   (DivergentBinFrag<or> (and i64:$y, i64:$x), (and i64:$z, (not i64:$x))),
   (REG_SEQUENCE VReg_64,
     (V_BFI_B32_e64 (i32 (EXTRACT_SUBREG VReg_64:$x, sub0)),
-               (i32 (EXTRACT_SUBREG VReg_64:$y, sub0)),
-               (i32 (EXTRACT_SUBREG VReg_64:$z, sub0))), sub0,
+              (i32 (EXTRACT_SUBREG VReg_64:$y, sub0)),
+              (i32 (EXTRACT_SUBREG VReg_64:$z, sub0))), sub0,
     (V_BFI_B32_e64 (i32 (EXTRACT_SUBREG VReg_64:$x, sub1)),
-               (i32 (EXTRACT_SUBREG VReg_64:$y, sub1)),
-               (i32 (EXTRACT_SUBREG VReg_64:$z, sub1))), sub1)
+              (i32 (EXTRACT_SUBREG VReg_64:$y, sub1)),
+              (i32 (EXTRACT_SUBREG VReg_64:$z, sub1))), sub1)
 >;
 
 // SHA-256 Ch function
 // z ^ (x & (y ^ z))
-def : AMDGPUPat <
+def : AMDGPUPatIgnoreCopies <
   (DivergentBinFrag<xor> i32:$z, (and i32:$x, (xor i32:$y, i32:$z))),
-  (V_BFI_B32_e64 VSrc_b32:$x, VSrc_b32:$y, VSrc_b32:$z)
+  (V_BFI_B32_e64 (COPY_TO_REGCLASS VSrc_b32:$x, VGPR_32),
+                (COPY_TO_REGCLASS VSrc_b32:$y, VGPR_32),
+                (COPY_TO_REGCLASS VSrc_b32:$z, VGPR_32))
 >;
 
 // 64-bit version
-def : AMDGPUPat <
+def : AMDGPUPatIgnoreCopies <
   (DivergentBinFrag<xor> i64:$z, (and i64:$x, (xor i64:$y, i64:$z))),
   (REG_SEQUENCE VReg_64,
     (V_BFI_B32_e64 (i32 (EXTRACT_SUBREG VReg_64:$x, sub0)),
-               (i32 (EXTRACT_SUBREG VReg_64:$y, sub0)),
-               (i32 (EXTRACT_SUBREG VReg_64:$z, sub0))), sub0,
+              (i32 (EXTRACT_SUBREG VReg_64:$y, sub0)),
+              (i32 (EXTRACT_SUBREG VReg_64:$z, sub0))), sub0,
     (V_BFI_B32_e64 (i32 (EXTRACT_SUBREG VReg_64:$x, sub1)),
-               (i32 (EXTRACT_SUBREG VReg_64:$y, sub1)),
-               (i32 (EXTRACT_SUBREG VReg_64:$z, sub1))), sub1)
+              (i32 (EXTRACT_SUBREG VReg_64:$y, sub1)),
+              (i32 (EXTRACT_SUBREG VReg_64:$z, sub1))), sub1)
 >;
 
 def : AMDGPUPat <
@@ -2022,12 +2161,20 @@ multiclass SI_INDIRECT_Pattern <ValueType vt, ValueType eltvt, string VecSize> {
 defm : SI_INDIRECT_Pattern <v2f32, f32, "V2">;
 defm : SI_INDIRECT_Pattern <v4f32, f32, "V4">;
 defm : SI_INDIRECT_Pattern <v8f32, f32, "V8">;
+defm : SI_INDIRECT_Pattern <v9f32, f32, "V9">;
+defm : SI_INDIRECT_Pattern <v10f32, f32, "V10">;
+defm : SI_INDIRECT_Pattern <v11f32, f32, "V11">;
+defm : SI_INDIRECT_Pattern <v12f32, f32, "V12">;
 defm : SI_INDIRECT_Pattern <v16f32, f32, "V16">;
 defm : SI_INDIRECT_Pattern <v32f32, f32, "V32">;
 
 defm : SI_INDIRECT_Pattern <v2i32, i32, "V2">;
 defm : SI_INDIRECT_Pattern <v4i32, i32, "V4">;
 defm : SI_INDIRECT_Pattern <v8i32, i32, "V8">;
+defm : SI_INDIRECT_Pattern <v9i32, i32, "V9">;
+defm : SI_INDIRECT_Pattern <v10i32, i32, "V10">;
+defm : SI_INDIRECT_Pattern <v11i32, i32, "V11">;
+defm : SI_INDIRECT_Pattern <v12i32, i32, "V12">;
 defm : SI_INDIRECT_Pattern <v16i32, i32, "V16">;
 defm : SI_INDIRECT_Pattern <v32i32, i32, "V32">;
 
@@ -2686,7 +2833,7 @@ def : GCNPat <
 >;
 }
 
-let SubtargetPredicate = isGFX90APlus in
+let OtherPredicates = [HasFmacF64Inst] in
 // Don't allow source modifiers. If there are any source modifiers then it's
 // better to select fma instead of fmac.
 def : GCNPat <
@@ -2778,6 +2925,31 @@ def : GCNPat <
   (v2i16 (DivergentBinFrag<build_vector> (i16 VGPR_32:$src0), (i16 VGPR_32:$src1))),
   (v2i16 (V_LSHL_OR_B32_e64 $src1, (i32 16), (i32 (V_AND_B32_e64 (i32 (V_MOV_B32_e32 (i32 0xffff))), $src0))))
 >;
+
+multiclass V_SAT_PK_Pat<Instruction inst> {
+  def: GCNPat<
+    (v2i16 (DivergentBinFrag<build_vector> (clamp_s16_u8 i16:$lo), (clamp_s16_u8 i16:$hi))),
+    (inst
+      (V_LSHL_OR_B32_e64 VGPR_32:$hi, (S_MOV_B32 (i32 16)),
+        (V_AND_B32_e64 VGPR_32:$lo, (S_MOV_B32 (i32 0xFFFF)))))
+  >;
+
+  def: GCNPatIgnoreCopies<
+    (v2i16 (DivergentBinFrag<smin> (smax v2i16:$src, (build_vector (i16 0), (i16 0))), (build_vector (i16 255), (i16 255)))),
+    (inst VGPR_32:$src)
+  >;
+
+  def: GCNPatIgnoreCopies<
+    (v2i16 (DivergentBinFrag<smax> (smin v2i16:$src, (build_vector (i16 255), (i16 255))), (build_vector (i16 0), (i16 0)))),
+    (inst VGPR_32:$src)
+  >;
+}
+
+let OtherPredicates = [HasTrue16BitInsts] in
+defm : V_SAT_PK_Pat<V_SAT_PK_U8_I16_t16_e64>;
+
+let OtherPredicates = [NotHasTrue16BitInsts] in
+defm : V_SAT_PK_Pat<V_SAT_PK_U8_I16_e64>;
 
 // With multiple uses of the shift, this will duplicate the shift and
 // increase register pressure.
@@ -3007,7 +3179,7 @@ def IMMZeroBasedBitfieldMask : ImmLeaf <i32, [{
 }]>;
 
 def IMMPopCount : SDNodeXForm<imm, [{
-  return CurDAG->getTargetConstant(countPopulation(N->getZExtValue()), SDLoc(N),
+  return CurDAG->getTargetConstant(llvm::popcount(N->getZExtValue()), SDLoc(N),
                                    MVT::i32);
 }]>;
 
@@ -3052,24 +3224,27 @@ def : AMDGPUPat <
 // SHA-256 Ma patterns
 
 // ((x & z) | (y & (x | z))) -> BFI (XOR x, y), z, y
-def : AMDGPUPat <
+def : AMDGPUPatIgnoreCopies <
   (DivergentBinFrag<or> (and i32:$x, i32:$z),
                         (and i32:$y, (or i32:$x, i32:$z))),
-  (V_BFI_B32_e64 (V_XOR_B32_e64 VSrc_b32:$x, VSrc_b32:$y), VSrc_b32:$z, VSrc_b32:$y)
+  (V_BFI_B32_e64 (V_XOR_B32_e64 (COPY_TO_REGCLASS VSrc_b32:$x, VGPR_32),
+                                (COPY_TO_REGCLASS VSrc_b32:$y, VGPR_32)),
+                (COPY_TO_REGCLASS VSrc_b32:$z, VGPR_32),
+                (COPY_TO_REGCLASS VSrc_b32:$y, VGPR_32))
 >;
 
-def : AMDGPUPat <
+def : AMDGPUPatIgnoreCopies <
   (DivergentBinFrag<or> (and i64:$x, i64:$z),
                         (and i64:$y, (or i64:$x, i64:$z))),
   (REG_SEQUENCE VReg_64,
     (V_BFI_B32_e64 (V_XOR_B32_e64 (i32 (EXTRACT_SUBREG VReg_64:$x, sub0)),
                     (i32 (EXTRACT_SUBREG VReg_64:$y, sub0))),
-               (i32 (EXTRACT_SUBREG VReg_64:$z, sub0)),
-               (i32 (EXTRACT_SUBREG VReg_64:$y, sub0))), sub0,
+              (i32 (EXTRACT_SUBREG VReg_64:$z, sub0)),
+              (i32 (EXTRACT_SUBREG VReg_64:$y, sub0))), sub0,
     (V_BFI_B32_e64 (V_XOR_B32_e64 (i32 (EXTRACT_SUBREG VReg_64:$x, sub1)),
                     (i32 (EXTRACT_SUBREG VReg_64:$y, sub1))),
-               (i32 (EXTRACT_SUBREG VReg_64:$z, sub1)),
-               (i32 (EXTRACT_SUBREG VReg_64:$y, sub1))), sub1)
+              (i32 (EXTRACT_SUBREG VReg_64:$z, sub1)),
+              (i32 (EXTRACT_SUBREG VReg_64:$y, sub1))), sub1)
 >;
 
 multiclass IntMed3Pat<Instruction med3Inst,
@@ -3096,26 +3271,39 @@ multiclass IntMed3Pat<Instruction med3Inst,
 defm : IntMed3Pat<V_MED3_I32_e64, smin, smax>;
 defm : IntMed3Pat<V_MED3_U32_e64, umin, umax>;
 
-// This matches 16 permutations of
-// max(min(x, y), min(max(x, y), z))
-class FPMed3Pat<ValueType vt,
-                //SDPatternOperator max, SDPatternOperator min,
-                Instruction med3Inst> : GCNPat<
-  (fmaxnum_like (fminnum_like (VOP3Mods_nnan vt:$src0, i32:$src0_mods),
-                              (VOP3Mods_nnan vt:$src1, i32:$src1_mods)),
-           (fminnum_like (fmaxnum_like (VOP3Mods_nnan vt:$src0, i32:$src0_mods),
-                                       (VOP3Mods_nnan vt:$src1, i32:$src1_mods)),
-                         (vt (VOP3Mods_nnan vt:$src2, i32:$src2_mods)))),
-  (med3Inst $src0_mods, $src0, $src1_mods, $src1, $src2_mods, $src2, DSTCLAMP.NONE, DSTOMOD.NONE)
->;
+multiclass FPMed3Pat<ValueType vt,
+                Instruction med3Inst> {
+  // This matches 16 permutations of max(min(x, y), min(max(x, y), z))
+  def : GCNPat<
+    (fmaxnum_like_nnan
+      (fminnum_like (VOP3Mods vt:$src0, i32:$src0_mods),
+                    (VOP3Mods vt:$src1, i32:$src1_mods)),
+      (fminnum_like (fmaxnum_like (VOP3Mods vt:$src0, i32:$src0_mods),
+                                  (VOP3Mods vt:$src1, i32:$src1_mods)),
+                    (vt (VOP3Mods vt:$src2, i32:$src2_mods)))),
+    (med3Inst $src0_mods, $src0, $src1_mods, $src1, $src2_mods, $src2,
+              DSTCLAMP.NONE, DSTOMOD.NONE)>;
+
+
+  // This matches 16 permutations of min(max(x, y), max(min(x, y), z))
+  def : GCNPat<
+    (fminnum_like_nnan
+      (fmaxnum_like (VOP3Mods vt:$src0, i32:$src0_mods),
+                    (VOP3Mods vt:$src1, i32:$src1_mods)),
+      (fmaxnum_like (fminnum_like (VOP3Mods vt:$src0, i32:$src0_mods),
+                                  (VOP3Mods vt:$src1, i32:$src1_mods)),
+                    (vt (VOP3Mods vt:$src2, i32:$src2_mods)))),
+    (med3Inst $src0_mods, $src0, $src1_mods, $src1, $src2_mods, $src2,
+              DSTCLAMP.NONE, DSTOMOD.NONE)>;
+}
 
 class FP16Med3Pat<ValueType vt,
                 Instruction med3Inst> : GCNPat<
-  (fmaxnum_like (fminnum_like (VOP3Mods_nnan vt:$src0, i32:$src0_mods),
-                                     (VOP3Mods_nnan vt:$src1, i32:$src1_mods)),
-                (fminnum_like (fmaxnum_like (VOP3Mods_nnan vt:$src0, i32:$src0_mods),
-                                            (VOP3Mods_nnan vt:$src1, i32:$src1_mods)),
-                              (vt (VOP3Mods_nnan vt:$src2, i32:$src2_mods)))),
+  (fmaxnum_like_nnan (fminnum_like (VOP3Mods vt:$src0, i32:$src0_mods),
+                                   (VOP3Mods vt:$src1, i32:$src1_mods)),
+           (fminnum_like (fmaxnum_like (VOP3Mods vt:$src0, i32:$src0_mods),
+                                       (VOP3Mods vt:$src1, i32:$src1_mods)),
+                         (vt (VOP3Mods vt:$src2, i32:$src2_mods)))),
   (med3Inst $src0_mods, $src0, $src1_mods, $src1, $src2_mods, $src2, DSTCLAMP.NONE)
 >;
 
@@ -3139,7 +3327,7 @@ multiclass Int16Med3Pat<Instruction med3Inst,
 >;
 }
 
-def : FPMed3Pat<f32, V_MED3_F32_e64>;
+defm : FPMed3Pat<f32, V_MED3_F32_e64>;
 
 class
 IntMinMaxPat<Instruction minmaxInst, SDPatternOperator min_or_max,
@@ -3233,6 +3421,7 @@ def G_AMDGPU_BUFFER_LOAD_USHORT : BufferLoadGenericInstruction;
 def G_AMDGPU_BUFFER_LOAD_SSHORT : BufferLoadGenericInstruction;
 def G_AMDGPU_BUFFER_LOAD : BufferLoadGenericInstruction;
 def G_AMDGPU_BUFFER_LOAD_FORMAT : BufferLoadGenericInstruction;
+def G_AMDGPU_BUFFER_LOAD_FORMAT_TFE : BufferLoadGenericInstruction;
 def G_AMDGPU_BUFFER_LOAD_FORMAT_D16 : BufferLoadGenericInstruction;
 def G_AMDGPU_TBUFFER_LOAD_FORMAT : TBufferLoadGenericInstruction;
 def G_AMDGPU_TBUFFER_LOAD_FORMAT_D16 : TBufferLoadGenericInstruction;
@@ -3339,8 +3528,6 @@ def G_AMDGPU_ATOMIC_CMPXCHG : AMDGPUGenericInstruction {
 }
 
 let Namespace = "AMDGPU" in {
-def G_AMDGPU_ATOMIC_INC : G_ATOMICRMW_OP;
-def G_AMDGPU_ATOMIC_DEC : G_ATOMICRMW_OP;
 def G_AMDGPU_ATOMIC_FMIN : G_ATOMICRMW_OP;
 def G_AMDGPU_ATOMIC_FMAX : G_ATOMICRMW_OP;
 }

@@ -53,6 +53,7 @@ const Symbol *FindInterface(const Symbol &);
 const Symbol *FindSubprogram(const Symbol &);
 const Symbol *FindFunctionResult(const Symbol &);
 const Symbol *FindOverriddenBinding(const Symbol &);
+const Symbol *FindGlobal(const Symbol &);
 
 const DeclTypeSpec *FindParentTypeSpec(const DerivedTypeSpec &);
 const DeclTypeSpec *FindParentTypeSpec(const DeclTypeSpec &);
@@ -84,8 +85,13 @@ bool IsIntrinsicConcat(
 bool IsGenericDefinedOp(const Symbol &);
 bool IsDefinedOperator(SourceName);
 std::string MakeOpName(SourceName);
+
+// Returns true if maybeAncestor exists and is a proper ancestor of a
+// descendent scope (or symbol owner).  Will be false, unlike Scope::Contains(),
+// if maybeAncestor *is* the descendent.
 bool DoesScopeContain(const Scope *maybeAncestor, const Scope &maybeDescendent);
 bool DoesScopeContain(const Scope *, const Symbol &);
+
 bool IsUseAssociated(const Symbol &, const Scope &);
 bool IsHostAssociated(const Symbol &, const Scope &);
 bool IsHostAssociatedIntoSubprogram(const Symbol &, const Scope &);
@@ -102,7 +108,7 @@ bool IsBindCProcedure(const Scope &);
 // Returns a pointer to the function's symbol when true, else null
 const Symbol *IsFunctionResultWithSameNameAsFunction(const Symbol &);
 bool IsOrContainsEventOrLockComponent(const Symbol &);
-bool CanBeTypeBoundProc(const Symbol *);
+bool CanBeTypeBoundProc(const Symbol &);
 // Does a non-PARAMETER symbol have explicit initialization with =value or
 // =>target in its declaration (but not in a DATA statement)? (Being
 // ALLOCATABLE or having a derived type with default component initialization
@@ -117,7 +123,6 @@ bool IsDestructible(const Symbol &, const Symbol *derivedType = nullptr);
 bool HasIntrinsicTypeName(const Symbol &);
 bool IsSeparateModuleProcedureInterface(const Symbol *);
 bool HasAlternateReturns(const Symbol &);
-bool InCommonBlock(const Symbol &);
 
 // Return an ultimate component of type that matches predicate, or nullptr.
 const Symbol *FindUltimateComponent(const DerivedTypeSpec &type,
@@ -164,6 +169,7 @@ inline bool IsProtected(const Symbol &symbol) {
 inline bool IsImpliedDoIndex(const Symbol &symbol) {
   return symbol.owner().kind() == Scope::Kind::ImpliedDos;
 }
+SymbolVector FinalsForDerivedTypeInstantiation(const DerivedTypeSpec &);
 bool IsFinalizable(
     const Symbol &, std::set<const DerivedTypeSpec *> * = nullptr);
 bool IsFinalizable(
@@ -180,9 +186,11 @@ bool IsModuleProcedure(const Symbol &);
 bool HasCoarray(const parser::Expr &);
 bool IsAssumedType(const Symbol &);
 bool IsPolymorphic(const Symbol &);
+bool IsUnlimitedPolymorphic(const Symbol &);
 bool IsPolymorphicAllocatable(const Symbol &);
-// Return an error if component symbol is not accessible from scope (7.5.4.8(2))
-std::optional<parser::MessageFormattedText> CheckAccessibleComponent(
+
+// Return an error if a symbol is not accessible from a scope
+std::optional<parser::MessageFormattedText> CheckAccessibleSymbol(
     const semantics::Scope &, const Symbol &);
 
 // Analysis of image control statements
@@ -245,7 +253,7 @@ const Symbol *FindExternallyVisibleObject(
       expr.u);
 }
 
-// Apply GetUltimate(), then if the symbol is a generic procedure shadowing a
+// Applies GetUltimate(), then if the symbol is a generic procedure shadowing a
 // specific procedure of the same name, return it instead.
 const Symbol &BypassGeneric(const Symbol &);
 
@@ -376,6 +384,10 @@ std::list<std::list<SymbolRef>> GetStorageAssociations(const Scope &);
 //     its non-POINTER components and the potential subobject components of
 //     its non-POINTER derived type components.  (The lifetime of each
 //     potential subobject component is that of the entire instance.)
+//   - PotentialAndPointer subobject components of a derived type are the
+//   closure of
+//     its components (including POINTERs) and the PotentialAndPointer subobject
+//     components of its non-POINTER derived type components.
 // Parent and procedure components are considered against these definitions.
 // For this kind of iterator, the component tree is recursively visited in the
 // following order:
@@ -406,7 +418,8 @@ std::list<std::list<SymbolRef>> GetStorageAssociations(const Scope &);
 //       ....
 //    }
 
-ENUM_CLASS(ComponentKind, Ordered, Direct, Ultimate, Potential, Scope)
+ENUM_CLASS(ComponentKind, Ordered, Direct, Ultimate, Potential, Scope,
+    PotentialAndPointer)
 
 template <ComponentKind componentKind> class ComponentIterator {
 public:
@@ -528,11 +541,14 @@ extern template class ComponentIterator<ComponentKind::Direct>;
 extern template class ComponentIterator<ComponentKind::Ultimate>;
 extern template class ComponentIterator<ComponentKind::Potential>;
 extern template class ComponentIterator<ComponentKind::Scope>;
+extern template class ComponentIterator<ComponentKind::PotentialAndPointer>;
 using OrderedComponentIterator = ComponentIterator<ComponentKind::Ordered>;
 using DirectComponentIterator = ComponentIterator<ComponentKind::Direct>;
 using UltimateComponentIterator = ComponentIterator<ComponentKind::Ultimate>;
 using PotentialComponentIterator = ComponentIterator<ComponentKind::Potential>;
 using ScopeComponentIterator = ComponentIterator<ComponentKind::Scope>;
+using PotentialAndPointerComponentIterator =
+    ComponentIterator<ComponentKind::PotentialAndPointer>;
 
 // Common component searches, the iterator returned is referring to the first
 // component, according to the order defined for the related ComponentIterator,
@@ -608,11 +624,6 @@ std::optional<ArraySpec> ToArraySpec(
 // Searches a derived type and a scope for a particular user defined I/O
 // procedure.
 bool HasDefinedIo(
-    GenericKind::DefinedIo, const DerivedTypeSpec &, const Scope * = nullptr);
-// Seeks out an allocatable or pointer ultimate component that is not
-// nested in a nonallocatable/nonpointer component with a specific
-// defined I/O procedure.
-const Symbol *FindUnsafeIoDirectComponent(
     GenericKind::DefinedIo, const DerivedTypeSpec &, const Scope * = nullptr);
 
 // Some intrinsic operators have more than one name (e.g. `operator(.eq.)` and

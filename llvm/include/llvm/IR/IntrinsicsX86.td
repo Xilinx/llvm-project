@@ -70,6 +70,28 @@ let TargetPrefix = "x86" in {
                                      [ImmArg<ArgIndex<1>>]>;
   def int_x86_atomic_btr : Intrinsic<[llvm_anyint_ty], [llvm_ptr_ty, llvm_i8_ty],
                                      [ImmArg<ArgIndex<1>>]>;
+  def int_x86_atomic_bts_rm  : Intrinsic<[llvm_i8_ty], [llvm_ptr_ty, llvm_anyint_ty],
+                                         []>;
+  def int_x86_atomic_btc_rm  : Intrinsic<[llvm_i8_ty], [llvm_ptr_ty, llvm_anyint_ty],
+                                         []>;
+  def int_x86_atomic_btr_rm  : Intrinsic<[llvm_i8_ty], [llvm_ptr_ty, llvm_anyint_ty],
+                                         []>;
+
+
+}
+
+// Lock binary arith with CC.
+let TargetPrefix = "x86" in {
+  def int_x86_atomic_add_cc  : Intrinsic<[llvm_i8_ty], [llvm_ptr_ty, llvm_anyint_ty, llvm_i32_ty],
+                                         [ImmArg<ArgIndex<2>>]>;
+  def int_x86_atomic_sub_cc  : Intrinsic<[llvm_i8_ty], [llvm_ptr_ty, llvm_anyint_ty, llvm_i32_ty],
+                                         [ImmArg<ArgIndex<2>>]>;
+  def int_x86_atomic_or_cc  : Intrinsic<[llvm_i8_ty], [llvm_ptr_ty, llvm_anyint_ty, llvm_i32_ty],
+                                         [ImmArg<ArgIndex<2>>]>;
+  def int_x86_atomic_and_cc  : Intrinsic<[llvm_i8_ty], [llvm_ptr_ty, llvm_anyint_ty, llvm_i32_ty],
+                                         [ImmArg<ArgIndex<2>>]>;
+  def int_x86_atomic_xor_cc  : Intrinsic<[llvm_i8_ty], [llvm_ptr_ty, llvm_anyint_ty, llvm_i32_ty],
+                                         [ImmArg<ArgIndex<2>>]>;
 }
 
 // Read Processor Register.
@@ -5378,6 +5400,12 @@ let TargetPrefix = "x86" in {
                         []>;
   def int_x86_tdpbf16ps_internal :
               ClangBuiltin<"__builtin_ia32_tdpbf16ps_internal">,
+              Intrinsic<[llvm_x86amx_ty],
+                        [llvm_i16_ty, llvm_i16_ty, llvm_i16_ty,
+                         llvm_x86amx_ty, llvm_x86amx_ty,
+                         llvm_x86amx_ty], []>;
+  def int_x86_tdpfp16ps_internal :
+              ClangBuiltin<"__builtin_ia32_tdpfp16ps_internal">,
               Intrinsic<[llvm_x86amx_ty],
                         [llvm_i16_ty, llvm_i16_ty, llvm_i16_ty,
                          llvm_x86amx_ty, llvm_x86amx_ty,

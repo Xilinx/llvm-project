@@ -18,12 +18,14 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/Support/LogicalResult.h"
+#include <optional>
 
 namespace mlir {
 
 class AffineCondition;
 class AffineForOp;
 class AffineIfOp;
+class AffineParallelOp;
 class AffineMap;
 class AffineValueMap;
 class IntegerSet;
@@ -41,12 +43,14 @@ class MultiAffineFunction;
 class FlatAffineValueConstraints : public presburger::IntegerPolyhedron {
 public:
   /// Constructs a constraint system reserving memory for the specified number
-  /// of constraints and variables.
+  /// of constraints and variables. `valArgs` are the optional SSA values
+  /// associated with each dimension/symbol. These must either be empty or match
+  /// the number of dimensions and symbols.
   FlatAffineValueConstraints(unsigned numReservedInequalities,
                              unsigned numReservedEqualities,
                              unsigned numReservedCols, unsigned numDims,
                              unsigned numSymbols, unsigned numLocals,
-                             ArrayRef<Optional<Value>> valArgs = {})
+                             ArrayRef<std::optional<Value>> valArgs)
       : IntegerPolyhedron(numReservedInequalities, numReservedEqualities,
                           numReservedCols,
                           presburger::PresburgerSpace::getSetSpace(
@@ -55,16 +59,53 @@ public:
     assert(valArgs.empty() || valArgs.size() == getNumDimAndSymbolVars());
     values.reserve(numReservedCols);
     if (valArgs.empty())
-      values.resize(getNumDimAndSymbolVars(), None);
+      values.resize(getNumDimAndSymbolVars(), std::nullopt);
     else
       values.append(valArgs.begin(), valArgs.end());
   }
 
-  /// Constructs a constraint system with the specified number of
+  /// Constructs a constraint system reserving memory for the specified number
+  /// of constraints and variables. `valArgs` are the optional SSA values
+  /// associated with each dimension/symbol. These must either be empty or match
+  /// the number of dimensions and symbols.
+  FlatAffineValueConstraints(unsigned numReservedInequalities,
+                             unsigned numReservedEqualities,
+                             unsigned numReservedCols, unsigned numDims,
+                             unsigned numSymbols, unsigned numLocals,
+                             ArrayRef<Value> valArgs = {})
+      : IntegerPolyhedron(numReservedInequalities, numReservedEqualities,
+                          numReservedCols,
+                          presburger::PresburgerSpace::getSetSpace(
+                              numDims, numSymbols, numLocals)) {
+    assert(numReservedCols >= getNumVars() + 1);
+    assert(valArgs.empty() || valArgs.size() == getNumDimAndSymbolVars());
+    values.reserve(numReservedCols);
+    if (valArgs.empty())
+      values.resize(getNumDimAndSymbolVars(), std::nullopt);
+    else
+      values.append(valArgs.begin(), valArgs.end());
+  }
+
+  /// Constructs a constraint system with the specified number of dimensions
+  /// and symbols. `valArgs` are the optional SSA values associated with each
+  /// dimension/symbol. These must either be empty or match the number of
+  /// dimensions and symbols.
+  FlatAffineValueConstraints(unsigned numDims, unsigned numSymbols,
+                             unsigned numLocals,
+                             ArrayRef<std::optional<Value>> valArgs)
+      : FlatAffineValueConstraints(/*numReservedInequalities=*/0,
+                                   /*numReservedEqualities=*/0,
+                                   /*numReservedCols=*/numDims + numSymbols +
+                                       numLocals + 1,
+                                   numDims, numSymbols, numLocals, valArgs) {}
+
+  /// Constructs a constraint system with the specified number of dimensions
+  /// and symbols. `valArgs` are the optional SSA values associated with each
+  /// dimension/symbol. These must either be empty or match the number of
   /// dimensions and symbols.
   FlatAffineValueConstraints(unsigned numDims = 0, unsigned numSymbols = 0,
                              unsigned numLocals = 0,
-                             ArrayRef<Optional<Value>> valArgs = {})
+                             ArrayRef<Value> valArgs = {})
       : FlatAffineValueConstraints(/*numReservedInequalities=*/0,
                                    /*numReservedEqualities=*/0,
                                    /*numReservedCols=*/numDims + numSymbols +
@@ -72,25 +113,17 @@ public:
                                    numDims, numSymbols, numLocals, valArgs) {}
 
   FlatAffineValueConstraints(const IntegerPolyhedron &fac,
-                             ArrayRef<Optional<Value>> valArgs = {})
+                             ArrayRef<std::optional<Value>> valArgs = {})
       : IntegerPolyhedron(fac) {
     assert(valArgs.empty() || valArgs.size() == getNumDimAndSymbolVars());
     if (valArgs.empty())
-      values.resize(getNumDimAndSymbolVars(), None);
+      values.resize(getNumDimAndSymbolVars(), std::nullopt);
     else
       values.append(valArgs.begin(), valArgs.end());
   }
 
-  /// Create a flat affine constraint system from an AffineValueMap or a list of
-  /// these. The constructed system will only include equalities.
-  explicit FlatAffineValueConstraints(const AffineValueMap &avm);
-  explicit FlatAffineValueConstraints(ArrayRef<const AffineValueMap *> avmRef);
-
   /// Creates an affine constraint system from an IntegerSet.
-  explicit FlatAffineValueConstraints(IntegerSet set);
-
-  FlatAffineValueConstraints(ArrayRef<const AffineValueMap *> avmRef,
-                             IntegerSet set);
+  explicit FlatAffineValueConstraints(IntegerSet set, ValueRange operands = {});
 
   // Construct a hyperrectangular constraint set from ValueRanges that represent
   // induction variables, lower and upper bounds. `ivs`, `lbs` and `ubs` are
@@ -113,19 +146,6 @@ public:
     return cst->getKind() == Kind::FlatAffineValueConstraints;
   }
 
-  /// Clears any existing data and reserves memory for the specified
-  /// constraints.
-  void reset(unsigned numReservedInequalities, unsigned numReservedEqualities,
-             unsigned numReservedCols, unsigned numDims, unsigned numSymbols,
-             unsigned numLocals = 0);
-  void reset(unsigned numDims = 0, unsigned numSymbols = 0,
-             unsigned numLocals = 0);
-  void reset(unsigned numReservedInequalities, unsigned numReservedEqualities,
-             unsigned numReservedCols, unsigned numDims, unsigned numSymbols,
-             unsigned numLocals, ArrayRef<Value> valArgs);
-  void reset(unsigned numDims, unsigned numSymbols, unsigned numLocals,
-             ArrayRef<Value> valArgs);
-
   /// Clones this object.
   std::unique_ptr<FlatAffineValueConstraints> clone() const;
 
@@ -138,8 +158,14 @@ public:
   /// 'affine.for' operation are added as trailing variables (either
   /// dimensional or symbolic depending on whether the operand is a valid
   /// symbol).
-  //  TODO: add support for non-unit strides.
   LogicalResult addAffineForOpDomain(AffineForOp forOp);
+
+  /// Add constraints (lower and upper bounds) for the specified
+  /// 'affine.parallel' operation's Value using IR information stored in its
+  /// bound maps. Returns failure for the yet unimplemented/unsupported cases.
+  /// Asserts if the Value corresponding to the 'affine.parallel' operation
+  /// isn't found in the constraint system.
+  LogicalResult addAffineParallelOpDomain(AffineParallelOp parallelOp);
 
   /// Adds constraints (lower and upper bounds) for each loop in the loop nest
   /// described by the bound maps `lbMaps` and `ubMaps` of a computation slice.
@@ -220,11 +246,11 @@ public:
   /// null AffineMap if such a bound can't be found (or yet unimplemented).
   ///
   /// By default the returned lower bounds are closed and upper bounds are open.
-  /// This can be changed by getClosedUB.
+  /// If `closedUb` is true, the upper bound is closed.
   void getSliceBounds(unsigned offset, unsigned num, MLIRContext *context,
                       SmallVectorImpl<AffineMap> *lbMaps,
                       SmallVectorImpl<AffineMap> *ubMaps,
-                      bool getClosedUB = false);
+                      bool closedUB = false);
 
   /// Composes an affine map whose dimensions and symbols match one to one with
   /// the dimensions and symbols of this FlatAffineConstraints. The results of
@@ -236,13 +262,15 @@ public:
   /// treating [0, offset) U [offset + num, symStartPos) as dimensions and
   /// [symStartPos, getNumDimAndSymbolVars) as symbols, and `pos` lies in
   /// [0, num). The multi-dimensional maps in the returned pair represent the
-  /// max and min of potentially multiple affine expressions. The upper bound is
-  /// exclusive. `localExprs` holds pre-computed AffineExpr's for all local
-  /// variables in the system.
+  /// max and min of potentially multiple affine expressions. `localExprs` holds
+  /// pre-computed AffineExpr's for all local variables in the system.
+  ///
+  /// By default the returned lower bounds are closed and upper bounds are open.
+  /// If `closedUb` is true, the upper bound is closed.
   std::pair<AffineMap, AffineMap>
   getLowerAndUpperBound(unsigned pos, unsigned offset, unsigned num,
                         unsigned symStartPos, ArrayRef<AffineExpr> localExprs,
-                        MLIRContext *context) const;
+                        MLIRContext *context, bool closedUB = false) const;
 
   /// Returns the bound for the variable at `pos` from the inequality at
   /// `ineqPos` as a 1-d affine value map (affine map + operands). The returned
@@ -271,7 +299,7 @@ public:
 
   /// Returns true if an variable with the specified Value exists, false
   /// otherwise.
-  bool containsVar(Value mayBeVar) const;
+  bool containsVar(Value val) const;
 
   /// Swap the posA^th variable with the posB^th variable.
   void swapVar(unsigned posA, unsigned posB) override;
@@ -405,7 +433,7 @@ public:
   inline Value getValue(unsigned pos) const {
     assert(pos < getNumDimAndSymbolVars() && "Invalid position");
     assert(hasValue(pos) && "variable's Value not set");
-    return values[pos].value();
+    return *values[pos];
   }
 
   /// Returns true if the pos^th variable has an associated Value.
@@ -432,11 +460,11 @@ public:
     getValues(0, getNumDimAndSymbolVars(), values);
   }
 
-  inline ArrayRef<Optional<Value>> getMaybeValues() const {
+  inline ArrayRef<std::optional<Value>> getMaybeValues() const {
     return {values.data(), values.size()};
   }
 
-  inline ArrayRef<Optional<Value>>
+  inline ArrayRef<std::optional<Value>>
   getMaybeValues(presburger::VarKind kind) const {
     assert(kind != VarKind::Local &&
            "Local variables do not have any value attached to them.");
@@ -506,7 +534,7 @@ protected:
   /// constraint system appearing in the order the variables correspond to
   /// columns. Variables that aren't associated with any Value are set to
   /// None.
-  SmallVector<Optional<Value>, 8> values;
+  SmallVector<std::optional<Value>, 8> values;
 };
 
 /// A FlatAffineRelation represents a set of ordered pairs (domain -> range)
@@ -520,7 +548,7 @@ public:
                      unsigned numReservedEqualities, unsigned numReservedCols,
                      unsigned numDomainDims, unsigned numRangeDims,
                      unsigned numSymbols, unsigned numLocals,
-                     ArrayRef<Optional<Value>> valArgs = {})
+                     ArrayRef<std::optional<Value>> valArgs = {})
       : FlatAffineValueConstraints(
             numReservedInequalities, numReservedEqualities, numReservedCols,
             numDomainDims + numRangeDims, numSymbols, numLocals, valArgs),
