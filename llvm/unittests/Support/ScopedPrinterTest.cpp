@@ -226,8 +226,8 @@ TEST_F(ScopedPrinterTest, PrintEnum) {
                                        {"Name3", "AltName3", 3},
                                        {"Name4", "AltName4", 2}};
     EnumEntry<int> OtherEnum{"Name5", "AltName5", 5};
-    W.printEnum("Exists", EnumList[1].Value, makeArrayRef(EnumList));
-    W.printEnum("DoesNotExist", OtherEnum.Value, makeArrayRef(EnumList));
+    W.printEnum("Exists", EnumList[1].Value, ArrayRef(EnumList));
+    W.printEnum("DoesNotExist", OtherEnum.Value, ArrayRef(EnumList));
   };
 
   const char *ExpectedOut = R"(Exists: Name2 (0x2)
@@ -236,8 +236,8 @@ DoesNotExist: 0x5
 
   const char *JSONExpectedOut = R"({
   "Exists": {
-    "Value": "Name2",
-    "RawValue": 2
+    "Name": "Name2",
+    "Value": 2
   },
   "DoesNotExist": 5
 })";
@@ -259,11 +259,10 @@ TEST_F(ScopedPrinterTest, PrintFlag) {
         {"SecondByte2", "Second2", 0x20u}, {"SecondByte3", "Second3", 0x30u},
         {"ThirdByte1", "Third1", 0x100u},  {"ThirdByte2", "Third2", 0x200u},
         {"ThirdByte3", "Third3", 0x300u}};
-    W.printFlags("ZeroFlag", 0, makeArrayRef(SingleBitFlags));
-    W.printFlags("NoFlag", 1 << 3, makeArrayRef(SingleBitFlags));
-    W.printFlags("Flag1", SingleBitFlags[1].Value,
-                 makeArrayRef(SingleBitFlags));
-    W.printFlags("Flag1&3", (1 << 2) + 1, makeArrayRef(SingleBitFlags));
+    W.printFlags("ZeroFlag", 0, ArrayRef(SingleBitFlags));
+    W.printFlags("NoFlag", 1 << 3, ArrayRef(SingleBitFlags));
+    W.printFlags("Flag1", SingleBitFlags[1].Value, ArrayRef(SingleBitFlags));
+    W.printFlags("Flag1&3", (1 << 2) + 1, ArrayRef(SingleBitFlags));
 
     W.printFlags("ZeroFlagRaw", 0);
     W.printFlags("NoFlagRaw", 1 << 3);
@@ -271,21 +270,19 @@ TEST_F(ScopedPrinterTest, PrintFlag) {
     W.printFlags("Flag1&3Raw", (1 << 2) + 1);
 
     W.printFlags("FlagSorted", (1 << 2) + (1 << 1) + 1,
-                 makeArrayRef(UnsortedFlags));
+                 ArrayRef(UnsortedFlags));
 
     uint16_t NoBitMask = 0;
     uint16_t FirstByteMask = 0xFu;
     uint16_t SecondByteMask = 0xF0u;
     uint16_t ThirdByteMask = 0xF00u;
-    W.printFlags("NoBitMask", 0xFFFu, makeArrayRef(EnumFlags), NoBitMask);
-    W.printFlags("FirstByteMask", 0x3u, makeArrayRef(EnumFlags), FirstByteMask);
-    W.printFlags("SecondByteMask", 0x30u, makeArrayRef(EnumFlags),
-                 SecondByteMask);
-    W.printFlags("ValueOutsideMask", 0x1u, makeArrayRef(EnumFlags),
-                 SecondByteMask);
-    W.printFlags("FirstSecondByteMask", 0xFFu, makeArrayRef(EnumFlags),
+    W.printFlags("NoBitMask", 0xFFFu, ArrayRef(EnumFlags), NoBitMask);
+    W.printFlags("FirstByteMask", 0x3u, ArrayRef(EnumFlags), FirstByteMask);
+    W.printFlags("SecondByteMask", 0x30u, ArrayRef(EnumFlags), SecondByteMask);
+    W.printFlags("ValueOutsideMask", 0x1u, ArrayRef(EnumFlags), SecondByteMask);
+    W.printFlags("FirstSecondByteMask", 0xFFu, ArrayRef(EnumFlags),
                  FirstByteMask, SecondByteMask);
-    W.printFlags("FirstSecondThirdByteMask", 0x333u, makeArrayRef(EnumFlags),
+    W.printFlags("FirstSecondThirdByteMask", 0x333u, ArrayRef(EnumFlags),
                  FirstByteMask, SecondByteMask, ThirdByteMask);
   };
 
@@ -348,15 +345,15 @@ FirstSecondThirdByteMask [ (0x333)
 
   const char *JSONExpectedOut = R"({
   "ZeroFlag": {
-    "RawFlags": 0,
+    "Value": 0,
     "Flags": []
   },
   "NoFlag": {
-    "RawFlags": 8,
+    "Value": 8,
     "Flags": []
   },
   "Flag1": {
-    "RawFlags": 1,
+    "Value": 1,
     "Flags": [
       {
         "Name": "Name1",
@@ -365,7 +362,7 @@ FirstSecondThirdByteMask [ (0x333)
     ]
   },
   "Flag1&3": {
-    "RawFlags": 5,
+    "Value": 5,
     "Flags": [
       {
         "Name": "Name1",
@@ -378,30 +375,30 @@ FirstSecondThirdByteMask [ (0x333)
     ]
   },
   "ZeroFlagRaw": {
-    "RawFlags": 0,
+    "Value": 0,
     "Flags": []
   },
   "NoFlagRaw": {
-    "RawFlags": 8,
+    "Value": 8,
     "Flags": [
       8
     ]
   },
   "Flag1Raw": {
-    "RawFlags": 1,
+    "Value": 1,
     "Flags": [
       1
     ]
   },
   "Flag1&3Raw": {
-    "RawFlags": 5,
+    "Value": 5,
     "Flags": [
       1,
       4
     ]
   },
   "FlagSorted": {
-    "RawFlags": 7,
+    "Value": 7,
     "Flags": [
       {
         "Name": "A",
@@ -418,7 +415,7 @@ FirstSecondThirdByteMask [ (0x333)
     ]
   },
   "NoBitMask": {
-    "RawFlags": 4095,
+    "Value": 4095,
     "Flags": [
       {
         "Name": "FirstByte1",
@@ -459,7 +456,7 @@ FirstSecondThirdByteMask [ (0x333)
     ]
   },
   "FirstByteMask": {
-    "RawFlags": 3,
+    "Value": 3,
     "Flags": [
       {
         "Name": "FirstByte3",
@@ -468,7 +465,7 @@ FirstSecondThirdByteMask [ (0x333)
     ]
   },
   "SecondByteMask": {
-    "RawFlags": 48,
+    "Value": 48,
     "Flags": [
       {
         "Name": "SecondByte3",
@@ -477,7 +474,7 @@ FirstSecondThirdByteMask [ (0x333)
     ]
   },
   "ValueOutsideMask": {
-    "RawFlags": 1,
+    "Value": 1,
     "Flags": [
       {
         "Name": "FirstByte1",
@@ -486,11 +483,11 @@ FirstSecondThirdByteMask [ (0x333)
     ]
   },
   "FirstSecondByteMask": {
-    "RawFlags": 255,
+    "Value": 255,
     "Flags": []
   },
   "FirstSecondThirdByteMask": {
-    "RawFlags": 819,
+    "Value": 819,
     "Flags": [
       {
         "Name": "FirstByte3",
@@ -597,8 +594,8 @@ label: value (0)
   "int8_t-min": -128,
   "apsint": 9999999999999999999999,
   "label": {
-    "Value": "value",
-    "RawValue": 0
+    "Name": "value",
+    "Value": 0
   }
 })";
   verifyAll(ExpectedOut, JSONExpectedOut, PrintFunc);
@@ -662,7 +659,7 @@ TEST_F(ScopedPrinterTest, PrintList) {
                                             APSInt("-9999999999999999999999")};
     W.printList("EmptyList", EmptyList);
     W.printList("StringList", StringList);
-    W.printList("BoolList", makeArrayRef(BoolList));
+    W.printList("BoolList", ArrayRef(BoolList));
     W.printList("uint64List", Unsigned64List);
     W.printList("uint32List", Unsigned32List);
     W.printList("uint16List", Unsigned16List);
@@ -764,8 +761,8 @@ HexLabel: Name (0x10)
   const char *JSONExpectedOut = R"({
   "HexNumber": 16,
   "HexLabel": {
-    "Value": "Name",
-    "RawValue": 16
+    "Name": "Name",
+    "Value": 16
   }
 })";
   verifyAll(ExpectedOut, JSONExpectedOut, PrintFunc);

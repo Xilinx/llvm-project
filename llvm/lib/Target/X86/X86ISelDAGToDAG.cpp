@@ -35,6 +35,7 @@
 using namespace llvm;
 
 #define DEBUG_TYPE "x86-isel"
+#define PASS_NAME "X86 DAG->DAG Instruction Selection"
 
 STATISTIC(NumLoadMoved, "Number of loads moved below TokenFactor");
 
@@ -168,13 +169,13 @@ namespace {
     bool IndirectTlsSegRefs;
 
   public:
-    explicit X86DAGToDAGISel(X86TargetMachine &tm, CodeGenOpt::Level OptLevel)
-        : SelectionDAGISel(tm, OptLevel), Subtarget(nullptr),
-          OptForMinSize(false), IndirectTlsSegRefs(false) {}
+    static char ID;
 
-    StringRef getPassName() const override {
-      return "X86 DAG->DAG Instruction Selection";
-    }
+    X86DAGToDAGISel() = delete;
+
+    explicit X86DAGToDAGISel(X86TargetMachine &tm, CodeGenOpt::Level OptLevel)
+        : SelectionDAGISel(ID, tm, OptLevel), Subtarget(nullptr),
+          OptForMinSize(false), IndirectTlsSegRefs(false) {}
 
     bool runOnMachineFunction(MachineFunction &MF) override {
       // Reset the subtarget each time through.
@@ -449,8 +450,8 @@ namespace {
 
       // Create zero.
       SDVTList VTs = CurDAG->getVTList(MVT::i32, MVT::i32);
-      SDValue Zero =
-          SDValue(CurDAG->getMachineNode(X86::MOV32r0, dl, VTs, None), 0);
+      SDValue Zero = SDValue(
+          CurDAG->getMachineNode(X86::MOV32r0, dl, VTs, std::nullopt), 0);
       if (VT == MVT::i64) {
         Zero = SDValue(
             CurDAG->getMachineNode(
@@ -486,11 +487,11 @@ namespace {
       assert(N->getOpcode() == ISD::AND && "Unexpected opcode");
       const APInt &Val = cast<ConstantSDNode>(N->getOperand(1))->getAPIntValue();
 
-      if (Val.countTrailingOnes() >= Width)
+      if (Val.countr_one() >= Width)
         return true;
 
       APInt Mask = Val | CurDAG->computeKnownBits(N->getOperand(0)).Zero;
-      return Mask.countTrailingOnes() >= Width;
+      return Mask.countr_one() >= Width;
     }
 
     /// Return an SDNode that returns the value of the global base register.
@@ -574,6 +575,9 @@ namespace {
   };
 }
 
+char X86DAGToDAGISel::ID = 0;
+
+INITIALIZE_PASS(X86DAGToDAGISel, DEBUG_TYPE, PASS_NAME, false, false)
 
 // Returns true if this masked compare can be implemented legally with this
 // type.
@@ -1375,7 +1379,7 @@ void X86DAGToDAGISel::PreprocessISelDAG() {
         SDVTList VTs = CurDAG->getVTList(MVT::Other);
         SDValue Ops[] = {N->getOperand(0), N->getOperand(1), MemTmp};
         Store = CurDAG->getMemIntrinsicNode(X86ISD::FST, dl, VTs, Ops, MemVT,
-                                            MPI, /*Align*/ None,
+                                            MPI, /*Align*/ std::nullopt,
                                             MachineMemOperand::MOStore);
         if (N->getFlags().hasNoFPExcept()) {
           SDNodeFlags Flags = Store->getFlags();
@@ -1393,7 +1397,7 @@ void X86DAGToDAGISel::PreprocessISelDAG() {
         SDValue Ops[] = {Store, MemTmp};
         Result = CurDAG->getMemIntrinsicNode(
             X86ISD::FLD, dl, VTs, Ops, MemVT, MPI,
-            /*Align*/ None, MachineMemOperand::MOLoad);
+            /*Align*/ std::nullopt, MachineMemOperand::MOLoad);
         if (N->getFlags().hasNoFPExcept()) {
           SDNodeFlags Flags = Result->getFlags();
           Flags.setNoFPExcept(true);
@@ -2050,8 +2054,8 @@ static bool foldMaskAndShiftToScale(SelectionDAG &DAG, SDValue N,
     return true;
 
   unsigned ShiftAmt = Shift.getConstantOperandVal(1);
-  unsigned MaskLZ = countLeadingZeros(Mask);
-  unsigned MaskTZ = countTrailingZeros(Mask);
+  unsigned MaskLZ = llvm::countl_zero(Mask);
+  unsigned MaskTZ = llvm::countr_zero(Mask);
 
   // The amount of shift we're trying to fit into the addressing mode is taken
   // from the trailing zeros of the mask.
@@ -2062,7 +2066,8 @@ static bool foldMaskAndShiftToScale(SelectionDAG &DAG, SDValue N,
   if (AMShiftAmt == 0 || AMShiftAmt > 3) return true;
 
   // We also need to ensure that mask is a continuous run of bits.
-  if (countTrailingOnes(Mask >> MaskTZ) + MaskTZ + MaskLZ != 64) return true;
+  if (llvm::countr_one(Mask >> MaskTZ) + MaskTZ + MaskLZ != 64)
+    return true;
 
   // Scale the leading zero count down based on the actual size of the value.
   // Also scale it down based on the size of the shift.
@@ -2150,7 +2155,7 @@ static bool foldMaskedShiftToBEXTR(SelectionDAG &DAG, SDValue N,
 
   // The amount of shift we're trying to fit into the addressing mode is taken
   // from the trailing zeros of the mask.
-  unsigned AMShiftAmt = countTrailingZeros(Mask);
+  unsigned AMShiftAmt = llvm::countr_zero(Mask);
 
   // There is nothing we can do here unless the mask is removing some bits.
   // Also, the addressing mode can only represent shifts of 1, 2, or 3 bits.
@@ -2484,34 +2489,60 @@ bool X86DAGToDAGISel::matchAddressRecursively(SDValue N, X86ISelAddressMode &AM,
     // match the shift as a scale factor.
     if (AM.IndexReg.getNode() != nullptr || AM.Scale != 1)
       break;
-    if (N.getOperand(0).getOpcode() != ISD::SHL || !N.getOperand(0).hasOneUse())
+
+    // Peek through mask: zext(and(shl(x,c1),c2))
+    SDValue Src = N.getOperand(0);
+    APInt Mask = APInt::getAllOnes(Src.getScalarValueSizeInBits());
+    if (Src.getOpcode() == ISD::AND && Src.hasOneUse())
+      if (auto *MaskC = dyn_cast<ConstantSDNode>(Src.getOperand(1))) {
+        Mask = MaskC->getAPIntValue();
+        Src = Src.getOperand(0);
+      }
+
+    if (Src.getOpcode() != ISD::SHL || !Src.hasOneUse())
       break;
 
     // Give up if the shift is not a valid scale factor [1,2,3].
-    SDValue Shl = N.getOperand(0);
-    auto *ShAmtC = dyn_cast<ConstantSDNode>(Shl.getOperand(1));
-    if (!ShAmtC || ShAmtC->getZExtValue() > 3)
+    SDValue ShlSrc = Src.getOperand(0);
+    SDValue ShlAmt = Src.getOperand(1);
+    auto *ShAmtC = dyn_cast<ConstantSDNode>(ShlAmt);
+    if (!ShAmtC)
+      break;
+    unsigned ShAmtV = ShAmtC->getZExtValue();
+    if (ShAmtV > 3)
       break;
 
     // The narrow shift must only shift out zero bits (it must be 'nuw').
     // That makes it safe to widen to the destination type.
-    APInt HighZeros = APInt::getHighBitsSet(Shl.getValueSizeInBits(),
-                                            ShAmtC->getZExtValue());
-    if (!CurDAG->MaskedValueIsZero(Shl.getOperand(0), HighZeros))
+    APInt HighZeros =
+        APInt::getHighBitsSet(ShlSrc.getValueSizeInBits(), ShAmtV);
+    if (!CurDAG->MaskedValueIsZero(ShlSrc, HighZeros & Mask))
       break;
 
-    // zext (shl nuw i8 %x, C) to i32 --> shl (zext i8 %x to i32), (zext C)
+    // zext (shl nuw i8 %x, C1) to i32
+    // --> shl (zext i8 %x to i32), (zext C1)
+    // zext (and (shl nuw i8 %x, C1), C2) to i32
+    // --> shl (zext i8 (and %x, C2 >> C1) to i32), (zext C1)
+    MVT SrcVT = ShlSrc.getSimpleValueType();
     MVT VT = N.getSimpleValueType();
     SDLoc DL(N);
-    SDValue Zext = CurDAG->getNode(ISD::ZERO_EXTEND, DL, VT, Shl.getOperand(0));
-    SDValue NewShl = CurDAG->getNode(ISD::SHL, DL, VT, Zext, Shl.getOperand(1));
+
+    SDValue Res = ShlSrc;
+    if (!Mask.isAllOnes()) {
+      Res = CurDAG->getConstant(Mask.lshr(ShAmtV), DL, SrcVT);
+      insertDAGNode(*CurDAG, N, Res);
+      Res = CurDAG->getNode(ISD::AND, DL, SrcVT, ShlSrc, Res);
+      insertDAGNode(*CurDAG, N, Res);
+    }
+    SDValue Zext = CurDAG->getNode(ISD::ZERO_EXTEND, DL, VT, Res);
+    insertDAGNode(*CurDAG, N, Zext);
+    SDValue NewShl = CurDAG->getNode(ISD::SHL, DL, VT, Zext, ShlAmt);
+    insertDAGNode(*CurDAG, N, NewShl);
 
     // Convert the shift to scale factor.
-    AM.Scale = 1 << ShAmtC->getZExtValue();
+    AM.Scale = 1 << ShAmtV;
     AM.IndexReg = Zext;
 
-    insertDAGNode(*CurDAG, N, Zext);
-    insertDAGNode(*CurDAG, N, NewShl);
     CurDAG->ReplaceAllUsesWith(N, NewShl);
     CurDAG->RemoveDeadNode(N.getNode());
     return false;
@@ -2690,7 +2721,7 @@ bool X86DAGToDAGISel::selectMOV64Imm32(SDValue N, SDValue &Imm) {
   if (N->getOpcode() != ISD::TargetGlobalAddress)
     return TM.getCodeModel() == CodeModel::Small;
 
-  Optional<ConstantRange> CR =
+  std::optional<ConstantRange> CR =
       cast<GlobalAddressSDNode>(N)->getGlobal()->getAbsoluteSymbolRange();
   if (!CR)
     return TM.getCodeModel() == CodeModel::Small;
@@ -2872,7 +2903,7 @@ bool X86DAGToDAGISel::selectRelocImm(SDValue N, SDValue &Op) {
 
   // Check that the global's range fits into VT.
   auto *GA = cast<GlobalAddressSDNode>(N.getOperand(0));
-  Optional<ConstantRange> CR = GA->getGlobal()->getAbsoluteSymbolRange();
+  std::optional<ConstantRange> CR = GA->getGlobal()->getAbsoluteSymbolRange();
   if (!CR || CR->getUnsignedMax().uge(1ull << VT.getSizeInBits()))
     return false;
 
@@ -2929,7 +2960,7 @@ bool X86DAGToDAGISel::isSExtAbsoluteSymbolRef(unsigned Width, SDNode *N) const {
   if (!GA)
     return false;
 
-  Optional<ConstantRange> CR = GA->getGlobal()->getAbsoluteSymbolRange();
+  std::optional<ConstantRange> CR = GA->getGlobal()->getAbsoluteSymbolRange();
   if (!CR)
     return Width == 32 && TM.getCodeModel() == CodeModel::Small;
 
@@ -3499,17 +3530,20 @@ bool X86DAGToDAGISel::matchBitExtract(SDNode *Node) {
   // If we have BMI2's BZHI, we are ok with muti-use patterns.
   // Else, if we only have BMI1's BEXTR, we require one-use.
   const bool AllowExtraUsesByDefault = Subtarget->hasBMI2();
-  auto checkUses = [AllowExtraUsesByDefault](SDValue Op, unsigned NUses,
-                                             Optional<bool> AllowExtraUses) {
+  auto checkUses = [AllowExtraUsesByDefault](
+                       SDValue Op, unsigned NUses,
+                       std::optional<bool> AllowExtraUses) {
     return AllowExtraUses.value_or(AllowExtraUsesByDefault) ||
            Op.getNode()->hasNUsesOfValue(NUses, Op.getResNo());
   };
   auto checkOneUse = [checkUses](SDValue Op,
-                                 Optional<bool> AllowExtraUses = None) {
+                                 std::optional<bool> AllowExtraUses =
+                                     std::nullopt) {
     return checkUses(Op, 1, AllowExtraUses);
   };
   auto checkTwoUse = [checkUses](SDValue Op,
-                                 Optional<bool> AllowExtraUses = None) {
+                                 std::optional<bool> AllowExtraUses =
+                                     std::nullopt) {
     return checkUses(Op, 2, AllowExtraUses);
   };
 
@@ -3824,7 +3858,7 @@ MachineSDNode *X86DAGToDAGISel::matchBEXTRFromAndImm(SDNode *Node) {
     return nullptr;
 
   uint64_t Shift = ShiftCst->getZExtValue();
-  uint64_t MaskSize = countPopulation(Mask);
+  uint64_t MaskSize = llvm::popcount(Mask);
 
   // Don't interfere with something that can be handled by extracting AH.
   // TODO: If we are able to fold a load, BEXTR might still be better than AH.
@@ -3988,17 +4022,38 @@ bool X86DAGToDAGISel::tryShiftAmountMod(SDNode *N) {
   // so we are not afraid that we might mess up BZHI/BEXTR pattern.
 
   SDValue NewShiftAmt;
-  if (ShiftAmt->getOpcode() == ISD::ADD || ShiftAmt->getOpcode() == ISD::SUB) {
+  if (ShiftAmt->getOpcode() == ISD::ADD || ShiftAmt->getOpcode() == ISD::SUB ||
+      ShiftAmt->getOpcode() == ISD::XOR) {
     SDValue Add0 = ShiftAmt->getOperand(0);
     SDValue Add1 = ShiftAmt->getOperand(1);
     auto *Add0C = dyn_cast<ConstantSDNode>(Add0);
     auto *Add1C = dyn_cast<ConstantSDNode>(Add1);
-    // If we are shifting by X+/-N where N == 0 mod Size, then just shift by X
-    // to avoid the ADD/SUB.
+    // If we are shifting by X+/-/^N where N == 0 mod Size, then just shift by X
+    // to avoid the ADD/SUB/XOR.
     if (Add1C && Add1C->getAPIntValue().urem(Size) == 0) {
       NewShiftAmt = Add0;
-      // If we are shifting by N-X where N == 0 mod Size, then just shift by -X
-      // to generate a NEG instead of a SUB of a constant.
+
+    } else if (ShiftAmt->getOpcode() != ISD::ADD && ShiftAmt.hasOneUse() &&
+               ((Add0C && Add0C->getAPIntValue().urem(Size) == Size - 1) ||
+                (Add1C && Add1C->getAPIntValue().urem(Size) == Size - 1))) {
+      // If we are doing a NOT on just the lower bits with (Size*N-1) -/^ X
+      // we can replace it with a NOT. In the XOR case it may save some code
+      // size, in the SUB case it also may save a move.
+      assert(Add0C == nullptr || Add1C == nullptr);
+
+      // We can only do N-X, not X-N
+      if (ShiftAmt->getOpcode() == ISD::SUB && Add0C == nullptr)
+        return false;
+
+      EVT OpVT = ShiftAmt.getValueType();
+
+      SDValue AllOnes = CurDAG->getAllOnesConstant(DL, OpVT);
+      NewShiftAmt = CurDAG->getNode(ISD::XOR, DL, OpVT,
+                                    Add0C == nullptr ? Add0 : Add1, AllOnes);
+      insertDAGNode(*CurDAG, OrigShiftAmt, AllOnes);
+      insertDAGNode(*CurDAG, OrigShiftAmt, NewShiftAmt);
+      // If we are shifting by N-X where N == 0 mod Size, then just shift by
+      // -X to generate a NEG instead of a SUB of a constant.
     } else if (ShiftAmt->getOpcode() == ISD::SUB && Add0C &&
                Add0C->getZExtValue() != 0) {
       EVT SubVT = ShiftAmt.getValueType();
@@ -4156,7 +4211,7 @@ bool X86DAGToDAGISel::tryShrinkShlLogicImm(SDNode *N) {
   if (Opcode == ISD::AND) {
     // Find the smallest zext this could possibly be.
     unsigned ZExtWidth = Cst->getAPIntValue().getActiveBits();
-    ZExtWidth = PowerOf2Ceil(std::max(ZExtWidth, 8U));
+    ZExtWidth = llvm::bit_ceil(std::max(ZExtWidth, 8U));
 
     // Figure out which bits need to be zero to achieve that mask.
     APInt NeededMask = APInt::getLowBitsSet(NVT.getSizeInBits(),
@@ -4426,7 +4481,7 @@ bool X86DAGToDAGISel::shrinkAndImmediate(SDNode *And) {
   // implicit zeroing of 32 bit ops. So we should check if the lower 32 bits
   // are negative too.
   APInt MaskVal = And1C->getAPIntValue();
-  unsigned MaskLZ = MaskVal.countLeadingZeros();
+  unsigned MaskLZ = MaskVal.countl_zero();
   if (!MaskLZ || (VT == MVT::i64 && MaskLZ == 32))
     return false;
 
@@ -4442,8 +4497,8 @@ bool X86DAGToDAGISel::shrinkAndImmediate(SDNode *And) {
 
   // If a negative constant would not allow a smaller encoding, there's no need
   // to continue. Only change the constant when we know it's a win.
-  unsigned MinWidth = NegMaskVal.getMinSignedBits();
-  if (MinWidth > 32 || (MinWidth > 8 && MaskVal.getMinSignedBits() <= 32))
+  unsigned MinWidth = NegMaskVal.getSignificantBits();
+  if (MinWidth > 32 || (MinWidth > 8 && MaskVal.getSignificantBits() <= 32))
     return false;
 
   // Extend masks if we truncated above.
@@ -5411,8 +5466,8 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
       } else {
         // Zero out the high part, effectively zero extending the input.
         SDVTList VTs = CurDAG->getVTList(MVT::i32, MVT::i32);
-        SDValue ClrNode =
-            SDValue(CurDAG->getMachineNode(X86::MOV32r0, dl, VTs, None), 0);
+        SDValue ClrNode = SDValue(
+            CurDAG->getMachineNode(X86::MOV32r0, dl, VTs, std::nullopt), 0);
         switch (NVT.SimpleTy) {
         case MVT::i16:
           ClrNode =
@@ -5625,8 +5680,8 @@ void X86DAGToDAGISel::Select(SDNode *Node) {
         unsigned SubRegIdx;
         MVT SubRegVT;
         unsigned TestOpcode;
-        unsigned LeadingZeros = countLeadingZeros(Mask);
-        unsigned TrailingZeros = countTrailingZeros(Mask);
+        unsigned LeadingZeros = llvm::countl_zero(Mask);
+        unsigned TrailingZeros = llvm::countr_zero(Mask);
 
         // With leading/trailing zeros, the transform is profitable if we can
         // eliminate a movabsq or shrink a 32-bit immediate to 8-bit without

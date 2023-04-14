@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
+
 #ifndef _LIBCPP___RANGES_TRANSFORM_VIEW_H
 #define _LIBCPP___RANGES_TRANSFORM_VIEW_H
 
@@ -34,7 +35,6 @@
 #include <__utility/forward.h>
 #include <__utility/in_place.h>
 #include <__utility/move.h>
-#include <type_traits>
 
 #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
 #  pragma GCC system_header
@@ -42,7 +42,7 @@
 
 _LIBCPP_BEGIN_NAMESPACE_STD
 
-#if _LIBCPP_STD_VER > 17
+#if _LIBCPP_STD_VER >= 20
 
 namespace ranges {
 
@@ -145,7 +145,7 @@ struct __transform_view_iterator_category_base<_View, _Fn> {
   using _Cat = typename iterator_traits<iterator_t<_View>>::iterator_category;
 
   using iterator_category = conditional_t<
-    is_lvalue_reference_v<invoke_result_t<_Fn&, range_reference_t<_View>>>,
+    is_reference_v<invoke_result_t<_Fn&, range_reference_t<_View>>>,
     conditional_t<
       derived_from<_Cat, contiguous_iterator_tag>,
       random_access_iterator_tag,
@@ -434,7 +434,7 @@ inline namespace __cpo {
 
 } // namespace ranges
 
-#endif // _LIBCPP_STD_VER > 17
+#endif // _LIBCPP_STD_VER >= 20
 
 _LIBCPP_END_NAMESPACE_STD
 

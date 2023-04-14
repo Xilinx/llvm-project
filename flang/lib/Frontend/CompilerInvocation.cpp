@@ -25,17 +25,18 @@
 #include "clang/Driver/Options.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/Option/Arg.h"
 #include "llvm/Option/ArgList.h"
 #include "llvm/Option/OptTable.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FileUtilities.h"
-#include "llvm/Support/Host.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Host.h"
+#include "llvm/TargetParser/Triple.h"
 #include <memory>
+#include <optional>
 
 using namespace Fortran::frontend;
 
@@ -125,40 +126,68 @@ static void parseCodeGenArgs(Fortran::frontend::CodeGenOptions &opts,
                    clang::driver::options::OPT_fno_debug_pass_manager, false))
     opts.DebugPassManager = 1;
 
+  if (args.hasFlag(clang::driver::options::OPT_fstack_arrays,
+                   clang::driver::options::OPT_fno_stack_arrays, false)) {
+    opts.StackArrays = 1;
+  }
+
   for (auto *a : args.filtered(clang::driver::options::OPT_fpass_plugin_EQ))
     opts.LLVMPassPlugins.push_back(a->getValue());
 
+  // -fembed-offload-object option
+  for (auto *a :
+       args.filtered(clang::driver::options::OPT_fembed_offload_object_EQ))
+    opts.OffloadObjects.push_back(a->getValue());
+
+  // -flto=full/thin option.
+  if (const llvm::opt::Arg *a =
+          args.getLastArg(clang::driver::options::OPT_flto_EQ)) {
+    llvm::StringRef s = a->getValue();
+    assert((s == "full" || s == "thin") && "Unknown LTO mode.");
+    if (s == "full")
+      opts.PrepareForFullLTO = true;
+    else
+      opts.PrepareForThinLTO = true;
+  }
+
   // -mrelocation-model option.
-  if (const llvm::opt::Arg *A =
+  if (const llvm::opt::Arg *a =
           args.getLastArg(clang::driver::options::OPT_mrelocation_model)) {
-    llvm::StringRef ModelName = A->getValue();
-    auto RM = llvm::StringSwitch<llvm::Optional<llvm::Reloc::Model>>(ModelName)
-                  .Case("static", llvm::Reloc::Static)
-                  .Case("pic", llvm::Reloc::PIC_)
-                  .Case("dynamic-no-pic", llvm::Reloc::DynamicNoPIC)
-                  .Case("ropi", llvm::Reloc::ROPI)
-                  .Case("rwpi", llvm::Reloc::RWPI)
-                  .Case("ropi-rwpi", llvm::Reloc::ROPI_RWPI)
-                  .Default(llvm::None);
-    if (RM.has_value())
-      opts.setRelocationModel(*RM);
+    llvm::StringRef modelName = a->getValue();
+    auto relocModel =
+        llvm::StringSwitch<std::optional<llvm::Reloc::Model>>(modelName)
+            .Case("static", llvm::Reloc::Static)
+            .Case("pic", llvm::Reloc::PIC_)
+            .Case("dynamic-no-pic", llvm::Reloc::DynamicNoPIC)
+            .Case("ropi", llvm::Reloc::ROPI)
+            .Case("rwpi", llvm::Reloc::RWPI)
+            .Case("ropi-rwpi", llvm::Reloc::ROPI_RWPI)
+            .Default(std::nullopt);
+    if (relocModel.has_value())
+      opts.setRelocationModel(*relocModel);
     else
       diags.Report(clang::diag::err_drv_invalid_value)
-          << A->getAsString(args) << ModelName;
+          << a->getAsString(args) << modelName;
   }
 
   // -pic-level and -pic-is-pie option.
-  if (int PICLevel = getLastArgIntValue(
+  if (int picLevel = getLastArgIntValue(
           args, clang::driver::options::OPT_pic_level, 0, diags)) {
-    if (PICLevel > 2)
+    if (picLevel > 2)
       diags.Report(clang::diag::err_drv_invalid_value)
           << args.getLastArg(clang::driver::options::OPT_pic_level)
                  ->getAsString(args)
-          << PICLevel;
+          << picLevel;
 
-    opts.PICLevel = PICLevel;
+    opts.PICLevel = picLevel;
     if (args.hasArg(clang::driver::options::OPT_pic_is_pie))
       opts.IsPIE = 1;
+  }
+
+  // This option is compatible with -f[no-]underscoring in gfortran.
+  if (args.hasFlag(clang::driver::options::OPT_fno_underscoring,
+                   clang::driver::options::OPT_funderscoring, false)) {
+    opts.Underscoring = 0;
   }
 }
 
@@ -171,6 +200,14 @@ static void parseTargetArgs(TargetOptions &opts, llvm::opt::ArgList &args) {
   if (const llvm::opt::Arg *a =
           args.getLastArg(clang::driver::options::OPT_triple))
     opts.triple = a->getValue();
+
+  if (const llvm::opt::Arg *a =
+          args.getLastArg(clang::driver::options::OPT_target_cpu))
+    opts.cpu = a->getValue();
+
+  for (const llvm::opt::Arg *currentArg :
+       args.filtered(clang::driver::options::OPT_target_feature))
+    opts.featuresAsWritten.emplace_back(currentArg->getValue());
 }
 
 // Tweak the frontend configuration based on the frontend action
@@ -585,14 +622,17 @@ static bool parseDiagArgs(CompilerInvocation &res, llvm::opt::ArgList &args,
   // TODO: Currently throws a Diagnostic for anything other than -W<error>,
   // this has to change when other -W<opt>'s are supported.
   if (args.hasArg(clang::driver::options::OPT_W_Joined)) {
-    if (args.getLastArgValue(clang::driver::options::OPT_W_Joined)
-            .equals("error")) {
-      res.setWarnAsErr(true);
-    } else {
-      const unsigned diagID =
-          diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
-                                "Only `-Werror` is supported currently.");
-      diags.Report(diagID);
+    const auto &wArgs =
+        args.getAllArgValues(clang::driver::options::OPT_W_Joined);
+    for (const auto &wArg : wArgs) {
+      if (wArg == "error") {
+        res.setWarnAsErr(true);
+      } else {
+        const unsigned diagID =
+            diags.getCustomDiagID(clang::DiagnosticsEngine::Error,
+                                  "Only `-Werror` is supported currently.");
+        diags.Report(diagID);
+      }
     }
   }
 
@@ -642,6 +682,10 @@ static bool parseDialectArgs(CompilerInvocation &res, llvm::opt::ArgList &args,
   if (args.hasArg(clang::driver::options::OPT_fopenmp)) {
     res.getFrontendOpts().features.Enable(
         Fortran::common::LanguageFeature::OpenMP);
+
+    if (args.hasArg(clang::driver::options::OPT_fopenmp_is_device)) {
+      res.getLangOpts().OpenMPIsDevice = 1;
+    }
   }
 
   // -pedantic
@@ -677,8 +721,6 @@ static bool parseFloatingPointArgs(CompilerInvocation &invoc,
                                    llvm::opt::ArgList &args,
                                    clang::DiagnosticsEngine &diags) {
   LangOptions &opts = invoc.getLangOpts();
-  const unsigned diagUnimplemented = diags.getCustomDiagID(
-      clang::DiagnosticsEngine::Warning, "%0 is not currently implemented");
 
   if (const llvm::opt::Arg *a =
           args.getLastArg(clang::driver::options::OPT_ffp_contract)) {
@@ -695,44 +737,41 @@ static bool parseFloatingPointArgs(CompilerInvocation &invoc,
       return false;
     }
 
-    diags.Report(diagUnimplemented) << a->getOption().getName();
     opts.setFPContractMode(fpContractMode);
   }
 
-  if (const llvm::opt::Arg *a =
-          args.getLastArg(clang::driver::options::OPT_menable_no_infinities)) {
-    diags.Report(diagUnimplemented) << a->getOption().getName();
+  if (args.getLastArg(clang::driver::options::OPT_menable_no_infinities)) {
     opts.NoHonorInfs = true;
   }
 
-  if (const llvm::opt::Arg *a =
-          args.getLastArg(clang::driver::options::OPT_menable_no_nans)) {
-    diags.Report(diagUnimplemented) << a->getOption().getName();
+  if (args.getLastArg(clang::driver::options::OPT_menable_no_nans)) {
     opts.NoHonorNaNs = true;
   }
 
-  if (const llvm::opt::Arg *a =
-          args.getLastArg(clang::driver::options::OPT_fapprox_func)) {
-    diags.Report(diagUnimplemented) << a->getOption().getName();
+  if (args.getLastArg(clang::driver::options::OPT_fapprox_func)) {
     opts.ApproxFunc = true;
   }
 
-  if (const llvm::opt::Arg *a =
-          args.getLastArg(clang::driver::options::OPT_fno_signed_zeros)) {
-    diags.Report(diagUnimplemented) << a->getOption().getName();
+  if (args.getLastArg(clang::driver::options::OPT_fno_signed_zeros)) {
     opts.NoSignedZeros = true;
   }
 
-  if (const llvm::opt::Arg *a =
-          args.getLastArg(clang::driver::options::OPT_mreassociate)) {
-    diags.Report(diagUnimplemented) << a->getOption().getName();
+  if (args.getLastArg(clang::driver::options::OPT_mreassociate)) {
     opts.AssociativeMath = true;
   }
 
-  if (const llvm::opt::Arg *a =
-          args.getLastArg(clang::driver::options::OPT_freciprocal_math)) {
-    diags.Report(diagUnimplemented) << a->getOption().getName();
+  if (args.getLastArg(clang::driver::options::OPT_freciprocal_math)) {
     opts.ReciprocalMath = true;
+  }
+
+  if (args.getLastArg(clang::driver::options::OPT_ffast_math)) {
+    opts.NoHonorInfs = true;
+    opts.NoHonorNaNs = true;
+    opts.AssociativeMath = true;
+    opts.ReciprocalMath = true;
+    opts.ApproxFunc = true;
+    opts.NoSignedZeros = true;
+    opts.setFPContractMode(LangOptions::FPM_Fast);
   }
 
   return true;

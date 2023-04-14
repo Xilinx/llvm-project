@@ -13,9 +13,7 @@ add_flang_library(flangFrontend
   TextDiagnostic.cpp
 
   DEPENDS
-  FIRBuilder
   FIRDialect
-  FIRSupport
   FIROptTransformsPassIncGen
   HLFIRDialect
   MLIRIR
@@ -28,11 +26,13 @@ add_flang_library(flangFrontend
   FortranCommon
   FortranLower
   FIRDialect
+  FIRDialectSupport
   FIRSupport
   FIRBuilder
   FIRCodeGen
   FIRTransforms
   HLFIRDialect
+  HLFIRTransforms
   MLIRTransforms
   MLIRLLVMToLLVMIRTranslation
   MLIRSCFToControlFlow
@@ -47,6 +47,7 @@ add_flang_library(flangFrontend
   Option
   Support
   Target
+  TargetParser
   FrontendOpenACC
   FrontendOpenMP
 )

@@ -26,9 +26,9 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/DomTreeUpdater.h"
-#include "llvm/Analysis/LegacyDivergenceAnalysis.h"
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/Analysis/UniformityAnalysis.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constants.h"
@@ -82,7 +82,7 @@ INITIALIZE_PASS_BEGIN(AMDGPUUnifyDivergentExitNodes, DEBUG_TYPE,
                      "Unify divergent function exit nodes", false, false)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(PostDominatorTreeWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(LegacyDivergenceAnalysis)
+INITIALIZE_PASS_DEPENDENCY(UniformityInfoWrapperPass)
 INITIALIZE_PASS_END(AMDGPUUnifyDivergentExitNodes, DEBUG_TYPE,
                     "Unify divergent function exit nodes", false, false)
 
@@ -92,7 +92,7 @@ void AMDGPUUnifyDivergentExitNodes::getAnalysisUsage(AnalysisUsage &AU) const{
 
   AU.addRequired<PostDominatorTreeWrapperPass>();
 
-  AU.addRequired<LegacyDivergenceAnalysis>();
+  AU.addRequired<UniformityInfoWrapperPass>();
 
   if (RequireAndPreserveDomTree) {
     AU.addPreserved<DominatorTreeWrapperPass>();
@@ -100,7 +100,7 @@ void AMDGPUUnifyDivergentExitNodes::getAnalysisUsage(AnalysisUsage &AU) const{
   }
 
   // No divergent values are changed, only blocks and branch edges.
-  AU.addPreserved<LegacyDivergenceAnalysis>();
+  AU.addPreserved<UniformityInfoWrapperPass>();
 
   // We preserve the non-critical-edgeness property
   AU.addPreservedID(BreakCriticalEdgesID);
@@ -114,14 +114,13 @@ void AMDGPUUnifyDivergentExitNodes::getAnalysisUsage(AnalysisUsage &AU) const{
 
 /// \returns true if \p BB is reachable through only uniform branches.
 /// XXX - Is there a more efficient way to find this?
-static bool isUniformlyReached(const LegacyDivergenceAnalysis &DA,
-                               BasicBlock &BB) {
+static bool isUniformlyReached(const UniformityInfo &UA, BasicBlock &BB) {
   SmallVector<BasicBlock *, 8> Stack(predecessors(&BB));
   SmallPtrSet<BasicBlock *, 8> Visited;
 
   while (!Stack.empty()) {
     BasicBlock *Top = Stack.pop_back_val();
-    if (!DA.isUniform(Top->getTerminator()))
+    if (!UA.isUniform(Top->getTerminator()))
       return false;
 
     for (BasicBlock *Pred : predecessors(Top)) {
@@ -187,12 +186,13 @@ bool AMDGPUUnifyDivergentExitNodes::runOnFunction(Function &F) {
     DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
 
   auto &PDT = getAnalysis<PostDominatorTreeWrapperPass>().getPostDomTree();
-
-  // If there's only one exit, we don't need to do anything.
-  if (PDT.root_size() <= 1)
+  if (PDT.root_size() == 0 ||
+      (PDT.root_size() == 1 &&
+       !isa<BranchInst>(PDT.getRoot()->getTerminator())))
     return false;
 
-  LegacyDivergenceAnalysis &DA = getAnalysis<LegacyDivergenceAnalysis>();
+  UniformityInfo &UA =
+      getAnalysis<UniformityInfoWrapperPass>().getUniformityInfo();
   TTI = &getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F);
 
   // Loop over all of the blocks in a function, tracking all of the blocks that
@@ -206,17 +206,22 @@ bool AMDGPUUnifyDivergentExitNodes::runOnFunction(Function &F) {
   bool Changed = false;
   std::vector<DominatorTree::UpdateType> Updates;
 
+  // TODO: For now we unify all exit blocks, even though they are uniformly
+  // reachable, if there are any exits not uniformly reached. This is to
+  // workaround the limitation of structurizer, which can not handle multiple
+  // function exits. After structurizer is able to handle multiple function
+  // exits, we should only unify UnreachableBlocks that are not uniformly
+  // reachable.
+  bool HasDivergentExitBlock = llvm::any_of(
+      PDT.roots(), [&](auto BB) { return !isUniformlyReached(UA, *BB); });
+
   for (BasicBlock *BB : PDT.roots()) {
     if (isa<ReturnInst>(BB->getTerminator())) {
-      if (!isUniformlyReached(DA, *BB))
+      if (HasDivergentExitBlock)
         ReturningBlocks.push_back(BB);
     } else if (isa<UnreachableInst>(BB->getTerminator())) {
-      // TODO: For now we unify UnreachableBlocks even though they are uniformly
-      // reachable. This is to workaround the limitation of structurizer, which
-      // can not handle multiple function exits. After structurizer is able to
-      // handle multiple function exits, we should only unify UnreachableBlocks
-      // that are not uniformly reachable.
-      UnreachableBlocks.push_back(BB);
+      if (HasDivergentExitBlock)
+        UnreachableBlocks.push_back(BB);
     } else if (BranchInst *BI = dyn_cast<BranchInst>(BB->getTerminator())) {
 
       ConstantInt *BoolTrue = ConstantInt::getTrue(F.getContext());
@@ -224,7 +229,7 @@ bool AMDGPUUnifyDivergentExitNodes::runOnFunction(Function &F) {
         DummyReturnBB = BasicBlock::Create(F.getContext(),
                                            "DummyReturnBlock", &F);
         Type *RetTy = F.getReturnType();
-        Value *RetVal = RetTy->isVoidTy() ? nullptr : UndefValue::get(RetTy);
+        Value *RetVal = RetTy->isVoidTy() ? nullptr : PoisonValue::get(RetTy);
         ReturnInst::Create(F.getContext(), RetVal, DummyReturnBB);
         ReturningBlocks.push_back(DummyReturnBB);
       }
@@ -286,7 +291,7 @@ bool AMDGPUUnifyDivergentExitNodes::runOnFunction(Function &F) {
       // structurizer/annotator can't handle the multiple exits
 
       Type *RetTy = F.getReturnType();
-      Value *RetVal = RetTy->isVoidTy() ? nullptr : UndefValue::get(RetTy);
+      Value *RetVal = RetTy->isVoidTy() ? nullptr : PoisonValue::get(RetTy);
       // Remove and delete the unreachable inst.
       UnreachableBlock->getTerminator()->eraseFromParent();
 

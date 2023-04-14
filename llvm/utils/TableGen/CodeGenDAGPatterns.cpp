@@ -13,6 +13,7 @@
 
 #include "CodeGenDAGPatterns.h"
 #include "CodeGenInstruction.h"
+#include "CodeGenRegisters.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
@@ -544,9 +545,9 @@ bool TypeInfer::EnforceSmallerThan(TypeSetByHwMode &Small, TypeSetByHwMode &Big,
     // Always treat non-scalable MVTs as smaller than scalable MVTs for the
     // purposes of ordering.
     auto ASize = std::make_tuple(A.isScalableVector(), A.getScalarSizeInBits(),
-                                 A.getSizeInBits().getKnownMinSize());
+                                 A.getSizeInBits().getKnownMinValue());
     auto BSize = std::make_tuple(B.isScalableVector(), B.getScalarSizeInBits(),
-                                 B.getSizeInBits().getKnownMinSize());
+                                 B.getSizeInBits().getKnownMinValue());
     return ASize < BSize;
   };
   auto SameKindLE = [](MVT A, MVT B) -> bool {
@@ -558,9 +559,9 @@ bool TypeInfer::EnforceSmallerThan(TypeSetByHwMode &Small, TypeSetByHwMode &Big,
       return false;
 
     return std::make_tuple(A.getScalarSizeInBits(),
-                           A.getSizeInBits().getKnownMinSize()) <=
+                           A.getSizeInBits().getKnownMinValue()) <=
            std::make_tuple(B.getScalarSizeInBits(),
-                           B.getSizeInBits().getKnownMinSize());
+                           B.getSizeInBits().getKnownMinValue());
   };
 
   for (unsigned M : Modes) {
@@ -740,7 +741,7 @@ bool TypeInfer::EnforceSameNumElts(TypeSetByHwMode &V, TypeSetByHwMode &W) {
   auto NoLength = [](const SmallDenseSet<ElementCount> &Lengths,
                      MVT T) -> bool {
     return !Lengths.count(T.isVector() ? T.getVectorElementCount()
-                                       : ElementCount::getNull());
+                                       : ElementCount());
   };
 
   SmallVector<unsigned, 4> Modes;
@@ -751,11 +752,9 @@ bool TypeInfer::EnforceSameNumElts(TypeSetByHwMode &V, TypeSetByHwMode &W) {
 
     SmallDenseSet<ElementCount> VN, WN;
     for (MVT T : VS)
-      VN.insert(T.isVector() ? T.getVectorElementCount()
-                             : ElementCount::getNull());
+      VN.insert(T.isVector() ? T.getVectorElementCount() : ElementCount());
     for (MVT T : WS)
-      WN.insert(T.isVector() ? T.getVectorElementCount()
-                             : ElementCount::getNull());
+      WN.insert(T.isVector() ? T.getVectorElementCount() : ElementCount());
 
     Changed |= berase_if(VS, std::bind(NoLength, WN, std::placeholders::_1));
     Changed |= berase_if(WS, std::bind(NoLength, VN, std::placeholders::_1));
@@ -1524,22 +1523,17 @@ std::string PatternToMatch::getPredicateCheck() const {
   getPredicateRecords(PredicateRecs);
 
   SmallString<128> PredicateCheck;
+  raw_svector_ostream OS(PredicateCheck);
+  ListSeparator LS(" && ");
   for (Record *Pred : PredicateRecs) {
     StringRef CondString = Pred->getValueAsString("CondString");
     if (CondString.empty())
       continue;
-    if (!PredicateCheck.empty())
-      PredicateCheck += " && ";
-    PredicateCheck += "(";
-    PredicateCheck += CondString;
-    PredicateCheck += ")";
+    OS << LS << '(' << CondString << ')';
   }
 
-  if (!HwModeFeatures.empty()) {
-    if (!PredicateCheck.empty())
-      PredicateCheck += " && ";
-    PredicateCheck += HwModeFeatures;
-  }
+  if (!HwModeFeatures.empty())
+    OS << LS << HwModeFeatures;
 
   return std::string(PredicateCheck);
 }
@@ -2006,9 +2000,8 @@ bool TreePatternNode::isIsomorphicTo(const TreePatternNode *N,
   if (isLeaf()) {
     if (DefInit *DI = dyn_cast<DefInit>(getLeafValue())) {
       if (DefInit *NDI = dyn_cast<DefInit>(N->getLeafValue())) {
-        return ((DI->getDef() == NDI->getDef())
-                && (DepVars.find(getName()) == DepVars.end()
-                    || getName() == N->getName()));
+        return ((DI->getDef() == NDI->getDef()) &&
+                (!DepVars.contains(getName()) || getName() == N->getName()));
       }
     }
     return getLeafValue() == N->getLeafValue();
@@ -2040,6 +2033,7 @@ TreePatternNodePtr TreePatternNode::clone() const {
   New->setNamesAsPredicateArg(getNamesAsPredicateArg());
   New->Types = Types;
   New->setPredicateCalls(getPredicateCalls());
+  New->setGISelFlagsRecord(getGISelFlagsRecord());
   New->setTransformFn(getTransformFn());
   return New;
 }
@@ -2142,6 +2136,7 @@ void TreePatternNode::InlinePatternFragments(
       R->setName(getName());
       R->setNamesAsPredicateArg(getNamesAsPredicateArg());
       R->setPredicateCalls(getPredicateCalls());
+      R->setGISelFlagsRecord(getGISelFlagsRecord());
       R->setTransformFn(getTransformFn());
       for (unsigned i = 0, e = getNumTypes(); i != e; ++i)
         R->setType(i, getExtType(i));
@@ -2210,6 +2205,9 @@ void TreePatternNode::InlinePatternFragments(
     FragTree->setName(getName());
     for (unsigned i = 0, e = FragTree->getNumTypes(); i != e; ++i)
       FragTree->UpdateNodeType(i, getExtType(i), TP);
+
+    if (Op->isSubClassOf("GISelFlags"))
+      FragTree->setGISelFlagsRecord(Op);
 
     // Transfer in the old predicates.
     for (const TreePredicateCall &Pred : getPredicateCalls())
@@ -2998,7 +2996,7 @@ TreePatternNodePtr TreePattern::ParseTreePattern(Init *TheInit,
     // chain.
     if (Int.IS.RetVTs.empty())
       Operator = getDAGPatterns().get_intrinsic_void_sdnode();
-    else if (Int.ModRef != CodeGenIntrinsic::NoMem || Int.hasSideEffects)
+    else if (!Int.ME.doesNotAccessMemory() || Int.hasSideEffects)
       // Has side-effects, requires chain.
       Operator = getDAGPatterns().get_intrinsic_w_chain_sdnode();
     else // Otherwise, no chain.
@@ -3637,16 +3635,17 @@ public:
     if (N->NodeHasProperty(SDNPHasChain, CDP)) hasChain = true;
 
     if (const CodeGenIntrinsic *IntInfo = N->getIntrinsicInfo(CDP)) {
+      ModRefInfo MR = IntInfo->ME.getModRef();
       // If this is an intrinsic, analyze it.
-      if (IntInfo->ModRef & CodeGenIntrinsic::MR_Ref)
-        mayLoad = true;// These may load memory.
+      if (isRefSet(MR))
+        mayLoad = true; // These may load memory.
 
-      if (IntInfo->ModRef & CodeGenIntrinsic::MR_Mod)
-        mayStore = true;// Intrinsics that can write to memory are 'mayStore'.
+      if (isModSet(MR))
+        mayStore = true; // Intrinsics that can write to memory are 'mayStore'.
 
-      if (IntInfo->ModRef >= CodeGenIntrinsic::ReadWriteMem ||
-          IntInfo->hasSideEffects)
-        // ReadWriteMem intrinsics can have other strange effects.
+      // Consider intrinsics that don't specify any restrictions on memory
+      // effects as having a side-effect.
+      if (IntInfo->ME == MemoryEffects::unknown() || IntInfo->hasSideEffects)
         hasSideEffects = true;
     }
   }
@@ -4451,14 +4450,14 @@ void CodeGenDAGPatterns::ExpandHwModeBasedTypes() {
 
       // Fill the map entry for this mode.
       const HwMode &HM = CGH.getMode(M);
-      AppendPattern(P, M, "(MF->getSubtarget().checkFeatures(\"" + HM.Features + "\"))");
+      AppendPattern(P, M, HM.Predicates);
 
       // Add negations of the HM's predicates to the default predicate.
       if (!DefaultCheck.empty())
         DefaultCheck += " && ";
-      DefaultCheck += "(!(MF->getSubtarget().checkFeatures(\"";
-      DefaultCheck += HM.Features;
-      DefaultCheck += "\")))";
+      DefaultCheck += "!(";
+      DefaultCheck += HM.Predicates;
+      DefaultCheck += ")";
     }
 
     bool HasDefault = Modes.count(DefaultMode);
@@ -4543,6 +4542,7 @@ static void CombineChildVariants(
     R->setName(Orig->getName());
     R->setNamesAsPredicateArg(Orig->getNamesAsPredicateArg());
     R->setPredicateCalls(Orig->getPredicateCalls());
+    R->setGISelFlagsRecord(Orig->getGISelFlagsRecord());
     R->setTransformFn(Orig->getTransformFn());
     for (unsigned i = 0, e = Orig->getNumTypes(); i != e; ++i)
       R->setType(i, Orig->getExtType(i));

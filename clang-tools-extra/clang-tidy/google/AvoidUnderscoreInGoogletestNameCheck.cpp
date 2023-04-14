@@ -16,10 +16,7 @@
 #include "clang/Lex/PPCallbacks.h"
 #include "clang/Lex/Preprocessor.h"
 
-namespace clang {
-namespace tidy {
-namespace google {
-namespace readability {
+namespace clang::tidy::google::readability {
 
 constexpr llvm::StringLiteral KDisabledTestPrefix = "DISABLED_";
 
@@ -27,7 +24,7 @@ constexpr llvm::StringLiteral KDisabledTestPrefix = "DISABLED_";
 static bool isGoogletestTestMacro(StringRef MacroName) {
   static const llvm::StringSet<> MacroNames = {"TEST", "TEST_F", "TEST_P",
                                                "TYPED_TEST", "TYPED_TEST_P"};
-  return MacroNames.find(MacroName) != MacroNames.end();
+  return MacroNames.contains(MacroName);
 }
 
 namespace {
@@ -84,7 +81,4 @@ void AvoidUnderscoreInGoogletestNameCheck::registerPPCallbacks(
       std::make_unique<AvoidUnderscoreInGoogletestNameCallback>(PP, this));
 }
 
-} // namespace readability
-} // namespace google
-} // namespace tidy
-} // namespace clang
+} // namespace clang::tidy::google::readability

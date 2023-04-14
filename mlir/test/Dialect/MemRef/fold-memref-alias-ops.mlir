@@ -1,4 +1,4 @@
-// RUN: mlir-opt -fold-memref-alias-ops -split-input-file %s -o - | FileCheck %s
+// RUN: mlir-opt -fold-memref-alias-ops -split-input-file %s | FileCheck %s
 
 func.func @fold_static_stride_subview_with_load(%arg0 : memref<12x32xf32>, %arg1 : index, %arg2 : index, %arg3 : index, %arg4 : index) -> f32 {
   %0 = memref.subview %arg0[%arg1, %arg2][4, 4][2, 3] : memref<12x32xf32> to memref<4x4xf32, strided<[64, 3], offset: ?>>
@@ -125,7 +125,7 @@ func.func @fold_subview_with_transfer_read(%arg0 : memref<12x32xf32>, %arg1 : in
 // -----
 
 func.func @fold_static_stride_subview_with_transfer_write_0d(
-    %arg0 : memref<12x32xf32>, %arg1 : index, %arg2 : index, %arg3 : index, 
+    %arg0 : memref<12x32xf32>, %arg1 : index, %arg2 : index, %arg3 : index,
     %v : vector<f32>) {
   %f1 = arith.constant 1.0 : f32
   %0 = memref.subview %arg0[%arg1, %arg2][1, 1][2, %arg3] : memref<12x32xf32> to memref<f32, strided<[], offset: ?>>
@@ -465,3 +465,113 @@ func.func @fold_static_stride_subview_with_affine_load_store_collapse_shape_with
 // CHECK-NEXT: %[[ZERO:.*]] = arith.constant 0 : index
 // CHECK-NEXT: affine.for %{{.*}} = 0 to 3 {
 // CHECK-NEXT:   affine.load %[[ARG0]][%[[ZERO]]] : memref<1xf32>
+
+// -----
+
+//       CHECK: #[[$map:.*]] = affine_map<()[s0] -> (s0 + 2)>
+// CHECK-LABEL: func @subview_of_subview(
+//  CHECK-SAME:     %[[m:.*]]: memref<1x1024xf32, 3>, %[[pos:.*]]: index
+//       CHECK:   %[[add:.*]] = affine.apply #[[$map]]()[%arg1]
+//       CHECK:   memref.subview %arg0[4, %[[add]]] [1, 1] [1, 1] : memref<1x1024xf32, 3> to memref<f32, strided<[], offset: ?>, 3>
+func.func @subview_of_subview(%m: memref<1x1024xf32, 3>, %pos: index)
+    -> memref<f32, strided<[], offset: ?>, 3>
+{
+  %0 = memref.subview %m[3, %pos] [1, 2] [1, 1]
+      : memref<1x1024xf32, 3>
+        to memref<1x2xf32, strided<[1024, 2], offset: ?>, 3>
+  %1 = memref.subview %0[1, 2] [1, 1] [1, 1]
+      : memref<1x2xf32, strided<[1024, 2], offset: ?>, 3>
+        to memref<f32, strided<[], offset: ?>, 3>
+  return %1 : memref<f32, strided<[], offset: ?>, 3>
+}
+
+// -----
+
+// CHECK-LABEL: func @subview_of_subview_rank_reducing(
+//  CHECK-SAME:     %[[m:.*]]: memref<?x?x?xf32>
+//       CHECK:   memref.subview %arg0[3, 7, 8] [1, 1, 1] [1, 1, 1] : memref<?x?x?xf32> to memref<f32, strided<[], offset: ?>>
+func.func @subview_of_subview_rank_reducing(%m: memref<?x?x?xf32>,
+                                            %sz: index, %pos: index)
+    -> memref<f32, strided<[], offset: ?>>
+{
+  %0 = memref.subview %m[3, 1, 8] [1, %sz, 1] [1, 1, 1]
+      : memref<?x?x?xf32>
+        to memref<?xf32, strided<[1], offset: ?>>
+  %1 = memref.subview %0[6] [1] [1]
+      : memref<?xf32, strided<[1], offset: ?>>
+        to memref<f32, strided<[], offset: ?>>
+  return %1 : memref<f32, strided<[], offset: ?>>
+}
+
+// -----
+
+// CHECK-LABEL: func @fold_load_keep_nontemporal(
+//      CHECK:   memref.load %{{.+}}[%{{.+}}, %{{.+}}] {nontemporal = true}
+func.func @fold_load_keep_nontemporal(%arg0 : memref<12x32xf32>, %arg1 : index, %arg2 : index, %arg3 : index, %arg4 : index) -> f32 {
+  %0 = memref.subview %arg0[%arg1, %arg2][4, 4][2, 3] : memref<12x32xf32> to memref<4x4xf32, strided<[64, 3], offset: ?>>
+  %1 = memref.load %0[%arg3, %arg4] {nontemporal = true }: memref<4x4xf32, strided<[64, 3], offset: ?>>
+  return %1 : f32
+}
+
+
+// -----
+
+// CHECK-LABEL: func @fold_store_keep_nontemporal(
+//      CHECK:   memref.store %{{.+}}, %{{.+}}[%{{.+}}, %{{.+}}]  {nontemporal = true} : memref<12x32xf32> 
+func.func @fold_store_keep_nontemporal(%arg0 : memref<12x32xf32>, %arg1 : index, %arg2 : index, %arg3 : index, %arg4 : index, %arg5 : f32) {
+  %0 = memref.subview %arg0[%arg1, %arg2][4, 4][2, 3] :
+    memref<12x32xf32> to memref<4x4xf32, strided<[64, 3], offset: ?>>
+  memref.store %arg5, %0[%arg3, %arg4] {nontemporal=true}: memref<4x4xf32, strided<[64, 3], offset: ?>>
+  return
+}
+
+// -----
+
+func.func @fold_gpu_subgroup_mma_load_matrix_1d(%src: memref<?xvector<4xf32>>, %offset: index, %i: index) -> !gpu.mma_matrix<16x16xf16, "COp"> {
+  %subview = memref.subview %src[%offset] [81920] [1] : memref<?xvector<4xf32>> to memref<81920xvector<4xf32>, strided<[1], offset: ?>>
+  %matrix = gpu.subgroup_mma_load_matrix %subview[%i] {leadDimension = 160 : index} : memref<81920xvector<4xf32>, strided<[1], offset: ?>> -> !gpu.mma_matrix<16x16xf16, "COp">
+  return %matrix: !gpu.mma_matrix<16x16xf16, "COp">
+}
+
+//  CHECK-DAG: #[[MAP:.+]] = affine_map<(d0)[s0] -> (d0 + s0)>
+//      CHECK: func.func @fold_gpu_subgroup_mma_load_matrix_1d
+// CHECK-SAME: (%[[SRC:.+]]: memref<?xvector<4xf32>>, %[[OFFSET:.+]]: index, %[[I:.+]]: index)
+//      CHECK:   %[[APPLY:.+]] = affine.apply #[[MAP]](%[[I]])[%[[OFFSET]]]
+//      CHECK:   %[[LOAD:.+]] = gpu.subgroup_mma_load_matrix %[[SRC]][%[[APPLY]]] {leadDimension = 160 : index} : memref<?xvector<4xf32>> -> !gpu.mma_matrix<16x16xf16, "COp">
+//      CHECK:   return %[[LOAD]]
+
+// -----
+
+func.func @fold_gpu_subgroup_mma_store_matrix_1d(%dst: memref<?xvector<4xf32>>, %offset: index, %i: index, %matrix: !gpu.mma_matrix<16x16xf16, "COp">) {
+  %subview = memref.subview %dst[%offset] [81920] [1] : memref<?xvector<4xf32>> to memref<81920xvector<4xf32>, strided<[1], offset: ?>>
+  gpu.subgroup_mma_store_matrix %matrix, %subview[%i] {leadDimension = 160 : index} : !gpu.mma_matrix<16x16xf16, "COp">, memref<81920xvector<4xf32>, strided<[1], offset: ?>>
+  return
+}
+
+//  CHECK-DAG: #[[MAP:.+]] = affine_map<(d0)[s0] -> (d0 + s0)>
+//      CHECK: func.func @fold_gpu_subgroup_mma_store_matrix_1d
+// CHECK-SAME: (%[[DST:.+]]: memref<?xvector<4xf32>>, %[[OFFSET:.+]]: index, %[[I0:.+]]: index, %[[VAL:.+]]: !gpu.mma_matrix<16x16xf16, "COp">)
+//      CHECK:   %[[APPLY:.+]] = affine.apply #[[MAP]](%[[I0]])[%[[OFFSET]]]
+//      CHECK:   gpu.subgroup_mma_store_matrix %[[VAL]], %[[DST]][%[[APPLY]]] {leadDimension = 160 : index} : !gpu.mma_matrix<16x16xf16, "COp">, memref<?xvector<4xf32>>
+
+// -----
+
+// CHECK-LABEL: func.func @fold_gpu_subgroup_mma_load_matrix_2d
+//  CHECK-SAME: %[[SRC:.+]]: memref<128x128xf32>
+func.func @fold_gpu_subgroup_mma_load_matrix_2d(%arg0 : memref<128x128xf32>, %arg1 : index, %arg2 : index, %arg3 : index, %arg4 : index) -> !gpu.mma_matrix<16x16xf16, "COp"> {
+  %subview = memref.subview %arg0[%arg1, %arg2][64, 32][2, 1] : memref<128x128xf32> to memref<64x32xf32, strided<[64, 1], offset: ?>>
+  // CHECK: gpu.subgroup_mma_load_matrix %[[SRC]][{{.+}}] {leadDimension = 32 : index} : memref<128x128xf32> -> !gpu.mma_matrix<16x16xf16, "COp">
+  %matrix = gpu.subgroup_mma_load_matrix %subview[%arg3, %arg4] {leadDimension = 32 : index} : memref<64x32xf32, strided<[64, 1], offset: ?>> -> !gpu.mma_matrix<16x16xf16, "COp">
+  return %matrix : !gpu.mma_matrix<16x16xf16, "COp">
+}
+
+// -----
+
+// CHECK-LABEL: func.func @fold_gpu_subgroup_mma_load_matrix_2d
+//  CHECK-SAME: %[[DST:.+]]: memref<128x128xf32>
+func.func @fold_gpu_subgroup_mma_load_matrix_2d(%arg0 : memref<128x128xf32>, %arg1 : index, %arg2 : index, %arg3 : index, %arg4 : index, %matrix: !gpu.mma_matrix<16x16xf16, "COp">) {
+  %subview = memref.subview %arg0[%arg1, %arg2][64, 32][2, 1] : memref<128x128xf32> to memref<64x32xf32, strided<[64, 1], offset: ?>>
+  // CHECK: gpu.subgroup_mma_store_matrix %{{.+}}, %[[DST]][{{.+}}] {leadDimension = 32 : index} : !gpu.mma_matrix<16x16xf16, "COp">, memref<128x128xf32>
+  gpu.subgroup_mma_store_matrix %matrix, %subview[%arg3, %arg4] {leadDimension = 32 : index} :  !gpu.mma_matrix<16x16xf16, "COp">, memref<64x32xf32, strided<[64, 1], offset: ?>>
+  return
+}

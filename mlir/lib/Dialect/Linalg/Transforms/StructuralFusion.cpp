@@ -23,8 +23,8 @@
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/Transforms/SideEffectUtils.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
@@ -129,7 +129,7 @@ static SubgraphOp wrapInSubgraph(Operation *target) {
       /*resulType=*/target->getNumResults() ? target->getResult(0).getType()
                                             : Type{},
       /*captures=*/captures,
-      [=](OpBuilder &builder, Location loc, BlockAndValueMapping &captures) {
+      [=](OpBuilder &builder, Location loc, IRMapping &captures) {
         // Clone the target op into the Subgraph.
         auto clonedOp = builder.insert(target->clone(captures));
         // Yield the result of the cloned op (which may have none).
@@ -270,7 +270,7 @@ static SubgraphOp fuseProducer(SubgraphOp target, Operation *producer) {
       target.getLoc(),
       /*resultType=*/target.getResult() ? target.getResult().getType() : Type{},
       newCaptures,
-      [&](OpBuilder &builder, Location loc, BlockAndValueMapping &captures) {
+      [&](OpBuilder &builder, Location loc, IRMapping &captures) {
         // Clone the op to be prepended into the new block.
         auto prepended = builder.insert(producer->clone(captures));
 
@@ -384,7 +384,7 @@ static SubgraphOp fuseConsumer(SubgraphOp target, Operation *consumer) {
           ? consumer->getResult(0).getType()
           : Type{},
       newCaptures,
-      [&](OpBuilder &builder, Location loc, BlockAndValueMapping &captures) {
+      [&](OpBuilder &builder, Location loc, IRMapping &captures) {
         // Remap the capture arguments of the old Subgraph.
         for (unsigned idx = 0; idx < target.getCaptures().size(); ++idx) {
           captures.map(target.getCaptureArgs()[idx],

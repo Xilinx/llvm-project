@@ -196,6 +196,12 @@ General Windows support
 | rnk\@google.com (email), rnk (Phabricator), rnk (GitHub)
 
 
+Incremental compilation, REPLs, clang-repl
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+| Vassil Vassilev
+| Vassil.Vassilev\@cern.ch (email), v.g.vassilev (Phabricator), vgvassilev (GitHub)
+
+
 Standards Conformance
 ---------------------
 The following people are responsible for validating that changes are conforming
@@ -223,7 +229,7 @@ Objective-C/C++ conformance
 OpenMP conformance
 ~~~~~~~~~~~~~~~~~~
 | Alexey Bataev
-| a.bataev\@hotmail.com (email), ABataev (Phabricator), cilkplus (GitHub)
+| a.bataev\@hotmail.com (email), ABataev (Phabricator), alexey-bataev (GitHub)
 
 
 OpenCL conformance

@@ -49,14 +49,13 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/VCSRevision.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/IPO.h"
-#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/IPO/WholeProgramDevirt.h"
 #include "llvm/Transforms/Utils/FunctionImportUtils.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
 
+#include <optional>
 #include <set>
 
 using namespace llvm;
@@ -69,10 +68,12 @@ static cl::opt<bool>
     DumpThinCGSCCs("dump-thin-cg-sccs", cl::init(false), cl::Hidden,
                    cl::desc("Dump the SCCs in the ThinLTO index's callgraph"));
 
+namespace llvm {
 /// Enable global value internalization in LTO.
 cl::opt<bool> EnableLTOInternalization(
     "enable-lto-internalization", cl::init(true), cl::Hidden,
     cl::desc("Enable global value internalization in LTO"));
+}
 
 // Computes a unique hash for the Module considering the current list of
 // export/import and other global analysis results.
@@ -838,8 +839,8 @@ LTO::addRegularLTO(BitcodeModule BM, ArrayRef<InputFile::Symbol> Syms,
       auto &CommonRes = RegularLTO.Commons[std::string(Sym.getIRName())];
       CommonRes.Size = std::max(CommonRes.Size, Sym.getCommonSize());
       if (uint32_t SymAlignValue = Sym.getCommonAlignment()) {
-        const Align SymAlign(SymAlignValue);
-        CommonRes.Align = std::max(SymAlign, CommonRes.Align.valueOrOne());
+        CommonRes.Alignment =
+            std::max(Align(SymAlignValue), CommonRes.Alignment);
       }
       CommonRes.Prevailing |= Res.Prevailing;
     }
@@ -911,10 +912,29 @@ Error LTO::linkRegularLTO(RegularLTOState::AddedModule Mod,
 Error LTO::addThinLTO(BitcodeModule BM, ArrayRef<InputFile::Symbol> Syms,
                       const SymbolResolution *&ResI,
                       const SymbolResolution *ResE) {
+  const SymbolResolution *ResITmp = ResI;
+  for (const InputFile::Symbol &Sym : Syms) {
+    assert(ResITmp != ResE);
+    SymbolResolution Res = *ResITmp++;
+
+    if (!Sym.getIRName().empty()) {
+      auto GUID = GlobalValue::getGUID(GlobalValue::getGlobalIdentifier(
+          Sym.getIRName(), GlobalValue::ExternalLinkage, ""));
+      if (Res.Prevailing)
+        ThinLTO.PrevailingModuleForGUID[GUID] = BM.getModuleIdentifier();
+    }
+  }
+
+  uint64_t ModuleId = ThinLTO.ModuleMap.size();
   if (Error Err =
           BM.readSummary(ThinLTO.CombinedIndex, BM.getModuleIdentifier(),
-                         ThinLTO.ModuleMap.size()))
+                         ModuleId, [&](GlobalValue::GUID GUID) {
+                           return ThinLTO.PrevailingModuleForGUID[GUID] ==
+                                  BM.getModuleIdentifier();
+                         }))
     return Err;
+  LLVM_DEBUG(dbgs() << "Module " << ModuleId << ": " << BM.getModuleIdentifier()
+                    << "\n");
 
   for (const InputFile::Symbol &Sym : Syms) {
     assert(ResI != ResE);
@@ -924,7 +944,8 @@ Error LTO::addThinLTO(BitcodeModule BM, ArrayRef<InputFile::Symbol> Syms,
       auto GUID = GlobalValue::getGUID(GlobalValue::getGlobalIdentifier(
           Sym.getIRName(), GlobalValue::ExternalLinkage, ""));
       if (Res.Prevailing) {
-        ThinLTO.PrevailingModuleForGUID[GUID] = BM.getModuleIdentifier();
+        assert(ThinLTO.PrevailingModuleForGUID[GUID] ==
+               BM.getModuleIdentifier());
 
         // For linker redefined symbols (via --wrap or --defsym) we want to
         // switch the linkage to `weak` to prevent IPOs from happening.
@@ -1098,7 +1119,7 @@ Error LTO::runRegularLTO(AddStreamFn AddStream) {
     if (OldGV && DL.getTypeAllocSize(OldGV->getValueType()) == I.second.Size) {
       // Don't create a new global if the type is already correct, just make
       // sure the alignment is correct.
-      OldGV->setAlignment(I.second.Align);
+      OldGV->setAlignment(I.second.Alignment);
       continue;
     }
     ArrayType *Ty =
@@ -1106,7 +1127,7 @@ Error LTO::runRegularLTO(AddStreamFn AddStream) {
     auto *GV = new GlobalVariable(*RegularLTO.CombinedModule, Ty, false,
                                   GlobalValue::CommonLinkage,
                                   ConstantAggregateZero::get(Ty), "");
-    GV->setAlignment(I.second.Align);
+    GV->setAlignment(I.second.Alignment);
     if (OldGV) {
       OldGV->replaceAllUsesWith(ConstantExpr::getBitCast(GV, OldGV->getType()));
       GV->takeName(OldGV);
@@ -1172,7 +1193,7 @@ static const char *libcallRoutineNames[] = {
 };
 
 ArrayRef<const char*> LTO::getRuntimeLibcallSymbols() {
-  return makeArrayRef(libcallRoutineNames);
+  return ArrayRef(libcallRoutineNames);
 }
 
 /// This class defines the interface to the ThinLTO backend.
@@ -1235,7 +1256,7 @@ class InProcessThinBackend : public ThinBackendProc {
   std::set<GlobalValue::GUID> CfiFunctionDefs;
   std::set<GlobalValue::GUID> CfiFunctionDecls;
 
-  Optional<Error> Err;
+  std::optional<Error> Err;
   std::mutex ErrMu;
 
   bool ShouldEmitIndexFiles;
@@ -1296,7 +1317,7 @@ public:
     computeLTOCacheKey(Key, Conf, CombinedIndex, ModuleID, ImportList,
                        ExportList, ResolvedODR, DefinedGlobals, CfiFunctionDefs,
                        CfiFunctionDecls);
-    Expected<AddStreamFn> CacheAddStreamOrErr = Cache(Task, Key);
+    Expected<AddStreamFn> CacheAddStreamOrErr = Cache(Task, Key, ModuleID);
     if (Error Err = CacheAddStreamOrErr.takeError())
       return Err;
     AddStreamFn &CacheAddStream = *CacheAddStreamOrErr;
@@ -1454,6 +1475,7 @@ ThinBackend lto::createWriteIndexesThinBackend(
 
 Error LTO::runThinLTO(AddStreamFn AddStream, FileCache Cache,
                       const DenseSet<GlobalValue::GUID> &GUIDPreservedSymbols) {
+  ThinLTO.CombinedIndex.releaseTemporaryMemory();
   timeTraceProfilerBegin("ThinLink", StringRef(""));
   auto TimeTraceScopeExit = llvm::make_scope_exit([]() {
     if (llvm::timeTraceProfilerEnabled())
@@ -1626,7 +1648,7 @@ Error LTO::runThinLTO(AddStreamFn AddStream, FileCache Cache,
 Expected<std::unique_ptr<ToolOutputFile>> lto::setupLLVMOptimizationRemarks(
     LLVMContext &Context, StringRef RemarksFilename, StringRef RemarksPasses,
     StringRef RemarksFormat, bool RemarksWithHotness,
-    Optional<uint64_t> RemarksHotnessThreshold, int Count) {
+    std::optional<uint64_t> RemarksHotnessThreshold, int Count) {
   std::string Filename = std::string(RemarksFilename);
   // For ThinLTO, file.opt.<format> becomes
   // file.opt.<format>.thin.<num>.<format>.
