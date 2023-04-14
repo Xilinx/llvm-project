@@ -428,9 +428,12 @@ struct Conv2DActivationMaxpoolOpLowering : OpRewritePattern<T> {
       // Create the tensor.pad op.
       int64_t padLow[] = {0, 0, padding[2], padding[0]};
       int64_t padHigh[] = {0, 0, padding[3], padding[1]};
+      auto padType = tensor::PadOp::inferResultType(
+          convResult.getType().template cast<RankedTensorType>(), padLow, padHigh);
       auto padOp =
-          rewriter.create<tensor::PadOp>(op.getLoc(), lreluResult, padLow,
-                                         padHigh, ValueRange(), ValueRange());
+          rewriter.create<tensor::PadOp>(op.getLoc(), padType, lreluResult,
+                                         padLow, padHigh, ValueRange(),
+                                         ValueRange());
 
       // Generate a padding value.
       // BUG: xten -> linalg lowering does not pass along the padding
