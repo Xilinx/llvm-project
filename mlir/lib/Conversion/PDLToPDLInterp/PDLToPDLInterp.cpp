@@ -473,11 +473,12 @@ void PatternLowering::generate(BoolNode *boolNode, Block *&currentBlock,
     for (auto result : llvm::enumerate(applyConstraintOp.getResults())) {
       std::pair<ConstraintQuestion *, unsigned> substitutionKey = {
           cstQuestion, result.index()};
-      assert(
-          substitutions.count(substitutionKey) &&
-          "expected a placeholder value for a native constraint with results");
-      substitutions[substitutionKey].replaceAllUsesWith(result.value());
-      substitutions[substitutionKey].getDefiningOp()->erase();
+      // Check if there are substitutions to perform. If the result is never
+      // used no substitutions will have been generated.
+      if (substitutions.count(substitutionKey)) {
+        substitutions[substitutionKey].replaceAllUsesWith(result.value());
+        substitutions[substitutionKey].getDefiningOp()->erase();
+      }
     }
     break;
   }
