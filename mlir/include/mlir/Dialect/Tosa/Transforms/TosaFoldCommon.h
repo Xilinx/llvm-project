@@ -93,6 +93,16 @@ bool constantBinaryOpShouldBeFolded(TosaOp binaryOp,
                                     DenseElementsAttr valuesFirst,
                                     DenseElementsAttr valuesSecond);
 
+/// Heuristic to decide when to replace a unary operation on a constant with the
+/// folded value.
+/// Folding operations on constants can lead to an increased memory usage
+/// whenever the input cannot be replaced but a new constant is inserted. Hence,
+/// this will currently only suggest folding when the memory impact is
+/// negligible.
+/// Takes the \p unaryOp and the constant input \p values.
+/// \returns Whether folding should be applied.
+bool constantUnaryOpShouldBeFolded(TosaOp unaryOp, DenseElementsAttr values);
+
 /// Function to compute the reciprocal.
 APFloat computeReciprocal(const APFloat &floatVal, FloatType floatTy);
 

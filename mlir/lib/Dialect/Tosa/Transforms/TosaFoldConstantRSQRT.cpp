@@ -63,9 +63,8 @@ struct TosaFoldConstantRSQRT : public OpRewritePattern<RsqrtOp> {
     DenseElementsAttr inputValues;
     matchPattern(inputTensor, m_Constant(&inputValues));
 
-    // Only fold splat tensors and those used only once to avoid duplicating
-    // them.
-    if (!inputTensor.hasOneUse() && !isa<SplatElementsAttr>(inputValues)) {
+    // Check whether this should be folded.
+    if (!constantUnaryOpShouldBeFolded(rsqrt, inputValues)) {
       return rewriter.notifyMatchFailure(
           rsqrt, "Currently, reciprocals will only be folded if the input "
                  "tensor has a single user");
