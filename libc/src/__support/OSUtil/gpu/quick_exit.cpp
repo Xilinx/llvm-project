@@ -24,10 +24,10 @@ void quick_exit(int status) {
         buffer->data[0] = rpc::Opcode::EXIT;
         buffer->data[1] = status;
       },
-      [](rpc::Buffer *) {});
+      [](rpc::Buffer *) { /* void */ });
 
 #if defined(LIBC_TARGET_ARCH_IS_NVPTX)
-  asm("exit" ::: "memory");
+  asm("exit;" ::: "memory");
 #elif defined(LIBC_TARGET_ARCH_IS_AMDGPU)
   // This will terminate the entire wavefront, may not be valid with divergent
   // work items.

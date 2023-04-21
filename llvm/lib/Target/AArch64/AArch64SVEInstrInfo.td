@@ -2060,6 +2060,10 @@ let Predicates = [HasSVEorSME, UseExperimentalZeroingPseudos] in {
   defm LSR_ZPZZ  : sve_int_bin_pred_zeroing_bhsd<int_aarch64_sve_lsr>;
   defm LSL_ZPZZ  : sve_int_bin_pred_zeroing_bhsd<int_aarch64_sve_lsl>;
   defm ASRD_ZPZI : sve_int_bin_pred_shift_imm_right_zeroing_bhsd<AArch64asrd_m1>;
+
+  defm ASR_ZPZI  : sve_int_bin_pred_imm_zeroing_bhsd<int_aarch64_sve_asr, SVEShiftImmR8, SVEShiftImmR16, SVEShiftImmR32, SVEShiftImmR64>;
+  defm LSR_ZPZI  : sve_int_bin_pred_imm_zeroing_bhsd<int_aarch64_sve_lsr, SVEShiftImmR8, SVEShiftImmR16, SVEShiftImmR32, SVEShiftImmR64>;
+  defm LSL_ZPZI  : sve_int_bin_pred_imm_zeroing_bhsd<int_aarch64_sve_lsl, SVEShiftImmL8, SVEShiftImmL16, SVEShiftImmL32, SVEShiftImmL64>;
 } // End HasSVEorSME, UseExperimentalZeroingPseudos
 
 let Predicates = [HasSVEorSME] in {
@@ -3840,6 +3844,25 @@ defm WHILEHS_CXX  : sve2p1_int_while_rr_pn<"whilehs", 0b100>;
 defm WHILEHI_CXX  : sve2p1_int_while_rr_pn<"whilehi", 0b101>;
 defm WHILELO_CXX  : sve2p1_int_while_rr_pn<"whilelo", 0b110>;
 defm WHILELS_CXX  : sve2p1_int_while_rr_pn<"whilels", 0b111>;
+
+
+// Aliases for existing SVE instructions for which predicate-as-counter are
+// accepted as an operand to the instruction
+def : InstAlias<"ldr $Pt, [$Rn, $imm9, mul vl]",
+               (LDR_PXI PNRAny:$Pt, GPR64sp:$Rn, simm9:$imm9), 0>;
+def : InstAlias<"ldr $Pt, [$Rn]",
+               (LDR_PXI PNRAny:$Pt, GPR64sp:$Rn, 0), 0>;
+
+def : InstAlias<"str $Pt, [$Rn, $imm9, mul vl]",
+               (STR_PXI PNRAny:$Pt, GPR64sp:$Rn, simm9:$imm9), 0>;
+def : InstAlias<"str $Pt, [$Rn]",
+               (STR_PXI PNRAny:$Pt, GPR64sp:$Rn, 0), 0>;
+
+def : InstAlias<"mov $Pd, $Pn",
+               (ORR_PPzPP PNR8:$Pd, PNR8:$Pn, PNR8:$Pn, PNR8:$Pn), 0>;
+
+def : InstAlias<"pfalse\t$Pd", (PFALSE PNR8:$Pd), 0>;
+
 } // End HasSVE2p1_or_HasSME2
 
 //===----------------------------------------------------------------------===//
