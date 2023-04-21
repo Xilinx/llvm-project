@@ -54,8 +54,8 @@ struct TosaFoldConstantClamp : public OpRewritePattern<ClampOp> {
     auto resultingIntType = cast<IntegerType>(resultType.getElementType());
 
     // Lambda to perform the clamp
-    auto clampUpper = [&extLowerBound, &extUpperBound,
-                       &comparisonWidth](const APInt &val, IntegerType type) {
+    auto clampFun = [&extLowerBound, &extUpperBound,
+                     &comparisonWidth](const APInt &val, IntegerType type) {
       auto clampedUpper =
           llvm::APIntOps::smin(val.sext(comparisonWidth), extUpperBound);
       auto fullyClamped = llvm::APIntOps::smax(clampedUpper, extLowerBound);
@@ -63,7 +63,7 @@ struct TosaFoldConstantClamp : public OpRewritePattern<ClampOp> {
       return fullyClamped.trunc(type.getWidth());
     };
     auto newTensor = applyElementWise<APInt, APInt, IntegerType>(
-        inputValues, clampUpper, resultingIntType);
+        inputValues, clampFun, resultingIntType);
 
     return newTensor;
   }
@@ -85,8 +85,8 @@ struct TosaFoldConstantClamp : public OpRewritePattern<ClampOp> {
 
     // Ensure that the value is larger than the lower bound and smaller than the
     // upper bound
-    auto clampLower = [&lowerBound, &upperBound,
-                       &comparisonSem](APFloat val, FloatType type) {
+    auto clampFun = [&lowerBound, &upperBound, &comparisonSem](APFloat val,
+                                                               FloatType type) {
       if (val.isNaN()) {
         return APFloat::getNaN(type.getFloatSemantics());
       }
@@ -97,7 +97,7 @@ struct TosaFoldConstantClamp : public OpRewritePattern<ClampOp> {
       return fullyClamped;
     };
     auto newTensor = applyElementWise<APFloat, APFloat, FloatType>(
-        inputValues, clampLower, resultingFloatType);
+        inputValues, clampFun, resultingFloatType);
 
     return newTensor;
   }
