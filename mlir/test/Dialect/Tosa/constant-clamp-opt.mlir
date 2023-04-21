@@ -24,6 +24,17 @@ func.func @clamp_fold_integer_equal_lower_upper() -> tensor<3xi8> {
   return %1 : tensor<3xi8>
 }
 
+// CHECK-LABEL: @clamp_fold_integer_maximum_larger_than_result_type
+func.func @clamp_fold_integer_maximum_larger_than_result_type() -> tensor<3xi8> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}9, 4, 4{{.*}}tensor<3xi8>
+  // CHECK-NOT: tosa.clamp
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value = dense<[9, 0, -5]> : tensor<3xi8>} : () -> tensor<3xi8>
+  %1 = "tosa.clamp"(%0) {max_fp = 0.00 : f32, max_int = 9223372036854775807 : i64, min_fp = 0.0 : f32, min_int = 4 : i64}
+        : (tensor<3xi8>) -> tensor<3xi8>
+  return %1 : tensor<3xi8>
+}
+
 // Float clamp
 
 // CHECK-LABEL: @clamp_fold_float
@@ -63,4 +74,18 @@ func.func @clamp_fold_float_infinity_upper() -> tensor<5xf32> {
   %1 = "tosa.clamp"(%0) {max_fp = 0x7F800000 : f32, max_int = 1594 : i64, min_fp = -2.0 : f32, min_int = -17 : i64}
         : (tensor<5xf32>) -> tensor<5xf32>
   return %1 : tensor<5xf32>
+}
+
+// CHECK-LABEL: @clamp_fold_float_maximum_larger_than_result_type
+func.func @clamp_fold_float_maximum_larger_than_result_type() -> tensor<2xf16> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}1.83{{[0-9]*}}e+01, -5.{{0*}}e-01
+  // CHECK-NOT: tosa.clamp
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value =
+                        dense<[18.32, -0.98747]> :
+                        tensor<2xf16>
+                      } : () -> tensor<2xf16>
+  %1 = "tosa.clamp"(%0) {max_fp = 3.4028234e+38 : f32, max_int = 1594 : i64, min_fp = -0.5 : f32, min_int = -17 : i64}
+        : (tensor<2xf16>) -> tensor<2xf16>
+  return %1 : tensor<2xf16>
 }

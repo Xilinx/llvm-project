@@ -17,7 +17,6 @@
 #include "mlir/Pass/Pass.h"
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
-#include <llvm/Support/Debug.h>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/Support/LogicalResult.h>
@@ -47,31 +46,24 @@ struct TosaFoldConstantClamp : public OpRewritePattern<ClampOp> {
     auto comparisonWidth =
         std::max(inputValues.getElementType().getIntOrFloatBitWidth(),
                  lowerBound.getBitWidth());
+    // Sign-extend the upper and lower bound
+    auto extUpperBound = upperBound.sext(comparisonWidth);
+    auto extLowerBound = lowerBound.sext(comparisonWidth);
 
+    // Determine the result type
     auto resultingIntType = cast<IntegerType>(resultType.getElementType());
 
-    // Ensure that the value is larger than the lower bound
-    auto clampLower = [&lowerBound, &comparisonWidth](const APInt &val,
-                                                      IntegerType type) {
-      auto clampedLower = llvm::APIntOps::smax(
-          val.sext(comparisonWidth), lowerBound.sext(comparisonWidth));
-      // Make sure the output value has the correct type
-      assert(type.getWidth() >= clampedLower.getSignificantBits());
-      return clampedLower.trunc(type.getWidth());
+    // Lambda to perform the clamp
+    auto clampUpper = [&extLowerBound, &extUpperBound,
+                       &comparisonWidth](const APInt &val, IntegerType type) {
+      auto clampedUpper =
+          llvm::APIntOps::smin(val.sext(comparisonWidth), extUpperBound);
+      auto fullyClamped = llvm::APIntOps::smax(clampedUpper, extLowerBound);
+      assert(type.getWidth() >= fullyClamped.getSignificantBits());
+      return fullyClamped.trunc(type.getWidth());
     };
     auto newTensor = applyElementWise<APInt, APInt, IntegerType>(
-        inputValues, clampLower, resultingIntType);
-
-    // Next, make sure the upper bound is adhered to
-    auto clampUpper = [&upperBound, &comparisonWidth](const APInt &val,
-                                                      IntegerType type) {
-      auto clampedUpper = llvm::APIntOps::smin(
-          val.sext(comparisonWidth), upperBound.sext(comparisonWidth));
-      assert(type.getWidth() >= clampedUpper.getSignificantBits());
-      return clampedUpper.trunc(type.getWidth());
-    };
-    newTensor = applyElementWise<APInt, APInt, IntegerType>(
-        newTensor, clampUpper, resultingIntType);
+        inputValues, clampUpper, resultingIntType);
 
     return newTensor;
   }
@@ -91,33 +83,21 @@ struct TosaFoldConstantClamp : public OpRewritePattern<ClampOp> {
 
     auto resultingFloatType = cast<FloatType>(resultType.getElementType());
 
-    // Ensure that the value is larger than the lower bound
-    auto clampLower = [&lowerBound, &comparisonSem](APFloat val,
-                                                    FloatType type) {
-      if (val.isNaN()) {
-        return APFloat::getNaN(type.getFloatSemantics());
-      }
-      changeSemanticsLossless(val, comparisonSem);
-      auto clampedLower = val < lowerBound ? lowerBound : val;
-      changeSemanticsLossless(clampedLower, &type.getFloatSemantics());
-      return clampedLower;
-    };
-    auto newTensor = applyElementWise<APFloat, APFloat, FloatType>(
-        inputValues, clampLower, resultingFloatType);
-
-    // Next, make sure the upper bound is adhered to
-    auto clampUpper = [&upperBound, &comparisonSem](APFloat val,
-                                                    FloatType type) {
+    // Ensure that the value is larger than the lower bound and smaller than the
+    // upper bound
+    auto clampLower = [&lowerBound, &upperBound,
+                       &comparisonSem](APFloat val, FloatType type) {
       if (val.isNaN()) {
         return APFloat::getNaN(type.getFloatSemantics());
       }
       changeSemanticsLossless(val, comparisonSem);
       auto clampedUpper = val < upperBound ? val : upperBound;
-      changeSemanticsLossless(clampedUpper, &type.getFloatSemantics());
-      return clampedUpper;
+      auto fullyClamped = clampedUpper < lowerBound ? lowerBound : clampedUpper;
+      changeSemanticsLossless(fullyClamped, &type.getFloatSemantics());
+      return fullyClamped;
     };
-    newTensor = applyElementWise<APFloat, APFloat, FloatType>(
-        newTensor, clampUpper, resultingFloatType);
+    auto newTensor = applyElementWise<APFloat, APFloat, FloatType>(
+        inputValues, clampLower, resultingFloatType);
 
     return newTensor;
   }
