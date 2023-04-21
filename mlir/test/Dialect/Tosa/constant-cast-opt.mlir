@@ -1,6 +1,5 @@
 // RUN: mlir-opt --split-input-file -verify-diagnostics --tosa-layerwise-constant-fold %s | FileCheck %s
 
-// -----
 // Casts from float to int
 
 // CHECK-LABEL: @cast_fold_f32_to_i1_all_none_zero
