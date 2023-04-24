@@ -6,6 +6,7 @@ add_mlir_dialect_library(MLIRTosaTransforms
   TosaFoldConstantAdd.cpp
   TosaFoldConstantCast.cpp
   TosaFoldConstantClamp.cpp
+  TosaFoldConstantMul.cpp
   TosaFoldConstantPow.cpp
   TosaFoldConstantReciprocal.cpp
   TosaFoldConstantRSQRT.cpp
