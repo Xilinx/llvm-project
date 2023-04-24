@@ -243,6 +243,21 @@ bool mlir::tosa::constantBinaryOpShouldBeFolded(
   return firstOp == secondOp && numUsers == 2;
 }
 
+bool mlir::tosa::constantUnaryOpShouldBeFolded(TosaOp unaryOp,
+                                               DenseElementsAttr values) {
+  assert(unaryOp->getNumOperands() == 1);
+  auto inputOp = unaryOp->getOperand(0);
+
+  // If the input is a splat, we don't care for the number of users
+  if (isa<SplatElementsAttr>(values)) {
+    return true;
+  }
+
+  // If this is the only use of the tensors it will be replaced an no
+  // additional memory is required.
+  return inputOp.hasOneUse();
+}
+
 APFloat mlir::tosa::computeReciprocal(const APFloat &floatVal,
                                       FloatType floatTy) {
   auto recipAttr = FloatAttr::get(floatTy, 1.0);

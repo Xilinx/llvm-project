@@ -45,12 +45,8 @@ struct TosaFoldConstantReciprocal : public OpRewritePattern<ReciprocalOp> {
     DenseElementsAttr inputValues;
     matchPattern(inputTensor, m_Constant(&inputValues));
 
-    // Our transformation replaces the input tensor with the transformed tensor.
-    // If the input has several users we need to keep the input. This can
-    // result in a significantly increased memory usage, such that we currently
-    // refrain from applying the transformation in that case.
-    // Allow this only for splat values, because the amount of data is small.
-    if (!inputTensor.hasOneUse() && !isa<SplatElementsAttr>(inputValues)) {
+    // Check whether this should be folded.
+    if (!constantUnaryOpShouldBeFolded(recip, inputValues)) {
       return rewriter.notifyMatchFailure(
           recip, "Currently, reciprocals will only be folded if the input "
                  "tensor has a single user");
