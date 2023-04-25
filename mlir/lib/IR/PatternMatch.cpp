@@ -204,6 +204,15 @@ void PDLPatternModule::registerConstraintFunction(
   constraintFunctions.try_emplace(name, std::move(constraintFn));
 }
 
+void PDLPatternModule::registerConstraintFunctionWithResults(
+    StringRef name, PDLRewriteFunction constraintFn) {
+  // TODO: Is it possible to diagnose when `name` is already registered to
+  // a function that is not equivalent to `rewriteFn`?
+  // Allow existing mappings in the case multiple patterns depend on the same
+  // rewrite.
+  registerRewriteFunction(name, std::move(constraintFn));
+}
+
 void PDLPatternModule::registerRewriteFunction(StringRef name,
                                                PDLRewriteFunction rewriteFn) {
   // TODO: Is it possible to diagnose when `name` is already registered to

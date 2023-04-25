@@ -1457,6 +1457,33 @@ public:
                                    std::forward<ConstraintFnT>(constraintFn)));
   }
 
+  /// Register a constraint function that produces results with PDL. A
+  /// constraint function with results uses the same type and registry as
+  /// rewrite functions. It may be specified in one of two ways:
+  ///
+  ///   * `void (PatternRewriter &, PDLResultList &, ArrayRef<PDLValue>)`
+  ///
+  ///   In this overload the arguments of the constraint function are passed via
+  ///   the low-level PDLValue form, and the results are manually appended to
+  ///   the given result list.
+  ///
+  ///   * `ResultT (PatternRewriter &, ValueTs... values)`
+  ///
+  ///   In this form the arguments and result of the constraint function are
+  ///   passed via the expected high level C++ type. In this form, the framework
+  ///   will automatically unwrap the PDLValues arguments and convert them to
+  ///   the expected ValueTs. It will also automatically handle the processing
+  ///   and packaging of the result value to the result list. For more
+  ///   information see the registering of rewrite functions below.
+  void registerConstraintFunctionWithResults(StringRef name,
+                                             PDLRewriteFunction constraintFn);
+  template <typename RewriteFnT>
+  void registerConstraintFunctionWithResults(StringRef name,
+                                             RewriteFnT &&constraintFn) {
+    registerRewriteFunction(name, detail::pdl_function_builder::buildRewriteFn(
+                                      std::forward<RewriteFnT>(constraintFn)));
+  }
+
   /// Register a rewrite function with PDL. A rewrite function may be specified
   /// in one of two ways:
   ///
