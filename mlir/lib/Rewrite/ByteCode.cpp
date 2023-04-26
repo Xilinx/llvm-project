@@ -781,7 +781,8 @@ void Generator::generate(pdl_interp::ApplyConstraintOp op,
   } else {
     assert(true && "expected index for constraint function, make sure it is "
                    "registered properly. Note that native constraints with "
-                   "results have to be registered as native rewriters.");
+                   "results have to be registered using "
+                   "PDLPatternModule::registerConstraintFunctionWithResults.");
   }
   writer.appendPDLValueList(op.getArgs());
   writer.append(ByteCodeField(results.size()));
