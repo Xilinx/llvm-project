@@ -26,14 +26,6 @@ struct TosaFoldConstantAdd : public OpRewritePattern<AddOp> {
 
   using OpRewritePattern::OpRewritePattern;
 
-  static APInt computeIntAdd(const APInt &first, const APInt &second) {
-    return first.sadd_sat(second);
-  }
-
-  static APFloat computeFloatAdd(const APFloat &first, const APFloat &second) {
-    return first + second;
-  }
-
   LogicalResult matchAndRewrite(AddOp addOp,
                                 PatternRewriter &rewriter) const override {
     auto leftOp = addOp.getInput1();
@@ -76,13 +68,27 @@ struct TosaFoldConstantAdd : public OpRewritePattern<AddOp> {
     if (isa<IntegerType>(lhsElemType)) {
       assert(isa<IntegerType>(rhsElemType) &&
              isa<IntegerType>(resultType.getElementType()));
+      bool addOverflowed = false;
+      auto intAdd = [&addOverflowed](const APInt &first, const APInt &second) {
+        bool didOverflow;
+        auto res = first.sadd_ov(second, didOverflow);
+        addOverflowed |= didOverflow;
+        return res;
+      };
       newTensor = applyElementWise<APInt, APInt>(lhsValues, rhsValues,
-                                                 resultType, &computeIntAdd);
+                                                 resultType, intAdd);
+      if (addOverflowed) {
+        addOp->emitWarning(
+            "Addition did overflow. The results are unspecified.");
+      }
     } else {
       assert(isa<FloatType>(lhsElemType) && isa<FloatType>(rhsElemType) &&
              isa<FloatType>(resultType.getElementType()));
-      newTensor = applyElementWise<APFloat, APFloat>(
-          lhsValues, rhsValues, resultType, &computeFloatAdd);
+      auto floatAdd = [](const APFloat &first, const APFloat &second) {
+        return first + second;
+      };
+      newTensor = applyElementWise<APFloat, APFloat>(lhsValues, rhsValues,
+                                                     resultType, floatAdd);
     }
     rewriter.replaceOpWithNewOp<ConstOp>(addOp, newTensor.getType(), newTensor);
 
