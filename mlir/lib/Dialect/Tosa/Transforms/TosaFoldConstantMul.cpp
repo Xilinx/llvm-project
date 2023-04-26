@@ -75,11 +75,12 @@ struct TosaFoldConstantMul : public OpRewritePattern<MulOp> {
              isa<IntegerType>(resultElementType));
       auto resultElementWidth = resultElementType.getIntOrFloatBitWidth();
       assert(resultElementWidth >= lhsElemType.getIntOrFloatBitWidth() &&
-             "The multiplication is expected to have an at least a big  output "
+             "The multiplication is expected to have an at least as big output "
              "as input type");
-      // TODO: To implement shifts > 0, capture the shift value stored in the
-      // mul here
-      bool mulOverflowed;
+
+      // Compute the multiplication and track if an overflow occurred to enable
+      // emitting a warning
+      bool mulOverflowed = false;
       auto intMulFun = [&resultElementWidth, &mulOverflowed](
                            const APInt &first, const APInt &second) {
         bool didOverflow;
