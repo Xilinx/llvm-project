@@ -73,14 +73,28 @@ func.func @mul_fold_int() -> tensor<4xi32> {
   return %2 : tensor<4xi32>
 }
 
-// -----
-// self-multiplication
+// CHECK-LABEL: @mul_fold_i8
+func.func @mul_fold_i8() -> tensor<4xi32> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}204, -12, 0, 0
+  // CHECK-NOT: tosa.mul
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value =
+                        dense<[-17, 4, -2, 0]> :
+                        tensor<4xi8>
+                      } : () -> tensor<4xi8>
+  %1 = "tosa.const"() {value =
+                        dense<[-12, -3, 0, 5]> :
+                        tensor<4xi8>
+                      } : () -> tensor<4xi8>
+  %2 = "tosa.mul"(%0, %1) {shift = 0 : i32} : (tensor<4xi8>, tensor<4xi8>) -> tensor<4xi32>
+  return %2 : tensor<4xi32>
+}
 
 // CHECK-LABEL: @mul_fold_int_overflow
-// TODO: Change expected behavior if the tosa.mul on i32 should not be
-// saturating. Also add a test with different widths in that case.
 func.func @mul_fold_int_overflow() -> tensor<4xi32> {
-  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}2147483647, 2147483647, -2147483648, -2147483648
+  // Don't expect any specific results for the overflowing multiplication, just
+  // that it is folded.
+  // CHECK: [[RES:]] ={{.*}}tosa.const
   // CHECK-NOT: tosa.mul
   // CHECK: return [[RES]]
   %0 = "tosa.const"() {value =
@@ -91,9 +105,13 @@ func.func @mul_fold_int_overflow() -> tensor<4xi32> {
                         dense<[1, 10, 1, 30]> :
                         tensor<4xi32>
                       } : () -> tensor<4xi32>
+  // expected-warning@below {{Multiplication did overflow. The results are unspecified.}}
   %2 = "tosa.mul"(%0, %1) {shift = 0 : i32} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
   return %2 : tensor<4xi32>
 }
+
+// -----
+// self-multiplication
 
 // CHECK-LABEL: @mul_fold_equal_args
 func.func @mul_fold_equal_args() -> tensor<3xi32> {

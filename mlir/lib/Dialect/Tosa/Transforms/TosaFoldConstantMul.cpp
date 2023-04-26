@@ -74,23 +74,26 @@ struct TosaFoldConstantMul : public OpRewritePattern<MulOp> {
       assert(isa<IntegerType>(rhsElemType) &&
              isa<IntegerType>(resultElementType));
       auto resultElementWidth = resultElementType.getIntOrFloatBitWidth();
-      assert(resultElementWidth == 32 &&
-             "All integer multiplications in TOSA are specified to result in "
-             "32 bit width");
+      assert(resultElementWidth >= lhsElemType.getIntOrFloatBitWidth() &&
+             "The multiplication is expected to have an at least a big  output "
+             "as input type");
       // TODO: To implement shifts > 0, capture the shift value stored in the
       // mul here
-      auto intMulFun = [&resultElementWidth](const APInt &first,
-                                             const APInt &second) {
-        // TODO the documentation has conflicting definitions for the behavior
-        // of overflows
-        // The sign extend should always be valid as the result type is required
-        // to be i32 and all other integer input types are smaller or equal
-        // to 32.
-        return first.sext(resultElementWidth)
-            .smul_sat(second.sext(resultElementWidth));
+      bool mulOverflowed;
+      auto intMulFun = [&resultElementWidth, &mulOverflowed](
+                           const APInt &first, const APInt &second) {
+        bool didOverflow;
+        auto res = first.sext(resultElementWidth)
+                       .smul_ov(second.sext(resultElementWidth), didOverflow);
+        mulOverflowed |= didOverflow;
+        return res;
       };
       newTensor = applyElementWise<APInt, APInt>(lhsValues, rhsValues,
                                                  resultType, intMulFun);
+      if (mulOverflowed) {
+        mulOp.emitWarning(
+            "Multiplication did overflow. The results are unspecified.");
+      }
     } else {
       assert(isa<FloatType>(lhsElemType) && isa<FloatType>(rhsElemType) &&
              isa<FloatType>(resultType.getElementType()));
