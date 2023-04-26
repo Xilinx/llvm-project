@@ -68,7 +68,7 @@ struct TosaFoldConstantAdd : public OpRewritePattern<AddOp> {
     if (isa<IntegerType>(lhsElemType)) {
       assert(isa<IntegerType>(rhsElemType) &&
              isa<IntegerType>(resultType.getElementType()));
-      bool addOverflowed;
+      bool addOverflowed = false;
       auto intAdd = [&addOverflowed](const APInt &first, const APInt &second) {
         bool didOverflow;
         auto res = first.sadd_ov(second, didOverflow);
