@@ -75,7 +75,9 @@ func.func @add_fold_int() -> tensor<4xi32> {
 
 // CHECK-LABEL: @add_fold_int_overflow
 func.func @add_fold_int_overflow() -> tensor<4xi32> {
-  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}2147483647, 2147483647, -2147483648, -2147483648
+  // Don't expect any specific results for the overflowing addition, just
+  // expect that it is folded.
+  // CHECK: [[RES:]] ={{.*}}tosa.const
   // CHECK-NOT: tosa.add
   // CHECK: return [[RES]]
   %0 = "tosa.const"() {value =
@@ -86,6 +88,7 @@ func.func @add_fold_int_overflow() -> tensor<4xi32> {
                         dense<[1, 10, -1, -30]> :
                         tensor<4xi32>
                       } : () -> tensor<4xi32>
+  // expected-warning@below {{Addition did overflow. The results are unspecified.}}
   %2 = "tosa.add"(%0, %1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
   return %2 : tensor<4xi32>
 }
