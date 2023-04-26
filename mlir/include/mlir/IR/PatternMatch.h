@@ -1458,7 +1458,7 @@ public:
   }
 
   /// Register a constraint function that produces results with PDL. A
-  /// constraint function with results uses the same type and registry as
+  /// constraint function with results uses the same registry as
   /// rewrite functions. It may be specified as follows:
   ///
   ///   * `LogicalResult (PatternRewriter &, PDLResultList &,
