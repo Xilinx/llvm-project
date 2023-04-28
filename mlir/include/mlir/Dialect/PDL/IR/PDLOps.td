@@ -362,9 +362,10 @@ def PDL_OperationOp : PDL_Op<"operation", [AttrSizedOperandSegments]> {
       CArg<"ValueRange", "llvm::None">:$attrValues,
       CArg<"ValueRange", "llvm::None">:$resultTypes), [{
       auto nameAttr = name ? $_builder.getStringAttr(*name) : StringAttr();
+      IntegerAttr numRegionsAttr;
       build($_builder, $_state, $_builder.getType<OperationType>(), nameAttr,
             operandValues, attrValues, $_builder.getStrArrayAttr(attrNames),
-            resultTypes, nullptr);
+            resultTypes, numRegionsAttr);
     }]>,
   ];
   let extraClassDeclaration = [{
