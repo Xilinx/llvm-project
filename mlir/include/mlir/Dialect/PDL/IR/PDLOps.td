@@ -346,7 +346,8 @@ def PDL_OperationOp : PDL_Op<"operation", [AttrSizedOperandSegments]> {
                        Variadic<PDL_InstOrRangeOf<PDL_Value>>:$operandValues,
                        Variadic<PDL_Attribute>:$attributeValues,
                        StrArrayAttr:$attributeValueNames,
-                       Variadic<PDL_InstOrRangeOf<PDL_Type>>:$typeValues);
+                       Variadic<PDL_InstOrRangeOf<PDL_Type>>:$typeValues,
+                       OptionalAttr<UI32Attr>:$numRegions);
   let results = (outs PDL_Operation:$op);
   let assemblyFormat = [{
     ($opName^)? (`(` $operandValues^ `:` type($operandValues) `)`)?
@@ -363,7 +364,7 @@ def PDL_OperationOp : PDL_Op<"operation", [AttrSizedOperandSegments]> {
       auto nameAttr = name ? $_builder.getStringAttr(*name) : StringAttr();
       build($_builder, $_state, $_builder.getType<OperationType>(), nameAttr,
             operandValues, attrValues, $_builder.getStrArrayAttr(attrNames),
-            resultTypes);
+            resultTypes, nullptr);
     }]>,
   ];
   let extraClassDeclaration = [{
