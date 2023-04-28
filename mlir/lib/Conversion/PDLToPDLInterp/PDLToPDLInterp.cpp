@@ -765,11 +765,13 @@ void PatternLowering::generateRewriter(
   generateOperationResultTypeRewriter(operationOp, mapRewriteValue, types,
                                       rewriteValues, hasInferredResultTypes);
 
+  auto numRegions = operationOp.getNumRegions().value_or(0);
+
   // Create the new operation.
   Location loc = operationOp.getLoc();
   Value createdOp = builder.create<pdl_interp::CreateOperationOp>(
       loc, *operationOp.getOpName(), types, hasInferredResultTypes, operands,
-      attributes, operationOp.getAttributeValueNames());
+      attributes, operationOp.getAttributeValueNames(), numRegions);
   rewriteValues[operationOp.getOp()] = createdOp;
 
   // Generate accesses for any results that have their types constrained.
