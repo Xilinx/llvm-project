@@ -2,6 +2,8 @@ add_mlir_dialect_library(MLIRTosaTransforms
   TosaDecomposeTransposeConv.cpp
   TosaDecomposeConv2D.cpp
   TosaDecomposeDepthwise.cpp
+  TosaFoldCommon.cpp
+  TosaFoldConstantReciprocal.cpp
   TosaFoldConstantTranspose.cpp
   TosaInferShapes.cpp
   TosaLayerwiseConstantFoldPass.cpp
