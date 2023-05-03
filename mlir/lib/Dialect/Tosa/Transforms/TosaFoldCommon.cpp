@@ -40,7 +40,6 @@ DenseElementsAttr mlir::tosa::applyElementWise(
   auto inShape = toTransform.getType();
   auto outTy = inShape.cloneWith({}, targetType);
 
-  // Create a new tensor containing the computed values
   return DenseElementsAttr::get(outTy, transformedValues);
 }
 
