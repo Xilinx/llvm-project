@@ -267,12 +267,12 @@ module @range_op {
 module @create_empty_region {
   // CHECK: module @rewriters
   // CHECK:   func @pdl_generated_rewriter()
-  // CHECK:     %[[UNUSED:.*]] = pdl_interp.create_operation "bar.op" {numRegions = 1 : ui32}
+  // CHECK:     %[[UNUSED:.*]] = pdl_interp.create_operation "bar.op" {} {numRegions = 1 : ui32}
   // CHECK:     pdl_interp.finalize
   pdl.pattern : benefit(1) {
     %root = operation "foo.op"
     rewrite %root {
-      %unused = operation "bar.op"{} {"numRegions" = 1 : ui32}
+      %unused = operation "bar.op" {} {"numRegions" = 1 : ui32}
     }
   }
 }

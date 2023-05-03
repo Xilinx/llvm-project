@@ -170,7 +170,17 @@ static ParseResult parseOperationOpAttributes(
 static void printOperationOpAttributes(OpAsmPrinter &p, OperationOp op,
                                        OperandRange attrArgs,
                                        ArrayAttr attrNames) {
-  if (attrNames.empty())
+  /// Only omit printing empty `{}` if there are no other attributes that have
+  /// to be printed later because otherwise we could not discern the attr dict.
+  static const SmallVector<StringRef, 3> specialAttrs = {
+      "operand_segment_sizes", "attributeValueNames", "opName"};
+  bool onlySpecialAttrs =
+      llvm::all_of(op->getAttrs(), [&](const NamedAttribute &attr) {
+        return llvm::any_of(specialAttrs, [&](const StringRef &predefinedAttr) {
+          return attr.getName() == predefinedAttr;
+        });
+      });
+  if (attrNames.empty() && onlySpecialAttrs)
     return;
   p << " {";
   interleaveComma(llvm::seq<int>(0, attrNames.size()), p,
