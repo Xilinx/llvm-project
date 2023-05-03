@@ -22,7 +22,6 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/FormatVariadic.h"
-#include <iostream>
 #include <numeric>
 
 #define DEBUG_TYPE "pdl-bytecode"
@@ -888,7 +887,7 @@ void Generator::generate(pdl_interp::CreateOperationOp op,
     writer.appendPDLValueList(op.getInputResultTypes());
 
   // Add number of regions
-  if (IntegerAttr attr = op->getAttrOfType<IntegerAttr>("numRegions")) {
+  if (IntegerAttr attr = op.getNumRegionsAttr()) {
     writer.append(ByteCodeField(attr.getUInt()));
   } else {
     unsigned numRegions = 0;
