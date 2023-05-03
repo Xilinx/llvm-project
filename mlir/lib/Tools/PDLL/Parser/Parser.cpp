@@ -421,7 +421,8 @@ private:
                       OpResultTypeContext resultTypeContext,
                       SmallVectorImpl<ast::Expr *> &operands,
                       MutableArrayRef<ast::NamedAttributeDecl *> attributes,
-                      SmallVectorImpl<ast::Expr *> &results);
+                      SmallVectorImpl<ast::Expr *> &results,
+                      unsigned numRegions);
   LogicalResult
   validateOperationOperands(SMRange loc, Optional<StringRef> name,
                             const ods::Operation *odsOp,
@@ -2129,8 +2130,23 @@ Parser::parseOperationExpr(OpResultTypeContext inputResultTypeContext) {
     resultTypeContext = OpResultTypeContext::Interface;
   }
 
+  // Parse list of regions
+  unsigned numRegions = 0;
+  if (consumeIf(Token::l_paren)) {
+    do {
+      if (failed(parseToken(Token::l_brace, "expected `{` to open region")))
+        return failure();
+      if (failed(parseToken(Token::r_brace, "expected `}` to close region")))
+        return failure();
+      numRegions++;
+    } while (consumeIf(Token::comma));
+    if (failed(parseToken(Token::r_paren, "expected `)` to close region "
+                                          "list")))
+      return failure();
+  }
+
   return createOperationExpr(loc, *opNameDecl, resultTypeContext, operands,
-                             attributes, resultTypes);
+                             attributes, resultTypes, numRegions);
 }
 
 FailureOr<ast::Expr *> Parser::parseTupleExpr() {
@@ -2807,7 +2823,7 @@ FailureOr<ast::OperationExpr *> Parser::createOperationExpr(
     OpResultTypeContext resultTypeContext,
     SmallVectorImpl<ast::Expr *> &operands,
     MutableArrayRef<ast::NamedAttributeDecl *> attributes,
-    SmallVectorImpl<ast::Expr *> &results) {
+    SmallVectorImpl<ast::Expr *> &results, unsigned numRegions) {
   Optional<StringRef> opNameRef = name->getName();
   const ods::Operation *odsOp = lookupODSOperation(opNameRef);
 
@@ -2844,7 +2860,7 @@ FailureOr<ast::OperationExpr *> Parser::createOperationExpr(
   }
 
   return ast::OperationExpr::create(ctx, loc, odsOp, name, operands, results,
-                                    attributes);
+                                    attributes, numRegions);
 }
 
 LogicalResult
