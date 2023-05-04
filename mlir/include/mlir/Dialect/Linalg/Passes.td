@@ -111,7 +111,6 @@ def LinalgGeneralization : Pass<"linalg-generalize-named-ops", "func::FuncOp"> {
   let dependentDialects = ["linalg::LinalgDialect"];
 }
 
-<<<<<<< HEAD
 def LinalgUnfuse : Pass<"linalg-unfuse", "func::FuncOp"> {
   let summary = "Convert fused named ops into simple ops";
   let constructor = "mlir::createLinalgUnfusePass()";
@@ -144,9 +143,6 @@ def LinalgStructuralFusion : Pass<"linalg-structural-fusion", "func::FuncOp"> {
 }
 
 def LinalgDetensorize : Pass<"linalg-detensorize", ""> {
-=======
-def LinalgDetensorize : InterfacePass<"linalg-detensorize", "FunctionOpInterface"> {
->>>>>>> [mlir] [Linalg] Limit Detensorize pass to FunctionOpInterface
   let summary = "Detensorize linalg ops";
   let constructor = "mlir::createLinalgDetensorizePass()";
   let dependentDialects = [];
