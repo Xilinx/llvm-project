@@ -64,6 +64,8 @@ LogicalResult CreateOperationOp::verify() {
   return success();
 }
 
+/// Handles parsing of OperationOpAttributes, e.g. {"attr" = %attribute}.
+/// Also allows empty `{}`
 static ParseResult parseCreateOperationOpAttributes(
     OpAsmParser &p,
     SmallVectorImpl<OpAsmParser::UnresolvedOperand> &attrOperands,
@@ -90,6 +92,9 @@ static ParseResult parseCreateOperationOpAttributes(
   return success();
 }
 
+/// Handles printing of OperationOpAttributes, e.g. {"attr" = %attribute}.
+/// Prints empty `{}` when it would not be possible to discern the attr-dict
+/// otherwise.
 static void printCreateOperationOpAttributes(OpAsmPrinter &p,
                                              CreateOperationOp op,
                                              OperandRange attrArgs,

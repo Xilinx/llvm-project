@@ -141,6 +141,8 @@ LogicalResult OperandsOp::verify() { return verifyHasBindingUse(*this); }
 // pdl::OperationOp
 //===----------------------------------------------------------------------===//
 
+/// Handles parsing of OperationOpAttributes, e.g. {"attr" = %attribute}.
+/// Also allows empty `{}`
 static ParseResult parseOperationOpAttributes(
     OpAsmParser &p,
     SmallVectorImpl<OpAsmParser::UnresolvedOperand> &attrOperands,
@@ -167,6 +169,9 @@ static ParseResult parseOperationOpAttributes(
   return success();
 }
 
+/// Handles printing of OperationOpAttributes, e.g. {"attr" = %attribute}.
+/// Prints empty `{}` when it would not be possible to discern the attr-dict
+/// otherwise.
 static void printOperationOpAttributes(OpAsmPrinter &p, OperationOp op,
                                        OperandRange attrArgs,
                                        ArrayAttr attrNames) {
