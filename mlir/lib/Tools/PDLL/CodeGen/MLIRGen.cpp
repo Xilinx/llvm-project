@@ -519,9 +519,9 @@ Value CodeGen::genExprImpl(const ast::OperationExpr *expr) {
       loc, opName, operands, attrNames, attrValues, results);
 
   // numRegions
-  if (expr->getNumRegions() > 0) {
+  if (expr->getNumRegions() > 0)
     operationOp.setNumRegions(expr->getNumRegions());
-  }
+
   return operationOp;
 }
 
