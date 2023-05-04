@@ -241,6 +241,29 @@ Pattern {
 
 // -----
 
+// Test parsing of an op with an empty region
+
+// CHECK: Module
+// CHECK:  -PatternDecl {{.*}}
+// CHECK:  -RewriteStmt {{.*}}
+// CHECK:  -OperationExpr {{.*}} Type<Op<test.foo>>
+// CHECK-SAME: numRegions:0
+// CHECK:    `Operands`
+// CHECK:    `Result Types`
+// CHECK:    `Attributes`
+// CHECK:  -OperationExpr {{.*}} Type<Op<test.foo_with_region>>
+// CHECK-SAME: numRegions:1
+// CHECK:    `Operands`
+// CHECK:    `Result Types`
+// CHECK:    `Attributes`
+Pattern {
+  rewrite op<test.foo>(operand: Value) {attr=attr: Attr} -> (type : Type) with {
+    op<test.foo_with_region>(operand) {attr=attr} -> (type) ({});
+  };
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // TupleExpr
 //===----------------------------------------------------------------------===//
