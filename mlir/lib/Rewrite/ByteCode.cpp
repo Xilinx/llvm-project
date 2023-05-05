@@ -885,6 +885,14 @@ void Generator::generate(pdl_interp::CreateOperationOp op,
     writer.append(kInferTypesMarker);
   else
     writer.appendPDLValueList(op.getInputResultTypes());
+
+  // Add number of regions
+  if (IntegerAttr attr = op.getNumRegionsAttr()) {
+    writer.append(ByteCodeField(attr.getUInt()));
+  } else {
+    unsigned numRegions = 0;
+    writer.append(ByteCodeField(numRegions));
+  }
 }
 void Generator::generate(pdl_interp::CreateRangeOp op, ByteCodeWriter &writer) {
   // Append the correct opcode for the range type.
@@ -1661,6 +1669,12 @@ void ByteCodeExecutor::executeCreateOperation(PatternRewriter &rewriter,
         state.types.append(resultTypes->begin(), resultTypes->end());
       }
     }
+  }
+
+  // handle regions:
+  unsigned numRegions = read();
+  for (unsigned i = 0; i < numRegions; i++) {
+    state.addRegion();
   }
 
   Operation *resultOp = rewriter.create(state);

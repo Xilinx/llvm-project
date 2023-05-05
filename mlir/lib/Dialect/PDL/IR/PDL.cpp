@@ -141,6 +141,8 @@ LogicalResult OperandsOp::verify() { return verifyHasBindingUse(*this); }
 // pdl::OperationOp
 //===----------------------------------------------------------------------===//
 
+/// Handles parsing of OperationOpAttributes, e.g. {"attr" = %attribute}.
+/// Also allows empty `{}`
 static ParseResult parseOperationOpAttributes(
     OpAsmParser &p,
     SmallVectorImpl<OpAsmParser::UnresolvedOperand> &attrOperands,
@@ -148,27 +150,42 @@ static ParseResult parseOperationOpAttributes(
   Builder &builder = p.getBuilder();
   SmallVector<Attribute, 4> attrNames;
   if (succeeded(p.parseOptionalLBrace())) {
-    auto parseOperands = [&]() {
-      StringAttr nameAttr;
-      OpAsmParser::UnresolvedOperand operand;
-      if (p.parseAttribute(nameAttr) || p.parseEqual() ||
-          p.parseOperand(operand))
+    if (failed(p.parseOptionalRBrace())) {
+      auto parseOperands = [&]() {
+        StringAttr nameAttr;
+        OpAsmParser::UnresolvedOperand operand;
+        if (p.parseAttribute(nameAttr) || p.parseEqual() ||
+            p.parseOperand(operand))
+          return failure();
+        attrNames.push_back(nameAttr);
+        attrOperands.push_back(operand);
+        return success();
+      };
+      if (p.parseCommaSeparatedList(parseOperands) || p.parseRBrace())
         return failure();
-      attrNames.push_back(nameAttr);
-      attrOperands.push_back(operand);
-      return success();
-    };
-    if (p.parseCommaSeparatedList(parseOperands) || p.parseRBrace())
-      return failure();
+    }
   }
   attrNamesAttr = builder.getArrayAttr(attrNames);
   return success();
 }
 
+/// Handles printing of OperationOpAttributes, e.g. {"attr" = %attribute}.
+/// Prints empty `{}` when it would not be possible to discern the attr-dict
+/// otherwise.
 static void printOperationOpAttributes(OpAsmPrinter &p, OperationOp op,
                                        OperandRange attrArgs,
                                        ArrayAttr attrNames) {
-  if (attrNames.empty())
+  /// Only omit printing empty `{}` if there are no other attributes that have
+  /// to be printed later because otherwise we could not discern the attr dict.
+  static const SmallVector<StringRef, 3> specialAttrs = {
+      "operand_segment_sizes", "attributeValueNames", "opName"};
+  bool onlySpecialAttrs =
+      llvm::all_of(op->getAttrs(), [&](const NamedAttribute &attr) {
+        return llvm::any_of(specialAttrs, [&](const StringRef &predefinedAttr) {
+          return attr.getName() == predefinedAttr;
+        });
+      });
+  if (attrNames.empty() && onlySpecialAttrs)
     return;
   p << " {";
   interleaveComma(llvm::seq<int>(0, attrNames.size()), p,

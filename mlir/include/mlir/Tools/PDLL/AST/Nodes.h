@@ -501,12 +501,11 @@ class OperationExpr final
       private llvm::TrailingObjects<OperationExpr, Expr *,
                                     NamedAttributeDecl *> {
 public:
-  static OperationExpr *create(Context &ctx, SMRange loc,
-                               const ods::Operation *odsOp,
-                               const OpNameDecl *nameDecl,
-                               ArrayRef<Expr *> operands,
-                               ArrayRef<Expr *> resultTypes,
-                               ArrayRef<NamedAttributeDecl *> attributes);
+  static OperationExpr *
+  create(Context &ctx, SMRange loc, const ods::Operation *odsOp,
+         const OpNameDecl *nameDecl, ArrayRef<Expr *> operands,
+         ArrayRef<Expr *> resultTypes,
+         ArrayRef<NamedAttributeDecl *> attributes, unsigned numRegions);
 
   /// Return the name of the operation, or None if there isn't one.
   Optional<StringRef> getName() const;
@@ -542,19 +541,22 @@ public:
     return const_cast<OperationExpr *>(this)->getAttributes();
   }
 
+  unsigned getNumRegions() const { return numRegions; }
+
 private:
   OperationExpr(SMRange loc, Type type, const OpNameDecl *nameDecl,
                 unsigned numOperands, unsigned numResultTypes,
-                unsigned numAttributes, SMRange nameLoc)
+                unsigned numAttributes, unsigned numRegions, SMRange nameLoc)
       : Base(loc, type), nameDecl(nameDecl), numOperands(numOperands),
         numResultTypes(numResultTypes), numAttributes(numAttributes),
-        nameLoc(nameLoc) {}
+        numRegions(numRegions), nameLoc(nameLoc) {}
 
   /// The name decl of this expression.
   const OpNameDecl *nameDecl;
 
-  /// The number of operands, result types, and attributes of the operation.
-  unsigned numOperands, numResultTypes, numAttributes;
+  /// The number of operands, result types, attributes and regions of the
+  /// operation.
+  unsigned numOperands, numResultTypes, numAttributes, numRegions;
 
   /// The location of the operation name in the expression if it has a name.
   SMRange nameLoc;

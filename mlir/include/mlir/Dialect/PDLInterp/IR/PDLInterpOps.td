@@ -430,15 +430,24 @@ def PDLInterp_CreateOperationOp
                        Variadic<PDL_Attribute>:$inputAttributes,
                        StrArrayAttr:$inputAttributeNames,
                        Variadic<PDL_InstOrRangeOf<PDL_Type>>:$inputResultTypes,
-                       UnitAttr:$inferredResultTypes);
+                       UnitAttr:$inferredResultTypes,
+                       OptionalAttr<UI32Attr>:$numRegions);
   let results = (outs PDL_Operation:$resultOp);
 
   let builders = [
     OpBuilder<(ins "StringRef":$name, "ValueRange":$types,
       "bool":$inferredResultTypes, "ValueRange":$operands,
       "ValueRange":$attributes, "ArrayAttr":$attributeNames), [{
+      IntegerAttr numRegionsAttr;
       build($_builder, $_state, $_builder.getType<pdl::OperationType>(), name,
-            operands, attributes, attributeNames, types, inferredResultTypes);
+            operands, attributes, attributeNames, types, inferredResultTypes, numRegionsAttr);
+    }]>,
+    OpBuilder<(ins "StringRef":$name, "ValueRange":$types,
+      "bool":$inferredResultTypes, "ValueRange":$operands,
+      "ValueRange":$attributes, "ArrayAttr":$attributeNames, "uint32_t":$numRegions), [{
+      auto numRegionsAttr = $_builder.getUI32IntegerAttr(numRegions);
+      build($_builder, $_state, $_builder.getType<pdl::OperationType>(), name,
+            operands, attributes, attributeNames, types, inferredResultTypes, numRegionsAttr);
     }]>
   ];
   let assemblyFormat = [{
