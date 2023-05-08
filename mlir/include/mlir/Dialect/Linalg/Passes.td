@@ -142,7 +142,7 @@ def LinalgStructuralFusion : Pass<"linalg-structural-fusion", "func::FuncOp"> {
   ];
 }
 
-def LinalgDetensorize : Pass<"linalg-detensorize", ""> {
+def LinalgDetensorize : InterfacePass<"linalg-detensorize", "FunctionOpInterface"> {
   let summary = "Detensorize linalg ops";
   let constructor = "mlir::createLinalgDetensorizePass()";
   let dependentDialects = [];
