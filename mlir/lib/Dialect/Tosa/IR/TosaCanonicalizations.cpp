@@ -474,7 +474,7 @@ OpFoldResult AddOp::fold(ArrayRef<Attribute> operands) {
   auto resultTy = getType().dyn_cast<RankedTensorType>();
   if (!lhsTy || !rhsTy || !resultTy)
     return {};
-  if (lhsTy != rhsTy)
+  if (lhsTy.getRank() != rhsTy.getRank())
     return {};
 
   auto resultETy = resultTy.getElementType();
@@ -502,6 +502,9 @@ OpFoldResult AddOp::fold(ArrayRef<Attribute> operands) {
   }
 
   if (!lhsAttr || !rhsAttr)
+    return {};
+
+  if (lhsTy != rhsTy)
     return {};
 
   return binaryFolder<std::plus<APInt>, std::plus<APFloat>>(lhsAttr, rhsAttr,
@@ -635,7 +638,7 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
   auto resultTy = getType().dyn_cast<RankedTensorType>();
   if (!lhsTy || !rhsTy || !resultTy)
     return {};
-  if (lhsTy != rhsTy)
+  if (lhsTy.getRank() != rhsTy.getRank())
     return {};
 
   auto resultETy = resultTy.getElementType();
@@ -653,6 +656,9 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
   }
 
   if (!lhsAttr || !rhsAttr)
+    return {};
+
+  if (lhsTy != rhsTy)
     return {};
 
   return binaryFolder<std::minus<APInt>, std::minus<APFloat>>(lhsAttr, rhsAttr,
