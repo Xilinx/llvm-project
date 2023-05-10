@@ -1,4 +1,4 @@
-//===-- RISCVMCInstLower.cpp - Convert RISCV MachineInstr to an MCInst ------=//
+//===-- RISCVMCInstLower.cpp - Convert RISC-V MachineInstr to an MCInst -----=//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains code to lower RISCV MachineInstrs to their corresponding
+// This file contains code to lower RISC-V MachineInstrs to their corresponding
 // MCInst records.
 //
 //===----------------------------------------------------------------------===//
@@ -253,18 +253,6 @@ bool llvm::lowerRISCVMachineInstrToMCInst(const MachineInstr *MI, MCInst &OutMI,
     }
     break;
   }
-  case RISCV::PseudoReadVLENB:
-    OutMI.setOpcode(RISCV::CSRRS);
-    OutMI.addOperand(MCOperand::createImm(
-        RISCVSysReg::lookupSysRegByName("VLENB")->Encoding));
-    OutMI.addOperand(MCOperand::createReg(RISCV::X0));
-    break;
-  case RISCV::PseudoReadVL:
-    OutMI.setOpcode(RISCV::CSRRS);
-    OutMI.addOperand(
-        MCOperand::createImm(RISCVSysReg::lookupSysRegByName("VL")->Encoding));
-    OutMI.addOperand(MCOperand::createReg(RISCV::X0));
-    break;
   }
   return false;
 }

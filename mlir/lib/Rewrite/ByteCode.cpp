@@ -769,10 +769,28 @@ void Generator::generate(Operation *op, ByteCodeWriter &writer) {
 
 void Generator::generate(pdl_interp::ApplyConstraintOp op,
                          ByteCodeWriter &writer) {
-  assert(constraintToMemIndex.count(op.getName()) &&
-         "expected index for constraint function");
-  writer.append(OpCode::ApplyConstraint, constraintToMemIndex[op.getName()]);
+  /// Constraints that should return a value have to be registered as rewrites
+  /// If the constraint and rewrite of similar name are registered the
+  /// constraint fun takes precedence
+  ResultRange results = op.getResults();
+  if (results.size() == 0 && constraintToMemIndex.count(op.getName()) != 0) {
+    writer.append(OpCode::ApplyConstraint, constraintToMemIndex[op.getName()]);
+  } else if (results.size() > 0 &&
+             externalRewriterToMemIndex.count(op.getName()) != 0) {
+    writer.append(OpCode::ApplyConstraint,
+                  externalRewriterToMemIndex[op.getName()]);
+  } else {
+    assert(true && "expected index for constraint function, make sure it is "
+                   "registered properly. Note that native constraints with "
+                   "results have to be registered using "
+                   "PDLPatternModule::registerConstraintFunctionWithResults.");
+  }
   writer.appendPDLValueList(op.getArgs());
+  writer.append(ByteCodeField(results.size()));
+  for (Value result : results) {
+    // TODO: Handle result ranges
+    writer.append(result);
+  }
   writer.append(op.getSuccessors());
 }
 void Generator::generate(pdl_interp::ApplyRewriteOp op,
@@ -1406,7 +1424,7 @@ public:
 
 void ByteCodeExecutor::executeApplyConstraint(PatternRewriter &rewriter) {
   LLVM_DEBUG(llvm::dbgs() << "Executing ApplyConstraint:\n");
-  const PDLConstraintFunction &constraintFn = constraintFunctions[read()];
+  ByteCodeField fun_idx = read();
   SmallVector<PDLValue, 16> args;
   readList<PDLValue>(args);
 
@@ -1415,8 +1433,26 @@ void ByteCodeExecutor::executeApplyConstraint(PatternRewriter &rewriter) {
     llvm::interleaveComma(args, llvm::dbgs());
   });
 
-  // Invoke the constraint and jump to the proper destination.
-  selectJump(succeeded(constraintFn(rewriter, args)));
+  ByteCodeField numResults = read();
+  if (numResults == 0) {
+    const PDLConstraintFunction &constraintFn = constraintFunctions[fun_idx];
+    LogicalResult rewriteResult = constraintFn(rewriter, args);
+    // Depending on the constraint jump to the proper destination.
+    selectJump(succeeded(rewriteResult));
+  } else {
+    const PDLRewriteFunction &constraintFn = rewriteFunctions[fun_idx];
+    ByteCodeRewriteResultList results(numResults);
+    LogicalResult rewriteResult = constraintFn(rewriter, results, args);
+    assert(results.getResults().size() == numResults &&
+           "native PDL rewrite function returned unexpected number of results");
+
+    for (PDLValue &result : results.getResults()) {
+      LLVM_DEBUG(llvm::dbgs() << "  * Result: " << result << "\n");
+      memory[read()] = result.getAsOpaquePointer();
+    }
+    // Depending on the constraint jump to the proper destination.
+    selectJump(succeeded(rewriteResult));
+  }
 }
 
 LogicalResult ByteCodeExecutor::executeApplyRewrite(PatternRewriter &rewriter) {

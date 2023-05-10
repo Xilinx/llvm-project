@@ -17,6 +17,7 @@ add_llvm_unittest(ADTTests
   BumpPtrListTest.cpp
   CoalescingBitVectorTest.cpp
   CombinationGeneratorTest.cpp
+  ConcurrentHashtableTest.cpp
   DAGDeltaAlgorithmTest.cpp
   DeltaAlgorithmTest.cpp
   DenseMapTest.cpp
@@ -78,6 +79,7 @@ add_llvm_unittest(ADTTests
   StringRefTest.cpp
   StringSetTest.cpp
   StringSwitchTest.cpp
+  StringViewExtrasTest.cpp
   TinyPtrVectorTest.cpp
   TwineTest.cpp
   TypeSwitchTest.cpp

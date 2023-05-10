@@ -1,4 +1,4 @@
-//===-- RISCVBaseInfo.cpp - Top level definitions for RISCV MC ------------===//
+//===-- RISCVBaseInfo.cpp - Top level definitions for RISC-V MC -----------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains small standalone enum definitions for the RISCV target
+// This file contains small standalone enum definitions for the RISC-V target
 // useful for the compiler back-end and the MC libraries.
 //
 //===----------------------------------------------------------------------===//
@@ -98,7 +98,7 @@ ABI getTargetABI(StringRef ABIName) {
 MCRegister getBPReg() { return RISCV::X9; }
 
 // Returns the register holding shadow call stack pointer.
-MCRegister getSCSPReg() { return RISCV::X18; }
+MCRegister getSCSPReg() { return RISCV::X3; }
 
 } // namespace RISCVABI
 

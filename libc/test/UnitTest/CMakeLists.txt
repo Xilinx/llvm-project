@@ -3,9 +3,17 @@ add_library(
   Test.h
   LibcTest.cpp
   LibcTest.h
+  TestLogger.cpp
+  TestLogger.h
 )
 target_include_directories(LibcUnitTest PUBLIC ${LIBC_SOURCE_DIR})
-add_dependencies(LibcUnitTest libc.src.__support.CPP.type_traits libc.src.__support.uint128)
+add_dependencies(
+  LibcUnitTest
+  libc.src.__support.CPP.string
+  libc.src.__support.CPP.string_view
+  libc.src.__support.CPP.type_traits
+  libc.src.__support.OSUtil.osutil
+  libc.src.__support.uint128)
 target_link_libraries(LibcUnitTest PUBLIC libc_test_utils)
 
 add_library(
@@ -20,17 +28,17 @@ target_link_libraries(LibcUnitTestMain PUBLIC LibcUnitTest libc_test_utils)
 add_header_library(
   string_utils
   HDRS
-    StringUtils.h
+  StringUtils.h
   DEPENDS
-  libc.src.__support.CPP.type_traits
+    libc.src.__support.CPP.string
+    libc.src.__support.CPP.type_traits
 )
 
 add_library(
   LibcFPTestHelpers
-    FPExceptMatcher.cpp
-    FPExceptMatcher.h
-    FPMatcher.cpp
-    FPMatcher.h
+  FPExceptMatcher.cpp
+  FPExceptMatcher.h
+  FPMatcher.h
 )
 target_include_directories(LibcFPTestHelpers PUBLIC ${LIBC_SOURCE_DIR})
 target_link_libraries(LibcFPTestHelpers LibcUnitTest libc_test_utils)
@@ -40,12 +48,13 @@ add_dependencies(
   libc.test.UnitTest.string_utils
   libc.src.__support.FPUtil.fp_bits
   libc.src.__support.FPUtil.fenv_impl
+  libc.test.UnitTest.string_utils
 )
 
 add_library(
   LibcMemoryHelpers
-    MemoryMatcher.h
-    MemoryMatcher.cpp
+  MemoryMatcher.h
+  MemoryMatcher.cpp
 )
 target_include_directories(LibcMemoryHelpers PUBLIC ${LIBC_SOURCE_DIR})
 target_link_libraries(LibcMemoryHelpers LibcUnitTest)
@@ -57,8 +66,8 @@ add_dependencies(
 
 add_library(
   LibcPrintfHelpers
-    PrintfMatcher.h
-    PrintfMatcher.cpp
+  PrintfMatcher.h
+  PrintfMatcher.cpp
 )
 target_include_directories(LibcPrintfHelpers PUBLIC ${LIBC_SOURCE_DIR})
 target_link_libraries(LibcPrintfHelpers LibcUnitTest)
@@ -72,8 +81,8 @@ add_dependencies(
 
 add_library(
   LibcScanfHelpers
-    ScanfMatcher.h
-    ScanfMatcher.cpp
+  ScanfMatcher.h
+  ScanfMatcher.cpp
 )
 target_include_directories(LibcScanfHelpers PUBLIC ${LIBC_SOURCE_DIR})
 target_link_libraries(LibcScanfHelpers LibcUnitTest)

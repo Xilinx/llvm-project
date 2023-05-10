@@ -1,4 +1,4 @@
-//===-- RISCVDisassembler.cpp - Disassembler for RISCV --------------------===//
+//===-- RISCVDisassembler.cpp - Disassembler for RISC-V -------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -573,6 +573,13 @@ DecodeStatus RISCVDisassembler::getInstruction(MCInst &MI, uint64_t &Size,
       LLVM_DEBUG(dbgs() << "Trying XTHeadVdot custom opcode table:\n");
       Result =
           decodeInstruction(DecoderTableTHeadV32, MI, Insn, Address, this, STI);
+      if (Result != MCDisassembler::Fail)
+        return Result;
+    }
+    if (STI.hasFeature(RISCV::FeatureVendorXSfvcp)) {
+      LLVM_DEBUG(dbgs() << "Trying SiFive VCIX custom opcode table:\n");
+      Result = decodeInstruction(DecoderTableXSfvcp32, MI, Insn, Address, this,
+                                 STI);
       if (Result != MCDisassembler::Fail)
         return Result;
     }

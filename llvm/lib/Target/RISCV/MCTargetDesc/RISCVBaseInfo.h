@@ -1,4 +1,4 @@
-//===-- RISCVBaseInfo.h - Top level definitions for RISCV MC ----*- C++ -*-===//
+//===-- RISCVBaseInfo.h - Top level definitions for RISC-V MC ---*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file contains small standalone enum definitions for the RISCV target
+// This file contains small standalone enum definitions for the RISC-V target
 // useful for the compiler back-end and the MC libraries.
 //
 //===----------------------------------------------------------------------===//
@@ -240,7 +240,8 @@ enum {
 namespace RISCVOp {
 enum OperandType : unsigned {
   OPERAND_FIRST_RISCV_IMM = MCOI::OPERAND_FIRST_TARGET,
-  OPERAND_UIMM2 = OPERAND_FIRST_RISCV_IMM,
+  OPERAND_UIMM1 = OPERAND_FIRST_RISCV_IMM,
+  OPERAND_UIMM2,
   OPERAND_UIMM2_LSB0,
   OPERAND_UIMM3,
   OPERAND_UIMM4,
@@ -249,6 +250,7 @@ enum OperandType : unsigned {
   OPERAND_UIMM7,
   OPERAND_UIMM7_LSB00,
   OPERAND_UIMM8_LSB00,
+  OPERAND_UIMM8,
   OPERAND_UIMM8_LSB000,
   OPERAND_UIMM9_LSB000,
   OPERAND_UIMM10_LSB00_NONZERO,

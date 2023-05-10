@@ -8,8 +8,8 @@
 // UNSUPPORTED: c++03, c++11, c++14, c++17, c++20
 // UNSUPPORTED: libcpp-has-no-incomplete-format
 
-// This test uses std::filesystem::path, which was introduced in macOS 10.15
-// XFAIL: use_system_cxx_lib && target={{.+}}-apple-macosx10.{{9|10|11|12|13|14}}
+// This test uses std::filesystem::path, which is not always available
+// XFAIL: availability-filesystem-missing
 
 // <format>
 
@@ -136,7 +136,7 @@ void test_P1361() {
 
   assert_is_formattable<std::chrono::microseconds, CharT>();
 
-  assert_is_not_formattable<std::chrono::sys_time<std::chrono::microseconds>, CharT>();
+  assert_is_formattable<std::chrono::sys_time<std::chrono::microseconds>, CharT>();
   //assert_is_formattable<std::chrono::utc_time<std::chrono::microseconds>, CharT>();
   //assert_is_formattable<std::chrono::tai_time<std::chrono::microseconds>, CharT>();
   //assert_is_formattable<std::chrono::gps_time<std::chrono::microseconds>, CharT>();
@@ -175,7 +175,8 @@ void test_P1361() {
 // Tests for P1636 Formatters for library types
 //
 // The paper hasn't been voted in so currently all formatters are disabled.
-// TODO validate whether the test is correct after the paper has been accepted.
+// Note the paper has been abandoned, the types are kept since other papers may
+// introduce these formatters.
 template <class CharT>
 void test_P1636() {
   assert_is_not_formattable<std::basic_streambuf<CharT>, CharT>();
@@ -191,7 +192,7 @@ void test_P1636() {
     assert_is_not_formattable<std::sub_match<CharT*>, CharT>();
 #endif
 #ifndef TEST_HAS_NO_THREADS
-  assert_is_not_formattable<std::thread::id, CharT>();
+  assert_is_formattable<std::thread::id, CharT>();
 #endif
   assert_is_not_formattable<std::unique_ptr<int>, CharT>();
 }

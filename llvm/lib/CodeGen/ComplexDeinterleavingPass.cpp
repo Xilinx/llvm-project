@@ -197,8 +197,8 @@ public:
   explicit ComplexDeinterleavingGraph(const TargetLowering *tl) : TL(tl) {}
 
 private:
-  const TargetLowering *TL;
-  Instruction *RootValue;
+  const TargetLowering *TL = nullptr;
+  Instruction *RootValue = nullptr;
   NodePtr RootNode;
   SmallVector<NodePtr> CompositeNodes;
   SmallPtrSet<Instruction *, 16> AllInstructions;
@@ -918,13 +918,13 @@ static Value *replaceSymmetricNode(ComplexDeinterleavingGraph::RawNodePtr Node,
 
   switch (I->getOpcode()) {
   case Instruction::FNeg:
-    return B.CreateFNeg(InputA);
+    return B.CreateFNegFMF(InputA, I);
   case Instruction::FAdd:
-    return B.CreateFAdd(InputA, InputB);
+    return B.CreateFAddFMF(InputA, InputB, I);
   case Instruction::FSub:
-    return B.CreateFSub(InputA, InputB);
+    return B.CreateFSubFMF(InputA, InputB, I);
   case Instruction::FMul:
-    return B.CreateFMul(InputA, InputB);
+    return B.CreateFMulFMF(InputA, InputB, I);
   }
 
   return nullptr;

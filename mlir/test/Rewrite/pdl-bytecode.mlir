@@ -72,6 +72,37 @@ module @ir attributes { test.apply_constraint_2 } {
 
 // -----
 
+module @patterns {
+  pdl_interp.func @matcher(%root : !pdl.operation) {
+    pdl_interp.check_operation_name of %root is "test.op" -> ^bb0, ^end
+
+  ^bb0:
+    %attr = pdl_interp.apply_constraint "check_op_and_get_attr_constr"(%root : !pdl.operation) : !pdl.attribute -> ^pat, ^end
+
+  ^pat:
+    pdl_interp.record_match @rewriters::@success(%root, %attr : !pdl.operation, !pdl.attribute) : benefit(1), loc([%root]) -> ^end
+
+  ^end:
+    pdl_interp.finalize
+  }
+
+  module @rewriters {
+    pdl_interp.func @success(%root : !pdl.operation, %attr : !pdl.attribute) {
+      %op = pdl_interp.create_operation "test.success" {"attr" = %attr}
+      pdl_interp.erase %root
+      pdl_interp.finalize
+    }
+  }
+}
+
+// CHECK-LABEL: test.apply_constraint_3
+// CHECK: "test.success"() {attr = "test.success"}
+module @ir attributes { test.apply_constraint_3 } {
+  "test.op"() : () -> ()
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // pdl_interp::ApplyRewriteOp
 //===----------------------------------------------------------------------===//

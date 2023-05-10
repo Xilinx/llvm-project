@@ -78,7 +78,6 @@
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Local.h"
-#include "llvm/Transforms/Vectorize.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdlib>
@@ -323,17 +322,17 @@ bool Vectorizer::isConsecutiveAccess(Value *A, Value *B) {
           DL.getTypeStoreSize(PtrBTy->getScalarType()))
     return false;
 
-  unsigned PtrBitWidth = DL.getPointerSizeInBits(ASA);
-  APInt Size(PtrBitWidth, DL.getTypeStoreSize(PtrATy));
+  unsigned PtrOffsetWidth = DL.getIndexSizeInBits(ASA);
+  APInt Size(PtrOffsetWidth, DL.getTypeStoreSize(PtrATy));
 
   return areConsecutivePointers(PtrA, PtrB, Size);
 }
 
 bool Vectorizer::areConsecutivePointers(Value *PtrA, Value *PtrB,
                                         APInt PtrDelta, unsigned Depth) const {
-  unsigned PtrBitWidth = DL.getPointerTypeSizeInBits(PtrA->getType());
-  APInt OffsetA(PtrBitWidth, 0);
-  APInt OffsetB(PtrBitWidth, 0);
+  unsigned OffsetBitWidth = DL.getIndexTypeSizeInBits(PtrA->getType());
+  APInt OffsetA(OffsetBitWidth, 0);
+  APInt OffsetB(OffsetBitWidth, 0);
   PtrA = PtrA->stripAndAccumulateInBoundsConstantOffsets(DL, OffsetA);
   PtrB = PtrB->stripAndAccumulateInBoundsConstantOffsets(DL, OffsetB);
 

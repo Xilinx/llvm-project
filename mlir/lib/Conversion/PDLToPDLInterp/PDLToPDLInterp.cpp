@@ -148,6 +148,10 @@ private:
   /// A mapping between pattern operations and the corresponding configuration
   /// set.
   DenseMap<Operation *, PDLPatternConfigSet *> *configMap;
+
+  /// A mapping between constraint questions that refer to values created by
+  /// constraints and the temporary placeholder values created for them.
+  DenseMap<std::pair<ConstraintQuestion *, unsigned>, Value> substitutions;
 };
 } // namespace
 
@@ -364,6 +368,20 @@ Value PatternLowering::getValueAt(Block *&currentBlock, Position *pos) {
           loc, rawTypeAttr.cast<ArrayAttr>());
     break;
   }
+  case Predicates::ConstraintResultPos: {
+    // At this point in time the corresponding pdl.ApplyNativeConstraint op has
+    // been deleted and the new pdl_interp.ApplyConstraint has not been created
+    // yet. To enable use of results created by these operations we build a
+    // placeholder value that will be replaced when the actual
+    // pdl_interp.ApplyConstraint operation is created.
+    auto *constrResPos = cast<ConstraintPosition>(pos);
+    Value placeholderValue = builder.create<pdl_interp::CreateAttributeOp>(
+        loc, StringAttr::get(builder.getContext(), "placeholder"));
+    substitutions[{constrResPos->getQuestion(), constrResPos->getIndex()}] =
+        placeholderValue;
+    value = placeholderValue;
+    break;
+  }
   default:
     llvm_unreachable("Generating unknown Position getter");
     break;
@@ -447,8 +465,21 @@ void PatternLowering::generate(BoolNode *boolNode, Block *&currentBlock,
   }
   case Predicates::ConstraintQuestion: {
     auto *cstQuestion = cast<ConstraintQuestion>(question);
-    builder.create<pdl_interp::ApplyConstraintOp>(loc, cstQuestion->getName(),
-                                                  args, success, failure);
+    auto applyConstraintOp = builder.create<pdl_interp::ApplyConstraintOp>(
+        loc, cstQuestion->getResultTypes(), cstQuestion->getName(), args,
+        success, failure);
+    // Replace the generated placeholders with the results of the constraint and
+    // erase them
+    for (auto result : llvm::enumerate(applyConstraintOp.getResults())) {
+      std::pair<ConstraintQuestion *, unsigned> substitutionKey = {
+          cstQuestion, result.index()};
+      // Check if there are substitutions to perform. If the result is never
+      // used no substitutions will have been generated.
+      if (substitutions.count(substitutionKey)) {
+        substitutions[substitutionKey].replaceAllUsesWith(result.value());
+        substitutions[substitutionKey].getDefiningOp()->erase();
+      }
+    }
     break;
   }
   default:
