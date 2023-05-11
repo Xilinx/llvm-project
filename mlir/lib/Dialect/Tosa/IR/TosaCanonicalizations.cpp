@@ -643,10 +643,6 @@ OpFoldResult ReciprocalOp::fold(ArrayRef<Attribute> operands) {
 
   auto floatVal = constantAttr.getSplatValue<llvm::APFloat>();
 
-  if (!floatVal.isFiniteNonZero()) {
-    return {};
-  }
-
   auto recipAttr = FloatAttr::get(lhsTy.getElementType(), 1.0);
   APFloat recip = recipAttr.getValue();
   recip.divide(floatVal, APFloat::rmNearestTiesToEven);

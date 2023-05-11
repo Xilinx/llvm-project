@@ -317,6 +317,18 @@ func.func @fold_reciprocal_splat_f32() -> tensor<f32> {
 
 // -----
 
+// CHECK-LABEL: @fold_reciprocal_splat_zero_f32
+func.func @fold_reciprocal_splat_zero_f32() -> tensor<f32> {
+  %zero = "tosa.const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
+  %recp = "tosa.reciprocal"(%zero) : (tensor<f32>) -> tensor<f32>
+  // 0x7F800000 represents +inf as we have computed 1/0
+  // CHECK: %[[CST:.*]] = "tosa.const"() {value = dense<0x7F800000> : tensor<f32>}
+  // CHECK: return %[[CST]]
+  return %recp : tensor<f32>
+}
+
+// -----
+
 // CHECK-LABEL: @fold_sub_zero_rhs_f32
 func.func @fold_sub_zero_rhs_f32(%arg0: tensor<f32>) -> tensor<f32> {
   %zero = "tosa.const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
