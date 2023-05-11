@@ -10,9 +10,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "TosaFoldCommon.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"
-#include "mlir/Dialect/Tosa/Transforms/TosaFoldCommon.h"
+#include "mlir/Dialect/Tosa/Utils/FoldUtils.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/Pass/Pass.h"

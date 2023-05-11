@@ -13,22 +13,11 @@
 #define MLIR_DIALECT_TOSA_TRANSFORMS_TOSA_FOLD_COMMON_H
 
 #include <llvm/ADT/APFloat.h>
-#include <functional>
 #include <mlir/Dialect/Tosa/IR/TosaOps.h>
 #include <mlir/IR/PatternMatch.h>
 
 namespace mlir {
 namespace tosa {
-
-static constexpr llvm::RoundingMode tosaRoundingMode =
-    APFloat::rmNearestTiesToEven;
-
-/// Transform a tensor with the given transformation function.
-template <class SrcValType, class TargetValType, class TargetType>
-DenseElementsAttr applyElementWise(
-    const DenseElementsAttr &toTransform,
-    const std::function<TargetValType(const SrcValType &, TargetType)> &toApply,
-    TargetType targetType);
 
 /// Function that checks if \p toCheck is a dense TOSA constant float tensor.
 LogicalResult notifyIfNotConstantFloatTosaTensor(TypedValue<TensorType> toCheck,

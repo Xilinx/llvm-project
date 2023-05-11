@@ -10,11 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Dialect/Tosa/Transforms/TosaFoldCommon.h"
-#include "mlir/Dialect/Tosa/IR/TosaOps.h"
-#include <llvm/ADT/APFloat.h>
-#include <llvm/ADT/SmallVector.h>
-#include <algorithm>
+#include "TosaFoldCommon.h"
+#include <mlir/Dialect/Tosa/IR/TosaOps.h>
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Matchers.h>
@@ -22,32 +19,6 @@
 
 using namespace mlir;
 using namespace mlir::tosa;
-
-template <class SrcValType, class TargetValType, class TargetType>
-DenseElementsAttr mlir::tosa::applyElementWise(
-    const DenseElementsAttr &toTransform,
-    const std::function<TargetValType(const SrcValType &, TargetType)> &toApply,
-    TargetType targetType) {
-  SmallVector<TargetValType> transformedValues;
-  // We already know the amount of values we will insert, reserve space for
-  // all of them to avoid dynamic resizing
-  transformedValues.reserve(toTransform.getNumElements());
-  for (auto val : toTransform.getValues<SrcValType>()) {
-    auto transformedVal = toApply(val, targetType);
-    transformedValues.push_back(transformedVal);
-  }
-
-  auto inShape = toTransform.getType();
-  auto outTy = inShape.cloneWith({}, targetType);
-
-  return DenseElementsAttr::get(outTy, transformedValues);
-}
-
-template DenseElementsAttr
-mlir::tosa::applyElementWise<APFloat, APFloat, FloatType>(
-    const DenseElementsAttr &toTransform,
-    const std::function<APFloat(const APFloat &, FloatType)> &toApply,
-    FloatType targetType);
 
 LogicalResult
 mlir::tosa::notifyIfNotConstantFloatTosaTensor(TypedValue<TensorType> toCheck,

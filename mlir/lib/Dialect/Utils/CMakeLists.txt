@@ -1,4 +1,5 @@
 add_mlir_library(MLIRDialectUtils
+  FoldUtils.cpp
   IndexingUtils.cpp
   ReshapeOpsUtils.cpp
   StructuredOpsUtils.cpp
