@@ -474,8 +474,6 @@ OpFoldResult AddOp::fold(ArrayRef<Attribute> operands) {
   auto resultTy = getType().dyn_cast<RankedTensorType>();
   if (!lhsTy || !rhsTy || !resultTy)
     return {};
-  if (lhsTy.getRank() != rhsTy.getRank())
-    return {};
 
   auto resultETy = resultTy.getElementType();
   auto lhsAttr = operands[0].dyn_cast_or_null<DenseElementsAttr>();
@@ -637,8 +635,6 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
   auto rhsTy = getInput2().getType().dyn_cast<RankedTensorType>();
   auto resultTy = getType().dyn_cast<RankedTensorType>();
   if (!lhsTy || !rhsTy || !resultTy)
-    return {};
-  if (lhsTy.getRank() != rhsTy.getRank())
     return {};
 
   auto resultETy = resultTy.getElementType();
