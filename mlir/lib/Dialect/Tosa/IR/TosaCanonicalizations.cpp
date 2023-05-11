@@ -679,9 +679,6 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
   if (!lhsAttr || !rhsAttr)
     return {};
 
-  if (lhsTy != rhsTy)
-    return {};
-
   return binaryFolder<std::minus<APInt>, std::minus<APFloat>>(lhsAttr, rhsAttr,
                                                               lhsTy);
 }
