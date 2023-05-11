@@ -630,8 +630,8 @@ OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
 }
 
 OpFoldResult ReciprocalOp::fold(ArrayRef<Attribute> operands) {
-  auto constantAttr = operands[0].dyn_cast_or_null<DenseElementsAttr>();
-  auto lhsTy = getInput1().getType().dyn_cast<RankedTensorType>();
+  auto constantAttr = dyn_cast_or_null<DenseElementsAttr>(operands[0]);
+  auto lhsTy = dyn_cast<RankedTensorType>(getInput1().getType());
 
   if (!lhsTy || !constantAttr) {
     return {};
