@@ -9,6 +9,8 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/Support/Debug.h"
+#include <llvm/Support/ToolOutputFile.h>
+#include <mlir/Support/FileUtilities.h>
 
 namespace mlir {
 namespace {
@@ -20,6 +22,17 @@ struct PrintIRPass : public impl::PrintIRPassBase<PrintIRPass> {
   using impl::PrintIRPassBase<PrintIRPass>::PrintIRPassBase;
 
   void runOnOperation() override {
+    if(!file.empty()) {
+      std::string errorMessage;
+      auto outputMlir = openOutputFile(file, &errorMessage);
+      if (!outputMlir) {
+        llvm::errs() << errorMessage << "\n";
+        return;
+      }
+      getOperation()->print(outputMlir->os(), OpPrintingFlags{}.elideLargeElementsAttrs(10));
+      outputMlir->keep();
+      return;
+    }
     llvm::dbgs() << "// -----// IR Dump";
     if (!this->label.empty())
       llvm::dbgs() << " " << this->label;
