@@ -57,9 +57,53 @@ struct ConcatOptimization : public OpRewritePattern<tosa::ConcatOp> {
   }
 };
 
+struct ConcatFolding : public OpRewritePattern<tosa::ConcatOp> {
+  using OpRewritePattern<tosa::ConcatOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tosa::ConcatOp op,
+                                PatternRewriter &rewriter) const override {
+    // Fold consecutive concats on the same axis into a single op.
+    uint64_t axis = op.getAxis();
+
+    // Keep track of the operands so we are able to construct a new concat
+    // later. Conservatively assume that we double the number of operands when
+    // folding
+    SmallVector<Value, 8> concatOperands;
+    concatOperands.reserve(2 * op->getNumOperands());
+
+    // Find all operands that are foldable concats
+    bool canFold = false;
+    for (Value operand : op->getOperands()) {
+      concatOperands.emplace_back(operand);
+
+      auto producer = dyn_cast_or_null<ConcatOp>(operand.getDefiningOp());
+      if (!producer)
+        continue;
+
+      // Foldable if axis is the same
+      if (axis != producer.getAxis())
+        continue;
+
+      // Replace the original operand with all incoming operands
+      canFold = true;
+      concatOperands.pop_back();
+      llvm::append_range(concatOperands, producer->getOperands());
+    }
+
+    if (!canFold)
+      return rewriter.notifyMatchFailure(op, "No foldable concats found");
+
+    // Replace the original concat with a new one that contains the original and
+    // folded operands
+    rewriter.replaceOpWithNewOp<tosa::ConcatOp>(op, op->getResultTypes(),
+                                                concatOperands, axis);
+    return success();
+  }
+};
+
 void ConcatOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
-  results.add<ConcatOptimization>(context);
+  results.add<ConcatOptimization, ConcatFolding>(context);
 }
 
 struct ReshapeReshapeOptimization : public OpRewritePattern<tosa::ReshapeOp> {
