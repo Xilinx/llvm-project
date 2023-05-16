@@ -164,6 +164,28 @@ func.func @fold_add_splat_f32() -> tensor<10xf32> {
 
 // -----
 
+// CHECK-LABEL: @fold_add_zero_splat_different_shape_f32
+func.func @fold_add_zero_splat_different_shape_f32(%arg0: tensor<1x10xf32>) -> tensor<1x10xf32> {
+  %zero = "tosa.const"() {value = dense<0.0> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+  %add = "tosa.add"(%arg0, %zero) : (tensor<1x10xf32>, tensor<1x1xf32>) -> tensor<1x10xf32>
+  // CHECK: return %arg0
+  return %add : tensor<1x10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @fold_add_zero_broadcast_arg_f32
+func.func @fold_add_zero_broadcast_arg_f32(%arg0: tensor<1x10xf32>) -> tensor<4x10xf32> {
+  %zero = "tosa.const"() {value = dense<0.0> : tensor<1x1xf32>} : () -> tensor<4x10xf32>
+  %add = "tosa.add"(%arg0, %zero) : (tensor<1x10xf32>, tensor<4x10xf32>) -> tensor<4x10xf32>
+  // CHECK: %[[ZERO:.+]] = "tosa.const"() {value = dense<0.000000e+00> : tensor<1x1xf32>} : () -> tensor<4x10xf32>
+  // CHECK: %[[ADD:.+]] = "tosa.add"(%arg0, %[[ZERO]]) : (tensor<1x10xf32>, tensor<4x10xf32>) -> tensor<4x10xf32>
+  // CHECK: return %[[ADD]] : tensor<4x10xf32>
+  return %add : tensor<4x10xf32>
+}
+
+// -----
+
 // CHECK-LABEL: @fold_div_zero_lhs_i32
 func.func @fold_div_zero_lhs_i32(%arg0: tensor<i32>) -> tensor<i32> {
   %zero = "tosa.const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
@@ -346,6 +368,16 @@ func.func @fold_sub_splat_f32() -> tensor<10xf32> {
   // CHECK: %[[THREE:.+]] = "tosa.const"() {value = dense<-1.000000e+00> : tensor<10xf32>}
   // CHECK: return %[[THREE]]
   return %sub : tensor<10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @fold_sub_zero_splat_different_shape_f32
+func.func @fold_sub_zero_splat_different_shape_f32(%arg0: tensor<1x10xf32>) -> tensor<1x10xf32> {
+  %zero = "tosa.const"() {value = dense<0.0> : tensor<1x1xf32>} : () -> tensor<1x1xf32>
+  %sub = "tosa.sub"(%arg0, %zero) : (tensor<1x10xf32>, tensor<1x1xf32>) -> tensor<1x10xf32>
+  // CHECK: return %arg0
+  return %sub : tensor<1x10xf32>
 }
 
 // -----
