@@ -647,13 +647,13 @@ OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
   const int64_t shift = resultETy.isa<IntegerType>() ? getShift() : 0;
   if (rhsTy == resultTy) {
     if (isSplatZero(resultETy, lhsAttr))
-      return lhsAttr;
+      return lhsAttr.resizeSplat(resultTy);
     if (isSplatOne(resultETy, lhsAttr, shift))
       return rhs;
   }
   if (lhsTy == resultTy) {
     if (isSplatZero(resultETy, rhsAttr))
-      return rhsAttr;
+      return rhsAttr.resizeSplat(resultTy);
     if (isSplatOne(resultETy, rhsAttr, shift))
       return lhs;
   }

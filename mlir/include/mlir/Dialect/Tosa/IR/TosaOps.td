@@ -1835,6 +1835,7 @@ def Tosa_RescaleOp: Tosa_Op<"rescale", [Pure,
 // Operator: const
 //===----------------------------------------------------------------------===//
 def Tosa_ConstOp : Tosa_Op<"const", [ConstantLike, Pure,
+                                     AllShapesMatch<["value", "output"]>,
                                      FirstAttrDerivedResultType]> {
   let summary = "Constant op.";
 
