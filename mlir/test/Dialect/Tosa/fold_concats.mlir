@@ -1,4 +1,4 @@
-// RUN: mlir-opt --split-input-file --tosa-layerwise-constant-fold %s | FileCheck %s
+// RUN: mlir-opt --split-input-file --canonicalize %s | FileCheck %s
 
 func.func @single_concat(%arg0: tensor<1x1x7x7xf32>) -> tensor<1x2x7x7xf32> {
   %0 = "tosa.concat"(%arg0, %arg0) {axis = 1} : (tensor<1x1x7x7xf32>, tensor<1x1x7x7xf32>) -> tensor<1x2x7x7xf32>
