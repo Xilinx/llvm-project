@@ -1057,6 +1057,8 @@ def Tosa_ReciprocalOp : Tosa_Op<"reciprocal", [
   let results = (outs
     Tosa_Tensor:$output
   );
+
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
