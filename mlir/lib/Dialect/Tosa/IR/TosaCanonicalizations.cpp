@@ -1013,7 +1013,7 @@ OpFoldResult ConcatOp::fold(ArrayRef<Attribute> operands) {
     if (!producer)
       continue;
 
-    // Foldable if axis is the same
+    // Foldable if axes are the same
     if (getAxis() != producer.getAxis())
       continue;
 
