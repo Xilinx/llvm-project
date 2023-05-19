@@ -995,3 +995,37 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
     return getInput1();
   return {};
 }
+
+OpFoldResult ConcatOp::fold(ArrayRef<Attribute> operands) {
+  // Fold consecutive concats on the same axis into a single op.
+  // Keep track of the operands so we are able to construct a new concat
+  // later. Conservatively assume that we double the number of operands when
+  // folding
+  SmallVector<Value, 8> concatOperands;
+  concatOperands.reserve(2 * getNumOperands());
+
+  // Find all operands that are foldable concats
+  bool canFold = false;
+  for (Value operand : getOperands()) {
+    concatOperands.emplace_back(operand);
+
+    auto producer = dyn_cast_or_null<ConcatOp>(operand.getDefiningOp());
+    if (!producer)
+      continue;
+
+    // Foldable if axes are the same
+    if (getAxis() != producer.getAxis())
+      continue;
+
+    // Replace the original operand with all incoming operands
+    canFold = true;
+    concatOperands.pop_back();
+    llvm::append_range(concatOperands, producer->getOperands());
+  }
+
+  if (!canFold)
+    return {};
+
+  getOperation()->setOperands(concatOperands);
+  return getResult();
+}
