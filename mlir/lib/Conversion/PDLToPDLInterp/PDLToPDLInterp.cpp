@@ -151,7 +151,7 @@ private:
 
   /// A mapping between constraint questions that refer to values created by
   /// constraints and the temporary placeholder values created for them.
-  DenseMap<std::pair<ConstraintQuestion *, unsigned>, Value> substitutions;
+  std::multimap<std::pair<ConstraintQuestion *, unsigned>, Value> substitutions;
 };
 } // namespace
 
@@ -377,8 +377,9 @@ Value PatternLowering::getValueAt(Block *&currentBlock, Position *pos) {
     auto *constrResPos = cast<ConstraintPosition>(pos);
     Value placeholderValue = builder.create<pdl_interp::CreateAttributeOp>(
         loc, StringAttr::get(builder.getContext(), "placeholder"));
-    substitutions[{constrResPos->getQuestion(), constrResPos->getIndex()}] =
-        placeholderValue;
+    substitutions.insert(
+        {{constrResPos->getQuestion(), constrResPos->getIndex()},
+         placeholderValue});
     value = placeholderValue;
     break;
   }
@@ -474,11 +475,15 @@ void PatternLowering::generate(BoolNode *boolNode, Block *&currentBlock,
       std::pair<ConstraintQuestion *, unsigned> substitutionKey = {
           cstQuestion, result.index()};
       // Check if there are substitutions to perform. If the result is never
-      // used no substitutions will have been generated.
-      if (substitutions.count(substitutionKey)) {
-        substitutions[substitutionKey].replaceAllUsesWith(result.value());
-        substitutions[substitutionKey].getDefiningOp()->erase();
-      }
+      // used or multiple calls to the same constraint have been merged,
+      // no substitutions will have been generated for this specific op.
+      auto range = substitutions.equal_range(substitutionKey);
+      std::for_each(range.first, range.second, [&](const auto &elem) {
+        Value placeholder = elem.second;
+        placeholder.replaceAllUsesWith(result.value());
+        placeholder.getDefiningOp()->erase();
+      });
+      substitutions.erase(substitutionKey);
     }
     break;
   }
