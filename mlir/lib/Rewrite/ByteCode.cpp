@@ -1438,6 +1438,7 @@ void ByteCodeExecutor::executeApplyConstraint(PatternRewriter &rewriter) {
   LLVM_DEBUG({
     llvm::dbgs() << "  * Arguments: ";
     llvm::interleaveComma(args, llvm::dbgs());
+    llvm::dbgs() << "\n";
   });
 
   ByteCodeField numResults = read();
@@ -1450,12 +1451,26 @@ void ByteCodeExecutor::executeApplyConstraint(PatternRewriter &rewriter) {
     const PDLRewriteFunction &constraintFn = rewriteFunctions[fun_idx];
     ByteCodeRewriteResultList results(numResults);
     LogicalResult rewriteResult = constraintFn(rewriter, results, args);
-    assert(results.getResults().size() == numResults &&
-           "native PDL rewrite function returned unexpected number of results");
-
-    for (PDLValue &result : results.getResults()) {
-      LLVM_DEBUG(llvm::dbgs() << "  * Result: " << result << "\n");
-      memory[read()] = result.getAsOpaquePointer();
+    ArrayRef<PDLValue> constraintResults = results.getResults();
+    LLVM_DEBUG({
+      if (succeeded(rewriteResult)) {
+        llvm::dbgs() << "  * Constraint succeeded\n";
+        llvm::dbgs() << "  * Results: ";
+        llvm::interleaveComma(constraintResults, llvm::dbgs());
+        llvm::dbgs() << "\n";
+      } else {
+        llvm::dbgs() << "  * Constraint failed\n";
+      }
+    });
+    assert((failed(rewriteResult) || constraintResults.size() == numResults) &&
+           "native PDL rewrite function returned "
+           "unexpected number of results");
+    // Populate memory either with the results or with 0s to preserve memory
+    // structure as expected
+    for (int i = 0; i < numResults; i++) {
+      memory[read()] = succeeded(rewriteResult)
+                           ? constraintResults[i].getAsOpaquePointer()
+                           : 0;
     }
     // Depending on the constraint jump to the proper destination.
     selectJump(succeeded(rewriteResult));
