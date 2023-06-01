@@ -506,6 +506,13 @@ createLinalgBodyCalculationForElementwiseOp(Operation *op, ValueRange args,
     }
   }
 
+  // tosa::CustomOp
+  if (auto customOp = dyn_cast<tosa::CustomOp>(op)) {
+    return llvm::StringSwitch<Value>(customOp.getIdentifierAttr().str())
+        .Case("atan2", rewriter.create<math::Atan2Op>(loc, resultTypes, args))
+        .Default(nullptr);
+  }
+
   (void)rewriter.notifyMatchFailure(
       op, "unhandled op for linalg body calculation for elementwise op");
   return nullptr;
@@ -2067,6 +2074,7 @@ void mlir::tosa::populateTosaToLinalgConversionPatterns(
       PointwiseConverter<tosa::FloorOp>,
       PointwiseConverter<tosa::ClampOp>,
       PointwiseConverter<tosa::SigmoidOp>,
+      PointwiseConverter<tosa::CustomOp>,
       IdentityNConverter<tosa::IdentityOp>,
       ReduceConverter<tosa::ReduceAllOp>,
       ReduceConverter<tosa::ReduceAnyOp>,
