@@ -508,9 +508,14 @@ createLinalgBodyCalculationForElementwiseOp(Operation *op, ValueRange args,
 
   // tosa::CustomOp
   if (auto customOp = dyn_cast<tosa::CustomOp>(op)) {
-    return llvm::StringSwitch<Value>(customOp.getIdentifierAttr().str())
-        .Case("atan2", rewriter.create<math::Atan2Op>(loc, resultTypes, args))
-        .Default(nullptr);
+    // Only legalize tosa.custom_op's that are marked as implementable with
+    // 'linalg.generic' by looking at the 'implementation_attrs' attribute
+    auto implementationAttr = customOp.getImplementationAttrs();
+    if (implementationAttr == "linalg.generic") {
+      OperationState state(loc, customOp.getIdentifierAttr(), args,
+                           resultTypes);
+      return rewriter.create(state)->getResult(0);
+    }
   }
 
   (void)rewriter.notifyMatchFailure(
