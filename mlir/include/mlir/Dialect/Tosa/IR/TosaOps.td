@@ -1113,6 +1113,8 @@ def Tosa_ReciprocalOp : Tosa_Op<"reciprocal", [
   let results = (outs
     Tosa_Tensor:$output
   );
+
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1466,6 +1468,7 @@ def Tosa_ConcatOp : Tosa_Op<"concat", [
     /// Method used by InferTypeOpInterface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
   }];
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//

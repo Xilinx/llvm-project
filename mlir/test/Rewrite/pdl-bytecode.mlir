@@ -599,6 +599,37 @@ module @ir attributes { test.create_op_infer_results } {
 
 // -----
 
+// Test support for creating an operation with an empty region.
+module @patterns {
+  pdl_interp.func @matcher(%root : !pdl.operation) {
+    pdl_interp.check_operation_name of %root is "test.op" -> ^pat, ^end
+
+  ^pat:
+    pdl_interp.record_match @rewriters::@success(%root : !pdl.operation) : benefit(1), loc([%root]) -> ^end
+
+  ^end:
+    pdl_interp.finalize
+  }
+
+  module @rewriters {
+    pdl_interp.func @success(%root : !pdl.operation) {
+      %op = pdl_interp.create_operation "test.success" {} {"numRegions" = 1 : ui32}
+      pdl_interp.erase %root
+      pdl_interp.finalize
+    }
+  }
+}
+
+// CHECK-LABEL: test.create_op_with_empty_region
+// CHECK: "test.success"() ({
+// CHECK-NEXT: }) : () -> ()
+module @ir attributes { test.create_op_with_empty_region } {
+  "test.op"() : () -> ()
+}
+
+// -----
+
+
 //===----------------------------------------------------------------------===//
 // pdl_interp::CreateRangeOp
 //===----------------------------------------------------------------------===//
