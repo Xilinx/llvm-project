@@ -494,6 +494,30 @@ void SliceOp::getCanonicalizationPatterns(RewritePatternSet &results,
 // Operator Folders.
 //===----------------------------------------------------------------------===//
 
+static bool hasZeroSize(Type ty) {
+  auto ranked = dyn_cast<RankedTensorType>(ty);
+  if (!ranked)
+    return false;
+  return any_of(ranked.getShape(), [](auto d) { return d == 0; });
+}
+
+OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
+  /// Remove operands that have zero elements.
+  bool changed = false;
+  for (size_t i = 0; i < getInput1().size(); ) {
+    auto input = getInput1()[i];
+    if (hasZeroSize(input.getType())) {
+      getInput1Mutable().erase(i);
+      changed = true;
+    } else {
+      ++i;
+    }
+  }
+  if (changed)
+    return getResult();
+  return {};
+}
+
 template <typename IntFolder, typename FloatFolder>
 DenseElementsAttr binaryFolder(DenseElementsAttr lhs, DenseElementsAttr rhs,
                                RankedTensorType returnTy) {
