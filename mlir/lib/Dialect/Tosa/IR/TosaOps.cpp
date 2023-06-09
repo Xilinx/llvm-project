@@ -742,6 +742,12 @@ mlir::LogicalResult tosa::ReshapeOp::verify() {
   ShapedType outputType = getType().cast<ShapedType>();
 
   if (inputType.hasStaticShape() && outputType.hasStaticShape()) {
+    if (getNewShape() != outputType.getShape()) {
+      return emitOpError() << "newShape attribute " << getNewShape()
+                           << " does not match output type "
+                           << outputType.getShape();
+    }
+
     int64_t inputElementsNum = inputType.getNumElements();
     int64_t outputElementsNum = outputType.getNumElements();
     if (inputElementsNum != outputElementsNum) {
