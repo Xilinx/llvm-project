@@ -328,7 +328,7 @@ private:
   FailureOr<ast::Expr *> parseTupleExpr();
   FailureOr<ast::Expr *> parseTypeExpr();
   FailureOr<ast::Expr *> parseUnderscoreExpr();
-
+  FailureOr<ast::Expr *> parseDictExpr();
   //===--------------------------------------------------------------------===//
   // Stmts
 
@@ -550,6 +550,10 @@ private:
   /// The most recently defined decl scope.
   ast::DeclScope *curDeclScope = nullptr;
   llvm::SpecificBumpPtrAllocator<ast::DeclScope> scopeAllocator;
+
+  /// The statements of the compoundStmt currently in construction. Useful
+  /// for custom PDLL extensions
+  SmallVector<ast::Stmt *> *curCompoundStmts = nullptr;
 
   /// The current context of the parser.
   ParserContext parserContext = ParserContext::Global;
@@ -1813,6 +1817,9 @@ FailureOr<ast::Expr *> Parser::parseExpr() {
   case Token::l_paren:
     lhsExpr = parseTupleExpr();
     break;
+  case Token::l_brace:
+    lhsExpr = parseDictExpr();
+    break;
   default:
     return emitError("expected expression");
   }
@@ -2074,6 +2081,19 @@ Parser::parseOperationExpr(OpResultTypeContext inputResultTypeContext) {
       if (failed(decl))
         return failure();
       attributes.emplace_back(*decl);
+
+      // //////////// Inserting a variable before this operation
+      // SMRange varLoc = curToken.getLoc();
+      // auto val = (*decl)->getValue();
+      // auto type = val->getType();
+      // FailureOr<ast::VariableDecl *> varDecl =
+      //     defineVariableDecl("customLet", varLoc, type, val, {});
+      // if (failed(varDecl))
+      //   return failure();
+      // ast::LetStmt *letStmt = ast::LetStmt::create(ctx, loc, *varDecl);
+      // curCompoundStmts->push_back(letStmt);
+      // //////////////
+
     } while (consumeIf(Token::comma));
 
     if (failed(parseToken(Token::r_brace,
@@ -2243,6 +2263,111 @@ FailureOr<ast::Expr *> Parser::parseUnderscoreExpr() {
   return createInlineVariableExpr(type, name, nameLoc, constraints);
 }
 
+// TODO: transform some of the snippets below needed to create and use native
+// calls to actual helper functions
+
+FailureOr<ast::Expr *> Parser::parseDictExpr() {
+  consumeToken(Token::l_brace);
+  SMRange loc = curToken.getLoc();
+
+  if (parserContext == ParserContext::Rewrite) {
+    // create new dictionary using native rewrite
+    // i.e. `let newDict = apply_native_rewrite "newDictAttr" : !pdl.attribute
+    ast::Decl *createDictDecl = curDeclScope->lookup("newDictAttr");
+    ast::Expr *createDictHandle = *createDeclRefExpr(loc, createDictDecl);
+    SmallVector<ast::Expr *> dictArgs;
+    ast::CallExpr *createDictCall =
+        *createCallExpr(loc, createDictHandle, dictArgs);
+    // TODO: This string here ("newDictAttrVar") could be used already, this
+    // should ideally be something unique
+    FailureOr<ast::VariableDecl *> varDecl = defineVariableDecl(
+        "newDictAttrVar", loc, createDictCall->getType(), createDictCall, {});
+    ast::LetStmt *letNewDict = ast::LetStmt::create(ctx, loc, *varDecl);
+    curCompoundStmts->push_back(letNewDict);
+    auto newDictReference = createDeclRefExpr(loc, *varDecl);
+
+    // Add each nested attribute to the dict
+    do {
+      FailureOr<ast::NamedAttributeDecl *> decl =
+          parseNamedAttributeDecl(llvm::None);
+      if (failed(decl))
+        return failure();
+
+      ast::Decl *addAttrRewriteDecl = curDeclScope->lookup("addElemToDictAttr");
+      ast::Expr *addAttrRewriteHandle =
+          *createDeclRefExpr(loc, addAttrRewriteDecl);
+      SmallVector<ast::Expr *> addAttrRewriteArgs;
+
+      // get value of attribute
+      addAttrRewriteArgs.push_back((*decl)->getValue());
+
+      // get name of the attribute
+      // TODO: continue here:
+      // put let binding around it and pass it in down below.
+      // auto attrName = ast::AttributeExpr::create(ctx, loc, attrExpr);
+
+      // addAttrRewriteArgs.push_back((*decl)->getName());
+      // TODO: the name also has to be added as an argument
+      addAttrRewriteArgs.push_back(*newDictReference);
+      ast::CallExpr *addAttrRewriteCall =
+          *createCallExpr(loc, addAttrRewriteHandle, addAttrRewriteArgs);
+      curCompoundStmts->push_back(addAttrRewriteCall);
+
+      //////////// Inserting a variable before this operation
+      // SMRange varLoc = curToken.getLoc();
+      // auto val = (*decl)->getValue();
+      // auto type = val->getType();
+      // StringRef name = "customLet";
+      // FailureOr<ast::VariableDecl *> varDecl =
+      //     defineVariableDecl(name, varLoc, type, val, {});
+      // if (failed(varDecl))
+      //   return failure();
+      // ast::LetStmt *letStmt = ast::LetStmt::create(ctx, loc, *varDecl);
+      // curCompoundStmts->push_back(letStmt);
+      // //////////////
+      // std::cout << "creating reference to customLets" << std::endl;
+      // ast::Decl *letDecl = curDeclScope->lookup(name);
+      // if (!letDecl)
+      //   return emitError(loc, "undefined reference to `" + name + "`");
+
+      // auto reference = createDeclRefExpr(loc, letDecl);
+
+      // // createDictAttr:
+      // // I have to
+      // ast::Decl *createDictDecl = curDeclScope->lookup("newDictAttr");
+      // ast::Expr *createDictHandle = *createDeclRefExpr(loc, createDictDecl);
+      // SmallVector<ast::Expr *> dictArgs;
+      // ast::CallExpr *createDictCall =
+      //     *createCallExpr(loc, createDictHandle, dictArgs);
+      // // ast::Expr *createDictCallHandle = *createDeclRefExpr(loc,
+      // // createDictCall);
+
+      // curCompoundStmts->push_back(createDictCall);
+
+      // // Handle call to the native rewrite:
+      // ast::Decl *rewriteDecl = curDeclScope->lookup("addElemToDictAttr");
+      // ast::Expr *rewriteHandle = *createDeclRefExpr(loc, rewriteDecl);
+      // SmallVector<ast::Expr *> args;
+      // args.push_back(*reference);
+      // ast::CallExpr *rewriteCall = *createCallExpr(loc, rewriteHandle, args);
+      // curCompoundStmts->push_back(rewriteCall);
+
+      // NOTE: EARLY EXIT HERE!
+      // if (failed(parseToken(Token::r_brace,
+      //                       "expected `}` to close dictionary attribute")))
+      //   return failure();
+      // return reference;
+      // Now find out how I can refer to this variable
+
+    } while (consumeIf(Token::comma));
+    if (failed(parseToken(Token::r_brace,
+                          "expected `}` to close dictionary attribute")))
+      return failure();
+    return newDictReference;
+  }
+  return emitError("Parsing of dict attributes not fully implemented!");
+}
+
 //===----------------------------------------------------------------------===//
 // Stmts
 
@@ -2282,6 +2407,7 @@ FailureOr<ast::CompoundStmt *> Parser::parseCompoundStmt() {
   // Push a new block scope and parse any nested statements.
   pushDeclScope();
   SmallVector<ast::Stmt *> statements;
+  curCompoundStmts = &statements;
   while (curToken.isNot(Token::r_brace)) {
     FailureOr<ast::Stmt *> statement = parseStmt();
     if (failed(statement))
