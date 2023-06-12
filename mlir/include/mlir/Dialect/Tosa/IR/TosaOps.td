@@ -1460,6 +1460,8 @@ def Tosa_ConcatOp : Tosa_Op<"concat", [
     Tosa_Tensor:$output
   );
 
+  let hasFolder = 1;
+
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
