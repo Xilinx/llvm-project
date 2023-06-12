@@ -142,3 +142,99 @@ Pattern RangeExpr {
 // CHECK: %[[TYPE:.*]] = type : i32
 // CHECK: operation({{.*}}) -> (%[[TYPE]] : !pdl.type)
 Pattern TypeExpr => erase op<> -> (type<"i32">);
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// Parse attributes and rewrite
+//===----------------------------------------------------------------------===//
+
+// Rewriter helpers declarations.
+Rewrite createDictionaryAttr() -> Attr;
+Rewrite addEntryToDictionaryAttr(dict: Attr, attrName: Attr, attr : Attr) -> Attr;
+Rewrite createArrayAttr() -> Attr;
+Rewrite addElemToArrayAttr(arrayAttr: Attr, newElement: Attr) -> Attr;
+
+// CHECK-LABEL:   pdl.pattern @RewriteOneEntryDictionary
+// CHECK:           %[[VAL_1:.*]] = operation "test.op"
+// CHECK:           %[[VAL_2:.*]] = attribute = "test"
+// CHECK:           rewrite %[[VAL_1]] {
+// CHECK:             %[[VAL_3:.*]] = apply_native_rewrite "createDictionaryAttr"
+// CHECK:             %[[VAL_4:.*]] = attribute = "firstAttr"
+// CHECK:             %[[VAL_5:.*]] = apply_native_rewrite "addEntryToDictionaryAttr"(%[[VAL_3]], %[[VAL_4]], %[[VAL_2]]
+// CHECK:             %[[VAL_6:.*]] = operation "test.success"  {"some_dictionary" = %[[VAL_5]]}
+// CHECK:             replace %[[VAL_1]] with %[[VAL_6]]
+Pattern RewriteOneEntryDictionary {
+  let root = op<test.op> -> ();
+  let attr1 = attr<"\"test\"">;
+  rewrite root with {
+      let newRoot = op<test.success>() { some_dictionary = {firstAttr=attr1} } -> ();
+      replace root with newRoot;
+  };
+}
+
+// CHECK-LABEL:   pdl.pattern @RewriteMultipleEntriesDictionary
+// CHECK:           %[[VAL_1:.*]] = operation "test.op"
+// CHECK:           %[[VAL_2:.*]] = attribute = "test2"
+// CHECK:           %[[VAL_3:.*]] = attribute = "test3"
+// CHECK:           rewrite %[[VAL_1]] {
+// CHECK:             %[[VAL_4:.*]] = apply_native_rewrite "createDictionaryAttr"
+// CHECK:             %[[VAL_5:.*]] = attribute = "firstAttr"
+// CHECK:             %[[VAL_6:.*]] = attribute = "test1"
+// CHECK:             %[[VAL_7:.*]] = apply_native_rewrite "addEntryToDictionaryAttr"(%[[VAL_4]], %[[VAL_5]], %[[VAL_6]]
+// CHECK:             %[[VAL_8:.*]] = attribute = "secondAttr"
+// CHECK:             %[[VAL_9:.*]] = apply_native_rewrite "addEntryToDictionaryAttr"(%[[VAL_7]], %[[VAL_8]], %[[VAL_2]]
+// CHECK:             %[[VAL_10:.*]] = attribute = "thirdAttr"
+// CHECK:             %[[VAL_11:.*]] = apply_native_rewrite "addEntryToDictionaryAttr"(%[[VAL_9]], %[[VAL_10]], %[[VAL_3]]
+// CHECK:             %[[VAL_12:.*]] = operation "test.success"  {"some_dictionary" = %[[VAL_11]]}
+// CHECK:             replace %[[VAL_1]] with %[[VAL_12]]
+Pattern RewriteMultipleEntriesDictionary {
+  let root = op<test.op> -> ();
+  let attr2 = attr<"\"test2\"">;
+  let attr3 = attr<"\"test3\"">;
+  rewrite root with {
+      let newRoot = op<test.success>() { some_dictionary = {"firstAttr" = attr<"\"test1\"">, secondAttr = attr2, thirdAttr = attr3} } -> ();
+      replace root with newRoot;
+  };
+}
+
+// CHECK-LABEL:   pdl.pattern @RewriteOneDictionaryArrayAttr
+// CHECK:           %[[VAL_1:.*]] = operation "test.op"
+// CHECK:           rewrite %[[VAL_1]] {
+// CHECK:             %[[VAL_2:.*]] = apply_native_rewrite "createArrayAttr"
+// CHECK:             %[[VAL_3:.*]] = apply_native_rewrite "createDictionaryAttr"
+// CHECK:             %[[VAL_4:.*]] = attribute = "firstAttr"
+// CHECK:             %[[VAL_5:.*]] = attribute = "test1"
+// CHECK:             %[[VAL_6:.*]] = apply_native_rewrite "addEntryToDictionaryAttr"(%[[VAL_3]], %[[VAL_4]], %[[VAL_5]]
+// CHECK:             %[[VAL_7:.*]] = apply_native_rewrite "addElemToArrayAttr"(%[[VAL_2]], %[[VAL_6]]
+// CHECK:             %[[VAL_8:.*]] = operation "test.success"  {"some_array" = %[[VAL_7]]}
+// CHECK:             replace %[[VAL_1]] with %[[VAL_8]]
+Pattern RewriteOneDictionaryArrayAttr {
+  let root = op<test.op> -> ();
+  rewrite root with {
+      let newRoot = op<test.success>() { some_array = array[{"firstAttr" = attr<"\"test1\"">}]} -> ();
+      replace root with newRoot;
+  };
+}
+
+// CHECK-LABEL:   pdl.pattern @RewriteMultiplyElementsArrayAttr
+// CHECK:           %[[VAL_1:.*]] = operation "test.op"
+// CHECK:           %[[VAL_2:.*]] = attribute = "test2"
+// CHECK:           rewrite %[[VAL_1]] {
+// CHECK:             %[[VAL_3:.*]] = apply_native_rewrite "createArrayAttr"
+// CHECK:             %[[VAL_4:.*]] = apply_native_rewrite "createDictionaryAttr"
+// CHECK:             %[[VAL_5:.*]] = attribute = "firstAttr"
+// CHECK:             %[[VAL_6:.*]] = attribute = "test1"
+// CHECK:             %[[VAL_7:.*]] = apply_native_rewrite "addEntryToDictionaryAttr"(%[[VAL_4]], %[[VAL_5]], %[[VAL_6]]
+// CHECK:             %[[VAL_8:.*]] = apply_native_rewrite "addElemToArrayAttr"(%[[VAL_3]], %[[VAL_7]]
+// CHECK:             %[[VAL_9:.*]] = apply_native_rewrite "addElemToArrayAttr"(%[[VAL_8]], %[[VAL_2]]
+// CHECK:             %[[VAL_10:.*]] = operation "test.success"  {"some_array" = %[[VAL_9]]}
+// CHECK:             replace %[[VAL_1]] with %[[VAL_10]]
+Pattern RewriteMultiplyElementsArrayAttr {
+  let root = op<test.op> -> ();
+  let attr2 = attr<"\"test2\"">;
+  rewrite root with {
+      let newRoot = op<test.success>() { some_array = array[{"firstAttr" = attr<"\"test1\"">}, attr2]} -> ();
+      replace root with newRoot;
+  };
+}

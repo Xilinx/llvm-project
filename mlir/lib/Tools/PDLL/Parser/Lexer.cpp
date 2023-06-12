@@ -329,6 +329,7 @@ Token Lexer::lexIdentifier(const char *tokStart) {
                          .Case("Value", Token::kw_Value)
                          .Case("ValueRange", Token::kw_ValueRange)
                          .Case("with", Token::kw_with)
+                         .Case("array", Token::kw_Array)
                          .Case("_", Token::underscore)
                          .Default(Token::identifier);
   return Token(kind, str);
