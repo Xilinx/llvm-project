@@ -742,11 +742,63 @@ mlir::LogicalResult tosa::ReshapeOp::verify() {
   ShapedType outputType = getType().cast<ShapedType>();
 
   if (inputType.hasStaticShape() && outputType.hasStaticShape()) {
+    if (getNewShape() != outputType.getShape()) {
+      return emitOpError() << "newShape attribute " << getNewShape()
+                           << " does not match output type "
+                           << outputType.getShape();
+    }
+
     int64_t inputElementsNum = inputType.getNumElements();
     int64_t outputElementsNum = outputType.getNumElements();
     if (inputElementsNum != outputElementsNum) {
       return emitOpError() << "Cannot reshape " << inputElementsNum
                            << " elements into " << outputElementsNum;
+    }
+  }
+
+  return mlir::success();
+}
+
+mlir::LogicalResult tosa::SliceOp::verify() {
+  // TODO: Complete verification
+  ShapedType inputType = getInput().getType().cast<ShapedType>();
+  ShapedType outputType = getType().cast<ShapedType>();
+
+  if (inputType.getRank() != outputType.getRank()) {
+    return emitOpError() << "rank of input (" << inputType.getRank()
+                           << ") and output ("
+                           << outputType.getRank()
+                           << ") must match";
+  }
+
+  if (getSize() != outputType.getShape()) {
+      return emitOpError() << "size attribute " << getSize()
+                           << " does not match output type "
+                           << outputType.getShape();
+  }
+
+  if ((int64_t)getStart().size() != inputType.getRank()) {
+        return emitOpError() << "rank of start (" << getStart().size()
+                           << ") and input ("
+                           << inputType.getRank()
+                           << ") must match";
+  }
+  if ((int64_t)getSize().size() != inputType.getRank()) {
+        return emitOpError() << "rank of size (" << getSize().size()
+                           << ") and input ("
+                           << inputType.getRank()
+                           << ") must match";
+  }
+
+  for (int i = 0; i < outputType.getRank(); ++i) {
+    auto dimSize = inputType.getShape()[i];
+    if (dimSize != ShapedType::kDynamic && getStart()[i] + getSize()[i] > inputType.getShape()[i]) {
+        return emitOpError() << "start (" << getStart()[i]
+                           << ") plus size ("
+                           << getSize()[i]
+                           << ") goes out of bounds of input size ("
+                           << inputType.getShape()[i]
+                           << ") in dimension " << i;
     }
   }
   return mlir::success();
