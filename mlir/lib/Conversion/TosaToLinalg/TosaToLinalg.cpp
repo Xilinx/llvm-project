@@ -381,23 +381,23 @@ createLinalgBodyCalculationForElementwiseOp(Operation *op, ValueRange args,
 
   if (isa<tosa::ClampOp>(op) && elementTy.isa<IntegerType>()) {
     auto intTy = elementTy.cast<IntegerType>();
-    int32_t min = static_cast<int32_t>(
-        op->getAttr("min_int").cast<IntegerAttr>().getValue().getSExtValue());
-    int32_t max = static_cast<int32_t>(
-        op->getAttr("max_int").cast<IntegerAttr>().getValue().getSExtValue());
+    int64_t min =
+        op->getAttr("min_int").cast<IntegerAttr>().getValue().getSExtValue();
+    int64_t max =
+        op->getAttr("max_int").cast<IntegerAttr>().getValue().getSExtValue();
 
     if (intTy.isUnsignedInteger()) {
-      min = std::max<int32_t>(min, 0);
-      max = std::min<int32_t>(
+      min = std::max(min, (int64_t)0);
+      max = std::min(
           max,
           APInt::getMaxValue(intTy.getIntOrFloatBitWidth()).getSExtValue());
     } else {
-      min = std::max<int32_t>(
-          min, APInt::getSignedMinValue(intTy.getIntOrFloatBitWidth())
-                   .getSExtValue());
-      max = std::min<int32_t>(
-          max, APInt::getSignedMaxValue(intTy.getIntOrFloatBitWidth())
-                   .getSExtValue());
+      min =
+          std::max(min, APInt::getSignedMinValue(intTy.getIntOrFloatBitWidth())
+                            .getSExtValue());
+      max =
+          std::min(max, APInt::getSignedMaxValue(intTy.getIntOrFloatBitWidth())
+                            .getSExtValue());
     }
 
     auto minVal = rewriter.create<arith::ConstantIntOp>(
