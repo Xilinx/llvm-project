@@ -666,8 +666,9 @@ OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
   return mulBinaryFolder(lhsAttr, rhsAttr, resultTy, getShift());
 }
 
-OpFoldResult ReciprocalOp::fold(ArrayRef<Attribute> operands) {
-  auto constantAttr = dyn_cast_or_null<DenseElementsAttr>(operands[0]);
+OpFoldResult ReciprocalOp::fold(FoldAdaptor adaptor) {
+  
+  auto constantAttr = dyn_cast_or_null<DenseElementsAttr>(adaptor.getOperands()[0]);
   auto lhsTy = dyn_cast<RankedTensorType>(getInput1().getType());
 
   if (!lhsTy || !constantAttr) {
@@ -1025,7 +1026,7 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
   return getInput1();
 }
 
-OpFoldResult ConcatOp::fold(ArrayRef<Attribute> operands) {
+OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
   // Fold consecutive concats on the same axis into a single op.
   // Keep track of the operands so we are able to construct a new concat
   // later. Conservatively assume that we double the number of operands when
