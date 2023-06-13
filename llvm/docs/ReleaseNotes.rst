@@ -47,6 +47,11 @@ Non-comprehensive list of changes in this release
 Update on required toolchains to build LLVM
 -------------------------------------------
 
+With LLVM 17.x we raised the version requirement of CMake used to build LLVM.
+The new requirements are as follows:
+
+* CMake >= 3.20.0
+
 Changes to the LLVM IR
 ----------------------
 
@@ -84,6 +89,7 @@ Changes to the AArch64 Backend
 
 * Added Assembly Support for the 2022 A-profile extensions FEAT_GCS (Guarded
   Control Stacks), FEAT_CHK (Check Feature Status), and FEAT_ATS1A.
+* Support for preserve_all calling convention is added.
 
 Changes to the AMDGPU Backend
 -----------------------------
@@ -116,6 +122,8 @@ Changes to the Hexagon Backend
 
 Changes to the LoongArch Backend
 --------------------------------
+
+* The `lp64s` ABI is supported now and has been tested on Rust bare-matal target.
 
 Changes to the MIPS Backend
 ---------------------------
@@ -166,6 +174,20 @@ Changes to the RISC-V Backend
   on RISC-V, but conforms with the new "platform register" defined in the
   RISC-V psABI (for more details see the 
   `psABI discussion <https://github.com/riscv-non-isa/riscv-elf-psabi-doc/issues/370>`_).
+* Added support for Zfa extension version 0.2.
+* Updated support experimental vector crypto extensions to version 0.5.1 of
+  the specification.
+* Removed N extension (User-Level Interrupts) CSR names in the assembler.
+* ``RISCV::parseCPUKind`` and ``RISCV::checkCPUKind`` were merged into a single
+  ``RISCV::parseCPU``. The ``CPUKind`` enum is no longer part of the
+  RISCVTargetParser.h interface. Similar for ``parseTuneCPUkind`` and
+  ``checkTuneCPUKind``.
+* Add sifive-x280 processor.
+* Zve32f is no longer allowed with Zfinx. Zve64d is no longer allowed with
+  Zdinx.
+* Assembly support was added for the experimental Zfbfmin (scalar BF16
+  conversions), Zvfbfmin (vector BF16 conversions), and Zvfbfwma (vector BF16
+  widening mul-add) extensions.
 
 Changes to the WebAssembly Backend
 ----------------------------------
@@ -180,6 +202,11 @@ Changes to the X86 Backend
 
 Changes to the OCaml bindings
 -----------------------------
+
+Changes to the Python bindings
+------------------------------
+
+* The python bindings have been removed.
 
 
 Changes to the C API

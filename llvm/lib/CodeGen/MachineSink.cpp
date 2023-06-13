@@ -806,12 +806,10 @@ bool MachineSinking::isProfitableToSinkTo(Register Reg, MachineInstr &MI,
       continue;
 
     if (Reg.isPhysical()) {
-      if (MO.isUse() &&
-          (MRI->isConstantPhysReg(Reg) || TII->isIgnorableUse(MO)))
-        continue;
-
-      // Don't handle non-constant and non-ignorable physical register.
-      return false;
+      // Don't handle non-constant and non-ignorable physical register uses.
+      if (MO.isUse() && !MRI->isConstantPhysReg(Reg) && !TII->isIgnorableUse(MO))
+        return false;
+      continue;
     }
 
     // Users for the defs are all dominated by SuccToSinkTo.
@@ -1700,8 +1698,8 @@ static void updateLiveIn(MachineInstr *MI, MachineBasicBlock *SuccBB,
   MachineFunction &MF = *SuccBB->getParent();
   const TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
   for (unsigned DefReg : DefedRegsInCopy)
-    for (MCSubRegIterator S(DefReg, TRI, true); S.isValid(); ++S)
-      SuccBB->removeLiveIn(*S);
+    for (MCPhysReg S : TRI->subregs_inclusive(DefReg))
+      SuccBB->removeLiveIn(S);
   for (auto U : UsedOpsInCopy) {
     Register SrcReg = MI->getOperand(U).getReg();
     LaneBitmask Mask;

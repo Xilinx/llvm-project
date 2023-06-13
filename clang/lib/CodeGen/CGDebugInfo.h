@@ -86,9 +86,6 @@ class CGDebugInfo {
   /// Cache of previously constructed Types.
   llvm::DenseMap<const void *, llvm::TrackingMDRef> TypeCache;
 
-  std::map<llvm::StringRef, llvm::StringRef, std::greater<llvm::StringRef>>
-      DebugPrefixMap;
-
   /// Cache that maps VLA types to size expressions for that type,
   /// represented by instantiated Metadata nodes.
   llvm::SmallDenseMap<QualType, llvm::Metadata *> SizeExprCache;
@@ -832,7 +829,13 @@ public:
   ApplyDebugLocation(ApplyDebugLocation &&Other) : CGF(Other.CGF) {
     Other.CGF = nullptr;
   }
-  ApplyDebugLocation &operator=(ApplyDebugLocation &&) = default;
+
+  // Define copy assignment operator.
+  ApplyDebugLocation &operator=(ApplyDebugLocation &&Other) {
+    CGF = Other.CGF;
+    Other.CGF = nullptr;
+    return *this;
+  }
 
   ~ApplyDebugLocation();
 

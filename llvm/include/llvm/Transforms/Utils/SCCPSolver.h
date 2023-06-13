@@ -44,7 +44,6 @@ struct AnalysisResultsForFn {
   std::unique_ptr<PredicateInfo> PredInfo;
   DominatorTree *DT;
   PostDominatorTree *PDT;
-  LoopInfo *LI;
 };
 
 /// Helper struct shared between Function Specialization and SCCP Solver.
@@ -91,8 +90,6 @@ public:
 
   const PredicateBase *getPredicateInfoFor(Instruction *I);
 
-  const LoopInfo &getLoopInfo(Function &F);
-
   DomTreeUpdater getDTU(Function &F);
 
   /// trackValueOfGlobalVariable - Clients can use this method to
@@ -132,6 +129,8 @@ public:
 
   void solveWhileResolvedUndefsIn(SmallVectorImpl<Function *> &WorkList);
 
+  void solveWhileResolvedUndefs();
+
   bool isBlockExecutable(BasicBlock *BB) const;
 
   // isEdgeFeasible - Return true if the control flow edge from the 'From' basic
@@ -141,6 +140,10 @@ public:
   std::vector<ValueLatticeElement> getStructLatticeValueFor(Value *V) const;
 
   void removeLatticeValueFor(Value *V);
+
+  /// Invalidate the Lattice Value of \p Call and its users after specializing
+  /// the call. Then recompute it.
+  void resetLatticeValueFor(CallBase *Call);
 
   const ValueLatticeElement &getLatticeValueFor(Value *V) const;
 

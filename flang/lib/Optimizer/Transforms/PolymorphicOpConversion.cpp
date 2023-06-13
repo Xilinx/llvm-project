@@ -238,8 +238,9 @@ public:
     patterns.insert<SelectTypeConv>(context, moduleMutex);
     patterns.insert<DispatchOpConv>(context, bindingTables);
     mlir::ConversionTarget target(*context);
-    target.addLegalDialect<mlir::AffineDialect, mlir::cf::ControlFlowDialect,
-                           FIROpsDialect, mlir::func::FuncDialect>();
+    target.addLegalDialect<mlir::affine::AffineDialect,
+                           mlir::cf::ControlFlowDialect, FIROpsDialect,
+                           mlir::func::FuncDialect>();
 
     // apply the patterns
     target.addIllegalOp<SelectTypeOp>();
@@ -339,7 +340,8 @@ mlir::LogicalResult SelectTypeConv::matchAndRewrite(
     std::optional<mlir::ValueRange> destOps =
         selectType.getSuccessorOperands(operands, idx);
     if (typeGuards[idx].dyn_cast<mlir::UnitAttr>())
-      rewriter.replaceOpWithNewOp<mlir::cf::BranchOp>(selectType, dest);
+      rewriter.replaceOpWithNewOp<mlir::cf::BranchOp>(
+          selectType, dest, destOps.value_or(mlir::ValueRange{}));
     else if (mlir::failed(genTypeLadderStep(loc, selector, typeGuards[idx],
                                             dest, destOps, mod, rewriter,
                                             kindMap)))

@@ -39,10 +39,12 @@ Getting Started with libc++
    BuildingLibcxx
    TestingLibcxx
    Contributing
+   ReleaseProcedure
    Status/Cxx14
    Status/Cxx17
    Status/Cxx20
-   Status/Cxx2b
+   Status/Cxx23
+   Status/Cxx2c
    Status/Format
    Status/Parallelism
    Status/Ranges
@@ -94,6 +96,9 @@ reasons, but some of the major ones are:
   Further, both projects are apparently abandoned: STLport 5.2.1 was
   released in Oct'08, and STDCXX 4.2.1 in May'08.
 
+..
+  LLVM RELEASE bump version
+
 .. _SupportedPlatforms:
 
 Platform and Compiler Support
@@ -120,7 +125,7 @@ Target platform Target architecture       Notes
 macOS 10.9+     i386, x86_64, arm64       Building the shared library itself requires targetting macOS 10.13+
 FreeBSD 12+     i386, x86_64, arm
 Linux           i386, x86_64, arm, arm64  Only glibc-2.24 and later and no other libc is officially supported
-Windows         i386, x86_64              Both MSVC and MinGW style environments
+Windows         i386, x86_64              Both MSVC and MinGW style environments, ABI in MSVC environments is :doc:`unstable <DesignDocs/ABIVersioning>`
 AIX 7.2TL5+     powerpc, powerpc64
 =============== ========================= ============================
 
@@ -145,7 +150,8 @@ C++ Dialect Support
 * :ref:`C++14 - Complete <cxx14-status>`
 * :ref:`C++17 - In Progress <cxx17-status>`
 * :ref:`C++20 - In Progress <cxx20-status>`
-* :ref:`C++2b - In Progress <cxx2b-status>`
+* :ref:`C++23 - In Progress <cxx23-status>`
+* :ref:`C++2c - In Progress <cxx2c-status>`
 * :ref:`C++ Feature Test Macro Status <feature-status>`
 
 
@@ -179,6 +185,7 @@ Design Documents
    DesignDocs/FileTimeType
    DesignDocs/HeaderRemovalPolicy
    DesignDocs/NoexceptPolicy
+   DesignDocs/PSTLIntegration
    DesignDocs/ThreadingSupportAPI
    DesignDocs/UniquePtrTrivialAbi
    DesignDocs/UnspecifiedBehaviorRandomization

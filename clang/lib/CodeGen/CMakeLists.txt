@@ -3,6 +3,7 @@ set(LLVM_LINK_COMPONENTS
   Analysis
   BitReader
   BitWriter
+  CodeGenTypes
   Core
   Coroutines
   Coverage
@@ -22,7 +23,6 @@ set(LLVM_LINK_COMPONENTS
   Object
   Passes
   ProfileData
-  Remarks
   ScalarOpts
   Support
   Target

@@ -264,44 +264,47 @@ bool InductiveRangeCheck::parseRangeCheckICmp(Loop *L, ICmpInst *ICI,
   Value *LHS = ICI->getOperand(0);
   Value *RHS = ICI->getOperand(1);
 
+  // Canonicalize to the `Index Pred Invariant` comparison
+  if (IsLoopInvariant(LHS)) {
+    std::swap(LHS, RHS);
+    Pred = CmpInst::getSwappedPredicate(Pred);
+  } else if (!IsLoopInvariant(RHS))
+    // Both LHS and RHS are loop variant
+    return false;
+
   switch (Pred) {
   default:
     return false;
 
-  case ICmpInst::ICMP_SLE:
-    std::swap(LHS, RHS);
-    [[fallthrough]];
   case ICmpInst::ICMP_SGE:
     if (match(RHS, m_ConstantInt<0>())) {
       Index = SE.getSCEV(LHS);
-      return true; // Lower.
+      return true;
+    }
+    return false;
+
+  case ICmpInst::ICMP_SGT:
+    if (match(RHS, m_ConstantInt<-1>())) {
+      Index = SE.getSCEV(LHS);
+      return true;
     }
     return false;
 
   case ICmpInst::ICMP_SLT:
-    std::swap(LHS, RHS);
-    [[fallthrough]];
-  case ICmpInst::ICMP_SGT:
-    if (match(RHS, m_ConstantInt<-1>())) {
-      Index = SE.getSCEV(LHS);
-      return true; // Lower.
-    }
-
-    if (IsLoopInvariant(LHS)) {
-      Index = SE.getSCEV(RHS);
-      End = SE.getSCEV(LHS);
-      return true; // Upper.
-    }
-    return false;
-
   case ICmpInst::ICMP_ULT:
-    std::swap(LHS, RHS);
-    [[fallthrough]];
-  case ICmpInst::ICMP_UGT:
-    if (IsLoopInvariant(LHS)) {
-      Index = SE.getSCEV(RHS);
-      End = SE.getSCEV(LHS);
-      return true; // Both lower and upper.
+    Index = SE.getSCEV(LHS);
+    End = SE.getSCEV(RHS);
+    return true;
+
+  case ICmpInst::ICMP_SLE:
+  case ICmpInst::ICMP_ULE:
+    const SCEV *One = SE.getOne(RHS->getType());
+    const SCEV *RHSS = SE.getSCEV(RHS);
+    bool Signed = Pred == ICmpInst::ICMP_SLE;
+    if (SE.willNotOverflow(Instruction::BinaryOps::Add, Signed, RHSS, One)) {
+      Index = SE.getSCEV(LHS);
+      End = SE.getAddExpr(RHSS, One);
+      return true;
     }
     return false;
   }
@@ -1527,7 +1530,7 @@ bool LoopConstrainer::run() {
 
   // This function canonicalizes the loop into Loop-Simplify and LCSSA forms.
   auto CanonicalizeLoop = [&] (Loop *L, bool IsOriginalLoop) {
-    formLCSSARecursively(*L, DT, &LI, &SE);
+    formLCSSARecursively(*L, DT, &LI);
     simplifyLoop(L, &DT, &LI, &SE, nullptr, nullptr, true);
     // Pre/post loops are slow paths, we do not need to perform any loop
     // optimizations on them.
@@ -1756,7 +1759,7 @@ PreservedAnalyses IRCEPass::run(Function &F, FunctionAnalysisManager &AM) {
     for (const auto &L : LI) {
       CFGChanged |= simplifyLoop(L, &DT, &LI, &SE, nullptr, nullptr,
                                  /*PreserveLCSSA=*/false);
-      Changed |= formLCSSARecursively(*L, DT, &LI, &SE);
+      Changed |= formLCSSARecursively(*L, DT, &LI);
     }
     Changed |= CFGChanged;
 

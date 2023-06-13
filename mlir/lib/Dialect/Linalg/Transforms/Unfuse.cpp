@@ -438,7 +438,7 @@ struct Conv2DActivationMaxpoolOpLowering : OpRewritePattern<T> {
       // Generate a padding value.
       // BUG: xten -> linalg lowering does not pass along the padding
       //      value! But maxpool is usually padded with -inf.
-      Attribute padValue;
+      TypedAttr padValue;
       if (auto floatTy = elementTy.cast<FloatType>()) {
         padValue = rewriter.getFloatAttr(
             floatTy, APFloat::getInf(floatTy.getFloatSemantics(), true));

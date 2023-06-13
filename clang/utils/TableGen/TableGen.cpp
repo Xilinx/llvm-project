@@ -82,6 +82,10 @@ enum ActionType {
   GenArmSveBuiltinCG,
   GenArmSveTypeFlags,
   GenArmSveRangeChecks,
+  GenArmSmeHeader,
+  GenArmSmeBuiltins,
+  GenArmSmeBuiltinCG,
+  GenArmSmeRangeChecks,
   GenArmCdeHeader,
   GenArmCdeBuiltinDef,
   GenArmCdeBuiltinSema,
@@ -91,6 +95,9 @@ enum ActionType {
   GenRISCVVectorBuiltins,
   GenRISCVVectorBuiltinCG,
   GenRISCVVectorBuiltinSema,
+  GenRISCVSiFiveVectorBuiltins,
+  GenRISCVSiFiveVectorBuiltinCG,
+  GenRISCVSiFiveVectorBuiltinSema,
   GenAttrDocs,
   GenDiagDocs,
   GenOptDocs,
@@ -223,6 +230,14 @@ cl::opt<ActionType> Action(
                    "Generate arm_sve_typeflags.inc for clang"),
         clEnumValN(GenArmSveRangeChecks, "gen-arm-sve-sema-rangechecks",
                    "Generate arm_sve_sema_rangechecks.inc for clang"),
+        clEnumValN(GenArmSmeHeader, "gen-arm-sme-header",
+                   "Generate arm_sme.h for clang"),
+        clEnumValN(GenArmSmeBuiltins, "gen-arm-sme-builtins",
+                   "Generate arm_sme_builtins.inc for clang"),
+        clEnumValN(GenArmSmeBuiltinCG, "gen-arm-sme-builtin-codegen",
+                   "Generate arm_sme_builtin_cg_map.inc for clang"),
+        clEnumValN(GenArmSmeRangeChecks, "gen-arm-sme-sema-rangechecks",
+                   "Generate arm_sme_sema_rangechecks.inc for clang"),
         clEnumValN(GenArmMveHeader, "gen-arm-mve-header",
                    "Generate arm_mve.h for clang"),
         clEnumValN(GenArmMveBuiltinDef, "gen-arm-mve-builtin-def",
@@ -251,6 +266,12 @@ cl::opt<ActionType> Action(
                    "Generate riscv_vector_builtin_cg.inc for clang"),
         clEnumValN(GenRISCVVectorBuiltinSema, "gen-riscv-vector-builtin-sema",
                    "Generate riscv_vector_builtin_sema.inc for clang"),
+        clEnumValN(GenRISCVSiFiveVectorBuiltins, "gen-riscv-sifive-vector-builtins",
+                   "Generate riscv_sifive_vector_builtins.inc for clang"),
+        clEnumValN(GenRISCVSiFiveVectorBuiltinCG, "gen-riscv-sifive-vector-builtin-codegen",
+                   "Generate riscv_sifive_vector_builtin_cg.inc for clang"),
+        clEnumValN(GenRISCVSiFiveVectorBuiltinSema, "gen-riscv-sifive-vector-builtin-sema",
+                   "Generate riscv_sifive_vector_builtin_sema.inc for clang"),
         clEnumValN(GenAttrDocs, "gen-attr-docs",
                    "Generate attribute documentation"),
         clEnumValN(GenDiagDocs, "gen-diag-docs",
@@ -445,6 +466,18 @@ bool ClangTableGenMain(raw_ostream &OS, RecordKeeper &Records) {
   case GenArmSveRangeChecks:
     EmitSveRangeChecks(Records, OS);
     break;
+  case GenArmSmeHeader:
+    EmitSmeHeader(Records, OS);
+    break;
+  case GenArmSmeBuiltins:
+    EmitSmeBuiltins(Records, OS);
+    break;
+  case GenArmSmeBuiltinCG:
+    EmitSmeBuiltinCG(Records, OS);
+    break;
+  case GenArmSmeRangeChecks:
+    EmitSmeRangeChecks(Records, OS);
+    break;
   case GenArmCdeHeader:
     EmitCdeHeader(Records, OS);
     break;
@@ -470,6 +503,15 @@ bool ClangTableGenMain(raw_ostream &OS, RecordKeeper &Records) {
     EmitRVVBuiltinCG(Records, OS);
     break;
   case GenRISCVVectorBuiltinSema:
+    EmitRVVBuiltinSema(Records, OS);
+    break;
+  case GenRISCVSiFiveVectorBuiltins:
+    EmitRVVBuiltins(Records, OS);
+    break;
+  case GenRISCVSiFiveVectorBuiltinCG:
+    EmitRVVBuiltinCG(Records, OS);
+    break;
+  case GenRISCVSiFiveVectorBuiltinSema:
     EmitRVVBuiltinSema(Records, OS);
     break;
   case GenAttrDocs:
