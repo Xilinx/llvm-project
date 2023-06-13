@@ -471,15 +471,32 @@ createLinalgBodyCalculationForElementwiseOp(Operation *op, ValueRange args,
     }
 
     if (arith::FPToSIOp::areCastCompatible(srcTy, dstTy)) {
-      auto intMin = rewriter.create<arith::ConstantOp>(
+      Value intMin = rewriter.create<arith::ConstantOp>(
           loc, rewriter.getF32FloatAttr(
                    APInt::getSignedMinValue(dstTy.getIntOrFloatBitWidth())
                        .getSExtValue()));
 
-      auto intMax = rewriter.create<arith::ConstantOp>(
+      Value intMax = rewriter.create<arith::ConstantOp>(
           loc, rewriter.getF32FloatAttr(
                    APInt::getSignedMaxValue(dstTy.getIntOrFloatBitWidth())
                        .getSExtValue()));
+
+      // Since F32 constants are created, we may still need to convert them to
+      // the correct type.
+      auto convertType = [&](Type ty, Value arg) {
+        auto argTy = arg.getType();
+        bool bitExtend =
+            argTy.getIntOrFloatBitWidth() < ty.getIntOrFloatBitWidth();
+        if (ty != argTy) {
+          if (!bitExtend)
+            arg = rewriter.create<arith::TruncFOp>(loc, ty, arg);
+          else
+            arg = rewriter.create<arith::ExtFOp>(loc, ty, arg);
+        }
+        return arg;
+      };
+      intMin = convertType(srcTy, intMin);
+      intMax = convertType(srcTy, intMax);
 
       auto rounded = rewriter.create<math::RoundEvenOp>(loc, args[0]);
 
