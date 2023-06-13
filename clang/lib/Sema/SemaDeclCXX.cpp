@@ -2710,10 +2710,12 @@ BaseResult Sema::ActOnBaseSpecifier(Decl *classdecl, SourceRange SpecifierRange,
   for (const ParsedAttr &AL : Attributes) {
     if (AL.isInvalid() || AL.getKind() == ParsedAttr::IgnoredAttribute)
       continue;
-    Diag(AL.getLoc(), AL.getKind() == ParsedAttr::UnknownAttribute
-                          ? (unsigned)diag::warn_unknown_attribute_ignored
-                          : (unsigned)diag::err_base_specifier_attribute)
-        << AL << AL.getRange();
+    if (AL.getKind() == ParsedAttr::UnknownAttribute)
+      Diag(AL.getLoc(), diag::warn_unknown_attribute_ignored)
+          << AL << AL.getRange();
+    else
+      Diag(AL.getLoc(), diag::err_base_specifier_attribute)
+          << AL << AL.isRegularKeywordAttribute() << AL.getRange();
   }
 
   TypeSourceInfo *TInfo = nullptr;
@@ -7517,7 +7519,7 @@ bool Sema::CheckExplicitlyDefaultedSpecialMember(CXXMethodDecl *MD,
     }
   }
 
-  const FunctionProtoType *Type = MD->getType()->getAs<FunctionProtoType>();
+  const FunctionProtoType *Type = MD->getType()->castAs<FunctionProtoType>();
 
   bool CanHaveConstParam = false;
   if (CSM == CXXCopyConstructor)
@@ -8626,8 +8628,7 @@ bool Sema::CheckExplicitlyDefaultedComparison(Scope *S, FunctionDecl *FD,
   const ParmVarDecl *KnownParm = nullptr;
   for (const ParmVarDecl *Param : FD->parameters()) {
     QualType ParmTy = Param->getType();
-    if (ParmTy->isDependentType())
-      continue;
+
     if (!KnownParm) {
       auto CTy = ParmTy;
       // Is it `T const &`?
@@ -11087,8 +11088,8 @@ struct BadSpecifierDiagnoser {
 /// Check the validity of a declarator that we parsed for a deduction-guide.
 /// These aren't actually declarators in the grammar, so we need to check that
 /// the user didn't specify any pieces that are not part of the deduction-guide
-/// grammar.
-void Sema::CheckDeductionGuideDeclarator(Declarator &D, QualType &R,
+/// grammar. Return true on invalid deduction-guide.
+bool Sema::CheckDeductionGuideDeclarator(Declarator &D, QualType &R,
                                          StorageClass &SC) {
   TemplateName GuidedTemplate = D.getName().TemplateName.get().get();
   TemplateDecl *GuidedTemplateDecl = GuidedTemplate.getAsTemplateDecl();
@@ -11138,7 +11139,7 @@ void Sema::CheckDeductionGuideDeclarator(Declarator &D, QualType &R,
   }
 
   if (D.isInvalidType())
-    return;
+    return true;
 
   // Check the declarator is simple enough.
   bool FoundFunction = false;
@@ -11151,11 +11152,9 @@ void Sema::CheckDeductionGuideDeclarator(Declarator &D, QualType &R,
           << D.getSourceRange();
       break;
     }
-    if (!Chunk.Fun.hasTrailingReturnType()) {
-      Diag(D.getName().getBeginLoc(),
-           diag::err_deduction_guide_no_trailing_return_type);
-      break;
-    }
+    if (!Chunk.Fun.hasTrailingReturnType())
+      return Diag(D.getName().getBeginLoc(),
+                  diag::err_deduction_guide_no_trailing_return_type);
 
     // Check that the return type is written as a specialization of
     // the template specified as the deduction-guide's name.
@@ -11190,13 +11189,12 @@ void Sema::CheckDeductionGuideDeclarator(Declarator &D, QualType &R,
       MightInstantiateToSpecialization = true;
     }
 
-    if (!AcceptableReturnType) {
-      Diag(TSI->getTypeLoc().getBeginLoc(),
-           diag::err_deduction_guide_bad_trailing_return_type)
-          << GuidedTemplate << TSI->getType()
-          << MightInstantiateToSpecialization
-          << TSI->getTypeLoc().getSourceRange();
-    }
+    if (!AcceptableReturnType)
+      return Diag(TSI->getTypeLoc().getBeginLoc(),
+                  diag::err_deduction_guide_bad_trailing_return_type)
+             << GuidedTemplate << TSI->getType()
+             << MightInstantiateToSpecialization
+             << TSI->getTypeLoc().getSourceRange();
 
     // Keep going to check that we don't have any inner declarator pieces (we
     // could still have a function returning a pointer to a function).
@@ -11204,7 +11202,9 @@ void Sema::CheckDeductionGuideDeclarator(Declarator &D, QualType &R,
   }
 
   if (D.isFunctionDefinition())
+    // we can still create a valid deduction guide here.
     Diag(D.getIdentifierLoc(), diag::err_deduction_guide_defines_function);
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -11567,6 +11567,10 @@ NamespaceDecl *Sema::getOrCreateStdNamespace() {
         &PP.getIdentifierTable().get("std"),
         /*PrevDecl=*/nullptr, /*Nested=*/false);
     getStdNamespace()->setImplicit(true);
+    // We want the created NamespaceDecl to be available for redeclaration
+    // lookups, but not for regular name lookups.
+    Context.getTranslationUnitDecl()->addDecl(getStdNamespace());
+    getStdNamespace()->clearIdentifierNamespace();
   }
 
   return getStdNamespace();
@@ -15671,9 +15675,6 @@ Sema::BuildCXXConstructExpr(SourceLocation ConstructLoc, QualType DeclInitType,
          "given constructor for wrong type");
   MarkFunctionReferenced(ConstructLoc, Constructor);
   if (getLangOpts().CUDA && !CheckCUDACall(ConstructLoc, Constructor))
-    return ExprError();
-  if (getLangOpts().SYCLIsDevice &&
-      !checkSYCLDeviceFunction(ConstructLoc, Constructor))
     return ExprError();
 
   return CheckForImmediateInvocation(

@@ -522,7 +522,7 @@ func.func @canonicalize_cross_concat_inputs(%arg0 : tensor<1x12x12xf32>, %arg1 :
 func.func @canonicalize_concat_slice_on_non_concat_axis(%arg0 : tensor<1x12x12xf32>, %arg1 : tensor<1x12x12xf32>) -> (tensor<1x6x12xf32>, tensor<1x3x12xf32>) {
   %0 = "tosa.concat"(%arg0, %arg1) {axis = 2 : i64} : (tensor<1x12x12xf32>, tensor<1x12x12xf32>) -> tensor<1x12x24xf32>
   %1 = "tosa.slice"(%0) {size = array<i64: 1, 6, 12>, start = array<i64: 0, 0, 0>} : (tensor<1x12x24xf32>) -> tensor<1x6x12xf32>
-  %2 = "tosa.slice"(%0) {size = array<i64: 1, 3, 12>, start = array<i64: 1, 3, 12>} : (tensor<1x12x24xf32>) -> tensor<1x3x12xf32>
+  %2 = "tosa.slice"(%0) {size = array<i64: 1, 3, 12>, start = array<i64: 0, 3, 12>} : (tensor<1x12x24xf32>) -> tensor<1x3x12xf32>
   return %1, %2 : tensor<1x6x12xf32>, tensor<1x3x12xf32>
 }
 
@@ -533,5 +533,36 @@ func.func @fold_log_exp(%arg0: tensor<?x1xf32>) -> tensor<?x1xf32> {
   // CHECK: return %arg{{.*}} : tensor<?x1xf32>
   %0 = "tosa.exp"(%arg0) : (tensor<?x1xf32>) -> tensor<?x1xf32>
   %1 = "tosa.log"(%0) : (tensor<?x1xf32>) -> tensor<?x1xf32>
+  return %1 : tensor<?x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @fold_exp_log
+func.func @fold_exp_log(%arg0: tensor<?x1xf32>) -> tensor<?x1xf32> {
+  // CHECK: return %arg{{.*}} : tensor<?x1xf32>
+  %0 = "tosa.log"(%arg0) : (tensor<?x1xf32>) -> tensor<?x1xf32>
+  %1 = "tosa.exp"(%0) : (tensor<?x1xf32>) -> tensor<?x1xf32>
+  return %1 : tensor<?x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @fold_negate_negate
+func.func @fold_negate_negate(%arg0: tensor<?x1xf32>) -> tensor<?x1xf32> {
+  // CHECK: return %arg{{.*}} : tensor<?x1xf32>
+  %0 = "tosa.negate"(%arg0) : (tensor<?x1xf32>) -> tensor<?x1xf32>
+  %1 = "tosa.negate"(%0) : (tensor<?x1xf32>) -> tensor<?x1xf32>
+  return %1 : tensor<?x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @fold_abs_abs
+func.func @fold_abs_abs(%arg0: tensor<?x1xf32>) -> tensor<?x1xf32> {
+  // CHECK: %[[ABS:.*]] = "tosa.abs"(%arg{{.*}}) : (tensor<?x1xf32>) -> tensor<?x1xf32>
+  // CHECK: return %[[ABS]] : tensor<?x1xf32>
+  %0 = "tosa.abs"(%arg0) : (tensor<?x1xf32>) -> tensor<?x1xf32>
+  %1 = "tosa.abs"(%0) : (tensor<?x1xf32>) -> tensor<?x1xf32>
   return %1 : tensor<?x1xf32>
 }

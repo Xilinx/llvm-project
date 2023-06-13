@@ -194,14 +194,18 @@ public:
   /// Gets the total number of tensors that loopEmitter is operating on.
   unsigned getNumTensors() const { return tensors.size(); }
 
+  /// Gets the TensorId for synthetic tensor.
+  TensorId getSynTensorId() const { return tensors.size(); }
+
   /// Compresses a TensorId and Level into a TensorLevel.
   TensorLevel makeTensorLevel(TensorId t, Level l) const {
-    return l * getNumTensors() + t;
+    // TODO: getNumTensor() should include synthetic tensor.
+    return l * (getNumTensors() + 1) + t;
   }
 
   /// De-compresses a TensorLevel back to a pair of TensorId and Level.
   std::pair<TensorId, Level> unpackTensorLevel(TensorLevel tidLvl) const {
-    unsigned nt = getNumTensors();
+    unsigned nt = getNumTensors() + 1;
     return std::make_pair(tidLvl % nt, tidLvl / nt);
   }
 
@@ -319,6 +323,8 @@ private:
                                                  Location loc, Value crd,
                                                  TensorId tid, Level lvl);
 
+  bool isSynTensor(TensorId tid) const { return tid == getNumTensors(); }
+
   bool isOutputTensor(TensorId tid) const {
     return hasOutput && tid == getNumTensors() - 1;
   }
@@ -408,18 +414,20 @@ private:
   /// TODO: why not do this computation when we first store the reassoc,
   /// instead of doing it every time we look it up?
   SmallVector<Level, 2> getCollapseReassociation(TensorId tid, Level dstLvl) {
-    assert(tid < getNumTensors() && "Invalid TensorId");
-    assert(collapseReassoc.size() == getNumTensors());
+    assert(tid < getNumTensors() + 1 && "Invalid TensorId");
+    assert(collapseReassoc.size() == getNumTensors() + 1);
     if (const auto reassoc = collapseReassoc[tid]) {
+      assert(!isSynTensor(tid) && !isOutputTensor(tid) &&
+             "Output/Synthetic tensor should not have reassociation");
       // TODO: store the dstLvlRank in the LoopEmitter so that we can
       // check `dstLvl < dstLvlRank` at the top; and only here need to
       // assert that `reassoc.size() == dstLvlRank`.
       assert(dstLvl < reassoc.size() && "Level is out-of-bounds");
-      const auto srcLvls = reassoc[dstLvl].cast<ArrayAttr>();
+      const auto srcLvls = cast<ArrayAttr>(reassoc[dstLvl]);
       return llvm::to_vector<2>(
           llvm::map_range(srcLvls, [&](Attribute srcLvl) -> Level {
             // TODO: replace this with the converter for `LevelAttr`.
-            return srcLvl.cast<IntegerAttr>().getValue().getZExtValue();
+            return cast<IntegerAttr>(srcLvl).getValue().getZExtValue();
           }));
     }
     return {dstLvl};

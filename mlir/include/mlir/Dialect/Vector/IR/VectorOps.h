@@ -13,6 +13,7 @@
 #ifndef MLIR_DIALECT_VECTOR_IR_VECTOROPS_H
 #define MLIR_DIALECT_VECTOR_IR_VECTOROPS_H
 
+#include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/Dialect/Vector/Interfaces/MaskableOpInterface.h"
 #include "mlir/Dialect/Vector/Interfaces/MaskingOpInterface.h"
 #include "mlir/IR/AffineMap.h"
@@ -169,12 +170,12 @@ Value makeArithReduction(OpBuilder &b, Location loc, CombiningKind kind,
 
 /// Returns true if `attr` has "parallel" iterator type semantics.
 inline bool isParallelIterator(Attribute attr) {
-  return attr.cast<IteratorTypeAttr>().getValue() == IteratorType::parallel;
+  return cast<IteratorTypeAttr>(attr).getValue() == IteratorType::parallel;
 }
 
 /// Returns true if `attr` has "reduction" iterator type semantics.
 inline bool isReductionIterator(Attribute attr) {
-  return attr.cast<IteratorTypeAttr>().getValue() == IteratorType::reduction;
+  return cast<IteratorTypeAttr>(attr).getValue() == IteratorType::reduction;
 }
 
 //===----------------------------------------------------------------------===//
