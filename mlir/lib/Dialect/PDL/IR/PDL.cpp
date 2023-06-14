@@ -93,6 +93,13 @@ static void visit(Operation *op, DenseSet<Operation *> &visited) {
 LogicalResult ApplyNativeConstraintOp::verify() {
   if (getNumOperands() == 0)
     return emitOpError("expected at least one argument");
+  if (llvm::any_of(getResults(), [](OpResult result) {
+        return result.getType().isa<OperationType>();
+      })) {
+    return emitOpError(
+        "returning an operation from a constraint is not supported");
+  }
+
   return success();
 }
 
