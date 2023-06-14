@@ -52,7 +52,7 @@ public:
 
   LogicalResult matchAndRewrite(vector::CreateMaskOp op,
                                 PatternRewriter &rewriter) const override {
-    auto dstType = cast<VectorType>(op.getResult().getType());
+    auto dstType = op.getResult().getType().cast<VectorType>();
     int64_t rank = dstType.getRank();
     if (rank <= 1)
       return rewriter.notifyMatchFailure(
@@ -112,7 +112,7 @@ public:
     if (rank == 0) {
       assert(dimSizes.size() == 1 &&
              "Expected exactly one dim size for a 0-D vector");
-      bool value = cast<IntegerAttr>(dimSizes[0]).getInt() == 1;
+      bool value = dimSizes[0].cast<IntegerAttr>().getInt() == 1;
       rewriter.replaceOpWithNewOp<arith::ConstantOp>(
           op, dstType,
           DenseIntElementsAttr::get(
@@ -122,14 +122,14 @@ public:
     }
 
     // Scalable constant masks can only be lowered for the "none set" case.
-    if (cast<VectorType>(dstType).isScalable()) {
+    if (dstType.cast<VectorType>().isScalable()) {
       rewriter.replaceOpWithNewOp<arith::ConstantOp>(
           op, DenseElementsAttr::get(dstType, false));
       return success();
     }
 
     int64_t trueDim = std::min(dstType.getDimSize(0),
-                               cast<IntegerAttr>(dimSizes[0]).getInt());
+                               dimSizes[0].cast<IntegerAttr>().getInt());
 
     if (rank == 1) {
       // Express constant 1-D case in explicit vector form:
@@ -146,7 +146,7 @@ public:
         VectorType::get(dstType.getShape().drop_front(), eltType);
     SmallVector<int64_t> newDimSizes;
     for (int64_t r = 1; r < rank; r++)
-      newDimSizes.push_back(cast<IntegerAttr>(dimSizes[r]).getInt());
+      newDimSizes.push_back(dimSizes[r].cast<IntegerAttr>().getInt());
     Value trueVal = rewriter.create<vector::ConstantMaskOp>(
         loc, lowType, rewriter.getI64ArrayAttr(newDimSizes));
     Value result = rewriter.create<arith::ConstantOp>(

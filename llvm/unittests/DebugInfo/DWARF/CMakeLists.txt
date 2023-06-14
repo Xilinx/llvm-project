@@ -16,7 +16,6 @@ add_llvm_unittest(DebugInfoDWARFTests
   DwarfUtils.cpp
   DWARFAcceleratorTableTest.cpp
   DWARFDataExtractorTest.cpp
-  DWARFDebugAbbrevTest.cpp
   DWARFDebugArangeSetTest.cpp
   DWARFDebugFrameTest.cpp
   DWARFDebugInfoTest.cpp

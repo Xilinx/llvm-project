@@ -34,7 +34,7 @@ struct ConstantOpInterface
       return constantOp->emitError("could not infer memory space");
 
     // Only ranked tensors are supported.
-    if (!isa<RankedTensorType>(constantOp.getType()))
+    if (!constantOp.getType().isa<RankedTensorType>())
       return failure();
 
     // Only constants inside a module are supported.
@@ -58,7 +58,7 @@ struct ConstantOpInterface
   bool isWritable(Operation *op, Value value,
                   const AnalysisState &state) const {
     // Memory locations returned by memref::GetGlobalOp may not be written to.
-    assert(isa<OpResult>(value));
+    assert(value.isa<OpResult>());
     return false;
   }
 };
@@ -84,21 +84,21 @@ struct IndexCastOpInterface
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
                           const BufferizationOptions &options) const {
     auto castOp = cast<arith::IndexCastOp>(op);
-    auto resultTensorType = cast<TensorType>(castOp.getType());
+    auto resultTensorType = castOp.getType().cast<TensorType>();
 
     FailureOr<Value> source = getBuffer(rewriter, castOp.getIn(), options);
     if (failed(source))
       return failure();
-    auto sourceType = cast<BaseMemRefType>(source->getType());
+    auto sourceType = source->getType().cast<BaseMemRefType>();
 
     // Result type should have same layout and address space as the source type.
     BaseMemRefType resultType;
-    if (auto rankedMemRefType = dyn_cast<MemRefType>(sourceType)) {
+    if (auto rankedMemRefType = sourceType.dyn_cast<MemRefType>()) {
       resultType = MemRefType::get(
           rankedMemRefType.getShape(), resultTensorType.getElementType(),
           rankedMemRefType.getLayout(), rankedMemRefType.getMemorySpace());
     } else {
-      auto unrankedMemrefType = cast<UnrankedMemRefType>(sourceType);
+      auto unrankedMemrefType = sourceType.cast<UnrankedMemRefType>();
       resultType = UnrankedMemRefType::get(resultTensorType.getElementType(),
                                            unrankedMemrefType.getMemorySpace());
     }
@@ -184,7 +184,7 @@ struct SelectOpInterface
 
     // If the buffers have different types, they differ only in their layout
     // map.
-    auto memrefType = llvm::cast<MemRefType>(*trueType);
+    auto memrefType = trueType->cast<MemRefType>();
     return getMemRefTypeWithFullyDynamicLayout(
         RankedTensorType::get(memrefType.getShape(),
                               memrefType.getElementType()),

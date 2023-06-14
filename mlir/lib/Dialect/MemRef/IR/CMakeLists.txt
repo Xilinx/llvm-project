@@ -1,6 +1,6 @@
 add_mlir_dialect_library(MLIRMemRefDialect
   MemRefDialect.cpp
-  MemRefMemorySlot.cpp
+  MemRefMem2Reg.cpp
   MemRefOps.cpp
   ValueBoundsOpInterfaceImpl.cpp
 
@@ -21,7 +21,6 @@ add_mlir_dialect_library(MLIRMemRefDialect
   MLIRDialectUtils
   MLIRInferTypeOpInterface
   MLIRIR
-  MLIRMemorySlotInterfaces
   MLIRShapedOpInterfaces
   MLIRSideEffectInterfaces
   MLIRValueBoundsOpInterface

@@ -20,6 +20,8 @@ class LLDB_API SBQueue {
 public:
   SBQueue();
 
+  SBQueue(const QueueSP &queue_sp);
+
   SBQueue(const SBQueue &rhs);
 
   const SBQueue &operator=(const lldb::SBQueue &rhs);
@@ -55,8 +57,6 @@ public:
 protected:
   friend class SBProcess;
   friend class SBThread;
-
-  SBQueue(const QueueSP &queue_sp);
 
   void SetQueue(const lldb::QueueSP &queue_sp);
 

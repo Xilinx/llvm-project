@@ -143,7 +143,8 @@ concept same_as = __is_same(T, U);
 // expected-note@* 1+{{previous definition is here}}
 
 //--- Use5.cpp
-import "foo.h";  // expected-warning {{the implementation of header units is in an experimental phase}}
+// expected-no-diagnostics
+import "foo.h";
 import A;
 
 template <class T> void foo()
@@ -151,8 +152,9 @@ template <class T> void foo()
 {}
 
 //--- Use6.cpp
+// expected-no-diagnostics
 import A;
-import "foo.h"; // expected-warning {{the implementation of header units is in an experimental phase}}
+import "foo.h";
 
 template <class T> void foo()
   requires same_as<T, int>

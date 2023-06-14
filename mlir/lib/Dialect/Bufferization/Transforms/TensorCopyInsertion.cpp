@@ -58,7 +58,7 @@ resolveUsesInRepetitiveRegions(Operation *op,
     for (OpOperand &opOperand : bufferizableOp->getOpOperands()) {
       Value operand = opOperand.get();
       // Skip non-tensor operands.
-      if (!isa<TensorType>(operand.getType()))
+      if (!operand.getType().isa<TensorType>())
         continue;
       // Skip operands that do not bufferize to memory writes.
       if (!bufferizableOp.bufferizesToMemoryWrite(opOperand, state))
@@ -85,7 +85,7 @@ resolveUsesInRepetitiveRegions(Operation *op,
       // Insert a tensor copy and replace all uses inside of repetitive regions.
       rewriter.setInsertionPoint(bufferizableOp);
       auto tensorCopy = rewriter.create<AllocTensorOp>(
-          bufferizableOp->getLoc(), cast<TensorType>(operand.getType()),
+          bufferizableOp->getLoc(), operand.getType().cast<TensorType>(),
           /*dynamicSizes=*/ValueRange(),
           /*copy=*/operand, /*memory_space=*/IntegerAttr());
       for (OpOperand *use : usesInsideRegion)
@@ -137,7 +137,7 @@ mlir::bufferization::insertTensorCopies(Operation *op,
       SmallVector<bool> escapeAttrValue;
       bool foundTensorResult = false;
       for (OpResult opResult : op->getOpResults()) {
-        if (!isa<TensorType>(opResult.getType()) ||
+        if (!opResult.getType().isa<TensorType>() ||
             !bufferizableOp.bufferizesToAllocation(opResult)) {
           escapeAttrValue.push_back(false);
           continue;

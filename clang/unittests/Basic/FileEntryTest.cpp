@@ -9,7 +9,6 @@
 #include "clang/Basic/FileEntry.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/Support/Path.h"
 #include "gtest/gtest.h"
 
 using namespace llvm;
@@ -52,14 +51,11 @@ public:
              .first);
   }
   FileEntryRef addFileRedirect(StringRef Name, FileEntryRef Base) {
-    auto Dir = addDirectory(llvm::sys::path::parent_path(Name));
-
     return FileEntryRef(
         *Files
              .insert({Name, FileEntryRef::MapValue(
                                 const_cast<FileEntryRef::MapEntry &>(
-                                    Base.getMapEntry()),
-                                Dir)})
+                                    Base.getMapEntry()))})
              .first);
   }
 };

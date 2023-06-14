@@ -267,18 +267,18 @@ RegionRange::RegionRange(ArrayRef<Region *> regions)
 /// See `llvm::detail::indexed_accessor_range_base` for details.
 RegionRange::OwnerT RegionRange::offset_base(const OwnerT &owner,
                                              ptrdiff_t index) {
-  if (auto *region = llvm::dyn_cast_if_present<const std::unique_ptr<Region> *>(owner))
+  if (auto *region = owner.dyn_cast<const std::unique_ptr<Region> *>())
     return region + index;
-  if (auto **region = llvm::dyn_cast_if_present<Region **>(owner))
+  if (auto **region = owner.dyn_cast<Region **>())
     return region + index;
   return &owner.get<Region *>()[index];
 }
 /// See `llvm::detail::indexed_accessor_range_base` for details.
 Region *RegionRange::dereference_iterator(const OwnerT &owner,
                                           ptrdiff_t index) {
-  if (auto *region = llvm::dyn_cast_if_present<const std::unique_ptr<Region> *>(owner))
+  if (auto *region = owner.dyn_cast<const std::unique_ptr<Region> *>())
     return region[index].get();
-  if (auto **region = llvm::dyn_cast_if_present<Region **>(owner))
+  if (auto **region = owner.dyn_cast<Region **>())
     return region[index];
   return &owner.get<Region *>()[index];
 }

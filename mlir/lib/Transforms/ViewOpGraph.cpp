@@ -145,13 +145,13 @@ private:
     int64_t largeAttrLimit = getLargeAttributeSizeLimit();
 
     // Always emit splat attributes.
-    if (isa<SplatElementsAttr>(attr)) {
+    if (attr.isa<SplatElementsAttr>()) {
       attr.print(os);
       return;
     }
 
     // Elide "big" elements attributes.
-    auto elements = dyn_cast<ElementsAttr>(attr);
+    auto elements = attr.dyn_cast<ElementsAttr>();
     if (elements && elements.getNumElements() > largeAttrLimit) {
       os << std::string(elements.getShapedType().getRank(), '[') << "..."
          << std::string(elements.getShapedType().getRank(), ']') << " : "
@@ -159,7 +159,7 @@ private:
       return;
     }
 
-    auto array = dyn_cast<ArrayAttr>(attr);
+    auto array = attr.dyn_cast<ArrayAttr>();
     if (array && static_cast<int64_t>(array.size()) > largeAttrLimit) {
       os << "[...]";
       return;

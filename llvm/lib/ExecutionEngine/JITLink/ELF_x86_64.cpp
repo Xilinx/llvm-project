@@ -227,10 +227,8 @@ private:
 
 public:
   ELFLinkGraphBuilder_x86_64(StringRef FileName,
-                             const object::ELFFile<object::ELF64LE> &Obj,
-                             LinkGraph::FeatureVector Features)
-      : ELFLinkGraphBuilder(Obj, Triple("x86_64-unknown-linux"),
-                            std::move(Features), FileName,
+                             const object::ELFFile<object::ELF64LE> &Obj)
+      : ELFLinkGraphBuilder(Obj, Triple("x86_64-unknown-linux"), FileName,
                             x86_64::getEdgeKindName) {}
 };
 
@@ -331,14 +329,9 @@ createLinkGraphFromELFObject_x86_64(MemoryBufferRef ObjectBuffer) {
   if (!ELFObj)
     return ELFObj.takeError();
 
-  auto Features = (*ELFObj)->getFeatures();
-  if (!Features)
-    return Features.takeError();
-
   auto &ELFObjFile = cast<object::ELFObjectFile<object::ELF64LE>>(**ELFObj);
   return ELFLinkGraphBuilder_x86_64((*ELFObj)->getFileName(),
-                                    ELFObjFile.getELFFile(),
-                                    Features->getFeatures())
+                                    ELFObjFile.getELFFile())
       .buildGraph();
 }
 

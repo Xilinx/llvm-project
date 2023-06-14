@@ -30,7 +30,7 @@ def LLVM_Type : DialectType<LLVM_Dialect,
 
 // Type constraint accepting LLVM token type.
 def LLVM_TokenType : Type<
-  CPred<"::llvm::isa<::mlir::LLVM::LLVMTokenType>($_self)">,
+  CPred<"$_self.isa<::mlir::LLVM::LLVMTokenType>()">,
   "LLVM token type">,
   BuildableType<"::mlir::LLVM::LLVMTokenType::get($_builder.getContext())">;
 
@@ -38,12 +38,12 @@ def LLVM_TokenType : Type<
 // and function.
 def LLVM_PrimitiveType : Type<
   And<[LLVM_Type.predicate,
-       CPred<"!::llvm::isa<::mlir::LLVM::LLVMVoidType, "
-                         "::mlir::LLVM::LLVMFunctionType>($_self)">]>,
+       CPred<"!$_self.isa<::mlir::LLVM::LLVMVoidType, "
+                         "::mlir::LLVM::LLVMFunctionType>()">]>,
   "primitive LLVM type">;
 
 // Type constraint accepting any LLVM function type.
-def LLVM_FunctionType : Type<CPred<"::llvm::isa<::mlir::LLVM::LLVMFunctionType>($_self)">,
+def LLVM_FunctionType : Type<CPred<"$_self.isa<::mlir::LLVM::LLVMFunctionType>()">,
                          "LLVM function type", "::mlir::LLVM::LLVMFunctionType">;
 
 // Type constraint accepting any LLVM floating point type.
@@ -52,37 +52,37 @@ def LLVM_AnyFloat : Type<
   "floating point LLVM type">;
 
 // Type constraint accepting any LLVM pointer type.
-def LLVM_AnyPointer : Type<CPred<"::llvm::isa<::mlir::LLVM::LLVMPointerType>($_self)">,
+def LLVM_AnyPointer : Type<CPred<"$_self.isa<::mlir::LLVM::LLVMPointerType>()">,
                           "LLVM pointer type", "::mlir::LLVM::LLVMPointerType">;
 
 // Type constraint accepting LLVM pointer type with an additional constraint
 // on the element type.
 class LLVM_PointerTo<Type pointee> : Type<
   And<[LLVM_AnyPointer.predicate,
-       Or<[CPred<"::llvm::cast<::mlir::LLVM::LLVMPointerType>($_self).isOpaque()">,
+       Or<[CPred<"$_self.cast<::mlir::LLVM::LLVMPointerType>().isOpaque()">,
            SubstLeaves<
              "$_self",
-             "::llvm::cast<::mlir::LLVM::LLVMPointerType>($_self).getElementType()",
+             "$_self.cast<::mlir::LLVM::LLVMPointerType>().getElementType()",
              pointee.predicate>]>]>,
   "LLVM pointer to " # pointee.summary, "::mlir::LLVM::LLVMPointerType">;
 
 // Type constraints accepting LLVM pointer type to integer of a specific width.
 class LLVM_IntPtrBase<int width, int addressSpace = 0> : Type<
   And<[LLVM_PointerTo<I<width>>.predicate,
-       CPred<"::llvm::cast<::mlir::LLVM::LLVMPointerType>($_self).getAddressSpace()"
+       CPred<"$_self.cast<::mlir::LLVM::LLVMPointerType>().getAddressSpace()"
              " == " # addressSpace>]>,
   "LLVM pointer to " # I<width>.summary>;
 
 def LLVM_i8Ptr : LLVM_IntPtrBase<8>;
 
 // Type constraint accepting any LLVM structure type.
-def LLVM_AnyStruct : Type<CPred<"::llvm::isa<::mlir::LLVM::LLVMStructType>($_self)">,
+def LLVM_AnyStruct : Type<CPred<"$_self.isa<::mlir::LLVM::LLVMStructType>()">,
                          "LLVM structure type">;
 
 // Type constraint accepting opaque LLVM structure type.
 def LLVM_OpaqueStruct : Type<
   And<[LLVM_AnyStruct.predicate,
-       CPred<"::llvm::cast<::mlir::LLVM::LLVMStructType>($_self).isOpaque()">]>>;
+       CPred<"$_self.cast<::mlir::LLVM::LLVMStructType>().isOpaque()">]>>;
 
 // Type constraint accepting any LLVM type that can be loaded or stored, i.e. a
 // type that has size (not void, function or opaque struct type).
@@ -93,8 +93,8 @@ def LLVM_LoadableType : Type<
 
 // Type constraint accepting any LLVM aggregate type, i.e. structure or array.
 def LLVM_AnyAggregate : Type<
-  CPred<"::llvm::isa<::mlir::LLVM::LLVMStructType, "
-                   "::mlir::LLVM::LLVMArrayType>($_self)">,
+  CPred<"$_self.isa<::mlir::LLVM::LLVMStructType, "
+                   "::mlir::LLVM::LLVMArrayType>()">,
   "LLVM aggregate type">;
 
 // Type constraint accepting any LLVM non-aggregate type, i.e. not structure or
@@ -159,7 +159,6 @@ class LLVM_OpBase<Dialect dialect, string mnemonic, list<Trait> traits = []> :
   //   - $_op - substituted by a reference to store the newly created MLIR
   //            operation (only for MLIR operations that return no result);
   //   - $_int_attr - substituted by a call to an integer attribute matcher;
-  //   - $_float_attr - substituted by a call to a float attribute matcher;
   //   - $_var_attr - substituted by a call to a variable attribute matcher;
   //   - $_resultType - substituted with the MLIR result type;
   //   - $_location - substituted with the MLIR location;
@@ -235,7 +234,7 @@ def LLVM_IntrPatterns {
     [{moduleTranslation.convertType(opInst.getResult($0).getType())}];
   string structResult =
     [{moduleTranslation.convertType(
-        ::llvm::cast<LLVM::LLVMStructType>(opInst.getResult(0).getType())
+        opInst.getResult(0).getType().cast<LLVM::LLVMStructType>()
               .getBody()[$0])}];
 }
 
@@ -309,7 +308,7 @@ class LLVM_IntrOpBase<Dialect dialect, string opName, string enumName,
         !if(!gt(requiresAccessGroup, 0),
             (ins OptionalAttr<SymbolRefArrayAttr>:$access_groups),
             (ins )),
-        !if(!gt(requiresAliasAnalysis, 0),
+        !if(!gt(requiresAccessGroup, 0),
             (ins OptionalAttr<SymbolRefArrayAttr>:$alias_scopes,
                  OptionalAttr<SymbolRefArrayAttr>:$noalias_scopes,
                  OptionalAttr<SymbolRefArrayAttr>:$tbaa),
@@ -422,7 +421,7 @@ def LLVM_VoidResultTypeOpBuilder :
     CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes),
   [{
     assert(isCompatibleType(resultType) && "result must be an LLVM type");
-    assert(::llvm::isa<LLVMVoidType>(resultType) &&
+    assert(resultType.isa<LLVMVoidType>() &&
            "for zero-result operands, only 'void' is accepted as result type");
     build($_builder, $_state, operands, attributes);
   }]>;

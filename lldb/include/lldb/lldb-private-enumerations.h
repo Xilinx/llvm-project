@@ -274,9 +274,4 @@ enum SelectMostRelevant : bool {
   DoNoSelectMostRelevantFrame = false,
 };
 
-enum InterruptionControl : bool {
-  AllowInterruption = true,
-  DoNotAllowInterruption = false,
-};
-
 #endif // LLDB_LLDB_PRIVATE_ENUMERATIONS_H

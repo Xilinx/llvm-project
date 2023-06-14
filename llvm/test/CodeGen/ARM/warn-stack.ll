@@ -12,6 +12,7 @@ entry:
 }
 
 ; CHECK: warning: <unknown>:0:0: stack frame size ([[STCK:[0-9]+]]) exceeds limit (80) in function 'warn'
+; CHECK: {{[0-9]+}}/[[STCK]] ({{.*}}%) spills, {{[0-9]+}}/[[STCK]] ({{.*}}%) variables
 define i32 @warn() nounwind ssp "frame-pointer"="all" "warn-stack-size"="80" {
 entry:
   %var = alloca i32, align 4
@@ -23,6 +24,7 @@ entry:
 }
 
 ; CHECK: warning: <unknown>:0:0: stack frame size ([[STCK:[0-9]+]]) exceeds limit (80) in function 'warn_safestack'
+; CHECK: {{[0-9]+}}/[[STCK]] ({{.*}}%) spills, {{[0-9]+}}/[[STCK]] ({{.*}}%) variables, {{[0-9]+}}/[[STCK]] ({{.*}}%) unsafe stack
 define i32 @warn_safestack() nounwind ssp safestack "warn-stack-size"="80" {
 entry:
   %var = alloca i32, align 4

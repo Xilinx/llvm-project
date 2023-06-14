@@ -62,19 +62,19 @@ class FileLineColLocBreakpointManager
 public:
   Breakpoint *match(const Action &action) const override {
     for (const IRUnit &unit : action.getContextIRUnits()) {
-      if (auto *op = llvm::dyn_cast_if_present<Operation *>(unit)) {
+      if (auto *op = unit.dyn_cast<Operation *>()) {
         if (auto match = matchFromLocation(op->getLoc()))
           return *match;
         continue;
       }
-      if (auto *block = llvm::dyn_cast_if_present<Block *>(unit)) {
+      if (auto *block = unit.dyn_cast<Block *>()) {
         for (auto &op : block->getOperations()) {
           if (auto match = matchFromLocation(op.getLoc()))
             return *match;
         }
         continue;
       }
-      if (Region *region = llvm::dyn_cast_if_present<Region *>(unit)) {
+      if (Region *region = unit.dyn_cast<Region *>()) {
         if (auto match = matchFromLocation(region->getLoc()))
           return *match;
         continue;
@@ -95,7 +95,7 @@ private:
   std::optional<Breakpoint *> matchFromLocation(Location initialLoc) const {
     std::optional<Breakpoint *> match = std::nullopt;
     initialLoc->walk([&](Location loc) {
-      auto fileLoc = dyn_cast<FileLineColLoc>(loc);
+      auto fileLoc = loc.dyn_cast<FileLineColLoc>();
       if (!fileLoc)
         return WalkResult::advance();
       StringRef file = fileLoc.getFilename();

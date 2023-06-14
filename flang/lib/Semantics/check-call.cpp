@@ -104,17 +104,16 @@ static void CheckImplicitInterfaceArg(evaluate::ActualArgument &arg,
 // the usage conforms to the standard and no warning is needed.
 static void CheckCharacterActual(evaluate::Expr<evaluate::SomeType> &actual,
     const characteristics::DummyDataObject &dummy,
-    characteristics::TypeAndShape &actualType, SemanticsContext &context,
-    parser::ContextualMessages &messages) {
+    characteristics::TypeAndShape &actualType,
+    evaluate::FoldingContext &context, parser::ContextualMessages &messages) {
   if (dummy.type.type().category() == TypeCategory::Character &&
       actualType.type().category() == TypeCategory::Character &&
       dummy.type.type().kind() == actualType.type().kind()) {
     if (dummy.type.LEN() && actualType.LEN()) {
-      evaluate::FoldingContext &foldingContext{context.foldingContext()};
       auto dummyLength{
-          ToInt64(Fold(foldingContext, common::Clone(*dummy.type.LEN())))};
+          ToInt64(Fold(context, common::Clone(*dummy.type.LEN())))};
       auto actualLength{
-          ToInt64(Fold(foldingContext, common::Clone(*actualType.LEN())))};
+          ToInt64(Fold(context, common::Clone(*actualType.LEN())))};
       if (dummyLength && actualLength && *actualLength != *dummyLength) {
         if (dummy.attrs.test(
                 characteristics::DummyDataObject::Attr::Allocatable) ||
@@ -128,19 +127,14 @@ static void CheckCharacterActual(evaluate::Expr<evaluate::SomeType> &actual,
               "Actual argument variable length '%jd' does not match the expected length '%jd'"_err_en_US,
               *actualLength, *dummyLength);
         } else if (*actualLength < *dummyLength) {
-          bool isVariable{evaluate::IsVariable(actual)};
-          if (context.ShouldWarn(common::UsageWarning::ShortCharacterActual)) {
-            if (isVariable) {
-              messages.Say(
-                  "Actual argument variable length '%jd' is less than expected length '%jd'"_warn_en_US,
-                  *actualLength, *dummyLength);
-            } else {
-              messages.Say(
-                  "Actual argument expression length '%jd' is less than expected length '%jd'"_warn_en_US,
-                  *actualLength, *dummyLength);
-            }
-          }
-          if (!isVariable) {
+          if (evaluate::IsVariable(actual)) {
+            messages.Say(
+                "Actual argument variable length '%jd' is less than expected length '%jd'"_warn_en_US,
+                *actualLength, *dummyLength);
+          } else {
+            messages.Say(
+                "Actual argument expression length '%jd' is less than expected length '%jd'"_warn_en_US,
+                *actualLength, *dummyLength);
             auto converted{ConvertToType(dummy.type.type(), std::move(actual))};
             CHECK(converted);
             actual = std::move(*converted);
@@ -194,12 +188,12 @@ static bool DefersSameTypeParameters(
 static void CheckExplicitDataArg(const characteristics::DummyDataObject &dummy,
     const std::string &dummyName, evaluate::Expr<evaluate::SomeType> &actual,
     characteristics::TypeAndShape &actualType, bool isElemental,
-    SemanticsContext &context, evaluate::FoldingContext &foldingContext,
-    const Scope *scope, const evaluate::SpecificIntrinsic *intrinsic,
+    evaluate::FoldingContext &context, const Scope *scope,
+    const evaluate::SpecificIntrinsic *intrinsic,
     bool allowActualArgumentConversions) {
 
   // Basic type & rank checking
-  parser::ContextualMessages &messages{foldingContext.messages()};
+  parser::ContextualMessages &messages{context.messages()};
   CheckCharacterActual(actual, dummy, actualType, context, messages);
   bool dummyIsAllocatable{
       dummy.attrs.test(characteristics::DummyDataObject::Attr::Allocatable)};
@@ -207,24 +201,22 @@ static void CheckExplicitDataArg(const characteristics::DummyDataObject &dummy,
       dummy.attrs.test(characteristics::DummyDataObject::Attr::Pointer)};
   bool dummyIsAllocatableOrPointer{dummyIsAllocatable || dummyIsPointer};
   allowActualArgumentConversions &= !dummyIsAllocatableOrPointer;
-  bool typesCompatibleWithIgnoreTKR{
+  if (allowActualArgumentConversions) {
+    ConvertIntegerActual(actual, dummy.type, actualType, messages);
+  }
+  bool typesCompatible{
       (dummy.ignoreTKR.test(common::IgnoreTKR::Type) &&
           (dummy.type.type().category() == TypeCategory::Derived ||
               actualType.type().category() == TypeCategory::Derived ||
               dummy.type.type().category() != actualType.type().category())) ||
       (dummy.ignoreTKR.test(common::IgnoreTKR::Kind) &&
-          dummy.type.type().category() == actualType.type().category())};
-  allowActualArgumentConversions &= !typesCompatibleWithIgnoreTKR;
-  if (allowActualArgumentConversions) {
-    ConvertIntegerActual(actual, dummy.type, actualType, messages);
-  }
-  bool typesCompatible{typesCompatibleWithIgnoreTKR ||
+          dummy.type.type().category() == actualType.type().category()) ||
       dummy.type.type().IsTkCompatibleWith(actualType.type())};
   if (!typesCompatible && dummy.type.Rank() == 0 &&
       allowActualArgumentConversions) {
     // Extension: pass Hollerith literal to scalar as if it had been BOZ
-    if (auto converted{evaluate::HollerithToBOZ(
-            foldingContext, actual, dummy.type.type())}) {
+    if (auto converted{
+            evaluate::HollerithToBOZ(context, actual, dummy.type.type())}) {
       messages.Say(
           "passing Hollerith or character literal as if it were BOZ"_port_en_US);
       actual = *converted;
@@ -363,7 +355,7 @@ static void CheckExplicitDataArg(const characteristics::DummyDataObject &dummy,
           ? actualLastSymbol->detailsIf<ObjectEntityDetails>()
           : nullptr};
   int actualRank{evaluate::GetRank(actualType.shape())};
-  bool actualIsPointer{evaluate::IsObjectPointer(actual, foldingContext)};
+  bool actualIsPointer{evaluate::IsObjectPointer(actual, context)};
   bool dummyIsAssumedRank{dummy.type.attrs().test(
       characteristics::TypeAndShape::Attr::AssumedRank)};
   if (dummy.type.attrs().test(
@@ -457,15 +449,14 @@ static void CheckExplicitDataArg(const characteristics::DummyDataObject &dummy,
   // llvm-project issue #58973: constant actual argument passed in where dummy
   // argument is marked volatile
   bool actualIsVariable{evaluate::IsVariable(actual)};
-  if (dummyIsVolatile && !actualIsVariable &&
-      context.ShouldWarn(common::UsageWarning::ExprPassedToVolatile)) {
+  if (dummyIsVolatile && !actualIsVariable) {
     messages.Say(
         "actual argument associated with VOLATILE %s is not a variable"_warn_en_US,
         dummyName);
   }
 
   // Cases when temporaries might be needed but must not be permitted.
-  bool actualIsContiguous{IsSimplyContiguous(actual, foldingContext)};
+  bool actualIsContiguous{IsSimplyContiguous(actual, context)};
   bool dummyIsAssumedShape{dummy.type.attrs().test(
       characteristics::TypeAndShape::Attr::AssumedShape)};
   bool dummyIsContiguous{
@@ -611,8 +602,7 @@ static void CheckExplicitDataArg(const characteristics::DummyDataObject &dummy,
   }
 
   // Warn about dubious actual argument association with a TARGET dummy argument
-  if (dummy.attrs.test(characteristics::DummyDataObject::Attr::Target) &&
-      context.ShouldWarn(common::UsageWarning::NonTargetPassedToTarget)) {
+  if (dummy.attrs.test(characteristics::DummyDataObject::Attr::Target)) {
     bool actualIsTemp{!actualIsVariable || HasVectorSubscript(actual) ||
         evaluate::ExtractCoarrayRef(actual)};
     if (actualIsTemp) {
@@ -633,9 +623,8 @@ static void CheckExplicitDataArg(const characteristics::DummyDataObject &dummy,
 static void CheckProcedureArg(evaluate::ActualArgument &arg,
     const characteristics::Procedure &proc,
     const characteristics::DummyProcedure &dummy, const std::string &dummyName,
-    SemanticsContext &context) {
-  evaluate::FoldingContext &foldingContext{context.foldingContext()};
-  parser::ContextualMessages &messages{foldingContext.messages()};
+    evaluate::FoldingContext &context) {
+  parser::ContextualMessages &messages{context.messages()};
   auto restorer{
       messages.SetLocation(arg.sourceLocation().value_or(messages.at()))};
   const characteristics::Procedure &interface { dummy.procedure.value() };
@@ -662,7 +651,7 @@ static void CheckProcedureArg(evaluate::ActualArgument &arg,
       }
     }
     if (auto argChars{characteristics::DummyArgument::FromActual(
-            "actual argument", *expr, foldingContext)}) {
+            "actual argument", *expr, context)}) {
       if (!argChars->IsTypelessIntrinsicDummy()) {
         if (auto *argProc{
                 std::get_if<characteristics::DummyProcedure>(&argChars->u)}) {
@@ -698,10 +687,11 @@ static void CheckProcedureArg(evaluate::ActualArgument &arg,
                 messages.Say(
                     "Actual procedure argument for %s of a PURE procedure must have an explicit interface"_err_en_US,
                     dummyName);
-              } else if (context.ShouldWarn(
-                             common::UsageWarning::ImplicitInterfaceActual)) {
+              } else {
                 messages.Say(
-                    "Actual procedure argument has an implicit interface which is not known to be compatible with %s which has an explicit interface"_warn_en_US,
+                    "Actual procedure argument has an implicit interface "
+                    "which is not known to be compatible with %s which has an "
+                    "explicit interface"_warn_en_US,
                     dummyName);
               }
             }
@@ -785,11 +775,10 @@ static void ConvertBOZLiteralArg(
 
 static void CheckExplicitInterfaceArg(evaluate::ActualArgument &arg,
     const characteristics::DummyArgument &dummy,
-    const characteristics::Procedure &proc, SemanticsContext &context,
+    const characteristics::Procedure &proc, evaluate::FoldingContext &context,
     const Scope *scope, const evaluate::SpecificIntrinsic *intrinsic,
     bool allowActualArgumentConversions) {
-  evaluate::FoldingContext &foldingContext{context.foldingContext()};
-  auto &messages{foldingContext.messages()};
+  auto &messages{context.messages()};
   std::string dummyName{"dummy argument"};
   if (!dummy.name.empty()) {
     dummyName += " '"s + parser::ToLowerCaseLetters(dummy.name) + "='";
@@ -813,12 +802,12 @@ static void CheckExplicitInterfaceArg(evaluate::ActualArgument &arg,
               ConvertBOZLiteralArg(arg, object.type.type());
               if (auto *expr{arg.UnwrapExpr()}) {
                 if (auto type{characteristics::TypeAndShape::Characterize(
-                        *expr, foldingContext)}) {
+                        *expr, context)}) {
                   arg.set_dummyIntent(object.intent);
                   bool isElemental{
                       object.type.Rank() == 0 && proc.IsElemental()};
                   CheckExplicitDataArg(object, dummyName, *expr, *type,
-                      isElemental, context, foldingContext, scope, intrinsic,
+                      isElemental, context, scope, intrinsic,
                       allowActualArgumentConversions);
                 } else if (object.type.type().IsTypelessIntrinsicArgument() &&
                     IsBOZLiteral(*expr)) {
@@ -1129,19 +1118,16 @@ static void CheckAssociated(evaluate::ActualArguments &arguments,
 }
 
 // TRANSFER (16.9.193)
-static void CheckTransferOperandType(SemanticsContext &context,
+static void CheckTransferOperandType(parser::ContextualMessages &messages,
     const evaluate::DynamicType &type, const char *which) {
-  if (type.IsPolymorphic() &&
-      context.ShouldWarn(common::UsageWarning::PolymorphicTransferArg)) {
-    context.foldingContext().messages().Say(
-        "%s of TRANSFER is polymorphic"_warn_en_US, which);
+  if (type.IsPolymorphic()) {
+    messages.Say("%s of TRANSFER is polymorphic"_warn_en_US, which);
   } else if (!type.IsUnlimitedPolymorphic() &&
-      type.category() == TypeCategory::Derived &&
-      context.ShouldWarn(common::UsageWarning::PointerComponentTransferArg)) {
+      type.category() == TypeCategory::Derived) {
     DirectComponentIterator directs{type.GetDerivedTypeSpec()};
     if (auto bad{std::find_if(directs.begin(), directs.end(), IsDescriptor)};
         bad != directs.end()) {
-      evaluate::SayWithDeclaration(context.foldingContext().messages(), *bad,
+      evaluate::SayWithDeclaration(messages, *bad,
           "%s of TRANSFER contains allocatable or pointer component %s"_warn_en_US,
           which, bad.BuildResultDesignatorName());
     }
@@ -1149,29 +1135,27 @@ static void CheckTransferOperandType(SemanticsContext &context,
 }
 
 static void CheckTransfer(evaluate::ActualArguments &arguments,
-    SemanticsContext &context, const Scope *scope) {
-  evaluate::FoldingContext &foldingContext{context.foldingContext()};
-  parser::ContextualMessages &messages{foldingContext.messages()};
+    evaluate::FoldingContext &context, const Scope *scope) {
   if (arguments.size() >= 2) {
     if (auto source{characteristics::TypeAndShape::Characterize(
-            arguments[0], foldingContext)}) {
-      CheckTransferOperandType(context, source->type(), "Source");
+            arguments[0], context)}) {
+      CheckTransferOperandType(context.messages(), source->type(), "Source");
       if (auto mold{characteristics::TypeAndShape::Characterize(
-              arguments[1], foldingContext)}) {
-        CheckTransferOperandType(context, mold->type(), "Mold");
+              arguments[1], context)}) {
+        CheckTransferOperandType(context.messages(), mold->type(), "Mold");
         if (mold->Rank() > 0 &&
             evaluate::ToInt64(
-                evaluate::Fold(foldingContext,
-                    mold->MeasureElementSizeInBytes(foldingContext, false)))
+                evaluate::Fold(
+                    context, mold->MeasureElementSizeInBytes(context, false)))
                     .value_or(1) == 0) {
-          if (auto sourceSize{evaluate::ToInt64(evaluate::Fold(foldingContext,
-                  source->MeasureSizeInBytes(foldingContext)))}) {
+          if (auto sourceSize{evaluate::ToInt64(evaluate::Fold(
+                  context, source->MeasureSizeInBytes(context)))}) {
             if (*sourceSize > 0) {
-              messages.Say(
+              context.messages().Say(
                   "Element size of MOLD= array may not be zero when SOURCE= is not empty"_err_en_US);
             }
           } else {
-            messages.Say(
+            context.messages().Say(
                 "Element size of MOLD= array may not be zero unless SOURCE= is empty"_warn_en_US);
           }
         }
@@ -1181,13 +1165,11 @@ static void CheckTransfer(evaluate::ActualArguments &arguments,
       if (const Symbol *
           whole{UnwrapWholeSymbolOrComponentDataRef(arguments[2])}) {
         if (IsOptional(*whole)) {
-          messages.Say(
+          context.messages().Say(
               "SIZE= argument may not be the optional dummy argument '%s'"_err_en_US,
               whole->name());
-        } else if (context.ShouldWarn(
-                       common::UsageWarning::TransferSizePresence) &&
-            IsAllocatableOrPointer(*whole)) {
-          messages.Say(
+        } else if (IsAllocatableOrPointer(*whole)) {
+          context.messages().Say(
               "SIZE= argument that is allocatable or pointer must be present at execution; parenthesize to silence this warning"_warn_en_US);
         }
       }
@@ -1196,10 +1178,10 @@ static void CheckTransfer(evaluate::ActualArguments &arguments,
 }
 
 static void CheckSpecificIntrinsic(evaluate::ActualArguments &arguments,
-    SemanticsContext &context, const Scope *scope,
+    evaluate::FoldingContext &context, const Scope *scope,
     const evaluate::SpecificIntrinsic &intrinsic) {
   if (intrinsic.name == "associated") {
-    CheckAssociated(arguments, context.foldingContext(), scope);
+    CheckAssociated(arguments, context, scope);
   } else if (intrinsic.name == "transfer") {
     CheckTransfer(arguments, context, scope);
   }
@@ -1207,14 +1189,13 @@ static void CheckSpecificIntrinsic(evaluate::ActualArguments &arguments,
 
 static parser::Messages CheckExplicitInterface(
     const characteristics::Procedure &proc, evaluate::ActualArguments &actuals,
-    SemanticsContext &context, const Scope *scope,
+    const evaluate::FoldingContext &context, const Scope *scope,
     const evaluate::SpecificIntrinsic *intrinsic,
     bool allowActualArgumentConversions) {
-  evaluate::FoldingContext &foldingContext{context.foldingContext()};
-  parser::ContextualMessages &messages{foldingContext.messages()};
   parser::Messages buffer;
-  auto restorer{messages.SetMessages(buffer)};
+  parser::ContextualMessages messages{context.messages().at(), &buffer};
   RearrangeArguments(proc, actuals, messages);
+  evaluate::FoldingContext localContext{context, messages};
   if (!buffer.empty()) {
     return buffer;
   }
@@ -1222,8 +1203,8 @@ static parser::Messages CheckExplicitInterface(
   for (auto &actual : actuals) {
     const auto &dummy{proc.dummyArguments.at(index++)};
     if (actual) {
-      CheckExplicitInterfaceArg(*actual, dummy, proc, context, scope, intrinsic,
-          allowActualArgumentConversions);
+      CheckExplicitInterfaceArg(*actual, dummy, proc, localContext, scope,
+          intrinsic, allowActualArgumentConversions);
     } else if (!dummy.IsOptional()) {
       if (dummy.name.empty()) {
         messages.Say(
@@ -1239,16 +1220,16 @@ static parser::Messages CheckExplicitInterface(
     }
   }
   if (proc.IsElemental() && !buffer.AnyFatalError()) {
-    CheckElementalConformance(messages, proc, actuals, foldingContext);
+    CheckElementalConformance(messages, proc, actuals, localContext);
   }
   if (intrinsic) {
-    CheckSpecificIntrinsic(actuals, context, scope, *intrinsic);
+    CheckSpecificIntrinsic(actuals, localContext, scope, *intrinsic);
   }
   return buffer;
 }
 
 bool CheckInterfaceForGeneric(const characteristics::Procedure &proc,
-    evaluate::ActualArguments &actuals, SemanticsContext &context,
+    evaluate::ActualArguments &actuals, const evaluate::FoldingContext &context,
     bool allowActualArgumentConversions) {
   return proc.HasExplicitInterface() &&
       !CheckExplicitInterface(proc, actuals, context, nullptr, nullptr,
@@ -1308,19 +1289,18 @@ bool CheckPPCIntrinsic(const Symbol &generic, const Symbol &specific,
 }
 
 bool CheckArguments(const characteristics::Procedure &proc,
-    evaluate::ActualArguments &actuals, SemanticsContext &context,
+    evaluate::ActualArguments &actuals, evaluate::FoldingContext &context,
     const Scope &scope, bool treatingExternalAsImplicit,
     const evaluate::SpecificIntrinsic *intrinsic) {
   bool explicitInterface{proc.HasExplicitInterface()};
-  evaluate::FoldingContext foldingContext{context.foldingContext()};
-  parser::ContextualMessages &messages{foldingContext.messages()};
+  parser::ContextualMessages &messages{context.messages()};
   if (!explicitInterface || treatingExternalAsImplicit) {
     parser::Messages buffer;
     {
       auto restorer{messages.SetMessages(buffer)};
       for (auto &actual : actuals) {
         if (actual) {
-          CheckImplicitInterfaceArg(*actual, messages, foldingContext);
+          CheckImplicitInterfaceArg(*actual, messages, context);
         }
       }
     }

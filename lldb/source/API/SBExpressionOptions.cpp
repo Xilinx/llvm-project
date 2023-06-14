@@ -190,7 +190,7 @@ void SBExpressionOptions::SetSuppressPersistentResult(bool b) {
 const char *SBExpressionOptions::GetPrefix() const {
   LLDB_INSTRUMENT_VA(this);
 
-  return ConstString(m_opaque_up->GetPrefix()).GetCString();
+  return m_opaque_up->GetPrefix();
 }
 
 void SBExpressionOptions::SetPrefix(const char *prefix) {

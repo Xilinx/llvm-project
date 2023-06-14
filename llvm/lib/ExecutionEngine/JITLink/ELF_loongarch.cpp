@@ -129,10 +129,9 @@ private:
 
 public:
   ELFLinkGraphBuilder_loongarch(StringRef FileName,
-                                const object::ELFFile<ELFT> &Obj, Triple TT,
-                                LinkGraph::FeatureVector Features)
-      : ELFLinkGraphBuilder<ELFT>(Obj, std::move(TT), std::move(Features),
-                                  FileName, loongarch::getEdgeKindName) {}
+                                const object::ELFFile<ELFT> &Obj, Triple TT)
+      : ELFLinkGraphBuilder<ELFT>(Obj, std::move(TT), FileName,
+                                  loongarch::getEdgeKindName) {}
 };
 
 Error buildTables_ELF_loongarch(LinkGraph &G) {
@@ -160,15 +159,11 @@ createLinkGraphFromELFObject_loongarch(MemoryBufferRef ObjectBuffer) {
   if (!ELFObj)
     return ELFObj.takeError();
 
-  auto Features = (*ELFObj)->getFeatures();
-  if (!Features)
-    return Features.takeError();
-
   if ((*ELFObj)->getArch() == Triple::loongarch64) {
     auto &ELFObjFile = cast<object::ELFObjectFile<object::ELF64LE>>(**ELFObj);
     return ELFLinkGraphBuilder_loongarch<object::ELF64LE>(
                (*ELFObj)->getFileName(), ELFObjFile.getELFFile(),
-               (*ELFObj)->makeTriple(), Features->getFeatures())
+               (*ELFObj)->makeTriple())
         .buildGraph();
   }
 
@@ -177,7 +172,7 @@ createLinkGraphFromELFObject_loongarch(MemoryBufferRef ObjectBuffer) {
   auto &ELFObjFile = cast<object::ELFObjectFile<object::ELF32LE>>(**ELFObj);
   return ELFLinkGraphBuilder_loongarch<object::ELF32LE>(
              (*ELFObj)->getFileName(), ELFObjFile.getELFFile(),
-             (*ELFObj)->makeTriple(), Features->getFeatures())
+             (*ELFObj)->makeTriple())
       .buildGraph();
 }
 

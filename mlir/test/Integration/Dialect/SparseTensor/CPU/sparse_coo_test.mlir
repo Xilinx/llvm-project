@@ -27,11 +27,11 @@
 // RUN: %{compile} | mlir-translate -mlir-to-llvmir | %{run}
 
 #SortedCOO = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed-nu", "singleton" ]
+  dimLevelType = [ "compressed-nu", "singleton" ]
 }>
 
 #CSR = #sparse_tensor.encoding<{
-  lvlTypes = [ "dense", "compressed" ]
+  dimLevelType = [ "dense", "compressed" ]
 }>
 
 #trait = {

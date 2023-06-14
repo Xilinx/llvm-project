@@ -289,7 +289,7 @@ bool MemRefDependenceGraph::init() {
       // memref type. Call Op that returns one or more memref type results
       // is already taken care of, by the previous conditions.
       if (llvm::any_of(op.getOperandTypes(),
-                       [&](Type t) { return isa<MemRefType>(t); })) {
+                       [&](Type t) { return t.isa<MemRefType>(); })) {
         Node node(nextNodeId++, &op);
         nodes.insert({node.id, node});
       }
@@ -379,7 +379,7 @@ static Value createPrivateMemRef(AffineForOp forOp, Operation *srcStoreOpInst,
   OpBuilder top(forInst->getParentRegion());
   // Create new memref type based on slice bounds.
   auto oldMemRef = cast<AffineWriteOpInterface>(srcStoreOpInst).getMemRef();
-  auto oldMemRefType = cast<MemRefType>(oldMemRef.getType());
+  auto oldMemRefType = oldMemRef.getType().cast<MemRefType>();
   unsigned rank = oldMemRefType.getRank();
 
   // Compute MemRefRegion for 'srcStoreOpInst' at depth 'dstLoopDepth'.
@@ -516,7 +516,7 @@ static bool hasNonAffineUsersOnThePath(unsigned srcId, unsigned dstId,
       return WalkResult::advance();
     for (Value v : op->getOperands())
       // Collect memref values only.
-      if (isa<MemRefType>(v.getType()))
+      if (v.getType().isa<MemRefType>())
         memRefValues.insert(v);
     return WalkResult::advance();
   });

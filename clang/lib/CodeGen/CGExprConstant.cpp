@@ -1340,7 +1340,6 @@ public:
     std::string Str;
     CGM.getContext().getObjCEncodingForType(E->getEncodedType(), Str);
     const ConstantArrayType *CAT = CGM.getContext().getAsConstantArrayType(T);
-    assert(CAT && "String data not of constant array type!");
 
     // Resize the string to the right size, adding zeros at the end, or
     // truncating as needed.
@@ -2190,11 +2189,6 @@ llvm::Constant *ConstantEmitter::tryEmitPrivate(const APValue &Value,
 
     llvm::ArrayType *Desired =
         cast<llvm::ArrayType>(CGM.getTypes().ConvertType(DestType));
-
-    // Fix the type of incomplete arrays if the initializer isn't empty.
-    if (DestType->isIncompleteArrayType() && !Elts.empty())
-      Desired = llvm::ArrayType::get(Desired->getElementType(), Elts.size());
-
     return EmitArrayConstant(CGM, Desired, CommonElementType, NumElements, Elts,
                              Filler);
   }

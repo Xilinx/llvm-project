@@ -248,6 +248,10 @@ private:
   std::pair<Value *, Value *> CreateSecStartEnd(Module &M, const char *Section,
                                                 Type *Ty);
 
+  void SetNoSanitizeMetadata(Instruction *I) {
+    I->setMetadata(LLVMContext::MD_nosanitize, MDNode::get(*C, std::nullopt));
+  }
+
   std::string getSectionName(const std::string &Section) const;
   std::string getSectionStart(const std::string &Section) const;
   std::string getSectionEnd(const std::string &Section) const;
@@ -988,8 +992,8 @@ void ModuleSanitizerCoverage::InjectCoverageAtBlock(Function &F, BasicBlock &BB,
     auto Load = IRB.CreateLoad(Int8Ty, CounterPtr);
     auto Inc = IRB.CreateAdd(Load, ConstantInt::get(Int8Ty, 1));
     auto Store = IRB.CreateStore(Inc, CounterPtr);
-    Load->setNoSanitizeMetadata();
-    Store->setNoSanitizeMetadata();
+    SetNoSanitizeMetadata(Load);
+    SetNoSanitizeMetadata(Store);
   }
   if (Options.InlineBoolFlag) {
     auto FlagPtr = IRB.CreateGEP(
@@ -1000,8 +1004,8 @@ void ModuleSanitizerCoverage::InjectCoverageAtBlock(Function &F, BasicBlock &BB,
         SplitBlockAndInsertIfThen(IRB.CreateIsNull(Load), &*IP, false);
     IRBuilder<> ThenIRB(ThenTerm);
     auto Store = ThenIRB.CreateStore(ConstantInt::getTrue(Int1Ty), FlagPtr);
-    Load->setNoSanitizeMetadata();
-    Store->setNoSanitizeMetadata();
+    SetNoSanitizeMetadata(Load);
+    SetNoSanitizeMetadata(Store);
   }
   if (Options.StackDepth && IsEntryBB && !IsLeafFunc) {
     // Check stack depth.  If it's the deepest so far, record it.
@@ -1017,8 +1021,8 @@ void ModuleSanitizerCoverage::InjectCoverageAtBlock(Function &F, BasicBlock &BB,
     auto ThenTerm = SplitBlockAndInsertIfThen(IsStackLower, &*IP, false);
     IRBuilder<> ThenIRB(ThenTerm);
     auto Store = ThenIRB.CreateStore(FrameAddrInt, SanCovLowestStack);
-    LowestStack->setNoSanitizeMetadata();
-    Store->setNoSanitizeMetadata();
+    SetNoSanitizeMetadata(LowestStack);
+    SetNoSanitizeMetadata(Store);
   }
 }
 

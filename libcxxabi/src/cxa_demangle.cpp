@@ -10,7 +10,6 @@
 // file does not yet support:
 //   - C++ modules TS
 
-#include "demangle/DemangleConfig.h"
 #include "demangle/ItaniumDemangle.h"
 #include "__cxxabi_config.h"
 #include <cassert>

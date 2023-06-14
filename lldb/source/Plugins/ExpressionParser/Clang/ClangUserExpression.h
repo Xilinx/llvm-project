@@ -51,15 +51,12 @@ public:
 
   enum { kDefaultTimeout = 500000u };
 
-  class ClangUserExpressionHelper
-      : public llvm::RTTIExtends<ClangUserExpressionHelper,
-                                 ClangExpressionHelper> {
+  class ClangUserExpressionHelper : public ClangExpressionHelper {
   public:
-    // LLVM RTTI support
-    static char ID;
-
     ClangUserExpressionHelper(Target &target, bool top_level)
         : m_target(target), m_top_level(top_level) {}
+
+    ~ClangUserExpressionHelper() override = default;
 
     /// Return the object that the parser should use when resolving external
     /// values.  May be NULL if everything should be self-contained.

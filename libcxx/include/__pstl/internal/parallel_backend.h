@@ -10,7 +10,7 @@
 #ifndef _PSTL_PARALLEL_BACKEND_H
 #define _PSTL_PARALLEL_BACKEND_H
 
-#include <__config>
+#include "pstl_config.h"
 
 #if defined(_PSTL_PAR_BACKEND_SERIAL)
 #    include "parallel_backend_serial.h"

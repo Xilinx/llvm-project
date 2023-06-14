@@ -20,7 +20,6 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/MathExtras.h"
 
 #include <functional>
 #include <optional>
@@ -139,7 +138,7 @@ bool SPIRVTypeConverter::allows(spirv::Capability capability) {
 // SPIR-V dialect. Keeping it local till the use case arises.
 static std::optional<int64_t>
 getTypeNumBytes(const SPIRVConversionOptions &options, Type type) {
-  if (isa<spirv::ScalarType>(type)) {
+  if (type.isa<spirv::ScalarType>()) {
     auto bitWidth = type.getIntOrFloatBitWidth();
     // According to the SPIR-V spec:
     // "There is no physical size or bit pattern defined for values with boolean
@@ -152,21 +151,21 @@ getTypeNumBytes(const SPIRVConversionOptions &options, Type type) {
     return bitWidth / 8;
   }
 
-  if (auto complexType = dyn_cast<ComplexType>(type)) {
+  if (auto complexType = type.dyn_cast<ComplexType>()) {
     auto elementSize = getTypeNumBytes(options, complexType.getElementType());
     if (!elementSize)
       return std::nullopt;
     return 2 * *elementSize;
   }
 
-  if (auto vecType = dyn_cast<VectorType>(type)) {
+  if (auto vecType = type.dyn_cast<VectorType>()) {
     auto elementSize = getTypeNumBytes(options, vecType.getElementType());
     if (!elementSize)
       return std::nullopt;
     return vecType.getNumElements() * *elementSize;
   }
 
-  if (auto memRefType = dyn_cast<MemRefType>(type)) {
+  if (auto memRefType = type.dyn_cast<MemRefType>()) {
     // TODO: Layout should also be controlled by the ABI attributes. For now
     // using the layout from MemRef.
     int64_t offset;
@@ -198,7 +197,7 @@ getTypeNumBytes(const SPIRVConversionOptions &options, Type type) {
     return (offset + memrefSize) * *elementSize;
   }
 
-  if (auto tensorType = dyn_cast<TensorType>(type)) {
+  if (auto tensorType = type.dyn_cast<TensorType>()) {
     if (!tensorType.hasStaticShape())
       return std::nullopt;
 
@@ -246,40 +245,15 @@ convertScalarType(const spirv::TargetEnv &targetEnv,
     return nullptr;
   }
 
-  if (auto floatType = dyn_cast<FloatType>(type)) {
+  if (auto floatType = type.dyn_cast<FloatType>()) {
     LLVM_DEBUG(llvm::dbgs() << type << " converted to 32-bit for SPIR-V\n");
     return Builder(targetEnv.getContext()).getF32Type();
   }
 
-  auto intType = cast<IntegerType>(type);
+  auto intType = type.cast<IntegerType>();
   LLVM_DEBUG(llvm::dbgs() << type << " converted to 32-bit for SPIR-V\n");
   return IntegerType::get(targetEnv.getContext(), /*width=*/32,
                           intType.getSignedness());
-}
-
-/// Converts a sub-byte integer `type` to i32 regardless of target environment.
-///
-/// Note that we don't recognize sub-byte types in `spirv::ScalarType` and use
-/// the above given that these sub-byte types are not supported at all in
-/// SPIR-V; there are no compute/storage capability for them like other
-/// supported integer types.
-static Type convertSubByteIntegerType(const SPIRVConversionOptions &options,
-                                      IntegerType type) {
-  if (options.subByteTypeStorage != SPIRVSubByteTypeStorage::Packed) {
-    LLVM_DEBUG(llvm::dbgs() << "unsupported sub-byte storage kind\n");
-    return nullptr;
-  }
-
-  if (!llvm::isPowerOf2_32(type.getWidth())) {
-    LLVM_DEBUG(llvm::dbgs()
-               << "unsupported non-power-of-two bitwidth in sub-byte" << type
-               << "\n");
-    return nullptr;
-  }
-
-  LLVM_DEBUG(llvm::dbgs() << type << " converted to 32-bit for SPIR-V\n");
-  return IntegerType::get(type.getContext(), /*width=*/32,
-                          type.getSignedness());
 }
 
 /// Returns a type with the same shape but with any index element type converted
@@ -319,8 +293,8 @@ convertVectorType(const spirv::TargetEnv &targetEnv,
   // Get extension and capability requirements for the given type.
   SmallVector<ArrayRef<spirv::Extension>, 1> extensions;
   SmallVector<ArrayRef<spirv::Capability>, 2> capabilities;
-  cast<spirv::CompositeType>(type).getExtensions(extensions, storageClass);
-  cast<spirv::CompositeType>(type).getCapabilities(capabilities, storageClass);
+  type.cast<spirv::CompositeType>().getExtensions(extensions, storageClass);
+  type.cast<spirv::CompositeType>().getCapabilities(capabilities, storageClass);
 
   // If all requirements are met, then we can accept this type as-is.
   if (succeeded(checkCapabilityRequirements(type, targetEnv, capabilities)) &&
@@ -415,8 +389,8 @@ static Type convertBoolMemrefType(const spirv::TargetEnv &targetEnv,
                << "using non-8-bit storage for bool types unimplemented");
     return nullptr;
   }
-  auto elementType = dyn_cast<spirv::ScalarType>(
-      IntegerType::get(type.getContext(), numBoolBits));
+  auto elementType = IntegerType::get(type.getContext(), numBoolBits)
+                         .dyn_cast<spirv::ScalarType>();
   if (!elementType)
     return nullptr;
   Type arrayElemType =
@@ -443,41 +417,9 @@ static Type convertBoolMemrefType(const spirv::TargetEnv &targetEnv,
     return wrapInStructAndGetPointer(arrayType, storageClass);
   }
 
-  int64_t memrefSize = llvm::divideCeil(type.getNumElements() * numBoolBits, 8);
-  int64_t arrayElemCount = llvm::divideCeil(memrefSize, *arrayElemSize);
+  int64_t memrefSize = (type.getNumElements() * numBoolBits + 7) / 8;
+  auto arrayElemCount = llvm::divideCeil(memrefSize, *arrayElemSize);
   int64_t stride = needsExplicitLayout(storageClass) ? *arrayElemSize : 0;
-  auto arrayType = spirv::ArrayType::get(arrayElemType, arrayElemCount, stride);
-  if (targetEnv.allows(spirv::Capability::Kernel))
-    return spirv::PointerType::get(arrayType, storageClass);
-  return wrapInStructAndGetPointer(arrayType, storageClass);
-}
-
-static Type convertSubByteMemrefType(const spirv::TargetEnv &targetEnv,
-                                     const SPIRVConversionOptions &options,
-                                     MemRefType type,
-                                     spirv::StorageClass storageClass) {
-  IntegerType elementType = cast<IntegerType>(type.getElementType());
-  Type arrayElemType = convertSubByteIntegerType(options, elementType);
-  if (!arrayElemType)
-    return nullptr;
-  int64_t arrayElemSize = *getTypeNumBytes(options, arrayElemType);
-
-  if (!type.hasStaticShape()) {
-    // For OpenCL Kernel, dynamic shaped memrefs convert into a pointer pointing
-    // to the element.
-    if (targetEnv.allows(spirv::Capability::Kernel))
-      return spirv::PointerType::get(arrayElemType, storageClass);
-    int64_t stride = needsExplicitLayout(storageClass) ? arrayElemSize : 0;
-    auto arrayType = spirv::RuntimeArrayType::get(arrayElemType, stride);
-    // For Vulkan we need extra wrapping struct and array to satisfy interface
-    // needs.
-    return wrapInStructAndGetPointer(arrayType, storageClass);
-  }
-
-  int64_t memrefSize =
-      llvm::divideCeil(type.getNumElements() * elementType.getWidth(), 8);
-  int64_t arrayElemCount = llvm::divideCeil(memrefSize, arrayElemSize);
-  int64_t stride = needsExplicitLayout(storageClass) ? arrayElemSize : 0;
   auto arrayType = spirv::ArrayType::get(arrayElemType, arrayElemCount, stride);
   if (targetEnv.allows(spirv::Capability::Kernel))
     return spirv::PointerType::get(arrayType, storageClass);
@@ -487,7 +429,7 @@ static Type convertSubByteMemrefType(const spirv::TargetEnv &targetEnv,
 static Type convertMemrefType(const spirv::TargetEnv &targetEnv,
                               const SPIRVConversionOptions &options,
                               MemRefType type) {
-  auto attr = dyn_cast_or_null<spirv::StorageClassAttr>(type.getMemorySpace());
+  auto attr = type.getMemorySpace().dyn_cast_or_null<spirv::StorageClassAttr>();
   if (!attr) {
     LLVM_DEBUG(
         llvm::dbgs()
@@ -499,26 +441,24 @@ static Type convertMemrefType(const spirv::TargetEnv &targetEnv,
   }
   spirv::StorageClass storageClass = attr.getValue();
 
-  if (isa<IntegerType>(type.getElementType())) {
-    if (type.getElementTypeBitWidth() == 1)
-      return convertBoolMemrefType(targetEnv, options, type, storageClass);
-    if (type.getElementTypeBitWidth() < 8)
-      return convertSubByteMemrefType(targetEnv, options, type, storageClass);
+  if (type.getElementType().isa<IntegerType>() &&
+      type.getElementTypeBitWidth() == 1) {
+    return convertBoolMemrefType(targetEnv, options, type, storageClass);
   }
 
   Type arrayElemType;
   Type elementType = type.getElementType();
-  if (auto vecType = dyn_cast<VectorType>(elementType)) {
+  if (auto vecType = elementType.dyn_cast<VectorType>()) {
     arrayElemType =
         convertVectorType(targetEnv, options, vecType, storageClass);
-  } else if (auto complexType = dyn_cast<ComplexType>(elementType)) {
+  } else if (auto complexType = elementType.dyn_cast<ComplexType>()) {
     arrayElemType =
         convertComplexType(targetEnv, options, complexType, storageClass);
-  } else if (auto scalarType = dyn_cast<spirv::ScalarType>(elementType)) {
+  } else if (auto scalarType = elementType.dyn_cast<spirv::ScalarType>()) {
     arrayElemType =
         convertScalarType(targetEnv, options, scalarType, storageClass);
-  } else if (auto indexType = dyn_cast<IndexType>(elementType)) {
-    type = cast<MemRefType>(convertIndexElementType(type, options));
+  } else if (auto indexType = elementType.dyn_cast<IndexType>()) {
+    type = convertIndexElementType(type, options).cast<MemRefType>();
     arrayElemType = type.getElementType();
   } else {
     LLVM_DEBUG(
@@ -557,7 +497,7 @@ static Type convertMemrefType(const spirv::TargetEnv &targetEnv,
     return nullptr;
   }
 
-  int64_t arrayElemCount = llvm::divideCeil(*memrefSize, *arrayElemSize);
+  auto arrayElemCount = llvm::divideCeil(*memrefSize, *arrayElemSize);
   int64_t stride = needsExplicitLayout(storageClass) ? *arrayElemSize : 0;
   auto arrayType = spirv::ArrayType::get(arrayElemType, arrayElemCount, stride);
   if (targetEnv.allows(spirv::Capability::Kernel))
@@ -574,24 +514,22 @@ SPIRVTypeConverter::SPIRVTypeConverter(spirv::TargetEnvAttr targetAttr,
   // adopted in the SPIR-V dialect (i.e., IntegerType, FloatType, VectorType)
   // were tried before.
   //
-  // TODO: This assumes that the SPIR-V types are valid to use in the given
-  // target environment, which should be the case if the whole pipeline is
-  // driven by the same target environment. Still, we probably still want to
-  // validate and convert to be safe.
+  // TODO: this assumes that the SPIR-V types are valid to use in
+  // the given target environment, which should be the case if the whole
+  // pipeline is driven by the same target environment. Still, we probably still
+  // want to validate and convert to be safe.
   addConversion([](spirv::SPIRVType type) { return type; });
 
   addConversion([this](IndexType /*indexType*/) { return getIndexType(); });
 
   addConversion([this](IntegerType intType) -> std::optional<Type> {
-    if (auto scalarType = dyn_cast<spirv::ScalarType>(intType))
+    if (auto scalarType = intType.dyn_cast<spirv::ScalarType>())
       return convertScalarType(this->targetEnv, this->options, scalarType);
-    if (intType.getWidth() < 8)
-      return convertSubByteIntegerType(this->options, intType);
     return Type();
   });
 
   addConversion([this](FloatType floatType) -> std::optional<Type> {
-    if (auto scalarType = dyn_cast<spirv::ScalarType>(floatType))
+    if (auto scalarType = floatType.dyn_cast<spirv::ScalarType>())
       return convertScalarType(this->targetEnv, this->options, scalarType);
     return Type();
   });
@@ -784,7 +722,7 @@ static spirv::PointerType getPushConstantStorageType(unsigned elementCount,
 static spirv::GlobalVariableOp getPushConstantVariable(Block &body,
                                                        unsigned elementCount) {
   for (auto varOp : body.getOps<spirv::GlobalVariableOp>()) {
-    auto ptrType = dyn_cast<spirv::PointerType>(varOp.getType());
+    auto ptrType = varOp.getType().dyn_cast<spirv::PointerType>();
     if (!ptrType)
       continue;
 
@@ -792,9 +730,10 @@ static spirv::GlobalVariableOp getPushConstantVariable(Block &body,
     // block statically used per shader entry point." So we should always reuse
     // the existing one.
     if (ptrType.getStorageClass() == spirv::StorageClass::PushConstant) {
-      auto numElements = cast<spirv::ArrayType>(
-                             cast<spirv::StructType>(ptrType.getPointeeType())
-                                 .getElementType(0))
+      auto numElements = ptrType.getPointeeType()
+                             .cast<spirv::StructType>()
+                             .getElementType(0)
+                             .cast<spirv::ArrayType>()
                              .getNumElements();
       if (numElements == elementCount)
         return varOp;
@@ -925,8 +864,8 @@ Value mlir::spirv::getOpenCLElementPtr(SPIRVTypeConverter &typeConverter,
         linearizeIndex(indices, strides, offset, indexType, loc, builder);
   }
   Type pointeeType =
-      cast<spirv::PointerType>(basePtr.getType()).getPointeeType();
-  if (isa<spirv::ArrayType>(pointeeType)) {
+      basePtr.getType().cast<spirv::PointerType>().getPointeeType();
+  if (pointeeType.isa<spirv::ArrayType>()) {
     linearizedIndices.push_back(linearIndex);
     return builder.create<spirv::AccessChainOp>(loc, basePtr,
                                                 linearizedIndices);
@@ -1014,7 +953,7 @@ bool SPIRVConversionTarget::isLegalOp(Operation *op) {
 
   // Ensure that all types have been converted to SPIRV types.
   if (llvm::any_of(valueTypes,
-                   [](Type t) { return !isa<spirv::SPIRVType>(t); }))
+                   [](Type t) { return !t.isa<spirv::SPIRVType>(); }))
     return false;
 
   // Special treatment for global variables, whose type requirements are
@@ -1028,13 +967,13 @@ bool SPIRVConversionTarget::isLegalOp(Operation *op) {
   SmallVector<ArrayRef<spirv::Capability>, 8> typeCapabilities;
   for (Type valueType : valueTypes) {
     typeExtensions.clear();
-    cast<spirv::SPIRVType>(valueType).getExtensions(typeExtensions);
+    valueType.cast<spirv::SPIRVType>().getExtensions(typeExtensions);
     if (failed(checkExtensionRequirements(op->getName(), this->targetEnv,
                                           typeExtensions)))
       return false;
 
     typeCapabilities.clear();
-    cast<spirv::SPIRVType>(valueType).getCapabilities(typeCapabilities);
+    valueType.cast<spirv::SPIRVType>().getCapabilities(typeCapabilities);
     if (failed(checkCapabilityRequirements(op->getName(), this->targetEnv,
                                            typeCapabilities)))
       return false;

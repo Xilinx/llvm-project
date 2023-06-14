@@ -110,10 +110,12 @@ X86DynAllocaExpander::getLowering(int64_t CurrentOffset,
 
 static bool isPushPop(const MachineInstr &MI) {
   switch (MI.getOpcode()) {
+  case X86::PUSH32i8:
   case X86::PUSH32r:
   case X86::PUSH32rmm:
   case X86::PUSH32rmr:
-  case X86::PUSH32i:
+  case X86::PUSHi32:
+  case X86::PUSH64i8:
   case X86::PUSH64r:
   case X86::PUSH64rmm:
   case X86::PUSH64rmr:
@@ -187,10 +189,10 @@ void X86DynAllocaExpander::computeLowerings(MachineFunction &MF,
   }
 }
 
-static unsigned getSubOpcode(bool Is64Bit) {
+static unsigned getSubOpcode(bool Is64Bit, int64_t Amount) {
   if (Is64Bit)
-    return X86::SUB64ri32;
-  return X86::SUB32ri;
+    return isInt<8>(Amount) ? X86::SUB64ri8 : X86::SUB64ri32;
+  return isInt<8>(Amount) ? X86::SUB32ri8 : X86::SUB32ri;
 }
 
 void X86DynAllocaExpander::lower(MachineInstr *MI, Lowering L) {
@@ -240,7 +242,8 @@ void X86DynAllocaExpander::lower(MachineInstr *MI, Lowering L) {
           .addReg(RegA, RegState::Undef);
     } else {
       // Sub.
-      BuildMI(*MBB, I, DL, TII->get(getSubOpcode(Is64BitAlloca)), StackPtr)
+      BuildMI(*MBB, I, DL,
+              TII->get(getSubOpcode(Is64BitAlloca, Amount)), StackPtr)
           .addReg(StackPtr)
           .addImm(Amount);
     }

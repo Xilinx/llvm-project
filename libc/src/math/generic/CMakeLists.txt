@@ -764,19 +764,9 @@ add_object_library(
     common_constants.h
   SRCS
     common_constants.cpp
-  DEPENDS
-    libc.src.__support.number_pair
 )
 
-add_header_library(
-  log_range_reduction
-  HDRS
-    log_range_reduction.h
-  DEPENDS
-    .common_constants
-    libc.src.__support.FPUtil.dyadic_float
-)
-
+# TODO(lntue): Make log10 correctly rounded for non-FMA targets.
 add_entrypoint_object(
   log10
   SRCS
@@ -784,12 +774,9 @@ add_entrypoint_object(
   HDRS
     ../log10.h
   DEPENDS
-    .common_constants
-    .log_range_reduction
     libc.src.__support.FPUtil.fenv_impl
     libc.src.__support.FPUtil.fp_bits
     libc.src.__support.FPUtil.multiply_add
-    libc.src.__support.FPUtil.polyeval
     libc.src.__support.FPUtil.double_double
     libc.src.__support.FPUtil.dyadic_float
     libc.src.__support.macros.optimization
@@ -815,25 +802,6 @@ add_entrypoint_object(
 )
 
 add_entrypoint_object(
-  log1p
-  SRCS
-    log1p.cpp
-  HDRS
-    ../log1p.h
-  DEPENDS
-    .common_constants
-    libc.src.__support.FPUtil.fenv_impl
-    libc.src.__support.FPUtil.fp_bits
-    libc.src.__support.FPUtil.multiply_add
-    libc.src.__support.FPUtil.polyeval
-    libc.src.__support.FPUtil.double_double
-    libc.src.__support.FPUtil.dyadic_float
-    libc.src.__support.macros.optimization
-  COMPILE_OPTIONS
-    -O3
-)
-
-add_entrypoint_object(
   log1pf
   SRCS
     log1pf.cpp
@@ -846,26 +814,6 @@ add_entrypoint_object(
     libc.src.__support.FPUtil.fp_bits
     libc.src.__support.FPUtil.fma
     libc.src.__support.FPUtil.polyeval
-    libc.src.__support.macros.optimization
-  COMPILE_OPTIONS
-    -O3
-)
-
-add_entrypoint_object(
-  log2
-  SRCS
-    log2.cpp
-  HDRS
-    ../log2.h
-  DEPENDS
-    .common_constants
-    .log_range_reduction
-    libc.src.__support.FPUtil.fenv_impl
-    libc.src.__support.FPUtil.fp_bits
-    libc.src.__support.FPUtil.multiply_add
-    libc.src.__support.FPUtil.polyeval
-    libc.src.__support.FPUtil.double_double
-    libc.src.__support.FPUtil.dyadic_float
     libc.src.__support.macros.optimization
   COMPILE_OPTIONS
     -O3
@@ -886,26 +834,6 @@ add_entrypoint_object(
     libc.src.__support.FPUtil.polyeval
     libc.src.__support.macros.optimization
     COMPILE_OPTIONS
-    -O3
-)
-
-add_entrypoint_object(
-  log
-  SRCS
-    log.cpp
-  HDRS
-    ../log.h
-  DEPENDS
-    .common_constants
-    .log_range_reduction
-    libc.src.__support.FPUtil.fenv_impl
-    libc.src.__support.FPUtil.fp_bits
-    libc.src.__support.FPUtil.multiply_add
-    libc.src.__support.FPUtil.polyeval
-    libc.src.__support.FPUtil.double_double
-    libc.src.__support.FPUtil.dyadic_float
-    libc.src.__support.macros.optimization
-  COMPILE_OPTIONS
     -O3
 )
 

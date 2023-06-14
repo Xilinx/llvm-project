@@ -316,7 +316,6 @@ def IIT_FUNCREF : IIT_VT<funcref, 55>;
 def IIT_ANYPTR_TO_ELT : IIT_Base<56>;
 def IIT_I2 : IIT_Int<2, 57>;
 def IIT_I4 : IIT_Int<4, 58>;
-def IIT_AARCH64_SVCOUNT : IIT_VT<aarch64svcount, 59>;
 }
 
 defvar IIT_all_FixedTypes = !filter(iit, IIT_all,
@@ -511,8 +510,6 @@ def llvm_token_ty      : LLVMType<token>;                         // token
 
 def llvm_x86mmx_ty     : LLVMType<x86mmx>;
 def llvm_ptrx86mmx_ty  : LLVMPointerType<llvm_x86mmx_ty>;         // <1 x i64>*
-
-def llvm_aarch64_svcount_ty : LLVMType<aarch64svcount>;
 
 def llvm_x86amx_ty     : LLVMType<x86amx>;
 
@@ -2148,12 +2145,6 @@ def int_get_active_lane_mask:
   DefaultAttrsIntrinsic<[llvm_anyvector_ty],
             [llvm_anyint_ty, LLVMMatchType<1>],
             [IntrNoMem, IntrNoSync, IntrWillReturn]>;
-
-def int_experimental_get_vector_length:
-  DefaultAttrsIntrinsic<[llvm_i32_ty],
-                        [llvm_anyint_ty, llvm_i32_ty, llvm_i1_ty],
-                        [IntrNoMem, IntrNoSync, IntrWillReturn,
-                         ImmArg<ArgIndex<1>>, ImmArg<ArgIndex<2>>]>;
 
 def int_experimental_vp_splice:
   DefaultAttrsIntrinsic<[llvm_anyvector_ty],

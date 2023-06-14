@@ -113,11 +113,7 @@ IntegerLiteralSeparatorFixer::process(const Environment &Env,
       continue;
     }
     if (Style.isCpp()) {
-      // Hex alpha digits a-f/A-F must be at the end of the string literal.
-      StringRef Suffixes = "_himnsuyd";
-      if (const auto Pos =
-              Text.find_first_of(IsBase16 ? Suffixes.drop_back() : Suffixes);
-          Pos != StringRef::npos) {
+      if (const auto Pos = Text.find_first_of("_i"); Pos != StringRef::npos) {
         Text = Text.substr(0, Pos);
         Length = Pos;
       }

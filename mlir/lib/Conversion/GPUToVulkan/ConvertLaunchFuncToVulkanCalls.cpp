@@ -142,11 +142,11 @@ private:
 
   /// Returns a string representation from the given `type`.
   StringRef stringifyType(Type type) {
-    if (isa<Float32Type>(type))
+    if (type.isa<Float32Type>())
       return "Float";
-    if (isa<Float16Type>(type))
+    if (type.isa<Float16Type>())
       return "Half";
-    if (auto intType = dyn_cast<IntegerType>(type)) {
+    if (auto intType = type.dyn_cast<IntegerType>()) {
       if (intType.getWidth() == 32)
         return "Int32";
       if (intType.getWidth() == 16)
@@ -282,7 +282,7 @@ void VulkanLaunchFuncToVulkanCallsPass::createBindMemRefCalls(
         llvm::formatv("bindMemRef{0}D{1}", rank, stringifyType(type)).str();
     // Special case for fp16 type. Since it is not a supported type in C we use
     // int16_t and bitcast the descriptor.
-    if (!useOpaquePointers && isa<Float16Type>(type)) {
+    if (!useOpaquePointers && type.isa<Float16Type>()) {
       auto memRefTy = getMemRefType(rank, IntegerType::get(&getContext(), 16));
       ptrToMemRefDescriptor = builder.create<LLVM::BitcastOp>(
           loc, LLVM::LLVMPointerType::get(memRefTy), ptrToMemRefDescriptor);
@@ -328,8 +328,9 @@ VulkanLaunchFuncToVulkanCallsPass::deduceMemRefRank(Value launchCallArg,
     rank = 0;
     return success();
   }
-  rank =
-      cast<LLVM::LLVMArrayType>(llvmDescriptorTy.getBody()[3]).getNumElements();
+  rank = llvmDescriptorTy.getBody()[3]
+             .cast<LLVM::LLVMArrayType>()
+             .getNumElements();
   return success();
 }
 
@@ -374,7 +375,7 @@ void VulkanLaunchFuncToVulkanCallsPass::declareVulkanFunctions(Location loc) {
     for (auto type : types) {
       std::string fnName = "bindMemRef" + std::to_string(i) + "D" +
                            std::string(stringifyType(type));
-      if (isa<Float16Type>(type))
+      if (type.isa<Float16Type>())
         type = IntegerType::get(&getContext(), 16);
       if (!module.lookupSymbol(fnName)) {
         auto fnType = LLVM::LLVMFunctionType::get(

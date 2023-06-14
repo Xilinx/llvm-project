@@ -11,6 +11,7 @@ from lldbsuite.test import lldbutil
 
 
 class TestCase(TestBase):
+
     @no_debug_info_test
     def test(self):
         self.build()

@@ -13,7 +13,6 @@
 #include "bolt/Core/HashUtilities.h"
 #include "bolt/Core/BinaryContext.h"
 #include "bolt/Core/BinaryFunction.h"
-#include "llvm/MC/MCInstPrinter.h"
 
 namespace llvm {
 namespace bolt {
@@ -117,11 +116,13 @@ std::string hashBlock(BinaryContext &BC, const BinaryBasicBlock &BB,
     if (IsX86 && BC.MIB->isConditionalBranch(Inst))
       Opcode = BC.MIB->getShortBranchOpcode(Opcode);
 
-    if (Opcode == 0) {
+    if (Opcode == 0)
       HashString.push_back(0);
-    } else {
-      StringRef OpcodeName = BC.InstPrinter->getOpcodeName(Opcode);
-      HashString.append(OpcodeName.str());
+
+    while (Opcode) {
+      uint8_t LSB = Opcode & 0xff;
+      HashString.push_back(LSB);
+      Opcode = Opcode >> 8;
     }
 
     for (const MCOperand &Op : MCPlus::primeOperands(Inst))

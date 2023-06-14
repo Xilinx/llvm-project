@@ -332,7 +332,8 @@ void MCPlusBuilder::getClobberedRegs(const MCInst &Inst,
   for (MCPhysReg ImplicitDef : InstInfo.implicit_defs())
     Regs |= getAliases(ImplicitDef, /*OnlySmaller=*/false);
 
-  for (const MCOperand &Operand : defOperands(Inst)) {
+  for (unsigned I = 0, E = InstInfo.getNumDefs(); I != E; ++I) {
+    const MCOperand &Operand = Inst.getOperand(I);
     assert(Operand.isReg());
     Regs |= getAliases(Operand.getReg(), /*OnlySmaller=*/false);
   }
@@ -365,7 +366,8 @@ void MCPlusBuilder::getWrittenRegs(const MCInst &Inst, BitVector &Regs) const {
   for (MCPhysReg ImplicitDef : InstInfo.implicit_defs())
     Regs |= getAliases(ImplicitDef, /*OnlySmaller=*/true);
 
-  for (const MCOperand &Operand : defOperands(Inst)) {
+  for (unsigned I = 0, E = InstInfo.getNumDefs(); I != E; ++I) {
+    const MCOperand &Operand = Inst.getOperand(I);
     assert(Operand.isReg());
     Regs |= getAliases(Operand.getReg(), /*OnlySmaller=*/true);
   }
@@ -412,9 +414,12 @@ void MCPlusBuilder::getSrcRegs(const MCInst &Inst, BitVector &Regs) const {
   for (MCPhysReg ImplicitUse : InstInfo.implicit_uses())
     Regs |= getAliases(ImplicitUse, /*OnlySmaller=*/true);
 
-  for (const MCOperand &Operand : useOperands(Inst))
-    if (Operand.isReg())
-      Regs |= getAliases(Operand.getReg(), /*OnlySmaller=*/true);
+  for (unsigned I = InstInfo.getNumDefs(), E = InstInfo.getNumOperands();
+       I != E; ++I) {
+    if (!Inst.getOperand(I).isReg())
+      continue;
+    Regs |= getAliases(Inst.getOperand(I).getReg(), /*OnlySmaller=*/true);
+  }
 }
 
 bool MCPlusBuilder::hasDefOfPhysReg(const MCInst &MI, unsigned Reg) const {
@@ -425,7 +430,7 @@ bool MCPlusBuilder::hasDefOfPhysReg(const MCInst &MI, unsigned Reg) const {
 bool MCPlusBuilder::hasUseOfPhysReg(const MCInst &MI, unsigned Reg) const {
   const MCInstrDesc &InstInfo = Info->get(MI.getOpcode());
   for (int I = InstInfo.NumDefs; I < InstInfo.NumOperands; ++I)
-    if (MI.getOperand(I).isReg() && MI.getOperand(I).getReg() &&
+    if (MI.getOperand(I).isReg() &&
         RegInfo->isSubRegisterEq(Reg, MI.getOperand(I).getReg()))
       return true;
   for (MCPhysReg ImplicitUse : InstInfo.implicit_uses()) {

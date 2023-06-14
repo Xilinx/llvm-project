@@ -278,7 +278,6 @@ fun:strcasecmp=custom
 fun:strchr=custom
 fun:strcmp=custom
 fun:strlen=custom
-fun:strnlen=custom
 fun:strncasecmp=custom
 fun:strncmp=custom
 fun:strpbrk=custom

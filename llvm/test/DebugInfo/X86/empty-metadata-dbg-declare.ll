@@ -10,7 +10,7 @@
 ; CHECK-NEXT:     stack-id: default, callee-saved-register: '', callee-saved-restored: true,
 ; CHECK-NEXT:     debug-info-variable: '![[f]]', debug-info-expression: '!DIExpression()',
 ; CHECK-NEXT:     debug-info-location: '{{.+}}' }
-; CHECK-NEXT: entry_values:
+; CHECK-NEXT: callSites:
 
 target triple = "x86_64-unknown-linux-gnu"
 

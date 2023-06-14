@@ -25,5 +25,4 @@ target_link_libraries(
   "-mcpu=${LIBC_GPU_TARGET_ARCHITECTURE}"
   "--target=${LIBC_GPU_TARGET_TRIPLE}"
   "-flto"
-  "-Wl,-mllvm,-amdgpu-lower-global-ctor-dtor=0"
 )

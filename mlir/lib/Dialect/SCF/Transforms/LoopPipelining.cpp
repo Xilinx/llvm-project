@@ -164,7 +164,8 @@ cloneAndUpdateOperands(RewriterBase &rewriter, Operation *op,
   clone->walk([&](Operation *nested) {
     for (OpOperand &operand : nested->getOpOperands()) {
       Operation *def = operand.get().getDefiningOp();
-      if ((def && !clone->isAncestor(def)) || isa<BlockArgument>(operand.get()))
+      if ((def && !clone->isAncestor(def)) ||
+          operand.get().isa<BlockArgument>())
         callback(&operand);
     }
   });
@@ -345,7 +346,7 @@ void LoopPipelinerInternal::createKernel(
         rewriter.setInsertionPointAfter(newOp);
         continue;
       }
-      auto arg = dyn_cast<BlockArgument>(operand->get());
+      auto arg = operand->get().dyn_cast<BlockArgument>();
       if (arg && arg.getOwner() == forOp.getBody()) {
         // If the value is a loop carried value coming from stage N + 1 remap,
         // it will become a direct use.

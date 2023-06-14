@@ -20,7 +20,7 @@ MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(quant, quant, quant::QuantizationDialect)
 //===---------------------------------------------------------------------===//
 
 bool mlirTypeIsAQuantizedType(MlirType type) {
-  return isa<quant::QuantizedType>(unwrap(type));
+  return unwrap(type).isa<quant::QuantizedType>();
 }
 
 unsigned mlirQuantizedTypeGetSignedFlag() {
@@ -40,37 +40,39 @@ int64_t mlirQuantizedTypeGetDefaultMaximumForInteger(bool isSigned,
 }
 
 MlirType mlirQuantizedTypeGetExpressedType(MlirType type) {
-  return wrap(cast<quant::QuantizedType>(unwrap(type)).getExpressedType());
+  return wrap(unwrap(type).cast<quant::QuantizedType>().getExpressedType());
 }
 
 unsigned mlirQuantizedTypeGetFlags(MlirType type) {
-  return cast<quant::QuantizedType>(unwrap(type)).getFlags();
+  return unwrap(type).cast<quant::QuantizedType>().getFlags();
 }
 
 bool mlirQuantizedTypeIsSigned(MlirType type) {
-  return cast<quant::QuantizedType>(unwrap(type)).isSigned();
+  return unwrap(type).cast<quant::QuantizedType>().isSigned();
 }
 
 MlirType mlirQuantizedTypeGetStorageType(MlirType type) {
-  return wrap(cast<quant::QuantizedType>(unwrap(type)).getStorageType());
+  return wrap(unwrap(type).cast<quant::QuantizedType>().getStorageType());
 }
 
 int64_t mlirQuantizedTypeGetStorageTypeMin(MlirType type) {
-  return cast<quant::QuantizedType>(unwrap(type)).getStorageTypeMin();
+  return unwrap(type).cast<quant::QuantizedType>().getStorageTypeMin();
 }
 
 int64_t mlirQuantizedTypeGetStorageTypeMax(MlirType type) {
-  return cast<quant::QuantizedType>(unwrap(type)).getStorageTypeMax();
+  return unwrap(type).cast<quant::QuantizedType>().getStorageTypeMax();
 }
 
 unsigned mlirQuantizedTypeGetStorageTypeIntegralWidth(MlirType type) {
-  return cast<quant::QuantizedType>(unwrap(type)).getStorageTypeIntegralWidth();
+  return unwrap(type)
+      .cast<quant::QuantizedType>()
+      .getStorageTypeIntegralWidth();
 }
 
 bool mlirQuantizedTypeIsCompatibleExpressedType(MlirType type,
                                                 MlirType candidate) {
-  return cast<quant::QuantizedType>(unwrap(type))
-      .isCompatibleExpressedType(unwrap(candidate));
+  return unwrap(type).cast<quant::QuantizedType>().isCompatibleExpressedType(
+      unwrap(candidate));
 }
 
 MlirType mlirQuantizedTypeGetQuantizedElementType(MlirType type) {
@@ -79,19 +81,19 @@ MlirType mlirQuantizedTypeGetQuantizedElementType(MlirType type) {
 
 MlirType mlirQuantizedTypeCastFromStorageType(MlirType type,
                                               MlirType candidate) {
-  return wrap(cast<quant::QuantizedType>(unwrap(type))
-                  .castFromStorageType(unwrap(candidate)));
+  return wrap(unwrap(type).cast<quant::QuantizedType>().castFromStorageType(
+      unwrap(candidate)));
 }
 
 MlirType mlirQuantizedTypeCastToStorageType(MlirType type) {
   return wrap(quant::QuantizedType::castToStorageType(
-      cast<quant::QuantizedType>(unwrap(type))));
+      unwrap(type).cast<quant::QuantizedType>()));
 }
 
 MlirType mlirQuantizedTypeCastFromExpressedType(MlirType type,
                                                 MlirType candidate) {
-  return wrap(cast<quant::QuantizedType>(unwrap(type))
-                  .castFromExpressedType(unwrap(candidate)));
+  return wrap(unwrap(type).cast<quant::QuantizedType>().castFromExpressedType(
+      unwrap(candidate)));
 }
 
 MlirType mlirQuantizedTypeCastToExpressedType(MlirType type) {
@@ -100,8 +102,9 @@ MlirType mlirQuantizedTypeCastToExpressedType(MlirType type) {
 
 MlirType mlirQuantizedTypeCastExpressedToStorageType(MlirType type,
                                                      MlirType candidate) {
-  return wrap(cast<quant::QuantizedType>(unwrap(type))
-                  .castExpressedToStorageType(unwrap(candidate)));
+  return wrap(
+      unwrap(type).cast<quant::QuantizedType>().castExpressedToStorageType(
+          unwrap(candidate)));
 }
 
 //===---------------------------------------------------------------------===//
@@ -109,7 +112,7 @@ MlirType mlirQuantizedTypeCastExpressedToStorageType(MlirType type,
 //===---------------------------------------------------------------------===//
 
 bool mlirTypeIsAAnyQuantizedType(MlirType type) {
-  return isa<quant::AnyQuantizedType>(unwrap(type));
+  return unwrap(type).isa<quant::AnyQuantizedType>();
 }
 
 MlirType mlirAnyQuantizedTypeGet(unsigned flags, MlirType storageType,
@@ -125,7 +128,7 @@ MlirType mlirAnyQuantizedTypeGet(unsigned flags, MlirType storageType,
 //===---------------------------------------------------------------------===//
 
 bool mlirTypeIsAUniformQuantizedType(MlirType type) {
-  return isa<quant::UniformQuantizedType>(unwrap(type));
+  return unwrap(type).isa<quant::UniformQuantizedType>();
 }
 
 MlirType mlirUniformQuantizedTypeGet(unsigned flags, MlirType storageType,
@@ -138,15 +141,15 @@ MlirType mlirUniformQuantizedTypeGet(unsigned flags, MlirType storageType,
 }
 
 double mlirUniformQuantizedTypeGetScale(MlirType type) {
-  return cast<quant::UniformQuantizedType>(unwrap(type)).getScale();
+  return unwrap(type).cast<quant::UniformQuantizedType>().getScale();
 }
 
 int64_t mlirUniformQuantizedTypeGetZeroPoint(MlirType type) {
-  return cast<quant::UniformQuantizedType>(unwrap(type)).getZeroPoint();
+  return unwrap(type).cast<quant::UniformQuantizedType>().getZeroPoint();
 }
 
 bool mlirUniformQuantizedTypeIsFixedPoint(MlirType type) {
-  return cast<quant::UniformQuantizedType>(unwrap(type)).isFixedPoint();
+  return unwrap(type).cast<quant::UniformQuantizedType>().isFixedPoint();
 }
 
 //===---------------------------------------------------------------------===//
@@ -154,7 +157,7 @@ bool mlirUniformQuantizedTypeIsFixedPoint(MlirType type) {
 //===---------------------------------------------------------------------===//
 
 bool mlirTypeIsAUniformQuantizedPerAxisType(MlirType type) {
-  return isa<quant::UniformQuantizedPerAxisType>(unwrap(type));
+  return unwrap(type).isa<quant::UniformQuantizedPerAxisType>();
 }
 
 MlirType mlirUniformQuantizedPerAxisTypeGet(
@@ -169,29 +172,33 @@ MlirType mlirUniformQuantizedPerAxisTypeGet(
 }
 
 intptr_t mlirUniformQuantizedPerAxisTypeGetNumDims(MlirType type) {
-  return cast<quant::UniformQuantizedPerAxisType>(unwrap(type))
+  return unwrap(type)
+      .cast<quant::UniformQuantizedPerAxisType>()
       .getScales()
       .size();
 }
 
 double mlirUniformQuantizedPerAxisTypeGetScale(MlirType type, intptr_t pos) {
-  return cast<quant::UniformQuantizedPerAxisType>(unwrap(type))
+  return unwrap(type)
+      .cast<quant::UniformQuantizedPerAxisType>()
       .getScales()[pos];
 }
 
 int64_t mlirUniformQuantizedPerAxisTypeGetZeroPoint(MlirType type,
                                                     intptr_t pos) {
-  return cast<quant::UniformQuantizedPerAxisType>(unwrap(type))
+  return unwrap(type)
+      .cast<quant::UniformQuantizedPerAxisType>()
       .getZeroPoints()[pos];
 }
 
 int32_t mlirUniformQuantizedPerAxisTypeGetQuantizedDimension(MlirType type) {
-  return cast<quant::UniformQuantizedPerAxisType>(unwrap(type))
+  return unwrap(type)
+      .cast<quant::UniformQuantizedPerAxisType>()
       .getQuantizedDimension();
 }
 
 bool mlirUniformQuantizedPerAxisTypeIsFixedPoint(MlirType type) {
-  return cast<quant::UniformQuantizedPerAxisType>(unwrap(type)).isFixedPoint();
+  return unwrap(type).cast<quant::UniformQuantizedPerAxisType>().isFixedPoint();
 }
 
 //===---------------------------------------------------------------------===//
@@ -199,7 +206,7 @@ bool mlirUniformQuantizedPerAxisTypeIsFixedPoint(MlirType type) {
 //===---------------------------------------------------------------------===//
 
 bool mlirTypeIsACalibratedQuantizedType(MlirType type) {
-  return isa<quant::CalibratedQuantizedType>(unwrap(type));
+  return unwrap(type).isa<quant::CalibratedQuantizedType>();
 }
 
 MlirType mlirCalibratedQuantizedTypeGet(MlirType expressedType, double min,
@@ -209,9 +216,9 @@ MlirType mlirCalibratedQuantizedTypeGet(MlirType expressedType, double min,
 }
 
 double mlirCalibratedQuantizedTypeGetMin(MlirType type) {
-  return cast<quant::CalibratedQuantizedType>(unwrap(type)).getMin();
+  return unwrap(type).cast<quant::CalibratedQuantizedType>().getMin();
 }
 
 double mlirCalibratedQuantizedTypeGetMax(MlirType type) {
-  return cast<quant::CalibratedQuantizedType>(unwrap(type)).getMax();
+  return unwrap(type).cast<quant::CalibratedQuantizedType>().getMax();
 }

@@ -395,7 +395,6 @@ def OMPC_Affinity : Clause<"affinity"> {
 }
 def OMPC_UseDeviceAddr : Clause<"use_device_addr"> {
   let clangClass = "OMPUseDeviceAddrClause";
-  let flangClass = "OmpObjectList";
 }
 def OMPC_Uniform : Clause<"uniform"> {
   let flangClass = "Name";

@@ -31,18 +31,18 @@
 .section .text
 .file "hwasan_setjmp_riscv64.S"
 
-.global ASM_WRAPPER_NAME(setjmp)
-ASM_TYPE_FUNCTION(ASM_WRAPPER_NAME(setjmp))
-ASM_WRAPPER_NAME(setjmp):
+.global __interceptor_setjmp
+ASM_TYPE_FUNCTION(__interceptor_setjmp)
+__interceptor_setjmp:
   CFI_STARTPROC
   addi x11, x0, 0
-  tail ASM_WRAPPER_NAME(sigsetjmp)
+  tail __interceptor_sigsetjmp
   CFI_ENDPROC
-ASM_SIZE(ASM_WRAPPER_NAME(setjmp))
+ASM_SIZE(__interceptor_setjmp)
 
-.global ASM_WRAPPER_NAME(sigsetjmp)
-ASM_TYPE_FUNCTION(ASM_WRAPPER_NAME(sigsetjmp))
-ASM_WRAPPER_NAME(sigsetjmp):
+.global __interceptor_sigsetjmp
+ASM_TYPE_FUNCTION(__interceptor_sigsetjmp)
+__interceptor_sigsetjmp:
   CFI_STARTPROC
   sd    ra,   0<<3(x10)
   sd    s0,   1<<3(x10)
@@ -80,12 +80,17 @@ ASM_WRAPPER_NAME(sigsetjmp):
   // This function is defined in hwasan_interceptors.cc
   tail __sigjmp_save
   CFI_ENDPROC
-ASM_SIZE(ASM_WRAPPER_NAME(sigsetjmp))
+ASM_SIZE(__interceptor_sigsetjmp)
 
-ASM_INTERCEPTOR_TRAMPOLINE(sigsetjmp)
-ASM_TRAMPOLINE_ALIAS(__sigsetjmp, sigsetjmp)
-ASM_INTERCEPTOR_TRAMPOLINE(setjmp)
-ASM_TRAMPOLINE_ALIAS(_setjmp, setjmp)
+
+.macro WEAK_ALIAS first second
+  .weak \second
+  .equ \second\(), \first
+.endm
+
+WEAK_ALIAS __interceptor_sigsetjmp, __sigsetjmp
+
+WEAK_ALIAS __interceptor_setjmp, _setjmp
 #endif
 
 // We do not need executable stack.

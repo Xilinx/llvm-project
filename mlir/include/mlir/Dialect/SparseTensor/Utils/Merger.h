@@ -377,14 +377,14 @@ public:
   bool hasSparseIdxReduction(const BitVector &bits) const;
 
   /// Gets the level-type of the `t`th tensor on `i`th loop.
-  DimLevelType getLvlType(TensorId t, LoopId i) const {
+  DimLevelType getDimLevelType(TensorId t, LoopId i) const {
     assert(isValidTensorId(t) && isValidLoopId(i));
     return lvlTypes[t][i];
   }
 
   /// Gets the level-type of the TensorLoopId.
-  DimLevelType getLvlType(TensorLoopId b) const {
-    return getLvlType(tensor(b), loop(b));
+  DimLevelType getDimLevelType(TensorLoopId b) const {
+    return getDimLevelType(tensor(b), loop(b));
   }
 
   /// Gets the loop identifier for the `lvl`th level of the `t`th tensor.
@@ -434,7 +434,7 @@ public:
     for (const TensorLoopId b : bits.set_bits()) {
       const TensorId t = tensor(b);
       const auto optLvl = getLvl(b);
-      const auto lvlTp = getLvlType(b);
+      const auto lvlTp = getDimLevelType(b);
       if (isLvlWithNonTrivialIdxExp(b)) {
         // This must be an undefined level.
         assert(!optLvl.has_value());

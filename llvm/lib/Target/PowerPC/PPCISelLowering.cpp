@@ -4181,12 +4181,12 @@ SDValue PPCTargetLowering::LowerFormalArguments_32SVR4(
                       ByValArgLocs, *DAG.getContext());
 
   // Reserve stack space for the allocations in CCInfo.
-  CCByValInfo.AllocateStack(CCInfo.getStackSize(), PtrAlign);
+  CCByValInfo.AllocateStack(CCInfo.getNextStackOffset(), PtrAlign);
 
   CCByValInfo.AnalyzeFormalArguments(Ins, CC_PPC32_SVR4_ByVal);
 
   // Area that is at least reserved in the caller of this function.
-  unsigned MinReservedArea = CCByValInfo.getStackSize();
+  unsigned MinReservedArea = CCByValInfo.getNextStackOffset();
   MinReservedArea = std::max(MinReservedArea, LinkageSize);
 
   // Set the size that is at least reserved in caller of this function.  Tail
@@ -4224,8 +4224,9 @@ SDValue PPCTargetLowering::LowerFormalArguments_32SVR4(
     int Depth = NumGPArgRegs * PtrVT.getSizeInBits()/8 +
                 NumFPArgRegs * MVT(MVT::f64).getSizeInBits()/8;
 
-    FuncInfo->setVarArgsStackOffset(MFI.CreateFixedObject(
-        PtrVT.getSizeInBits() / 8, CCInfo.getStackSize(), true));
+    FuncInfo->setVarArgsStackOffset(
+      MFI.CreateFixedObject(PtrVT.getSizeInBits()/8,
+                            CCInfo.getNextStackOffset(), true));
 
     FuncInfo->setVarArgsFrameIndex(
         MFI.CreateStackObject(Depth, Align(8), false));
@@ -5628,9 +5629,7 @@ SDValue PPCTargetLowering::FinishCall(
     assert(CallOpc == PPCISD::TC_RETURN &&
            "Unexpected call opcode for a tail call.");
     DAG.getMachineFunction().getFrameInfo().setHasTailCall();
-    SDValue Ret = DAG.getNode(CallOpc, dl, MVT::Other, Ops);
-    DAG.addNoMergeSiteInfo(Ret.getNode(), CFlags.NoMerge);
-    return Ret;
+    return DAG.getNode(CallOpc, dl, MVT::Other, Ops);
   }
 
   std::array<EVT, 2> ReturnTypes = {{MVT::Other, MVT::Glue}};
@@ -5853,14 +5852,14 @@ SDValue PPCTargetLowering::LowerCall_32SVR4(
   CCState CCByValInfo(CallConv, IsVarArg, MF, ByValArgLocs, *DAG.getContext());
 
   // Reserve stack space for the allocations in CCInfo.
-  CCByValInfo.AllocateStack(CCInfo.getStackSize(), PtrAlign);
+  CCByValInfo.AllocateStack(CCInfo.getNextStackOffset(), PtrAlign);
 
   CCByValInfo.AnalyzeCallOperands(Outs, CC_PPC32_SVR4_ByVal);
 
   // Size of the linkage area, parameter list area and the part of the local
   // space variable where copies of aggregates which are passed by value are
   // stored.
-  unsigned NumBytes = CCByValInfo.getStackSize();
+  unsigned NumBytes = CCByValInfo.getNextStackOffset();
 
   // Calculate by how many bytes the stack has to be adjusted in case of tail
   // call optimization.
@@ -6681,7 +6680,8 @@ static bool CC_AIX(unsigned ValNo, MVT ValVT, MVT LocVT,
     // but needs a MemLoc for a stack slot for the formal arguments side.
     if (ByValSize == 0) {
       State.addLoc(CCValAssign::getMem(ValNo, MVT::INVALID_SIMPLE_VALUE_TYPE,
-                                       State.getStackSize(), RegVT, LocInfo));
+                                       State.getNextStackOffset(), RegVT,
+                                       LocInfo));
       return false;
     }
 
@@ -7224,8 +7224,8 @@ SDValue PPCTargetLowering::LowerFormalArguments_AIX(
   // On AIX a minimum of 8 words is saved to the parameter save area.
   const unsigned MinParameterSaveArea = 8 * PtrByteSize;
   // Area that is at least reserved in the caller of this function.
-  unsigned CallerReservedArea = std::max<unsigned>(
-      CCInfo.getStackSize(), LinkageSize + MinParameterSaveArea);
+  unsigned CallerReservedArea =
+      std::max(CCInfo.getNextStackOffset(), LinkageSize + MinParameterSaveArea);
 
   // Set the size that is at least reserved in caller of this function. Tail
   // call optimized function's reserved stack space needs to be aligned so
@@ -7237,7 +7237,7 @@ SDValue PPCTargetLowering::LowerFormalArguments_AIX(
 
   if (isVarArg) {
     FuncInfo->setVarArgsFrameIndex(
-        MFI.CreateFixedObject(PtrByteSize, CCInfo.getStackSize(), true));
+        MFI.CreateFixedObject(PtrByteSize, CCInfo.getNextStackOffset(), true));
     SDValue FIN = DAG.getFrameIndex(FuncInfo->getVarArgsFrameIndex(), PtrVT);
 
     static const MCPhysReg GPR_32[] = {PPC::R3, PPC::R4, PPC::R5, PPC::R6,
@@ -7251,7 +7251,7 @@ SDValue PPCTargetLowering::LowerFormalArguments_AIX(
     // VarArgsFrameIndex on the stack so that they may be loaded by
     // dereferencing the result of va_next.
     for (unsigned GPRIndex =
-             (CCInfo.getStackSize() - LinkageSize) / PtrByteSize;
+             (CCInfo.getNextStackOffset() - LinkageSize) / PtrByteSize;
          GPRIndex < NumGPArgRegs; ++GPRIndex) {
 
       const Register VReg =
@@ -7317,8 +7317,8 @@ SDValue PPCTargetLowering::LowerCall_AIX(
   // conservatively assume that it is needed.  As such, make sure we have at
   // least enough stack space for the caller to store the 8 GPRs.
   const unsigned MinParameterSaveAreaSize = 8 * PtrByteSize;
-  const unsigned NumBytes = std::max<unsigned>(
-      LinkageSize + MinParameterSaveAreaSize, CCInfo.getStackSize());
+  const unsigned NumBytes = std::max(LinkageSize + MinParameterSaveAreaSize,
+                                     CCInfo.getNextStackOffset());
 
   // Adjust the stack pointer for the new arguments...
   // These operations are automatically eliminated by the prolog/epilog pass.
@@ -10686,7 +10686,7 @@ SDValue PPCTargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
       RetOps.push_back(Extract);
       return DAG.getMergeValues(RetOps, dl);
     }
-    [[fallthrough]];
+    LLVM_FALLTHROUGH;
   }
   case Intrinsic::ppc_vsx_disassemble_pair: {
     int NumVecs = 2;
@@ -15041,7 +15041,6 @@ SDValue PPCTargetLowering::combineStoreFPToInt(SDNode *N,
   SelectionDAG &DAG = DCI.DAG;
   SDLoc dl(N);
   unsigned Opcode = N->getOperand(1).getOpcode();
-  (void)Opcode;
 
   assert((Opcode == ISD::FP_TO_SINT || Opcode == ISD::FP_TO_UINT)
          && "Not a FP_TO_INT Instruction!");
@@ -15525,10 +15524,8 @@ SDValue PPCTargetLowering::PerformDAGCombine(SDNode *N,
 
     EVT Op1VT = N->getOperand(1).getValueType();
     unsigned Opcode = N->getOperand(1).getOpcode();
-    bool NeedsFPCVT = Opcode == ISD::FP_TO_UINT && Op1VT == MVT::i64;
 
-    if ((Opcode == ISD::FP_TO_SINT || Opcode == ISD::FP_TO_UINT) &&
-        (!NeedsFPCVT || Subtarget.hasFPCVT())) {
+    if (Opcode == ISD::FP_TO_SINT || Opcode == ISD::FP_TO_UINT) {
       SDValue Val= combineStoreFPToInt(N, DCI);
       if (Val)
         return Val;

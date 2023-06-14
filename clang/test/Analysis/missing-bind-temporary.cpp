@@ -7,6 +7,8 @@ void clang_analyzer_eval(bool);
 int global;
 
 namespace variant_0 {
+// This variant of the code works correctly. Function foo() is not a template
+// function. Note that there are two destructors within foo().
 
 class A {
 public:
@@ -44,6 +46,9 @@ void bar() {
 } // end namespace variant_0
 
 namespace variant_1 {
+// Suddenly, if we turn foo() into a template, we are missing a
+// CXXBindTemporaryExpr in the AST, and therefore we're missing a
+// temporary destructor in the CFG.
 
 class A {
 public:
@@ -54,6 +59,8 @@ class B {
   A a;
 };
 
+// FIXME: Find the construction context for {} and enforce the temporary
+// destructor.
 // CHECK: template<> void foo<int>(int)
 // CHECK:       [B1]
 // CHECK-NEXT:    1:  (CXXConstructExpr, [B1.2], B)
@@ -61,12 +68,10 @@ class B {
 // CHECK-NEXT:    3: operator=
 // CHECK-NEXT:    4: [B1.3] (ImplicitCastExpr, FunctionToPointerDecay, B &(*)(B &&) noexcept)
 // CHECK-NEXT:    5: i
-// CHECK-NEXT:    6: {} (CXXConstructExpr, [B1.7], [B1.8], B)
-// CHECK-NEXT:    7: [B1.6] (BindTemporary)
-// CHECK-NEXT:    8: [B1.7]
-// CHECK-NEXT:    9: [B1.5] = [B1.8] (OperatorCall)
-// CHECK-NEXT:    10: ~B() (Temporary object destructor)
-// CHECK-NEXT:    11: [B1.2].~B() (Implicit destructor)
+// CHECK-NEXT:    6: {} (CXXConstructExpr, B)
+// CHECK-NEXT:    7: [B1.6]
+// CHECK-NEXT:    8: [B1.5] = [B1.7] (OperatorCall)
+// CHECK-NEXT:    9: [B1.2].~B() (Implicit destructor)
 template <typename T> void foo(T) {
   B i;
   i = {};
@@ -75,7 +80,8 @@ template <typename T> void foo(T) {
 void bar() {
   global = 0;
   foo(1);
-  clang_analyzer_eval(global == 2); // expected-warning{{TRUE [debug.ExprInspection]}}
+  // FIXME: Should be TRUE, i.e. we should call (and inline) two destructors.
+  clang_analyzer_eval(global == 2); // expected-warning{{UNKNOWN}}
 }
 
 } // end namespace variant_1

@@ -3,6 +3,7 @@ Test that the lldb editline handling is configured correctly.
 """
 
 
+
 import lldb
 from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
@@ -11,6 +12,7 @@ from lldbsuite.test.lldbpexpect import PExpectTest
 
 
 class EditlineTest(PExpectTest):
+
     @skipIfAsan
     @skipIfEditlineSupportMissing
     @skipIf(oslist=["linux"], archs=["arm", "aarch64"])
@@ -37,10 +39,8 @@ class EditlineTest(PExpectTest):
             ("\x1b[5D", "\x1b[5C"),
             ("\x1b\x1b[D", "\x1b\x1b[C"),
         ]
-        for l_escape, r_escape in escape_pairs:
-            self.expect(
-                "el rint{L}p{L}{L}h{R}p".format(L=l_escape, R=r_escape),
-                substrs=["Syntax: print"],
-            )
+        for (l_escape, r_escape) in escape_pairs:
+            self.expect("el rint{L}p{L}{L}h{R}p".format(
+                L=l_escape, R=r_escape), substrs=["Syntax: print"])
 
         self.quit()

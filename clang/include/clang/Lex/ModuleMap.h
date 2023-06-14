@@ -448,13 +448,9 @@ public:
   /// and does not consult the external source. (Those checks are the
   /// responsibility of \ref HeaderSearch.)
   ///
-  /// \param AllowCreation Whether to allow inference of a new submodule, or to
-  ///        only return existing known modules.
-  ///
   /// Typically, \ref findModuleForHeader should be used instead, as it picks
   /// the preferred module for the header.
-  ArrayRef<KnownHeader> findAllModulesForHeader(const FileEntry *File,
-                                                bool AllowCreation = true);
+  ArrayRef<KnownHeader> findAllModulesForHeader(const FileEntry *File);
 
   /// Like \ref findAllModulesForHeader, but do not attempt to infer module
   /// ownership from umbrella headers if we've not already done so.
@@ -692,16 +688,17 @@ public:
   /// false otherwise.
   bool resolveConflicts(Module *Mod, bool Complain);
 
-  /// Sets the umbrella header of the given module to the given header.
-  void
-  setUmbrellaHeaderAsWritten(Module *Mod, FileEntryRef UmbrellaHeader,
-                             const Twine &NameAsWritten,
-                             const Twine &PathRelativeToRootModuleDirectory);
+  /// Sets the umbrella header of the given module to the given
+  /// header.
+  void setUmbrellaHeader(Module *Mod, FileEntryRef UmbrellaHeader,
+                         const Twine &NameAsWritten,
+                         const Twine &PathRelativeToRootModuleDirectory);
 
-  /// Sets the umbrella directory of the given module to the given directory.
-  void setUmbrellaDirAsWritten(Module *Mod, DirectoryEntryRef UmbrellaDir,
-                               const Twine &NameAsWritten,
-                               const Twine &PathRelativeToRootModuleDirectory);
+  /// Sets the umbrella directory of the given module to the given
+  /// directory.
+  void setUmbrellaDir(Module *Mod, const DirectoryEntry *UmbrellaDir,
+                      const Twine &NameAsWritten,
+                      const Twine &PathRelativeToRootModuleDirectory);
 
   /// Adds this header to the given module.
   /// \param Role The role of the header wrt the module.

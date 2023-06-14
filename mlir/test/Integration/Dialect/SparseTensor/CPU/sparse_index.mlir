@@ -27,11 +27,11 @@
 // RUN: %{compile} | mlir-translate -mlir-to-llvmir | %{run}
 
 #SparseVector = #sparse_tensor.encoding<{
-  lvlTypes = ["compressed"]
+  dimLevelType = ["compressed"]
 }>
 
 #SparseMatrix = #sparse_tensor.encoding<{
-  lvlTypes = ["compressed", "compressed"]
+  dimLevelType = ["compressed", "compressed"]
 }>
 
 #trait_1d = {

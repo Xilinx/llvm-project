@@ -819,21 +819,10 @@ public:
             characteristics::Procedure::Characterize(x.proc(), context_)}) {
       if (chars->functionResult) {
         const auto &result{*chars->functionResult};
-        if (!result.IsProcedurePointer()) {
-          if (result.attrs.test(
-                  characteristics::FunctionResult::Attr::Contiguous)) {
-            return true;
-          }
-          if (!result.attrs.test(
-                  characteristics::FunctionResult::Attr::Pointer)) {
-            return true;
-          }
-          if (const auto *type{result.GetTypeAndShape()};
-              type && type->Rank() == 0) {
-            return true; // pointer to scalar
-          }
-          // Must be non-CONTIGUOUS pointer to array
-        }
+        return !result.IsProcedurePointer() &&
+            result.attrs.test(characteristics::FunctionResult::Attr::Pointer) &&
+            result.attrs.test(
+                characteristics::FunctionResult::Attr::Contiguous);
       }
     }
     return std::nullopt;

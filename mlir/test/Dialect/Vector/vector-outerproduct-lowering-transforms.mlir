@@ -136,13 +136,13 @@ func.func @axpy_int_add(%arg0: vector<16xi32>, %arg1: i32, %arg2: vector<16xi32>
 }
 
 transform.sequence failures(propagate) {
-^bb1(%module_op: !transform.any_op):
+^bb1(%module_op: !pdl.operation):
   %f = transform.structured.match ops{["func.func"]} in %module_op 
-    : (!transform.any_op) -> !transform.any_op
+    : (!pdl.operation) -> !pdl.operation
 
   %f2 = transform.vector.lower_outerproduct %f
-      : (!transform.any_op) -> !transform.any_op
+      : (!pdl.operation) -> !pdl.operation
 
   %f3 = transform.vector.lower_broadcast %f2
-      : (!transform.any_op) -> !transform.any_op
+      : (!pdl.operation) -> !pdl.operation
 }

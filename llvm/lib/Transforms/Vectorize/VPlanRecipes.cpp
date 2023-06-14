@@ -169,16 +169,6 @@ void VPLiveOut::fixPhi(VPlan &Plan, VPTransformState &State) {
                    State.Builder.GetInsertBlock());
 }
 
-#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-void VPLiveOut::print(raw_ostream &O, VPSlotTracker &SlotTracker) const {
-  O << "Live-out ";
-  getPhi()->printAsOperand(O);
-  O << " = ";
-  getOperand(0)->printAsOperand(O, SlotTracker);
-  O << "\n";
-}
-#endif
-
 void VPRecipeBase::insertBefore(VPRecipeBase *InsertPos) {
   assert(!Parent && "Recipe already in some VPBasicBlock");
   assert(InsertPos->getParent() &&
@@ -603,33 +593,6 @@ void VPWidenSelectRecipe::execute(VPTransformState &State) {
   }
 }
 
-#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-void VPRecipeWithIRFlags::printFlags(raw_ostream &O) const {
-  switch (OpType) {
-  case OperationType::PossiblyExactOp:
-    if (ExactFlags.IsExact)
-      O << " exact";
-    break;
-  case OperationType::OverflowingBinOp:
-    if (WrapFlags.HasNUW)
-      O << " nuw";
-    if (WrapFlags.HasNSW)
-      O << " nsw";
-    break;
-  case OperationType::FPMathOp:
-    getFastMathFlags().print(O);
-    break;
-  case OperationType::GEPOp:
-    if (GEPFlags.IsInBounds)
-      O << " inbounds";
-    break;
-  case OperationType::Other:
-    break;
-  }
-  O << " ";
-}
-#endif
-
 void VPWidenRecipe::execute(VPTransformState &State) {
   auto &I = *cast<Instruction>(getUnderlyingValue());
   auto &Builder = State.Builder;
@@ -669,8 +632,17 @@ void VPWidenRecipe::execute(VPTransformState &State) {
 
       Value *V = Builder.CreateNAryOp(I.getOpcode(), Ops);
 
-      if (auto *VecOp = dyn_cast<Instruction>(V))
-        setFlags(VecOp);
+      if (auto *VecOp = dyn_cast<Instruction>(V)) {
+        VecOp->copyIRFlags(&I);
+
+        // If the instruction is vectorized and was in a basic block that needed
+        // predication, we can't propagate poison-generating flags (nuw/nsw,
+        // exact, etc.). The control flow has been linearized and the
+        // instruction is no longer guarded by the predicate, which could make
+        // the flag properties to no longer hold.
+        if (State.MayGeneratePoisonRecipes.contains(this))
+          VecOp->dropPoisonGeneratingFlags();
+      }
 
       // Use this vector value for all users of the original instruction.
       State.set(this, V, Part);
@@ -726,8 +698,7 @@ void VPWidenRecipe::print(raw_ostream &O, const Twine &Indent,
   O << Indent << "WIDEN ";
   printAsOperand(O, SlotTracker);
   const Instruction *UI = getUnderlyingInstr();
-  O << " = " << UI->getOpcodeName();
-  printFlags(O);
+  O << " = " << UI->getOpcodeName() << " ";
   if (auto *Cmp = dyn_cast<CmpInst>(UI))
     O << Cmp->getPredicate() << " ";
   printOperands(O, SlotTracker);
@@ -838,7 +809,6 @@ void VPWidenGEPRecipe::execute(VPTransformState &State) {
     //       collectLoopScalars() and teach getVectorValue() to broadcast
     //       the lane-zero scalar value.
     auto *Clone = State.Builder.Insert(GEP->clone());
-    setFlags(Clone);
     for (unsigned Part = 0; Part < State.UF; ++Part) {
       Value *EntryPart = State.Builder.CreateVectorSplat(State.VF, Clone);
       State.set(this, EntryPart, Part);
@@ -870,10 +840,18 @@ void VPWidenGEPRecipe::execute(VPTransformState &State) {
           Indices.push_back(State.get(Operand, Part));
       }
 
+      // If the GEP instruction is vectorized and was in a basic block that
+      // needed predication, we can't propagate the poison-generating 'inbounds'
+      // flag. The control flow has been linearized and the GEP is no longer
+      // guarded by the predicate, which could make the 'inbounds' properties to
+      // no longer hold.
+      bool IsInBounds =
+          GEP->isInBounds() && State.MayGeneratePoisonRecipes.count(this) == 0;
+
       // Create the new GEP. Note that this GEP may be a scalar if VF == 1,
       // but it should be a vector, otherwise.
       auto *NewGEP = State.Builder.CreateGEP(GEP->getSourceElementType(), Ptr,
-                                             Indices, "", isInBounds());
+                                             Indices, "", IsInBounds);
       assert((State.VF.isScalar() || NewGEP->getType()->isVectorTy()) &&
              "NewGEP is not a pointer vector");
       State.set(this, NewGEP, Part);
@@ -892,8 +870,7 @@ void VPWidenGEPRecipe::print(raw_ostream &O, const Twine &Indent,
 
   O << " ";
   printAsOperand(O, SlotTracker);
-  O << " = getelementptr";
-  printFlags(O);
+  O << " = getelementptr ";
   printOperands(O, SlotTracker);
 }
 #endif
@@ -1002,17 +979,14 @@ void VPReplicateRecipe::print(raw_ostream &O, const Twine &Indent,
     O << " = ";
   }
   if (auto *CB = dyn_cast<CallBase>(getUnderlyingInstr())) {
-    O << "call";
-    printFlags(O);
-    O << "@" << CB->getCalledFunction()->getName() << "(";
+    O << "call @" << CB->getCalledFunction()->getName() << "(";
     interleaveComma(make_range(op_begin(), op_begin() + (getNumOperands() - 1)),
                     O, [&O, &SlotTracker](VPValue *Op) {
                       Op->printAsOperand(O, SlotTracker);
                     });
     O << ")";
   } else {
-    O << Instruction::getOpcodeName(getUnderlyingInstr()->getOpcode());
-    printFlags(O);
+    O << Instruction::getOpcodeName(getUnderlyingInstr()->getOpcode()) << " ";
     printOperands(O, SlotTracker);
   }
 
@@ -1178,9 +1152,7 @@ void VPExpandSCEVRecipe::execute(VPTransformState &State) {
 
   Value *Res = Exp.expandCodeFor(Expr, Expr->getType(),
                                  &*State.Builder.GetInsertPoint());
-  assert(!State.ExpandedSCEVs.contains(Expr) &&
-         "Same SCEV expanded multiple times");
-  State.ExpandedSCEVs[Expr] = Res;
+
   for (unsigned Part = 0, UF = State.UF; Part < UF; ++Part)
     State.set(this, Res, {Part, 0});
 }

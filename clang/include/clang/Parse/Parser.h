@@ -18,7 +18,6 @@
 #include "clang/Basic/OpenMPKinds.h"
 #include "clang/Basic/OperatorPrecedence.h"
 #include "clang/Basic/Specifiers.h"
-#include "clang/Basic/TokenKinds.h"
 #include "clang/Lex/CodeCompletionHandler.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/DeclSpec.h"
@@ -693,8 +692,7 @@ private:
   bool isEofOrEom() {
     tok::TokenKind Kind = Tok.getKind();
     return Kind == tok::eof || Kind == tok::annot_module_begin ||
-           Kind == tok::annot_module_end || Kind == tok::annot_module_include ||
-           Kind == tok::annot_repl_input_end;
+           Kind == tok::annot_module_end || Kind == tok::annot_module_include;
   }
 
   /// Checks if the \p Level is valid for use in a fold expression.
@@ -2523,9 +2521,9 @@ private:
   enum TentativeCXXTypeIdContext {
     TypeIdInParens,
     TypeIdUnambiguous,
-    TypeIdAsTemplateArgument,
-    TypeIdInTrailingReturnType,
+    TypeIdAsTemplateArgument
   };
+
 
   /// isTypeIdInParens - Assumes that a '(' was parsed and now we want to know
   /// whether the parens contain an expression or a type-id.
@@ -2654,16 +2652,14 @@ private:
   TPResult TryParseProtocolQualifiers();
   TPResult TryParsePtrOperatorSeq();
   TPResult TryParseOperatorId();
-  TPResult TryParseInitDeclaratorList(bool MayHaveTrailingReturnType = false);
+  TPResult TryParseInitDeclaratorList();
   TPResult TryParseDeclarator(bool mayBeAbstract, bool mayHaveIdentifier = true,
-                              bool mayHaveDirectInit = false,
-                              bool mayHaveTrailingReturnType = false);
+                              bool mayHaveDirectInit = false);
   TPResult TryParseParameterDeclarationClause(
       bool *InvalidAsDeclaration = nullptr, bool VersusTemplateArg = false,
       ImplicitTypenameContext AllowImplicitTypename =
           ImplicitTypenameContext::No);
-  TPResult TryParseFunctionDeclarator(bool MayHaveTrailingReturnType = false);
-  bool NameAfterArrowIsNonType();
+  TPResult TryParseFunctionDeclarator();
   TPResult TryParseBracketDeclarator();
   TPResult TryConsumeDeclarationSpecifier();
 
@@ -3004,9 +3000,8 @@ private:
                                          SourceLocation EndLoc);
   void ParseAtomicSpecifier(DeclSpec &DS);
 
-  ExprResult ParseAlignArgument(StringRef KWName, SourceLocation Start,
-                                SourceLocation &EllipsisLoc, bool &IsType,
-                                ParsedType &Ty);
+  ExprResult ParseAlignArgument(SourceLocation Start,
+                                SourceLocation &EllipsisLoc);
   void ParseAlignmentSpecifier(ParsedAttributes &Attrs,
                                SourceLocation *endLoc = nullptr);
   ExprResult ParseExtIntegerArgument();

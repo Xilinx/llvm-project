@@ -258,9 +258,6 @@ bool ScriptedThread::CalculateStopInfo() {
     stop_info_sp =
         StopInfo::CreateStopReasonWithSignal(*this, signal, description.data());
   } break;
-  case lldb::eStopReasonTrace: {
-    stop_info_sp = StopInfo::CreateStopReasonToTrace(*this);
-  } break;
   case lldb::eStopReasonException: {
 #if defined(__APPLE__)
     StructuredData::Dictionary *mach_exception;
@@ -283,7 +280,7 @@ bool ScriptedThread::CalculateStopInfo() {
         auto fetch_data = [&raw_codes](StructuredData::Object *obj) {
           if (!obj)
             return false;
-          raw_codes.push_back(obj->GetUnsignedIntegerValue());
+          raw_codes.push_back(obj->GetIntegerValue());
           return true;
         };
 

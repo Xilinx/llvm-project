@@ -58,7 +58,7 @@ static Value castAllocFuncResult(ConversionPatternRewriter &rewriter,
                                  Location loc, Value allocatedPtr,
                                  MemRefType memRefType, Type elementPtrType,
                                  LLVMTypeConverter &typeConverter) {
-  auto allocatedPtrTy = cast<LLVM::LLVMPointerType>(allocatedPtr.getType());
+  auto allocatedPtrTy = allocatedPtr.getType().cast<LLVM::LLVMPointerType>();
   unsigned memrefAddrSpace = *typeConverter.getMemRefAddressSpace(memRefType);
   if (allocatedPtrTy.getAddressSpace() != memrefAddrSpace)
     allocatedPtr = rewriter.create<LLVM::AddrSpaceCastOp>(
@@ -114,10 +114,10 @@ unsigned AllocationOpLLVMLowering::getMemRefEltSizeInBytes(
     layout = &analysis->getAbove(op);
   }
   Type elementType = memRefType.getElementType();
-  if (auto memRefElementType = dyn_cast<MemRefType>(elementType))
+  if (auto memRefElementType = elementType.dyn_cast<MemRefType>())
     return getTypeConverter()->getMemRefDescriptorSize(memRefElementType,
                                                        *layout);
-  if (auto memRefElementType = dyn_cast<UnrankedMemRefType>(elementType))
+  if (auto memRefElementType = elementType.dyn_cast<UnrankedMemRefType>())
     return getTypeConverter()->getUnrankedMemRefDescriptorSize(
         memRefElementType, *layout);
   return layout->getTypeSize(elementType);
@@ -156,10 +156,6 @@ Value AllocationOpLLVMLowering::allocateBufferAutoAlign(
                              elementPtrType, *getTypeConverter());
 }
 
-void AllocLikeOpLLVMLowering::setRequiresNumElements() {
-  requiresNumElements = true;
-}
-
 LogicalResult AllocLikeOpLLVMLowering::matchAndRewrite(
     Operation *op, ArrayRef<Value> operands,
     ConversionPatternRewriter &rewriter) const {
@@ -173,14 +169,13 @@ LogicalResult AllocLikeOpLLVMLowering::matchAndRewrite(
   // zero-dimensional memref, assume a scalar (size 1).
   SmallVector<Value, 4> sizes;
   SmallVector<Value, 4> strides;
-  Value size;
-
+  Value sizeBytes;
   this->getMemRefDescriptorSizes(loc, memRefType, operands, rewriter, sizes,
-                                 strides, size, !requiresNumElements);
+                                 strides, sizeBytes);
 
   // Allocate the underlying buffer.
   auto [allocatedPtr, alignedPtr] =
-      this->allocateBuffer(rewriter, loc, size, op);
+      this->allocateBuffer(rewriter, loc, sizeBytes, op);
 
   // Create the MemRef descriptor.
   auto memRefDescriptor = this->createMemRefDescriptor(

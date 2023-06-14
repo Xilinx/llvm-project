@@ -20,8 +20,6 @@ class RISCVELFTargetObjectFile : public TargetLoweringObjectFileELF {
   unsigned SSThreshold = 8;
 
 public:
-  unsigned getTextSectionAlignment() const override;
-
   void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
 
   /// Return true if this global address should be placed into small data/bss

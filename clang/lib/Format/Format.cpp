@@ -3680,33 +3680,33 @@ const char *StyleOptionHelpDescription =
 static FormatStyle::LanguageKind getLanguageByFileName(StringRef FileName) {
   if (FileName.endswith(".java"))
     return FormatStyle::LK_Java;
-  if (FileName.ends_with_insensitive(".js") ||
-      FileName.ends_with_insensitive(".mjs") ||
-      FileName.ends_with_insensitive(".ts")) {
+  if (FileName.endswith_insensitive(".js") ||
+      FileName.endswith_insensitive(".mjs") ||
+      FileName.endswith_insensitive(".ts")) {
     return FormatStyle::LK_JavaScript; // (module) JavaScript or TypeScript.
   }
   if (FileName.endswith(".m") || FileName.endswith(".mm"))
     return FormatStyle::LK_ObjC;
-  if (FileName.ends_with_insensitive(".proto") ||
-      FileName.ends_with_insensitive(".protodevel")) {
+  if (FileName.endswith_insensitive(".proto") ||
+      FileName.endswith_insensitive(".protodevel")) {
     return FormatStyle::LK_Proto;
   }
-  if (FileName.ends_with_insensitive(".textpb") ||
-      FileName.ends_with_insensitive(".pb.txt") ||
-      FileName.ends_with_insensitive(".textproto") ||
-      FileName.ends_with_insensitive(".asciipb")) {
+  if (FileName.endswith_insensitive(".textpb") ||
+      FileName.endswith_insensitive(".pb.txt") ||
+      FileName.endswith_insensitive(".textproto") ||
+      FileName.endswith_insensitive(".asciipb")) {
     return FormatStyle::LK_TextProto;
   }
-  if (FileName.ends_with_insensitive(".td"))
+  if (FileName.endswith_insensitive(".td"))
     return FormatStyle::LK_TableGen;
-  if (FileName.ends_with_insensitive(".cs"))
+  if (FileName.endswith_insensitive(".cs"))
     return FormatStyle::LK_CSharp;
-  if (FileName.ends_with_insensitive(".json"))
+  if (FileName.endswith_insensitive(".json"))
     return FormatStyle::LK_Json;
-  if (FileName.ends_with_insensitive(".sv") ||
-      FileName.ends_with_insensitive(".svh") ||
-      FileName.ends_with_insensitive(".v") ||
-      FileName.ends_with_insensitive(".vh")) {
+  if (FileName.endswith_insensitive(".sv") ||
+      FileName.endswith_insensitive(".svh") ||
+      FileName.endswith_insensitive(".v") ||
+      FileName.endswith_insensitive(".vh")) {
     return FormatStyle::LK_Verilog;
   }
   return FormatStyle::LK_Cpp;
@@ -3780,7 +3780,7 @@ llvm::Expected<FormatStyle> getStyle(StringRef StyleName, StringRef FileName,
 
   // User provided clang-format file using -style=file:path/to/format/file.
   if (!Style.InheritsParentConfig &&
-      StyleName.starts_with_insensitive("file:")) {
+      StyleName.startswith_insensitive("file:")) {
     auto ConfigFile = StyleName.substr(5);
     llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> Text =
         loadAndParseConfigFile(ConfigFile, FS, &Style, AllowUnknownOptions);

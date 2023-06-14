@@ -122,6 +122,8 @@ ProfileGeneratorBase::create(ProfiledBinary *Binary,
                              bool ProfileIsCS) {
   std::unique_ptr<ProfileGeneratorBase> Generator;
   if (ProfileIsCS) {
+    if (Binary->useFSDiscriminator())
+      exitWithError("FS discriminator is not supported in CS profile.");
     Generator.reset(new CSProfileGenerator(Binary, SampleCounters));
   } else {
     Generator.reset(new ProfileGenerator(Binary, SampleCounters));
@@ -137,6 +139,8 @@ ProfileGeneratorBase::create(ProfiledBinary *Binary, SampleProfileMap &Profiles,
                              bool ProfileIsCS) {
   std::unique_ptr<ProfileGeneratorBase> Generator;
   if (ProfileIsCS) {
+    if (Binary->useFSDiscriminator())
+      exitWithError("FS discriminator is not supported in CS profile.");
     Generator.reset(new CSProfileGenerator(Binary, Profiles));
   } else {
     Generator.reset(new ProfileGenerator(Binary, std::move(Profiles)));
@@ -557,8 +561,7 @@ void ProfileGenerator::populateBodySamplesWithProbesForAllFunctions(
     Binary->getInlineContextForProbe(Probe, FrameVec, true);
     FunctionSamples &FunctionProfile =
         getLeafProfileAndAddTotalSamples(FrameVec, Count);
-    FunctionProfile.addBodySamples(Probe->getIndex(), Probe->getDiscriminator(),
-                                   Count);
+    FunctionProfile.addBodySamplesForProbe(Probe->getIndex(), Count);
     if (Probe->isEntry())
       FunctionProfile.addHeadSamples(Count);
   }
@@ -589,9 +592,7 @@ void ProfileGenerator::populateBoundarySamplesWithProbesForAllFunctions(
       FunctionSamples &FunctionProfile =
           getLeafProfileAndAddTotalSamples(FrameVec, 0);
       FunctionProfile.addCalledTargetSamples(
-          FrameVec.back().Location.LineOffset,
-          FrameVec.back().Location.Discriminator,
-          CalleeName, Count);
+          FrameVec.back().Location.LineOffset, 0, CalleeName, Count);
     }
   }
 }
@@ -1158,8 +1159,7 @@ void CSProfileGenerator::populateBodySamplesWithProbes(
     // collected for non-danglie probes. This is for reporting all of the
     // zero count probes of the frame later.
     FrameSamples[Probe->getInlineTreeNode()].insert(&FunctionProfile);
-    FunctionProfile.addBodySamples(Probe->getIndex(), Probe->getDiscriminator(),
-                                   Count);
+    FunctionProfile.addBodySamplesForProbe(Probe->getIndex(), Count);
     FunctionProfile.addTotalSamples(Count);
     if (Probe->isEntry()) {
       FunctionProfile.addHeadSamples(Count);
@@ -1171,17 +1171,14 @@ void CSProfileGenerator::populateBodySamplesWithProbes(
         // context id to infer caller's context id to ensure they share the
         // same context prefix.
         uint64_t CallerIndex = ContextNode->getCallSiteLoc().LineOffset;
-        uint64_t CallerDiscriminator = ContextNode->getCallSiteLoc().Discriminator;
         assert(CallerIndex &&
                "Inferred caller's location index shouldn't be zero!");
-        assert(!CallerDiscriminator &&
-               "Callsite probe should not have a discriminator!");
         FunctionSamples &CallerProfile =
             *getOrCreateFunctionSamples(CallerNode);
         CallerProfile.setFunctionHash(InlinerDesc->FuncHash);
-        CallerProfile.addBodySamples(CallerIndex, CallerDiscriminator, Count);
+        CallerProfile.addBodySamples(CallerIndex, 0, Count);
         CallerProfile.addTotalSamples(Count);
-        CallerProfile.addCalledTargetSamples(CallerIndex, CallerDiscriminator,
+        CallerProfile.addCalledTargetSamples(CallerIndex, 0,
                                              ContextNode->getFuncName(), Count);
       }
     }
@@ -1193,8 +1190,7 @@ void CSProfileGenerator::populateBodySamplesWithProbes(
   for (auto &I : FrameSamples) {
     for (auto *FunctionProfile : I.second) {
       for (auto *Probe : I.first->getProbes()) {
-        FunctionProfile->addBodySamples(Probe->getIndex(),
-                                        Probe->getDiscriminator(), 0);
+        FunctionProfile->addBodySamplesForProbe(Probe->getIndex(), 0);
       }
     }
   }
@@ -1217,9 +1213,8 @@ void CSProfileGenerator::populateBoundarySamplesWithProbes(
     StringRef CalleeName = getCalleeNameForAddress(TargetAddress);
     if (CalleeName.size() == 0)
       continue;
-    FunctionProfile.addCalledTargetSamples(CallProbe->getIndex(),
-                                           CallProbe->getDiscriminator(),
-                                           CalleeName, Count);
+    FunctionProfile.addCalledTargetSamples(CallProbe->getIndex(), 0, CalleeName,
+                                           Count);
   }
 }
 

@@ -210,9 +210,8 @@ struct StackFrameLayoutAnalysisPass : public MachineFunctionPass {
     SlotDbgMap SlotDebugMap;
 
     // add variables to the map
-    for (MachineFunction::VariableDbgInfo &DI :
-         MF.getInStackSlotVariableDbgInfo())
-      SlotDebugMap[DI.getStackSlot()].insert(DI.Var);
+    for (MachineFunction::VariableDbgInfo &DI : MF.getVariableDbgInfo())
+      SlotDebugMap[DI.Slot].insert(DI.Var);
 
     // Then add all the spills that have debug data
     for (MachineBasicBlock &MBB : MF) {

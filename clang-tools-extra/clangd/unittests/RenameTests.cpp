@@ -1063,19 +1063,6 @@ TEST(RenameTest, Renameable) {
        "conflict", !HeaderFile, "Conflict"},
 
       {R"cpp(
-        void func(int);
-        void [[o^therFunc]](double);
-      )cpp",
-       nullptr, !HeaderFile, "func"},
-      {R"cpp(
-        struct S {
-          void func(int);
-          void [[o^therFunc]](double);
-        };
-      )cpp",
-       nullptr, !HeaderFile, "func"},
-
-      {R"cpp(
         int V^ar;
       )cpp",
        "\"const\" is a keyword", !HeaderFile, "const"},
@@ -1134,7 +1121,9 @@ TEST(RenameTest, Renameable) {
     } else {
       EXPECT_TRUE(bool(Results)) << "rename returned an error: "
                                  << llvm::toString(Results.takeError());
-      EXPECT_EQ(Results->LocalChanges, T.ranges());
+      ASSERT_EQ(1u, Results->GlobalChanges.size());
+      EXPECT_EQ(applyEdits(std::move(Results->GlobalChanges)).front().second,
+                expectedResult(T, NewName));
     }
   }
 }

@@ -27,7 +27,6 @@ public:
 
 private:
   std::string CheckedFunctions;
-  const std::vector<StringRef> CheckedReturnTypes;
 };
 
 } // namespace clang::tidy::bugprone

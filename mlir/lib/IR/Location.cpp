@@ -64,8 +64,8 @@ WalkResult LocationAttr::walk(function_ref<WalkResult(Location)> walkFn) {
 
 /// Methods for support type inquiry through isa, cast, and dyn_cast.
 bool LocationAttr::classof(Attribute attr) {
-  return llvm::isa<CallSiteLoc, FileLineColLoc, FusedLoc, NameLoc, OpaqueLoc,
-                   UnknownLoc>(attr);
+  return attr.isa<CallSiteLoc, FileLineColLoc, FusedLoc, NameLoc, OpaqueLoc,
+                  UnknownLoc>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -101,7 +101,7 @@ Location FusedLoc::get(ArrayRef<Location> locs, Attribute metadata,
       }
     }
     // Otherwise, only add known locations to the set.
-    if (!llvm::isa<UnknownLoc>(loc))
+    if (!loc.isa<UnknownLoc>())
       decomposedLocs.insert(loc);
   }
   locs = decomposedLocs.getArrayRef();

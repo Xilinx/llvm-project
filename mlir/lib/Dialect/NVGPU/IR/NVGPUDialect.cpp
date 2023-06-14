@@ -38,9 +38,9 @@ bool nvgpu::NVGPUDialect::hasSharedMemoryAddressSpace(MemRefType type) {
   Attribute memorySpace = type.getMemorySpace();
   if (!memorySpace)
     return false;
-  if (auto intAttr = llvm::dyn_cast<IntegerAttr>(memorySpace))
+  if (auto intAttr = memorySpace.dyn_cast<IntegerAttr>())
     return intAttr.getInt() == NVGPUDialect::kSharedMemoryAddressSpace;
-  if (auto gpuAttr = llvm::dyn_cast<gpu::AddressSpaceAttr>(memorySpace))
+  if (auto gpuAttr = memorySpace.dyn_cast<gpu::AddressSpaceAttr>())
     return gpuAttr.getValue() == gpu::AddressSpace::Workgroup;
   return false;
 }
@@ -61,8 +61,8 @@ static bool isLastMemrefDimUnitStride(MemRefType type) {
 }
 
 LogicalResult DeviceAsyncCopyOp::verify() {
-  auto srcMemref = llvm::cast<MemRefType>(getSrc().getType());
-  auto dstMemref = llvm::cast<MemRefType>(getDst().getType());
+  auto srcMemref = getSrc().getType().cast<MemRefType>();
+  auto dstMemref = getDst().getType().cast<MemRefType>();
 
   if (!isLastMemrefDimUnitStride(srcMemref))
     return emitError("source memref most minor dim must have unit stride");
@@ -246,10 +246,10 @@ LogicalResult MmaSparseSyncOp::verify() {
 LogicalResult LdMatrixOp::verify() {
 
   // ldmatrix reads data from source in shared memory
-  auto srcMemref = llvm::cast<MemRefType>(getSrcMemref().getType());
+  auto srcMemref = getSrcMemref().getType().cast<MemRefType>();
 
   // ldmatrix writes data to result/destination in vector registers
-  auto resVector = llvm::cast<VectorType>(getRes().getType());
+  auto resVector = getRes().getType().cast<VectorType>();
 
   // vector register shape, element type, and bitwidth
   ArrayRef<int64_t> resShape = resVector.getShape();

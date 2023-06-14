@@ -27,7 +27,7 @@ struct TestTypeInterfaces
   void runOnOperation() override {
     getOperation().walk([](Operation *op) {
       for (Type type : op->getResultTypes()) {
-        if (auto testInterface = dyn_cast<TestTypeInterface>(type)) {
+        if (auto testInterface = type.dyn_cast<TestTypeInterface>()) {
           testInterface.printTypeA(op->getLoc());
           testInterface.printTypeB(op->getLoc());
           testInterface.printTypeC(op->getLoc());
@@ -37,7 +37,7 @@ struct TestTypeInterfaces
           TestTypeInterface result = testInterface.printTypeRet(op->getLoc());
           (void)result;
         }
-        if (auto testType = dyn_cast<TestType>(type))
+        if (auto testType = type.dyn_cast<TestType>())
           testType.printTypeE(op->getLoc());
       }
     });

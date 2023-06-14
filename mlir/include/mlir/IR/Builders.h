@@ -403,7 +403,7 @@ public:
     if (Operation *op = val.getDefiningOp()) {
       setInsertionPointAfter(op);
     } else {
-      auto blockArg = llvm::cast<BlockArgument>(val);
+      auto blockArg = val.cast<BlockArgument>();
       setInsertionPointToStart(blockArg.getOwner());
     }
   }

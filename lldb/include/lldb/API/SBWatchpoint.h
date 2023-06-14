@@ -12,15 +12,6 @@
 #include "lldb/API/SBDefines.h"
 #include "lldb/API/SBType.h"
 
-namespace lldb_private {
-namespace python {
-class SWIGBridge;
-}
-namespace lua {
-class SWIGBridge;
-}
-} // namespace lldb_private
-
 namespace lldb {
 
 class LLDB_API SBWatchpoint {
@@ -28,6 +19,10 @@ public:
   SBWatchpoint();
 
   SBWatchpoint(const lldb::SBWatchpoint &rhs);
+
+#ifndef SWIG
+  SBWatchpoint(const lldb::WatchpointSP &wp_sp);
+#endif
 
   ~SBWatchpoint();
 
@@ -70,6 +65,12 @@ public:
 
   void Clear();
 
+#ifndef SWIG
+  lldb::WatchpointSP GetSP() const;
+
+  void SetSP(const lldb::WatchpointSP &sp);
+#endif
+
   static bool EventIsWatchpointEvent(const lldb::SBEvent &event);
 
   static lldb::WatchpointEventType
@@ -86,16 +87,6 @@ public:
   bool IsWatchingReads();
 
   bool IsWatchingWrites();
-
-protected:
-  friend class lldb_private::python::SWIGBridge;
-  friend class lldb_private::lua::SWIGBridge;
-
-  SBWatchpoint(const lldb::WatchpointSP &wp_sp);
-
-  lldb::WatchpointSP GetSP() const;
-
-  void SetSP(const lldb::WatchpointSP &sp);
 
 private:
   friend class SBTarget;

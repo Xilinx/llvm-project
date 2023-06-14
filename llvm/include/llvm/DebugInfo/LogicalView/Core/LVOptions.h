@@ -511,9 +511,7 @@ class LVPatterns final {
   void resolveGenericPatternMatch(T *Element, const U &Requests) {
     assert(Element && "Element must not be nullptr");
     auto CheckPattern = [=]() -> bool {
-      return (Element->isNamed() &&
-              (matchGenericPattern(Element->getName()) ||
-               matchGenericPattern(Element->getLinkageName()))) ||
+      return (Element->isNamed() && matchGenericPattern(Element->getName())) ||
              (Element->isTyped() &&
               matchGenericPattern(Element->getTypeName()));
     };

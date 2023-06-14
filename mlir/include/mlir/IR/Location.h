@@ -148,12 +148,12 @@ public:
 
   /// Return the metadata associated with this fused location.
   MetadataT getMetadata() const {
-    return llvm::cast<MetadataT>(FusedLoc::getMetadata());
+    return FusedLoc::getMetadata().template cast<MetadataT>();
   }
 
   /// Support llvm style casting.
   static bool classof(Attribute attr) {
-    auto fusedLoc = llvm::dyn_cast<FusedLoc>(attr);
+    auto fusedLoc = attr.dyn_cast<FusedLoc>();
     return fusedLoc && fusedLoc.getMetadata().isa_and_nonnull<MetadataT>();
   }
 };

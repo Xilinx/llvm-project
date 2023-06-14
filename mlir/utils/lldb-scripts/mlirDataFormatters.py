@@ -521,7 +521,8 @@ class InDirectRangeSynthProvider:
 
 
 class IPListRangeSynthProvider:
-    """Define an LLDB synthetic children provider for an IPList."""
+    """Define an LLDB synthetic children provider for an IPList.
+    """
 
     def __init__(self, valobj, internal_dict):
         self.valobj = valobj
@@ -574,7 +575,8 @@ class IPListRangeSynthProvider:
 
 
 class ValueSynthProvider:
-    """Define an LLDB synthetic children provider for Values."""
+    """Define an LLDB synthetic children provider for Values.
+    """
 
     def __init__(self, valobj, internal_dict):
         self.valobj = valobj
@@ -675,7 +677,8 @@ class ValueSynthProvider:
 
 
 def ValueSummaryProvider(valobj: lldb.SBValue, internal_dict):
-    """Define an LLDB summary provider for Values."""
+    """Define an LLDB summary provider for Values.
+    """
 
     index = valobj.GetChildMemberWithName("index").GetValueAsUnsigned()
     # Check if this is a block argument or not (block arguments have locations).

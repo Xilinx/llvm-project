@@ -239,7 +239,7 @@ void CodeGen::genImpl(const ast::ReplaceStmt *stmt) {
   // replacement values.
   bool usesReplOperation =
       replValues.size() == 1 &&
-      isa<pdl::OperationType>(replValues.front().getType());
+      replValues.front().getType().isa<pdl::OperationType>();
   builder.create<pdl::ReplaceOp>(
       loc, rootExpr, usesReplOperation ? replValues[0] : Value(),
       usesReplOperation ? ValueRange() : ValueRange(replValues));
@@ -441,7 +441,7 @@ Value CodeGen::genExprImpl(const ast::MemberAccessExpr *expr) {
   if (ast::OperationType opType = parentType.dyn_cast<ast::OperationType>()) {
     if (isa<ast::AllResultsMemberAccessExpr>(expr)) {
       Type mlirType = genType(expr->getType());
-      if (isa<pdl::ValueType>(mlirType))
+      if (mlirType.isa<pdl::ValueType>())
         return builder.create<pdl::ResultOp>(loc, mlirType, parentExprs[0],
                                              builder.getI32IntegerAttr(0));
       return builder.create<pdl::ResultsOp>(loc, mlirType, parentExprs[0]);

@@ -99,7 +99,6 @@ unittest("ClangdTests") {
     "QualityTests.cpp",
     "RIFFTests.cpp",
     "RenameTests.cpp",
-    "ReplayPeambleTests.cpp",
     "SelectionTests.cpp",
     "SemanticHighlightingTests.cpp",
     "SemanticSelectionTests.cpp",

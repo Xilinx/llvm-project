@@ -220,8 +220,9 @@ class GPULaunchLowering : public ConvertOpToLLVMPattern<gpu::LaunchFuncOp> {
     auto kernelOperands = adaptor.getOperands().take_back(numKernelOperands);
     for (const auto &operand : llvm::enumerate(kernelOperands)) {
       // Check if the kernel's operand is a ranked memref.
-      auto memRefType = dyn_cast<MemRefType>(
-          launchOp.getKernelOperand(operand.index()).getType());
+      auto memRefType = launchOp.getKernelOperand(operand.index())
+                            .getType()
+                            .dyn_cast<MemRefType>();
       if (!memRefType)
         return failure();
 
@@ -240,7 +241,7 @@ class GPULaunchLowering : public ConvertOpToLLVMPattern<gpu::LaunchFuncOp> {
       // LLVM dialect global variable.
       spirv::GlobalVariableOp spirvGlobal = globalVariableMap[operand.index()];
       auto pointeeType =
-          cast<spirv::PointerType>(spirvGlobal.getType()).getPointeeType();
+          spirvGlobal.getType().cast<spirv::PointerType>().getPointeeType();
       auto dstGlobalType = typeConverter->convertType(pointeeType);
       if (!dstGlobalType)
         return failure();

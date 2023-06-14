@@ -76,11 +76,11 @@ protected:
   ///
   /// If this is a fragment, then it gives the fragment this symbol's value is
   /// relative to, if any.
-  mutable MCFragment *Fragment = nullptr;
-
-  /// True if this symbol is named.  A named symbol will have a pointer to the
-  /// name allocated in the bytes immediately prior to the MCSymbol.
-  unsigned HasName : 1;
+  ///
+  /// For the 'HasName' integer, this is true if this symbol is named.
+  /// A named symbol will have a pointer to the name allocated in the bytes
+  /// immediately prior to the MCSymbol.
+  mutable PointerIntPair<MCFragment *, 1> FragmentAndHasName;
 
   /// IsTemporary - True if this is an assembler temporary label, which
   /// typically does not survive in the .o file's symbol table.  Usually
@@ -164,7 +164,7 @@ protected:
         Kind(Kind), IsUsedInReloc(false), SymbolContents(SymContentsUnset),
         CommonAlignLog2(0), Flags(0) {
     Offset = 0;
-    HasName = !!Name;
+    FragmentAndHasName.setInt(!!Name);
     if (Name)
       getNameEntryPtr() = Name;
   }
@@ -187,7 +187,7 @@ private:
 
   /// Get a reference to the name field.  Requires that we have a name
   const StringMapEntry<bool> *&getNameEntryPtr() {
-    assert(HasName && "Name is required");
+    assert(FragmentAndHasName.getInt() && "Name is required");
     NameEntryStorageTy *Name = reinterpret_cast<NameEntryStorageTy *>(this);
     return (*(Name - 1)).NameEntry;
   }
@@ -201,7 +201,7 @@ public:
 
   /// getName - Get the symbol name.
   StringRef getName() const {
-    if (!HasName)
+    if (!FragmentAndHasName.getInt())
       return StringRef();
 
     return getNameEntryPtr()->first();
@@ -272,11 +272,11 @@ public:
   /// Mark the symbol as defined in the fragment \p F.
   void setFragment(MCFragment *F) const {
     assert(!isVariable() && "Cannot set fragment of variable");
-    Fragment = F;
+    FragmentAndHasName.setPointer(F);
   }
 
   /// Mark the symbol as undefined.
-  void setUndefined() { Fragment = nullptr; }
+  void setUndefined() { FragmentAndHasName.setPointer(nullptr); }
 
   bool isELF() const { return Kind == SymbolKindELF; }
 
@@ -393,9 +393,11 @@ public:
   }
 
   MCFragment *getFragment(bool SetUsed = true) const {
+    MCFragment *Fragment = FragmentAndHasName.getPointer();
     if (Fragment || !isVariable())
       return Fragment;
     Fragment = getVariableValue(SetUsed)->findAssociatedFragment();
+    FragmentAndHasName.setPointer(Fragment);
     return Fragment;
   }
 

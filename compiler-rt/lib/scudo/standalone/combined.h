@@ -178,7 +178,7 @@ public:
         static_cast<uptr>(getFlags()->quarantine_size_kb << 10),
         static_cast<uptr>(getFlags()->thread_local_quarantine_size_kb << 10));
 
-    mapAndInitializeRingBuffer();
+    initRingBuffer();
   }
 
   // Initialize the embedded GWP-ASan instance. Requires the main allocator to
@@ -228,7 +228,6 @@ public:
   }
 
   void unmapTestOnly() {
-    unmapRingBuffer();
     TSDRegistry.unmapTestOnly(this);
     Primary.unmapTestOnly();
     Secondary.unmapTestOnly();
@@ -240,7 +239,6 @@ public:
   }
 
   TSDRegistryT *getTSDRegistry() { return &TSDRegistry; }
-  QuarantineT *getQuarantine() { return &Quarantine; }
 
   // The Cache must be provided zero-initialized.
   void initCache(CacheT *Cache) { Cache->init(&Stats, &Primary); }
@@ -255,13 +253,6 @@ public:
                      QuarantineCallback(*this, TSD->getCache()));
     TSD->getCache().destroy(&Stats);
   }
-
-  void drainCache(TSD<ThisT> *TSD) {
-    Quarantine.drainAndRecycle(&TSD->getQuarantineCache(),
-                               QuarantineCallback(*this, TSD->getCache()));
-    TSD->getCache().drain();
-  }
-  void drainCaches() { TSDRegistry.drainCaches(this); }
 
   ALWAYS_INLINE void *getHeaderTaggedPointer(void *Ptr) {
     if (!allocatorSupportsMemoryTagging<Params>())
@@ -756,8 +747,6 @@ public:
 
   void releaseToOS(ReleaseToOS ReleaseType) {
     initThreadMaybe();
-    if (ReleaseType == ReleaseToOS::ForceAll)
-      drainCaches();
     Primary.releaseToOS(ReleaseType);
     Secondary.releaseToOS();
   }
@@ -1509,27 +1498,23 @@ private:
         &RawRingBuffer[sizeof(AllocationRingBuffer)])[N];
   }
 
-  void mapAndInitializeRingBuffer() {
+  void initRingBuffer() {
     u32 AllocationRingBufferSize =
         static_cast<u32>(getFlags()->allocation_ring_buffer_size);
     if (AllocationRingBufferSize < 1)
       return;
+    MapPlatformData Data = {};
     RawRingBuffer = static_cast<char *>(
         map(/*Addr=*/nullptr,
             roundUp(ringBufferSizeInBytes(AllocationRingBufferSize),
                     getPageSizeCached()),
-            "AllocatorRingBuffer"));
+            "AllocatorRingBuffer", /*Flags=*/0, &Data));
     auto *RingBuffer = reinterpret_cast<AllocationRingBuffer *>(RawRingBuffer);
     RingBuffer->Size = AllocationRingBufferSize;
     static_assert(sizeof(AllocationRingBuffer) %
                           alignof(typename AllocationRingBuffer::Entry) ==
                       0,
                   "invalid alignment");
-  }
-
-  void unmapRingBuffer() {
-    unmap(RawRingBuffer, roundUp(getRingBufferSize(), getPageSizeCached()));
-    RawRingBuffer = nullptr;
   }
 
   static constexpr size_t ringBufferSizeInBytes(u32 AllocationRingBufferSize) {

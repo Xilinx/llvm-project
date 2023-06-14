@@ -32,8 +32,6 @@ static int mlirTypeIsAIntegerOrFloat(MlirType type) {
 class PyIntegerType : public PyConcreteType<PyIntegerType> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAInteger;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirIntegerTypeGetTypeID;
   static constexpr const char *pyClassName = "IntegerType";
   using PyConcreteType::PyConcreteType;
 
@@ -91,8 +89,6 @@ public:
 class PyIndexType : public PyConcreteType<PyIndexType> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAIndex;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirIndexTypeGetTypeID;
   static constexpr const char *pyClassName = "IndexType";
   using PyConcreteType::PyConcreteType;
 
@@ -111,8 +107,6 @@ public:
 class PyFloat8E4M3FNType : public PyConcreteType<PyFloat8E4M3FNType> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAFloat8E4M3FN;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirFloat8E4M3FNTypeGetTypeID;
   static constexpr const char *pyClassName = "Float8E4M3FNType";
   using PyConcreteType::PyConcreteType;
 
@@ -131,8 +125,6 @@ public:
 class PyFloat8E5M2Type : public PyConcreteType<PyFloat8E5M2Type> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAFloat8E5M2;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirFloat8E5M2TypeGetTypeID;
   static constexpr const char *pyClassName = "Float8E5M2Type";
   using PyConcreteType::PyConcreteType;
 
@@ -151,8 +143,6 @@ public:
 class PyFloat8E4M3FNUZType : public PyConcreteType<PyFloat8E4M3FNUZType> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAFloat8E4M3FNUZ;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirFloat8E4M3FNUZTypeGetTypeID;
   static constexpr const char *pyClassName = "Float8E4M3FNUZType";
   using PyConcreteType::PyConcreteType;
 
@@ -171,8 +161,6 @@ public:
 class PyFloat8E4M3B11FNUZType : public PyConcreteType<PyFloat8E4M3B11FNUZType> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAFloat8E4M3B11FNUZ;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirFloat8E4M3B11FNUZTypeGetTypeID;
   static constexpr const char *pyClassName = "Float8E4M3B11FNUZType";
   using PyConcreteType::PyConcreteType;
 
@@ -191,8 +179,6 @@ public:
 class PyFloat8E5M2FNUZType : public PyConcreteType<PyFloat8E5M2FNUZType> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAFloat8E5M2FNUZ;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirFloat8E5M2FNUZTypeGetTypeID;
   static constexpr const char *pyClassName = "Float8E5M2FNUZType";
   using PyConcreteType::PyConcreteType;
 
@@ -211,8 +197,6 @@ public:
 class PyBF16Type : public PyConcreteType<PyBF16Type> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsABF16;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirBFloat16TypeGetTypeID;
   static constexpr const char *pyClassName = "BF16Type";
   using PyConcreteType::PyConcreteType;
 
@@ -231,8 +215,6 @@ public:
 class PyF16Type : public PyConcreteType<PyF16Type> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAF16;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirFloat16TypeGetTypeID;
   static constexpr const char *pyClassName = "F16Type";
   using PyConcreteType::PyConcreteType;
 
@@ -251,8 +233,6 @@ public:
 class PyF32Type : public PyConcreteType<PyF32Type> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAF32;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirFloat32TypeGetTypeID;
   static constexpr const char *pyClassName = "F32Type";
   using PyConcreteType::PyConcreteType;
 
@@ -271,8 +251,6 @@ public:
 class PyF64Type : public PyConcreteType<PyF64Type> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAF64;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirFloat64TypeGetTypeID;
   static constexpr const char *pyClassName = "F64Type";
   using PyConcreteType::PyConcreteType;
 
@@ -291,8 +269,6 @@ public:
 class PyNoneType : public PyConcreteType<PyNoneType> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsANone;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirNoneTypeGetTypeID;
   static constexpr const char *pyClassName = "NoneType";
   using PyConcreteType::PyConcreteType;
 
@@ -311,8 +287,6 @@ public:
 class PyComplexType : public PyConcreteType<PyComplexType> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAComplex;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirComplexTypeGetTypeID;
   static constexpr const char *pyClassName = "ComplexType";
   using PyConcreteType::PyConcreteType;
 
@@ -325,16 +299,19 @@ public:
             MlirType t = mlirComplexTypeGet(elementType);
             return PyComplexType(elementType.getContext(), t);
           }
-          throw py::value_error(
-              (Twine("invalid '") +
-               py::repr(py::cast(elementType)).cast<std::string>() +
-               "' and expected floating point or integer type.")
-                  .str());
+          throw SetPyError(
+              PyExc_ValueError,
+              Twine("invalid '") +
+                  py::repr(py::cast(elementType)).cast<std::string>() +
+                  "' and expected floating point or integer type.");
         },
         "Create a complex type");
     c.def_property_readonly(
         "element_type",
-        [](PyComplexType &self) { return mlirComplexTypeGetElementType(self); },
+        [](PyComplexType &self) -> PyType {
+          MlirType t = mlirComplexTypeGetElementType(self);
+          return PyType(self.getContext(), t);
+        },
         "Returns element type.");
   }
 };
@@ -348,7 +325,10 @@ public:
   static void bindDerived(ClassTy &c) {
     c.def_property_readonly(
         "element_type",
-        [](PyShapedType &self) { return mlirShapedTypeGetElementType(self); },
+        [](PyShapedType &self) {
+          MlirType t = mlirShapedTypeGetElementType(self);
+          return PyType(self.getContext(), t);
+        },
         "Returns the element type of the shaped type.");
     c.def_property_readonly(
         "has_rank",
@@ -426,7 +406,8 @@ public:
 private:
   void requireHasRank() {
     if (!mlirShapedTypeHasRank(*this)) {
-      throw py::value_error(
+      throw SetPyError(
+          PyExc_ValueError,
           "calling this method requires that the type has a rank.");
     }
   }
@@ -436,8 +417,6 @@ private:
 class PyVectorType : public PyConcreteType<PyVectorType, PyShapedType> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAVector;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirVectorTypeGetTypeID;
   static constexpr const char *pyClassName = "VectorType";
   using PyConcreteType::PyConcreteType;
 
@@ -463,8 +442,6 @@ class PyRankedTensorType
     : public PyConcreteType<PyRankedTensorType, PyShapedType> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsARankedTensor;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirRankedTensorTypeGetTypeID;
   static constexpr const char *pyClassName = "RankedTensorType";
   using PyConcreteType::PyConcreteType;
 
@@ -499,8 +476,6 @@ class PyUnrankedTensorType
     : public PyConcreteType<PyUnrankedTensorType, PyShapedType> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAUnrankedTensor;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirUnrankedTensorTypeGetTypeID;
   static constexpr const char *pyClassName = "UnrankedTensorType";
   using PyConcreteType::PyConcreteType;
 
@@ -523,8 +498,6 @@ public:
 class PyMemRefType : public PyConcreteType<PyMemRefType, PyShapedType> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAMemRef;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirMemRefTypeGetTypeID;
   static constexpr const char *pyClassName = "MemRefType";
   using PyConcreteType::PyConcreteType;
 
@@ -577,8 +550,6 @@ class PyUnrankedMemRefType
     : public PyConcreteType<PyUnrankedMemRefType, PyShapedType> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAUnrankedMemRef;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirUnrankedMemRefTypeGetTypeID;
   static constexpr const char *pyClassName = "UnrankedMemRefType";
   using PyConcreteType::PyConcreteType;
 
@@ -614,8 +585,6 @@ public:
 class PyTupleType : public PyConcreteType<PyTupleType> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsATuple;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirTupleTypeGetTypeID;
   static constexpr const char *pyClassName = "TupleType";
   using PyConcreteType::PyConcreteType;
 
@@ -635,8 +604,9 @@ public:
         "Create a tuple type");
     c.def(
         "get_type",
-        [](PyTupleType &self, intptr_t pos) {
-          return mlirTupleTypeGetType(self, pos);
+        [](PyTupleType &self, intptr_t pos) -> PyType {
+          MlirType t = mlirTupleTypeGetType(self, pos);
+          return PyType(self.getContext(), t);
         },
         py::arg("pos"), "Returns the pos-th type in the tuple type.");
     c.def_property_readonly(
@@ -652,8 +622,6 @@ public:
 class PyFunctionType : public PyConcreteType<PyFunctionType> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAFunction;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirFunctionTypeGetTypeID;
   static constexpr const char *pyClassName = "FunctionType";
   using PyConcreteType::PyConcreteType;
 
@@ -679,7 +647,7 @@ public:
           py::list types;
           for (intptr_t i = 0, e = mlirFunctionTypeGetNumInputs(self); i < e;
                ++i) {
-            types.append(mlirFunctionTypeGetInput(t, i));
+            types.append(PyType(contextRef, mlirFunctionTypeGetInput(t, i)));
           }
           return types;
         },
@@ -691,7 +659,8 @@ public:
           py::list types;
           for (intptr_t i = 0, e = mlirFunctionTypeGetNumResults(self); i < e;
                ++i) {
-            types.append(mlirFunctionTypeGetResult(self, i));
+            types.append(
+                PyType(contextRef, mlirFunctionTypeGetResult(self, i)));
           }
           return types;
         },
@@ -707,8 +676,6 @@ static MlirStringRef toMlirStringRef(const std::string &s) {
 class PyOpaqueType : public PyConcreteType<PyOpaqueType> {
 public:
   static constexpr IsAFunctionTy isaFunction = mlirTypeIsAOpaque;
-  static constexpr GetTypeIDFunctionTy getTypeIdFunction =
-      mlirOpaqueTypeGetTypeID;
   static constexpr const char *pyClassName = "OpaqueType";
   using PyConcreteType::PyConcreteType;
 

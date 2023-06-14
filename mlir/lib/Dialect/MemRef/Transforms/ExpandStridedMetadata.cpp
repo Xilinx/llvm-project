@@ -62,7 +62,7 @@ resolveSubviewStridedMetadata(RewriterBase &rewriter,
   // Build a plain extract_strided_metadata(memref) from subview(memref).
   Location origLoc = subview.getLoc();
   Value source = subview.getSource();
-  auto sourceType = cast<MemRefType>(source.getType());
+  auto sourceType = source.getType().cast<MemRefType>();
   unsigned sourceRank = sourceType.getRank();
 
   auto newExtractStridedMetadata =
@@ -115,7 +115,7 @@ resolveSubviewStridedMetadata(RewriterBase &rewriter,
   // The final result is  <baseBuffer, offset, sizes, strides>.
   // Thus we need 1 + 1 + subview.getRank() + subview.getRank(), to hold all
   // the values.
-  auto subType = cast<MemRefType>(subview.getType());
+  auto subType = subview.getType().cast<MemRefType>();
   unsigned subRank = subType.getRank();
 
   // The sizes of the final type are defined directly by the input sizes of
@@ -338,7 +338,7 @@ SmallVector<OpFoldResult> getExpandedStrides(memref::ExpandShapeOp expandShape,
 
   // Collect the statically known information about the original stride.
   Value source = expandShape.getSrc();
-  auto sourceType = cast<MemRefType>(source.getType());
+  auto sourceType = source.getType().cast<MemRefType>();
   auto [strides, offset] = getStridesAndOffset(sourceType);
 
   OpFoldResult origStride = ShapedType::isDynamic(strides[groupId])
@@ -358,9 +358,10 @@ SmallVector<OpFoldResult> getExpandedStrides(memref::ExpandShapeOp expandShape,
     AffineExpr s0 = builder.getAffineSymbolExpr(0);
     AffineExpr s1 = builder.getAffineSymbolExpr(1);
     for (; doneStrideIdx < *dynSizeIdx; ++doneStrideIdx) {
-      int64_t baseExpandedStride =
-          cast<IntegerAttr>(expandedStrides[doneStrideIdx].get<Attribute>())
-              .getInt();
+      int64_t baseExpandedStride = expandedStrides[doneStrideIdx]
+                                       .get<Attribute>()
+                                       .cast<IntegerAttr>()
+                                       .getInt();
       expandedStrides[doneStrideIdx] = makeComposedFoldedAffineApply(
           builder, expandShape.getLoc(),
           (s0 * baseExpandedStride).floorDiv(productOfAllStaticSizes) * s1,
@@ -371,9 +372,10 @@ SmallVector<OpFoldResult> getExpandedStrides(memref::ExpandShapeOp expandShape,
   // Now apply the origStride to the remaining dimensions.
   AffineExpr s0 = builder.getAffineSymbolExpr(0);
   for (; doneStrideIdx < groupSize; ++doneStrideIdx) {
-    int64_t baseExpandedStride =
-        cast<IntegerAttr>(expandedStrides[doneStrideIdx].get<Attribute>())
-            .getInt();
+    int64_t baseExpandedStride = expandedStrides[doneStrideIdx]
+                                     .get<Attribute>()
+                                     .cast<IntegerAttr>()
+                                     .getInt();
     expandedStrides[doneStrideIdx] = makeComposedFoldedAffineApply(
         builder, expandShape.getLoc(), s0 * baseExpandedStride, {origStride});
   }
@@ -443,7 +445,7 @@ getCollapsedSize(memref::CollapseShapeOp collapseShape, OpBuilder &builder,
   // Build the affine expr of the product of the original sizes involved in that
   // group.
   Value source = collapseShape.getSrc();
-  auto sourceType = cast<MemRefType>(source.getType());
+  auto sourceType = source.getType().cast<MemRefType>();
 
   SmallVector<int64_t, 2> reassocGroup =
       collapseShape.getReassociationIndices()[groupId];
@@ -477,7 +479,7 @@ getCollapsedStride(memref::CollapseShapeOp collapseShape, OpBuilder &builder,
          "Reassociation group should have at least one dimension");
 
   Value source = collapseShape.getSrc();
-  auto sourceType = cast<MemRefType>(source.getType());
+  auto sourceType = source.getType().cast<MemRefType>();
 
   auto [strides, offset] = getStridesAndOffset(sourceType);
 
@@ -560,7 +562,7 @@ public:
     // extract_strided_metadata(reassociative_reshape_like(memref)).
     Location origLoc = reshape.getLoc();
     Value source = reshape.getSrc();
-    auto sourceType = cast<MemRefType>(source.getType());
+    auto sourceType = source.getType().cast<MemRefType>();
     unsigned sourceRank = sourceType.getRank();
 
     auto newExtractStridedMetadata =
@@ -648,7 +650,8 @@ public:
     if (!allocLikeOp)
       return failure();
 
-    auto memRefType = cast<MemRefType>(allocLikeOp.getResult().getType());
+    auto memRefType =
+        allocLikeOp.getResult().getType().template cast<MemRefType>();
     if (!memRefType.getLayout().isIdentity())
       return rewriter.notifyMatchFailure(
           allocLikeOp, "alloc-like operations should have been normalized");
@@ -685,7 +688,7 @@ public:
     SmallVector<Value> results;
     results.reserve(rank * 2 + 2);
 
-    auto baseBufferType = cast<MemRefType>(op.getBaseBuffer().getType());
+    auto baseBufferType = op.getBaseBuffer().getType().cast<MemRefType>();
     int64_t offset = 0;
     if (allocLikeOp.getType() == baseBufferType)
       results.push_back(allocLikeOp);
@@ -734,7 +737,7 @@ public:
     if (!getGlobalOp)
       return failure();
 
-    auto memRefType = cast<MemRefType>(getGlobalOp.getResult().getType());
+    auto memRefType = getGlobalOp.getResult().getType().cast<MemRefType>();
     if (!memRefType.getLayout().isIdentity()) {
       return rewriter.notifyMatchFailure(
           getGlobalOp,
@@ -756,7 +759,7 @@ public:
     SmallVector<Value> results;
     results.reserve(rank * 2 + 2);
 
-    auto baseBufferType = cast<MemRefType>(op.getBaseBuffer().getType());
+    auto baseBufferType = op.getBaseBuffer().getType().cast<MemRefType>();
     int64_t offset = 0;
     if (getGlobalOp.getType() == baseBufferType)
       results.push_back(getGlobalOp);
@@ -835,7 +838,8 @@ class ExtractStridedMetadataOpReinterpretCastFolder
       return rewriter.notifyMatchFailure(
           reinterpretCastOp, "reinterpret_cast source's type is incompatible");
 
-    auto memrefType = cast<MemRefType>(reinterpretCastOp.getResult().getType());
+    auto memrefType =
+        reinterpretCastOp.getResult().getType().cast<MemRefType>();
     unsigned rank = memrefType.getRank();
     SmallVector<OpFoldResult> results;
     results.resize_for_overwrite(rank * 2 + 2);

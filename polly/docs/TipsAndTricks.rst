@@ -2,8 +2,8 @@
 Tips and Tricks on using and contributing to Polly
 ==================================================
 
-Committing to polly trunk
--------------------------
+Commiting to polly trunk
+------------------------
     - `General reference to git-svn workflow <https://stackoverflow.com/questions/190431/is-git-svn-dcommit-after-merging-in-git-dangerous>`_
 
 

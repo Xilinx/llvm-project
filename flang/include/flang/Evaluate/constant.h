@@ -165,8 +165,7 @@ public:
   ~Constant();
 
   bool operator==(const Constant &that) const {
-    return LEN() == that.LEN() && shape() == that.shape() &&
-        values_ == that.values_;
+    return shape() == that.shape() && values_ == that.values_;
   }
   bool empty() const;
   std::size_t size() const;
@@ -225,7 +224,6 @@ public:
   std::optional<StructureConstructor> GetScalarValue() const;
   StructureConstructor At(const ConstantSubscripts &) const;
 
-  bool operator==(const Constant &) const;
   Constant Reshape(ConstantSubscripts &&) const;
   std::size_t CopyFrom(const Constant &source, std::size_t count,
       ConstantSubscripts &resultSubscripts, const std::vector<int> *dimOrder);

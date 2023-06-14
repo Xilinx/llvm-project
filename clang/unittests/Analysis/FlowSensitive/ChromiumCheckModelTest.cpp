@@ -158,7 +158,7 @@ TEST(ChromiumCheckModelTest, CheckSuccessImpliesConditionHolds) {
         const ValueDecl *FooDecl = findValueDecl(ASTCtx, "Foo");
         ASSERT_THAT(FooDecl, NotNull());
 
-        auto *FooVal = cast<BoolValue>(Env.getValue(*FooDecl));
+        auto *FooVal = cast<BoolValue>(Env.getValue(*FooDecl, SkipPast::None));
 
         EXPECT_TRUE(Env.flowConditionImplies(*FooVal));
       };
@@ -189,7 +189,7 @@ TEST(ChromiumCheckModelTest, UnrelatedCheckIgnored) {
         const ValueDecl *FooDecl = findValueDecl(ASTCtx, "Foo");
         ASSERT_THAT(FooDecl, NotNull());
 
-        auto *FooVal = cast<BoolValue>(Env.getValue(*FooDecl));
+        auto *FooVal = cast<BoolValue>(Env.getValue(*FooDecl, SkipPast::None));
 
         EXPECT_FALSE(Env.flowConditionImplies(*FooVal));
       };

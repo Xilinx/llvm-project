@@ -42,51 +42,53 @@ TEST(ObjCLanguage, MethodNameParsing) {
 
   // First, be strict
   for (const auto &test : strict_cases) {
-    std::optional<const ObjCLanguage::MethodName> method =
-        ObjCLanguage::MethodName::Create(test.input, /*strict = */ true);
-    EXPECT_TRUE(method.has_value());
-    EXPECT_EQ(test.full_name_sans_category,
-              method->GetFullNameWithoutCategory());
-    EXPECT_EQ(test.class_name, method->GetClassName());
+    ObjCLanguage::MethodName method(test.input, /*strict = */ true);
+    EXPECT_TRUE(method.IsValid(/*strict = */ true));
+    EXPECT_EQ(
+        test.full_name_sans_category,
+        method.GetFullNameWithoutCategory(/*empty_if_no_category = */ true)
+            .GetStringRef());
+    EXPECT_EQ(test.class_name, method.GetClassName().GetStringRef());
     EXPECT_EQ(test.class_name_with_category,
-              method->GetClassNameWithCategory());
-    EXPECT_EQ(test.category, method->GetCategory());
-    EXPECT_EQ(test.selector, method->GetSelector());
+              method.GetClassNameWithCategory().GetStringRef());
+    EXPECT_EQ(test.category, method.GetCategory().GetStringRef());
+    EXPECT_EQ(test.selector, method.GetSelector().GetStringRef());
   }
 
   // We should make sure strict parsing does not accept lax cases
   for (const auto &test : lax_cases) {
-    std::optional<const ObjCLanguage::MethodName> method =
-        ObjCLanguage::MethodName::Create(test.input, /*strict = */ true);
-    EXPECT_FALSE(method.has_value());
+    ObjCLanguage::MethodName method(test.input, /*strict = */ true);
+    EXPECT_FALSE(method.IsValid(/*strict = */ true));
   }
 
   // All strict cases should work when not lax
   for (const auto &test : strict_cases) {
-    std::optional<const ObjCLanguage::MethodName> method =
-        ObjCLanguage::MethodName::Create(test.input, /*strict = */ false);
-    EXPECT_TRUE(method.has_value());
-    EXPECT_EQ(test.full_name_sans_category,
-              method->GetFullNameWithoutCategory());
-    EXPECT_EQ(test.class_name, method->GetClassName());
+    ObjCLanguage::MethodName method(test.input, /*strict = */ false);
+    EXPECT_TRUE(method.IsValid(/*strict = */ false));
+    EXPECT_EQ(
+        test.full_name_sans_category,
+        method.GetFullNameWithoutCategory(/*empty_if_no_category = */ true)
+            .GetStringRef());
+    EXPECT_EQ(test.class_name, method.GetClassName().GetStringRef());
     EXPECT_EQ(test.class_name_with_category,
-              method->GetClassNameWithCategory());
-    EXPECT_EQ(test.category, method->GetCategory());
-    EXPECT_EQ(test.selector, method->GetSelector());
+              method.GetClassNameWithCategory().GetStringRef());
+    EXPECT_EQ(test.category, method.GetCategory().GetStringRef());
+    EXPECT_EQ(test.selector, method.GetSelector().GetStringRef());
   }
 
   // Make sure non-strict parsing works
   for (const auto &test : lax_cases) {
-    std::optional<const ObjCLanguage::MethodName> method =
-        ObjCLanguage::MethodName::Create(test.input, /*strict = */ false);
-    EXPECT_TRUE(method.has_value());
-    EXPECT_EQ(test.full_name_sans_category,
-              method->GetFullNameWithoutCategory());
-    EXPECT_EQ(test.class_name, method->GetClassName());
+    ObjCLanguage::MethodName method(test.input, /*strict = */ false);
+    EXPECT_TRUE(method.IsValid(/*strict = */ false));
+    EXPECT_EQ(
+        test.full_name_sans_category,
+        method.GetFullNameWithoutCategory(/*empty_if_no_category = */ true)
+            .GetStringRef());
+    EXPECT_EQ(test.class_name, method.GetClassName().GetStringRef());
     EXPECT_EQ(test.class_name_with_category,
-              method->GetClassNameWithCategory());
-    EXPECT_EQ(test.category, method->GetCategory());
-    EXPECT_EQ(test.selector, method->GetSelector());
+              method.GetClassNameWithCategory().GetStringRef());
+    EXPECT_EQ(test.category, method.GetCategory().GetStringRef());
+    EXPECT_EQ(test.selector, method.GetSelector().GetStringRef());
   }
 }
 
@@ -103,12 +105,10 @@ TEST(ObjCLanguage, InvalidMethodNameParsing) {
                                   "[]"};
 
   for (const auto &name : test_cases) {
-    std::optional<const ObjCLanguage::MethodName> strict_method =
-        ObjCLanguage::MethodName::Create(name, /*strict = */ false);
-    EXPECT_FALSE(strict_method.has_value());
+    ObjCLanguage::MethodName strict_method(name, /*strict = */ true);
+    EXPECT_FALSE(strict_method.IsValid(true));
 
-    std::optional<const ObjCLanguage::MethodName> lax_method =
-        ObjCLanguage::MethodName::Create(name, /*strict = */ false);
-    EXPECT_FALSE(lax_method.has_value());
+    ObjCLanguage::MethodName lax_method(name, /*strict = */ false);
+    EXPECT_FALSE(lax_method.IsValid(true));
   }
 }

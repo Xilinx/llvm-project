@@ -919,21 +919,15 @@ bool GCOVProfiler::emitProfileNotes(
           IRBuilder<> Builder(E.Place, E.Place->getFirstInsertionPt());
           Value *V = Builder.CreateConstInBoundsGEP2_64(
               Counters->getValueType(), Counters, 0, I);
-          // Disable sanitizers to decrease size bloat. We don't expect
-          // sanitizers to catch interesting issues.
-          Instruction *Inst;
           if (Options.Atomic) {
-            Inst = Builder.CreateAtomicRMW(AtomicRMWInst::Add, V,
-                                           Builder.getInt64(1), MaybeAlign(),
-                                           AtomicOrdering::Monotonic);
+            Builder.CreateAtomicRMW(AtomicRMWInst::Add, V, Builder.getInt64(1),
+                                    MaybeAlign(), AtomicOrdering::Monotonic);
           } else {
-            LoadInst *OldCount =
+            Value *Count =
                 Builder.CreateLoad(Builder.getInt64Ty(), V, "gcov_ctr");
-            OldCount->setNoSanitizeMetadata();
-            Value *NewCount = Builder.CreateAdd(OldCount, Builder.getInt64(1));
-            Inst = Builder.CreateStore(NewCount, V);
+            Count = Builder.CreateAdd(Count, Builder.getInt64(1));
+            Builder.CreateStore(Count, V);
           }
-          Inst->setNoSanitizeMetadata();
         }
       }
     }

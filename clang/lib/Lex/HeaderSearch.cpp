@@ -491,8 +491,7 @@ OptionalFileEntryRef DirectoryLookup::LookupFile(
 
   IsInHeaderMap = true;
 
-  auto FixupSearchPathAndFindUsableModule =
-      [&](auto File) -> OptionalFileEntryRef {
+  auto FixupSearchPath = [&]() {
     if (SearchPath) {
       StringRef SearchPathRef(getName());
       SearchPath->clear();
@@ -502,12 +501,6 @@ OptionalFileEntryRef DirectoryLookup::LookupFile(
       RelativePath->clear();
       RelativePath->append(Filename.begin(), Filename.end());
     }
-    if (!HS.findUsableModuleForHeader(
-            &File.getFileEntry(), File.getFileEntry().getDir(),
-            RequestingModule, SuggestedModule, isSystemHeaderDirectory())) {
-      return std::nullopt;
-    }
-    return File;
   };
 
   // Check if the headermap maps the filename to a framework include
@@ -520,7 +513,8 @@ OptionalFileEntryRef DirectoryLookup::LookupFile(
   }
 
   if (auto Res = HS.getFileMgr().getOptionalFileRef(Dest, OpenFile)) {
-    return FixupSearchPathAndFindUsableModule(*Res);
+    FixupSearchPath();
+    return *Res;
   }
 
   // Header maps need to be marked as used whenever the filename matches.
@@ -1571,14 +1565,13 @@ HeaderSearch::findModuleForHeader(const FileEntry *File, bool AllowTextual,
 }
 
 ArrayRef<ModuleMap::KnownHeader>
-HeaderSearch::findAllModulesForHeader(const FileEntry *File,
-                                      bool AllowCreation) const {
+HeaderSearch::findAllModulesForHeader(const FileEntry *File) const {
   if (ExternalSource) {
     // Make sure the external source has handled header info about this file,
     // which includes whether the file is part of a module.
     (void)getExistingFileInfo(File);
   }
-  return ModMap.findAllModulesForHeader(File, AllowCreation);
+  return ModMap.findAllModulesForHeader(File);
 }
 
 static bool suggestModule(HeaderSearch &HS, const FileEntry *File,

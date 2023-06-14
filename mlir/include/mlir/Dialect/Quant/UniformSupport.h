@@ -67,7 +67,7 @@ public:
             static_cast<double>(uniformType.getStorageTypeMin()),
             static_cast<double>(uniformType.getStorageTypeMax()),
             uniformType.getStorageTypeIntegralWidth(), uniformType.isSigned()) {
-    assert(isa<FloatType>(uniformType.getExpressedType()));
+    assert(uniformType.getExpressedType().isa<FloatType>());
     assert(uniformType.getStorageType().isSignlessInteger());
   }
 
@@ -184,7 +184,7 @@ public:
         storageBitWidth(uniformType.getStorageTypeIntegralWidth()),
         isSigned(uniformType.isSigned()),
         quantizationDim(uniformType.getQuantizedDimension()) {
-    assert(isa<FloatType>(uniformType.getExpressedType()));
+    assert(uniformType.getExpressedType().isa<FloatType>());
     assert(uniformType.getStorageType().isSignlessInteger());
     assert(scales.size() == zeroPoints.size());
   }

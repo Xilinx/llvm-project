@@ -28,8 +28,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "m68k-expand-pseudo"
-#define PASS_NAME "M68k pseudo instruction expansion pass"
+#define DEBUG_TYPE "M68k-expand-pseudos"
 
 namespace {
 class M68kExpandPseudo : public MachineFunctionPass {
@@ -57,14 +56,16 @@ public:
         MachineFunctionProperties::Property::NoVRegs);
   }
 
+  StringRef getPassName() const override {
+    return "M68k pseudo instruction expansion pass";
+  }
+
 private:
   bool ExpandMI(MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI);
   bool ExpandMBB(MachineBasicBlock &MBB);
 };
 char M68kExpandPseudo::ID = 0;
 } // End anonymous namespace.
-
-INITIALIZE_PASS(M68kExpandPseudo, DEBUG_TYPE, PASS_NAME, false, false)
 
 /// If \p MBBI is a pseudo instruction, this method expands
 /// it to the corresponding (sequence of) actual instruction(s).

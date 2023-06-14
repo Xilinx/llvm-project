@@ -363,7 +363,6 @@ end
 * Constraint C1406, which prohibits the same module name from being used
   in a scope for both an intrinsic and a non-intrinsic module, is implemented
   as a portability warning only, not a hard error.
-* IBM @PROCESS directive is accepted but ignored.
 
 ## Preprocessing behavior
 
@@ -454,7 +453,7 @@ end
   Other Fortran compilers disagree in their interpretations of this example;
   some seem to treat the references to `m` as if they were host associations
   to an implicitly typed variable (and print `3`), while others seem to
-  treat them as references to implicitly typed local variables, and
+  treat them as references to implicitly typed local variabless, and
   load uninitialized values.
 
   In f18, we chose to emit an error message for this case since the standard

@@ -792,7 +792,6 @@ class CastExpressionIdValidator final : public CorrectionCandidateCallback {
 /// [GNU]   '__builtin_FILE' '(' ')'
 /// [CLANG] '__builtin_FILE_NAME' '(' ')'
 /// [GNU]   '__builtin_FUNCTION' '(' ')'
-/// [MS]    '__builtin_FUNCSIG' '(' ')'
 /// [GNU]   '__builtin_LINE' '(' ')'
 /// [CLANG] '__builtin_COLUMN' '(' ')'
 /// [GNU]   '__builtin_source_location' '(' ')'
@@ -1322,7 +1321,6 @@ ExprResult Parser::ParseCastExpression(CastParseKind ParseKind,
   case tok::kw___builtin_FILE:
   case tok::kw___builtin_FILE_NAME:
   case tok::kw___builtin_FUNCTION:
-  case tok::kw___builtin_FUNCSIG:
   case tok::kw___builtin_LINE:
   case tok::kw___builtin_source_location:
     if (NotPrimaryExpression)
@@ -2549,7 +2547,6 @@ ExprResult Parser::ParseUnaryExprOrTypeTraitExpression() {
 /// [GNU]   '__builtin_FILE' '(' ')'
 /// [CLANG] '__builtin_FILE_NAME' '(' ')'
 /// [GNU]   '__builtin_FUNCTION' '(' ')'
-/// [MS]    '__builtin_FUNCSIG' '(' ')'
 /// [GNU]   '__builtin_LINE' '(' ')'
 /// [CLANG] '__builtin_COLUMN' '(' ')'
 /// [GNU]   '__builtin_source_location' '(' ')'
@@ -2786,7 +2783,6 @@ ExprResult Parser::ParseBuiltinPrimaryExpression() {
   case tok::kw___builtin_FILE:
   case tok::kw___builtin_FILE_NAME:
   case tok::kw___builtin_FUNCTION:
-  case tok::kw___builtin_FUNCSIG:
   case tok::kw___builtin_LINE:
   case tok::kw___builtin_source_location: {
     // Attempt to consume the r-paren.
@@ -2803,8 +2799,6 @@ ExprResult Parser::ParseBuiltinPrimaryExpression() {
         return SourceLocExpr::FileName;
       case tok::kw___builtin_FUNCTION:
         return SourceLocExpr::Function;
-      case tok::kw___builtin_FUNCSIG:
-        return SourceLocExpr::FuncSig;
       case tok::kw___builtin_LINE:
         return SourceLocExpr::Line;
       case tok::kw___builtin_COLUMN:

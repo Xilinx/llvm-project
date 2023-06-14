@@ -188,8 +188,9 @@ void BinaryFunction::parseLSDA(ArrayRef<uint8_t> LSDASectionData,
              "BOLT-ERROR: cannot find landing pad fragment");
       BC.addInterproceduralReference(this, Fragment->getAddress());
       BC.processInterproceduralReferences();
-      assert(isParentOrChildOf(*Fragment) &&
-             "BOLT-ERROR: cannot have landing pads in different functions");
+      assert((isChildOf(*Fragment) || Fragment->isChildOf(*this)) &&
+             "BOLT-ERROR: cannot have landing pads in different "
+             "functions");
       setHasIndirectTargetToSplitFragment(true);
       BC.addFragmentsToSkip(this);
       return;

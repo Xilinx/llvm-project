@@ -665,13 +665,9 @@ public:
 
   /// Retrieve all the modules corresponding to the given file.
   ///
-  /// \param AllowCreation Whether to allow inference of a new submodule, or to
-  ///        only return existing known modules.
-  ///
   /// \ref findModuleForHeader should typically be used instead of this.
   ArrayRef<ModuleMap::KnownHeader>
-  findAllModulesForHeader(const FileEntry *File,
-                          bool AllowCreation = true) const;
+  findAllModulesForHeader(const FileEntry *File) const;
 
   /// Read the contents of the given module map file.
   ///

@@ -708,21 +708,6 @@ struct IntrinsicTypeSpec {
       u;
 };
 
-// Extension: Vector type
-WRAPPER_CLASS(UnsignedTypeSpec, std::optional<KindSelector>);
-struct VectorElementType {
-  UNION_CLASS_BOILERPLATE(VectorElementType);
-  std::variant<IntegerTypeSpec, IntrinsicTypeSpec::Real, UnsignedTypeSpec> u;
-};
-WRAPPER_CLASS(IntrinsicVectorTypeSpec, VectorElementType);
-struct VectorTypeSpec {
-  UNION_CLASS_BOILERPLATE(VectorTypeSpec);
-  EMPTY_CLASS(PairVectorTypeSpec);
-  EMPTY_CLASS(QuadVectorTypeSpec);
-  std::variant<IntrinsicVectorTypeSpec, PairVectorTypeSpec, QuadVectorTypeSpec>
-      u;
-};
-
 // R755 type-param-spec -> [keyword =] type-param-value
 struct TypeParamSpec {
   TUPLE_CLASS_BOILERPLATE(TypeParamSpec);
@@ -763,9 +748,7 @@ struct DeclarationTypeSpec {
   EMPTY_CLASS(ClassStar);
   EMPTY_CLASS(TypeStar);
   WRAPPER_CLASS(Record, Name);
-  std::variant<IntrinsicTypeSpec, Type, Class, ClassStar, TypeStar, Record,
-      VectorTypeSpec>
-      u;
+  std::variant<IntrinsicTypeSpec, Type, Class, ClassStar, TypeStar, Record> u;
 };
 
 // R709 kind-param -> digit-string | scalar-int-constant-name
@@ -3499,23 +3482,10 @@ struct OmpInReductionClause {
 };
 
 // OMP 5.0 2.11.4 allocate-clause -> ALLOCATE ([allocator:] variable-name-list)
-// OMP 5.2 2.13.4 allocate-clause -> ALLOCATE ([allocate-modifier [,
-//  	                               allocate-modifier] :]
-//                                   variable-name-list)
-//                allocate-modifier -> allocator | align
 struct OmpAllocateClause {
   TUPLE_CLASS_BOILERPLATE(OmpAllocateClause);
-  struct AllocateModifier {
-    UNION_CLASS_BOILERPLATE(AllocateModifier);
-    WRAPPER_CLASS(Allocator, ScalarIntExpr);
-    WRAPPER_CLASS(Align, ScalarIntExpr);
-    struct ComplexModifier {
-      TUPLE_CLASS_BOILERPLATE(ComplexModifier);
-      std::tuple<Allocator, Align> t;
-    };
-    std::variant<Allocator, ComplexModifier, Align> u;
-  };
-  std::tuple<std::optional<AllocateModifier>, OmpObjectList> t;
+  WRAPPER_CLASS(Allocator, ScalarIntExpr);
+  std::tuple<std::optional<Allocator>, OmpObjectList> t;
 };
 
 // 2.13.9 depend-vec-length -> +/- non-negative-constant
@@ -3733,20 +3703,6 @@ struct OpenMPExecutableAllocate {
       t;
 };
 
-EMPTY_CLASS(OmpEndAllocators);
-
-// 6.7 Allocators construct [OpenMP 5.2]
-//     allocators-construct -> ALLOCATORS [allocate-clause [,]]
-//                                allocate-stmt
-//                             [omp-end-allocators-construct]
-struct OpenMPAllocatorsConstruct {
-  TUPLE_CLASS_BOILERPLATE(OpenMPAllocatorsConstruct);
-  CharBlock source;
-  std::tuple<Verbatim, OmpClauseList, Statement<AllocateStmt>,
-      std::optional<OmpEndAllocators>>
-      t;
-};
-
 // 2.17.7 Atomic construct/2.17.8 Flush construct [OpenMP 5.0]
 //        memory-order-clause -> acq_rel
 //                               release
@@ -3933,8 +3889,7 @@ struct OpenMPConstruct {
   std::variant<OpenMPStandaloneConstruct, OpenMPSectionsConstruct,
       OpenMPSectionConstruct, OpenMPLoopConstruct, OpenMPBlockConstruct,
       OpenMPAtomicConstruct, OpenMPDeclarativeAllocate,
-      OpenMPExecutableAllocate, OpenMPAllocatorsConstruct,
-      OpenMPCriticalConstruct>
+      OpenMPExecutableAllocate, OpenMPCriticalConstruct>
       u;
 };
 

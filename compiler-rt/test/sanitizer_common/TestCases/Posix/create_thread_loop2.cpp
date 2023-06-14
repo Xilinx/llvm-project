@@ -2,9 +2,6 @@
 
 // RUN: %clangxx -O3 -pthread %s -o %t && %run %t 10
 
-// Crashes on Android.
-// UNSUPPORTED: android
-
 #include <cstdint>
 #include <pthread.h>
 #include <stdlib.h>

@@ -32,7 +32,7 @@ struct TestMemRefStrideCalculation
 void TestMemRefStrideCalculation::runOnOperation() {
   llvm::outs() << "Testing: " << getOperation().getName() << "\n";
   getOperation().walk([&](memref::AllocOp allocOp) {
-    auto memrefType = cast<MemRefType>(allocOp.getResult().getType());
+    auto memrefType = allocOp.getResult().getType().cast<MemRefType>();
     int64_t offset;
     SmallVector<int64_t, 4> strides;
     if (failed(getStridesAndOffset(memrefType, strides, offset))) {

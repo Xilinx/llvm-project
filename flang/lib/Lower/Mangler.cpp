@@ -20,13 +20,13 @@
 
 /// Return all ancestor module and submodule scope names; all host procedure
 /// and statement function scope names; and the innermost blockId containing
-/// \p scope, including scope itself.
+/// \p symbol.
 static std::tuple<llvm::SmallVector<llvm::StringRef>,
                   llvm::SmallVector<llvm::StringRef>, std::int64_t>
-ancestors(const Fortran::semantics::Scope &scope,
+ancestors(const Fortran::semantics::Symbol &symbol,
           Fortran::lower::mangle::ScopeBlockIdMap &scopeBlockIdMap) {
   llvm::SmallVector<const Fortran::semantics::Scope *> scopes;
-  for (auto *scp = &scope; !scp->IsGlobal(); scp = &scp->parent())
+  for (auto *scp = &symbol.owner(); !scp->IsGlobal(); scp = &scp->parent())
     scopes.push_back(scp);
   llvm::SmallVector<llvm::StringRef> modules;
   llvm::SmallVector<llvm::StringRef> procs;
@@ -58,28 +58,6 @@ ancestors(const Fortran::semantics::Scope &scope,
     }
   }
   return {modules, procs, blockId};
-}
-
-/// Return all ancestor module and submodule scope names; all host procedure
-/// and statement function scope names; and the innermost blockId containing
-/// \p symbol.
-static std::tuple<llvm::SmallVector<llvm::StringRef>,
-                  llvm::SmallVector<llvm::StringRef>, std::int64_t>
-ancestors(const Fortran::semantics::Symbol &symbol,
-          Fortran::lower::mangle::ScopeBlockIdMap &scopeBlockIdMap) {
-  return ancestors(symbol.owner(), scopeBlockIdMap);
-}
-
-/// Return a globally unique string for a compiler generated \p name.
-std::string
-Fortran::lower::mangle::mangleName(std::string &name,
-                                   const Fortran::semantics::Scope &scope,
-                                   ScopeBlockIdMap &scopeBlockIdMap) {
-  llvm::SmallVector<llvm::StringRef> modules;
-  llvm::SmallVector<llvm::StringRef> procs;
-  std::int64_t blockId;
-  std::tie(modules, procs, blockId) = ancestors(scope, scopeBlockIdMap);
-  return fir::NameUniquer::doGenerated(modules, procs, blockId, name);
 }
 
 // Mangle the name of \p symbol to make it globally unique.
@@ -258,7 +236,8 @@ static std::string typeToString(Fortran::common::TypeCategory cat, int kind,
 }
 
 std::string Fortran::lower::mangle::mangleArrayLiteral(
-    size_t size, const Fortran::evaluate::ConstantSubscripts &shape,
+    const uint8_t *addr, size_t size,
+    const Fortran::evaluate::ConstantSubscripts &shape,
     Fortran::common::TypeCategory cat, int kind,
     Fortran::common::ConstantSubscript charLen, llvm::StringRef derivedName) {
   std::string typeId;
@@ -270,8 +249,14 @@ std::string Fortran::lower::mangle::mangleArrayLiteral(
   std::string name =
       fir::NameUniquer::doGenerated("ro."s.append(typeId).append("."));
   if (!size)
-    name += "null.";
-  return name;
+    return name += "null";
+  llvm::MD5 hashValue{};
+  hashValue.update(llvm::ArrayRef<uint8_t>{addr, size});
+  llvm::MD5::MD5Result hashResult;
+  hashValue.final(hashResult);
+  llvm::SmallString<32> hashString;
+  llvm::MD5::stringifyResult(hashResult, hashString);
+  return name += hashString.c_str();
 }
 
 std::string Fortran::lower::mangle::globalNamelistDescriptorName(

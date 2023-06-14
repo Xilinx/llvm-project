@@ -27,10 +27,10 @@ LLVM::detail::extractNDVectorTypeInfo(VectorType vectorType,
   }
   info.arraySizes.reserve(vectorType.getRank() - 1);
   auto llvmTy = info.llvmNDVectorTy;
-  while (isa<LLVM::LLVMArrayType>(llvmTy)) {
+  while (llvmTy.isa<LLVM::LLVMArrayType>()) {
     info.arraySizes.push_back(
-        cast<LLVM::LLVMArrayType>(llvmTy).getNumElements());
-    llvmTy = cast<LLVM::LLVMArrayType>(llvmTy).getElementType();
+        llvmTy.cast<LLVM::LLVMArrayType>().getNumElements());
+    llvmTy = llvmTy.cast<LLVM::LLVMArrayType>().getElementType();
   }
   if (!LLVM::isCompatibleVectorType(llvmTy))
     return info;
@@ -81,7 +81,7 @@ LogicalResult LLVM::detail::handleMultidimensionalVectors(
     Operation *op, ValueRange operands, LLVMTypeConverter &typeConverter,
     std::function<Value(Type, ValueRange)> createOperand,
     ConversionPatternRewriter &rewriter) {
-  auto resultNDVectorType = cast<VectorType>(op->getResult(0).getType());
+  auto resultNDVectorType = op->getResult(0).getType().cast<VectorType>();
   auto resultTypeInfo =
       extractNDVectorTypeInfo(resultNDVectorType, typeConverter);
   auto result1DVectorTy = resultTypeInfo.llvm1DVectorTy;
@@ -114,7 +114,7 @@ LogicalResult LLVM::detail::vectorOneToOneRewrite(
     return failure();
 
   auto llvmNDVectorTy = operands[0].getType();
-  if (!isa<LLVM::LLVMArrayType>(llvmNDVectorTy))
+  if (!llvmNDVectorTy.isa<LLVM::LLVMArrayType>())
     return oneToOneRewrite(op, targetOp, operands, targetAttrs, typeConverter,
                            rewriter);
 

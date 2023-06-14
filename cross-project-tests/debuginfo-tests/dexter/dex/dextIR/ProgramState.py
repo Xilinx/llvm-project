@@ -14,7 +14,6 @@ from collections import OrderedDict
 from pathlib import PurePath
 from typing import List
 
-
 class SourceLocation:
     def __init__(self, path: str = None, lineno: int = None, column: int = None):
         if path:
@@ -24,7 +23,7 @@ class SourceLocation:
         self.column = column
 
     def __str__(self):
-        return "{}({}:{})".format(self.path, self.lineno, self.column)
+        return '{}({}:{})'.format(self.path, self.lineno, self.column)
 
     def match(self, other) -> bool:
         """Returns true iff all the properties that appear in `self` have the
@@ -33,9 +32,7 @@ class SourceLocation:
         if not other or not isinstance(other, SourceLocation):
             return False
 
-        if self.path and (
-            other.path is None or (PurePath(self.path) != PurePath(other.path))
-        ):
+        if self.path and (other.path is None or (PurePath(self.path) != PurePath(other.path))):
             return False
 
         if self.lineno and (self.lineno != other.lineno):
@@ -48,13 +45,11 @@ class SourceLocation:
 
 
 class StackFrame:
-    def __init__(
-        self,
-        function: str = None,
-        is_inlined: bool = None,
-        location: SourceLocation = None,
-        watches: OrderedDict = None,
-    ):
+    def __init__(self,
+                 function: str = None,
+                 is_inlined: bool = None,
+                 location: SourceLocation = None,
+                 watches: OrderedDict = None):
         if watches is None:
             watches = {}
 
@@ -64,12 +59,11 @@ class StackFrame:
         self.watches = watches
 
     def __str__(self):
-        return "{}{}: {} | {}".format(
+        return '{}{}: {} | {}'.format(
             self.function,
-            " (inlined)" if self.is_inlined else "",
+            ' (inlined)' if self.is_inlined else '',
             self.location,
-            {k: str(self.watches[k]) for k in self.watches},
-        )
+            {k: str(self.watches[k]) for k in self.watches})
 
     def match(self, other) -> bool:
         """Returns true iff all the properties that appear in `self` have the
@@ -86,10 +80,8 @@ class StackFrame:
                 try:
                     if isinstance(self.watches[name], dict):
                         for attr in iter(self.watches[name]):
-                            if (
-                                getattr(other.watches[name], attr, None)
-                                != self.watches[name][attr]
-                            ):
+                            if (getattr(other.watches[name], attr, None) !=
+                                    self.watches[name][attr]):
                                 return False
                     else:
                         if other.watches[name].value != self.watches[name]:
@@ -99,18 +91,14 @@ class StackFrame:
 
         return True
 
-
 class ProgramState:
     def __init__(self, frames: List[StackFrame] = None):
         self.frames = frames
 
     def __str__(self):
-        return "\n".join(
-            map(
-                lambda enum: "Frame {}: {}".format(enum[0], enum[1]),
-                enumerate(self.frames),
-            )
-        )
+        return '\n'.join(map(
+            lambda enum: 'Frame {}: {}'.format(enum[0], enum[1]),
+            enumerate(self.frames)))
 
     def match(self, other) -> bool:
         """Returns true iff all the properties that appear in `self` have the

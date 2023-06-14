@@ -48,11 +48,7 @@ public:
 
   bool SelectAddrFrameIndex(SDValue Addr, SDValue &Base, SDValue &Offset);
   bool SelectFrameAddrRegImm(SDValue Addr, SDValue &Base, SDValue &Offset);
-  bool SelectAddrRegImm(SDValue Addr, SDValue &Base, SDValue &Offset,
-                        bool IsINX = false);
-  bool SelectAddrRegImmINX(SDValue Addr, SDValue &Base, SDValue &Offset) {
-    return SelectAddrRegImm(Addr, Base, Offset, true);
-  }
+  bool SelectAddrRegImm(SDValue Addr, SDValue &Base, SDValue &Offset);
 
   bool SelectAddrRegRegScale(SDValue Addr, unsigned MaxShiftAmount,
                              SDValue &Base, SDValue &Index, SDValue &Scale);

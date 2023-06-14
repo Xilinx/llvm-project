@@ -10,9 +10,8 @@
 #ifndef _PSTL_GLUE_MEMORY_DEFS_H
 #define _PSTL_GLUE_MEMORY_DEFS_H
 
-#include <__config>
-
 #include "execution_defs.h"
+#include "pstl_config.h"
 
 namespace std {
 

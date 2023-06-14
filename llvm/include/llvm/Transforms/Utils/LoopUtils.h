@@ -76,13 +76,10 @@ bool formDedicatedExitBlocks(Loop *L, DominatorTree *DT, LoopInfo *LI,
 /// This function may introduce unused PHI nodes. If \p PHIsToRemove is not
 /// nullptr, those are added to it (before removing, the caller has to check if
 /// they still do not have any uses). Otherwise the PHIs are directly removed.
-///
-/// If \p InsertedPHIs is not nullptr, inserted phis will be added to this
-/// vector.
 bool formLCSSAForInstructions(
     SmallVectorImpl<Instruction *> &Worklist, const DominatorTree &DT,
-    const LoopInfo &LI, SmallVectorImpl<PHINode *> *PHIsToRemove = nullptr,
-    SmallVectorImpl<PHINode *> *InsertedPHIs = nullptr);
+    const LoopInfo &LI, IRBuilderBase &Builder,
+    SmallVectorImpl<PHINode *> *PHIsToRemove = nullptr);
 
 /// Put loop into LCSSA form.
 ///

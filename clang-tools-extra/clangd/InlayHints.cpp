@@ -430,7 +430,7 @@ private:
       return false;
 
     StringRef Name = getSimpleName(*Callee);
-    if (!Name.starts_with_insensitive("set"))
+    if (!Name.startswith_insensitive("set"))
       return false;
 
     // In addition to checking that the function has one parameter and its

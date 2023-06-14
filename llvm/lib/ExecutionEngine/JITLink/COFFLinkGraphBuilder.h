@@ -39,7 +39,6 @@ protected:
   using COFFSymbolIndex = int32_t;
 
   COFFLinkGraphBuilder(const object::COFFObjectFile &Obj, Triple TT,
-                       LinkGraph::FeatureVector Features,
                        LinkGraph::GetEdgeKindNameFunction GetEdgeKindName);
 
   LinkGraph &getGraph() const { return *G; }

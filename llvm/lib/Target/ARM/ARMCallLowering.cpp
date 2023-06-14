@@ -528,10 +528,12 @@ bool ARMCallLowering::lowerCall(MachineIRBuilder &MIRBuilder, CallLoweringInfo &
 
   // We now know the size of the stack - update the ADJCALLSTACKDOWN
   // accordingly.
-  CallSeqStart.addImm(ArgAssigner.StackSize).addImm(0).add(predOps(ARMCC::AL));
+  CallSeqStart.addImm(ArgAssigner.StackOffset)
+      .addImm(0)
+      .add(predOps(ARMCC::AL));
 
   MIRBuilder.buildInstr(ARM::ADJCALLSTACKUP)
-      .addImm(ArgAssigner.StackSize)
+      .addImm(ArgAssigner.StackOffset)
       .addImm(-1ULL)
       .add(predOps(ARMCC::AL));
 

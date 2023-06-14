@@ -25,7 +25,6 @@ class raw_ostream;
 
 class DWARFAbbreviationDeclaration {
 public:
-  enum class ExtractState { Complete, MoreItems };
   struct AttributeSpec {
     AttributeSpec(dwarf::Attribute A, dwarf::Form F, int64_t Value)
         : Attr(A), Form(F), Value(Value) {
@@ -173,7 +172,7 @@ public:
   getAttributeValueFromOffset(uint32_t AttrIndex, uint64_t Offset,
                               const DWARFUnit &U) const;
 
-  llvm::Expected<ExtractState> extract(DataExtractor Data, uint64_t *OffsetPtr);
+  bool extract(DataExtractor Data, uint64_t* OffsetPtr);
   void dump(raw_ostream &OS) const;
 
   // Return an optional byte size of all attribute data in this abbreviation

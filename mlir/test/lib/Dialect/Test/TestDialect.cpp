@@ -28,14 +28,12 @@
 #include "mlir/IR/Verifier.h"
 #include "mlir/Interfaces/InferIntRangeInterface.h"
 #include "mlir/Reducer/ReductionPatternInterface.h"
-#include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/FoldUtils.h"
 #include "mlir/Transforms/InliningUtils.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 
-#include <cstdint>
 #include <numeric>
 #include <optional>
 
@@ -51,7 +49,7 @@ Attribute MyPropStruct::asAttribute(MLIRContext *ctx) const {
 }
 LogicalResult MyPropStruct::setFromAttr(MyPropStruct &prop, Attribute attr,
                                         InFlightDiagnostic *diag) {
-  StringAttr strAttr = dyn_cast<StringAttr>(attr);
+  StringAttr strAttr = attr.dyn_cast<StringAttr>();
   if (!strAttr) {
     if (diag)
       *diag << "Expect StringAttr but got " << attr;
@@ -62,44 +60,6 @@ LogicalResult MyPropStruct::setFromAttr(MyPropStruct &prop, Attribute attr,
 }
 llvm::hash_code MyPropStruct::hash() const {
   return hash_value(StringRef(content));
-}
-
-static LogicalResult readFromMlirBytecode(DialectBytecodeReader &reader,
-                                          MyPropStruct &prop) {
-  StringRef str;
-  if (failed(reader.readString(str)))
-    return failure();
-  prop.content = str.str();
-  return success();
-}
-
-static void writeToMlirBytecode(::mlir::DialectBytecodeWriter &writer,
-                                MyPropStruct &prop) {
-  writer.writeOwnedString(prop.content);
-}
-
-static LogicalResult readFromMlirBytecode(DialectBytecodeReader &reader,
-                                          MutableArrayRef<int64_t> prop) {
-  uint64_t size;
-  if (failed(reader.readVarInt(size)))
-    return failure();
-  if (size != prop.size())
-    return reader.emitError("array size mismach when reading properties: ")
-           << size << " vs expected " << prop.size();
-  for (auto &elt : prop) {
-    uint64_t value;
-    if (failed(reader.readVarInt(value)))
-      return failure();
-    elt = value;
-  }
-  return success();
-}
-
-static void writeToMlirBytecode(::mlir::DialectBytecodeWriter &writer,
-                                ArrayRef<int64_t> prop) {
-  writer.writeVarInt(prop.size());
-  for (auto elt : prop)
-    writer.writeVarInt(elt);
 }
 
 static LogicalResult setPropertiesFromAttribute(PropertiesWithCustomPrint &prop,
@@ -168,7 +128,8 @@ struct TestBytecodeDialectInterface : public BytecodeDialectInterface {
       writer.writeVarInt(concreteAttr.getV1());
       return success();
     }
-    return failure();
+    writer.writeAttribute(attr);
+    return success();
   }
 
   Attribute readAttribute(DialectBytecodeReader &reader,
@@ -261,7 +222,7 @@ struct TestOpAsmInterface : public OpAsmDialectInterface {
   //===------------------------------------------------------------------===//
 
   AliasResult getAlias(Attribute attr, raw_ostream &os) const final {
-    StringAttr strAttr = dyn_cast<StringAttr>(attr);
+    StringAttr strAttr = attr.dyn_cast<StringAttr>();
     if (!strAttr)
       return AliasResult::NoAlias;
 
@@ -286,16 +247,16 @@ struct TestOpAsmInterface : public OpAsmDialectInterface {
   }
 
   AliasResult getAlias(Type type, raw_ostream &os) const final {
-    if (auto tupleType = dyn_cast<TupleType>(type)) {
+    if (auto tupleType = type.dyn_cast<TupleType>()) {
       if (tupleType.size() > 0 &&
           llvm::all_of(tupleType.getTypes(), [](Type elemType) {
-            return isa<SimpleAType>(elemType);
+            return elemType.isa<SimpleAType>();
           })) {
         os << "test_tuple";
         return AliasResult::FinalAlias;
       }
     }
-    if (auto intType = dyn_cast<TestIntegerType>(type)) {
+    if (auto intType = type.dyn_cast<TestIntegerType>()) {
       if (intType.getSignedness() ==
               TestIntegerType::SignednessSemantics::Unsigned &&
           intType.getWidth() == 8) {
@@ -303,7 +264,7 @@ struct TestOpAsmInterface : public OpAsmDialectInterface {
         return AliasResult::FinalAlias;
       }
     }
-    if (auto recType = dyn_cast<TestRecursiveType>(type)) {
+    if (auto recType = type.dyn_cast<TestRecursiveType>()) {
       if (recType.getName() == "type_to_alias") {
         // We only make alias for a specific recursive type.
         os << "testrec";
@@ -1270,7 +1231,7 @@ void PolyForOp::getAsmBlockArgumentNames(Region &region,
   auto args = getRegion().front().getArguments();
   auto e = std::min(arrayAttr.size(), args.size());
   for (unsigned i = 0; i < e; ++i) {
-    if (auto strAttr = dyn_cast<StringAttr>(arrayAttr[i]))
+    if (auto strAttr = arrayAttr[i].dyn_cast<StringAttr>())
       setNameFn(args[i], strAttr.getValue());
   }
 }
@@ -1292,7 +1253,7 @@ static ParseResult parseOptionalLoc(OpAsmParser &p, Attribute &loc) {
 }
 
 static void printOptionalLoc(OpAsmPrinter &p, Operation *op, Attribute loc) {
-  p.printOptionalLocationSpecifier(cast<LocationAttr>(loc));
+  p.printOptionalLocationSpecifier(loc.cast<LocationAttr>());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1416,7 +1377,7 @@ LogicalResult OpWithShapedTypeInferTypeInterfaceOp::inferReturnTypeComponents(
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   // Create return type consisting of the last element of the first operand.
   auto operandType = operands.front().getType();
-  auto sval = dyn_cast<ShapedType>(operandType);
+  auto sval = operandType.dyn_cast<ShapedType>();
   if (!sval) {
     return emitOptionalError(location, "only shaped type operands allowed");
   }
@@ -1424,7 +1385,7 @@ LogicalResult OpWithShapedTypeInferTypeInterfaceOp::inferReturnTypeComponents(
   auto type = IntegerType::get(context, 17);
 
   Attribute encoding;
-  if (auto rankedTy = dyn_cast<RankedTensorType>(sval))
+  if (auto rankedTy = sval.dyn_cast<RankedTensorType>())
     encoding = rankedTy.getEncoding();
   inferredReturnShapes.push_back(ShapedTypeComponents({dim}, type, encoding));
   return success();
@@ -1444,7 +1405,7 @@ LogicalResult OpWithResultShapeInterfaceOp::reifyReturnTypeShapes(
   Location loc = getLoc();
   shapes.reserve(operands.size());
   for (Value operand : llvm::reverse(operands)) {
-    auto rank = cast<RankedTensorType>(operand.getType()).getRank();
+    auto rank = operand.getType().cast<RankedTensorType>().getRank();
     auto currShape = llvm::to_vector<4>(
         llvm::map_range(llvm::seq<int64_t>(0, rank), [&](int64_t dim) -> Value {
           return builder.createOrFold<tensor::DimOp>(loc, operand, dim);
@@ -1461,7 +1422,7 @@ LogicalResult OpWithResultShapePerDimInterfaceOp::reifyResultShapes(
   Location loc = getLoc();
   shapes.reserve(getNumOperands());
   for (Value operand : llvm::reverse(getOperands())) {
-    auto tensorType = cast<RankedTensorType>(operand.getType());
+    auto tensorType = operand.getType().cast<RankedTensorType>();
     auto currShape = llvm::to_vector<4>(llvm::map_range(
         llvm::seq<int64_t>(0, tensorType.getRank()),
         [&](int64_t dim) -> OpFoldResult {
@@ -1511,12 +1472,12 @@ void SideEffectOp::getEffects(
   // If there is one, it is an array of dictionary attributes that hold
   // information on the effects of this operation.
   for (Attribute element : effectsAttr) {
-    DictionaryAttr effectElement = cast<DictionaryAttr>(element);
+    DictionaryAttr effectElement = element.cast<DictionaryAttr>();
 
     // Get the specific memory effect.
     MemoryEffects::Effect *effect =
         StringSwitch<MemoryEffects::Effect *>(
-            cast<StringAttr>(effectElement.get("effect")).getValue())
+            effectElement.get("effect").cast<StringAttr>().getValue())
             .Case("allocate", MemoryEffects::Allocate::get())
             .Case("free", MemoryEffects::Free::get())
             .Case("read", MemoryEffects::Read::get())
@@ -1531,7 +1492,7 @@ void SideEffectOp::getEffects(
     if (effectElement.get("on_result"))
       effects.emplace_back(effect, getResult(), resource);
     else if (Attribute ref = effectElement.get("on_reference"))
-      effects.emplace_back(effect, cast<SymbolRefAttr>(ref), resource);
+      effects.emplace_back(effect, ref.cast<SymbolRefAttr>(), resource);
     else
       effects.emplace_back(effect, resource);
   }
@@ -1596,7 +1557,7 @@ void StringAttrPrettyNameOp::print(OpAsmPrinter &p) {
     llvm::raw_svector_ostream tmpStream(resultNameStr);
     p.printOperand(getResult(i), tmpStream);
 
-    auto expectedName = dyn_cast<StringAttr>(getNames()[i]);
+    auto expectedName = getNames()[i].dyn_cast<StringAttr>();
     if (!expectedName ||
         tmpStream.str().drop_front() != expectedName.getValue()) {
       namesDisagree = true;
@@ -1616,7 +1577,7 @@ void StringAttrPrettyNameOp::getAsmResultNames(
 
   auto value = getNames();
   for (size_t i = 0, e = value.size(); i != e; ++i)
-    if (auto str = dyn_cast<StringAttr>(value[i]))
+    if (auto str = value[i].dyn_cast<StringAttr>())
       if (!str.getValue().empty())
         setNameFn(getResult(i), str.getValue());
 }
@@ -1625,7 +1586,7 @@ void CustomResultsNameOp::getAsmResultNames(
     function_ref<void(Value, StringRef)> setNameFn) {
   ArrayAttr value = getNames();
   for (size_t i = 0, e = value.size(); i != e; ++i)
-    if (auto str = dyn_cast<StringAttr>(value[i]))
+    if (auto str = value[i].dyn_cast<StringAttr>())
       if (!str.getValue().empty())
         setNameFn(getResult(i), str.getValue());
 }

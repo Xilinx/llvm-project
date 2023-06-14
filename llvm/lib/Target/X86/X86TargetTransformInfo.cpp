@@ -4943,11 +4943,9 @@ X86TTIImpl::getMaskedMemoryOpCost(unsigned Opcode, Type *SrcTy, Align Alignment,
   return Cost + LT.first;
 }
 
-InstructionCost
-X86TTIImpl::getPointersChainCost(ArrayRef<const Value *> Ptrs,
-                                 const Value *Base,
-                                 const TTI::PointersChainInfo &Info,
-                                 Type *AccessTy, TTI::TargetCostKind CostKind) {
+InstructionCost X86TTIImpl::getPointersChainCost(
+    ArrayRef<const Value *> Ptrs, const Value *Base,
+    const TTI::PointersChainInfo &Info, TTI::TargetCostKind CostKind) {
   if (Info.isSameBase() && Info.isKnownStride()) {
     // If all the pointers have known stride all the differences are translated
     // into constants. X86 memory addressing allows encoding it into
@@ -4959,7 +4957,7 @@ X86TTIImpl::getPointersChainCost(ArrayRef<const Value *> Ptrs,
     }
     return TTI::TCC_Free;
   }
-  return BaseT::getPointersChainCost(Ptrs, Base, Info, AccessTy, CostKind);
+  return BaseT::getPointersChainCost(Ptrs, Base, Info, CostKind);
 }
 
 InstructionCost X86TTIImpl::getAddressComputationCost(Type *Ty,

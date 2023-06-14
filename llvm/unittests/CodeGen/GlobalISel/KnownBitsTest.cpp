@@ -1630,12 +1630,12 @@ TEST_F(AArch64GISelMITest, TestInvalidQueries) {
   KnownBits BiggerSizeRes = Info.getKnownBits(BiggerSizedShl);
 
 
-  // Result can be anything, but we should not crash.
+  // We don't know what the result of the shift is, but we should not crash
   EXPECT_TRUE(EqSizeRes.One.isZero());
-  EXPECT_TRUE(EqSizeRes.Zero.isAllOnes());
+  EXPECT_TRUE(EqSizeRes.Zero.isZero());
 
   EXPECT_TRUE(BiggerSizeRes.One.isZero());
-  EXPECT_TRUE(BiggerSizeRes.Zero.isAllOnes());
+  EXPECT_TRUE(BiggerSizeRes.Zero.isZero());
 }
 
 TEST_F(AArch64GISelMITest, TestKnownBitsAssertZext) {

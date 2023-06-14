@@ -360,28 +360,18 @@ public:
   unsigned getSEW() const { return SEW; }
   RISCVII::VLMUL getVLMUL() const { return VLMul; }
 
-  bool hasNonZeroAVL(const MachineRegisterInfo &MRI) const {
+  bool hasNonZeroAVL() const {
     if (hasAVLImm())
       return getAVLImm() > 0;
-    if (hasAVLReg()) {
-      if (getAVLReg() == RISCV::X0)
-        return true;
-      if (MachineInstr *MI = MRI.getVRegDef(getAVLReg());
-          MI && MI->getOpcode() == RISCV::ADDI &&
-          MI->getOperand(1).isReg() && MI->getOperand(2).isImm() &&
-          MI->getOperand(1).getReg() == RISCV::X0 &&
-          MI->getOperand(2).getImm() != 0)
-        return true;
-      return false;
-    }
+    if (hasAVLReg())
+      return getAVLReg() == RISCV::X0;
     return false;
   }
 
-  bool hasEquallyZeroAVL(const VSETVLIInfo &Other,
-                         const MachineRegisterInfo &MRI) const {
+  bool hasEquallyZeroAVL(const VSETVLIInfo &Other) const {
     if (hasSameAVL(Other))
       return true;
-    return (hasNonZeroAVL(MRI) && Other.hasNonZeroAVL(MRI));
+    return (hasNonZeroAVL() && Other.hasNonZeroAVL());
   }
 
   bool hasSameAVL(const VSETVLIInfo &Other) const {
@@ -457,8 +447,7 @@ public:
   // Determine whether the vector instructions requirements represented by
   // Require are compatible with the previous vsetvli instruction represented
   // by this.  MI is the instruction whose requirements we're considering.
-  bool isCompatible(const DemandedFields &Used, const VSETVLIInfo &Require,
-                    const MachineRegisterInfo &MRI) const {
+  bool isCompatible(const DemandedFields &Used, const VSETVLIInfo &Require) const {
     assert(isValid() && Require.isValid() &&
            "Can't compare invalid VSETVLIInfos");
     assert(!Require.SEWLMULRatioOnly &&
@@ -480,7 +469,7 @@ public:
     if (Used.VLAny && !hasSameAVL(Require))
       return false;
 
-    if (Used.VLZeroness && !hasEquallyZeroAVL(Require, MRI))
+    if (Used.VLZeroness && !hasEquallyZeroAVL(Require))
       return false;
 
     return areCompatibleVTYPEs(encodeVTYPE(), Require.encodeVTYPE(), Used);
@@ -873,10 +862,9 @@ bool RISCVInsertVSETVLI::needVSETVLI(const MachineInstr &MI,
     }
   }
 
-  // A slidedown/slideup with an IMPLICIT_DEF merge op can freely clobber
-  // elements not copied from the source vector (e.g. masked off, tail, or
-  // slideup's prefix). Notes:
-  // * We can't modify SEW here since the slide amount is in units of SEW.
+  // A slidedown/slideup with a VL of 1 whose destination is an IMPLICIT_DEF
+  // can use any VL/SEW combination which writes at least the first element.
+  // Notes:
   // * VL=1 is special only because we have existing support for zero vs
   //   non-zero VL.  We could generalize this if we had a VL > C predicate.
   // * The LMUL1 restriction is for machines whose latency may depend on VL.
@@ -884,15 +872,18 @@ bool RISCVInsertVSETVLI::needVSETVLI(const MachineInstr &MI,
   if (isVSlideInstr(MI) && Require.hasAVLImm() && Require.getAVLImm() == 1 &&
       isLMUL1OrSmaller(CurInfo.getVLMUL())) {
     auto *VRegDef = MRI->getVRegDef(MI.getOperand(1).getReg());
-    if (VRegDef && VRegDef->isImplicitDef()) {
+    if (VRegDef && VRegDef->isImplicitDef() &&
+        CurInfo.getSEW() >= Require.getSEW()) {
       Used.VLAny = false;
       Used.VLZeroness = true;
+      Used.SEW = false;
       Used.LMUL = false;
+      Used.SEWLMULRatio = false;
       Used.TailPolicy = false;
     }
   }
 
-  if (CurInfo.isCompatible(Used, Require, *MRI))
+  if (CurInfo.isCompatible(Used, Require))
     return false;
 
   // We didn't find a compatible value. If our AVL is a virtual register,
@@ -940,7 +931,7 @@ void RISCVInsertVSETVLI::transferBefore(VSETVLIInfo &Info, const MachineInstr &M
   // prevent extending live range of an avl register operand.
   // TODO: We can probably relax this for immediates.
   if (isScalarMoveInstr(MI) && PrevInfo.isValid() &&
-      PrevInfo.hasEquallyZeroAVL(Info, *MRI) &&
+      PrevInfo.hasEquallyZeroAVL(Info) &&
       Info.hasSameVLMAX(PrevInfo)) {
     if (PrevInfo.hasAVLImm())
       Info.setAVLImm(PrevInfo.getAVLImm());

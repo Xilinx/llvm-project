@@ -178,7 +178,7 @@ LogicalResult verifyTrait(ConcreteOp op) {
     }
     for (unsigned i = 0; i != numArgs; ++i) {
       DictionaryAttr argAttrs =
-          llvm::dyn_cast_or_null<DictionaryAttr>(allArgAttrs[i]);
+          allArgAttrs[i].dyn_cast_or_null<DictionaryAttr>();
       if (!argAttrs) {
         return op.emitOpError() << "expects argument attribute dictionary "
                                    "to be a DictionaryAttr, but got `"
@@ -209,7 +209,7 @@ LogicalResult verifyTrait(ConcreteOp op) {
     }
     for (unsigned i = 0; i != numResults; ++i) {
       DictionaryAttr resultAttrs =
-          llvm::dyn_cast_or_null<DictionaryAttr>(allResultAttrs[i]);
+          allResultAttrs[i].dyn_cast_or_null<DictionaryAttr>();
       if (!resultAttrs) {
         return op.emitOpError() << "expects result attribute dictionary "
                                    "to be a DictionaryAttr, but got `"

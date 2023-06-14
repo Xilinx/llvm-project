@@ -153,8 +153,7 @@ static bool HandleAST(StringRef AstPath) {
 
   std::unique_ptr<ASTUnit> Unit = ASTUnit::LoadFromASTFile(
       AstPath.str(), CI->getPCHContainerOperations()->getRawReader(),
-      ASTUnit::LoadASTOnly, DiagEngine, CI->getFileSystemOpts(),
-      CI->getHeaderSearchOptsPtr());
+      ASTUnit::LoadASTOnly, DiagEngine, CI->getFileSystemOpts());
 
   if (!Unit)
     return false;

@@ -52,8 +52,6 @@ private:
 
   bool shouldPrintBeforePass(StringRef PassID);
   bool shouldPrintAfterPass(StringRef PassID);
-  bool shouldPrintPassNumbers();
-  bool shouldPrintAtPassNumber();
 
   using PrintModuleDesc = std::tuple<const Module *, std::string, StringRef>;
 
@@ -64,9 +62,6 @@ private:
   /// Stack of Module description, enough to print the module after a given
   /// pass.
   SmallVector<PrintModuleDesc, 2> ModuleDescStack;
-
-  /// Used for print-at-pass-number
-  unsigned CurrentPassNumber = 0;
 };
 
 class OptNoneInstrumentation {

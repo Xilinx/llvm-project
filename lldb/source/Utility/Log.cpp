@@ -131,15 +131,8 @@ Log::MaskType Log::GetMask() const {
   return m_mask.load(std::memory_order_relaxed);
 }
 
-void Log::PutCString(const char *cstr) { PutString(cstr); }
-
-void Log::PutString(llvm::StringRef str) {
-  std::string FinalMessage;
-  llvm::raw_string_ostream Stream(FinalMessage);
-  WriteHeader(Stream, "", "");
-  Stream << str << "\n";
-  WriteMessage(FinalMessage);
-}
+void Log::PutCString(const char *cstr) { Printf("%s", cstr); }
+void Log::PutString(llvm::StringRef str) { PutCString(str.str().c_str()); }
 
 // Simple variable argument logging with flags.
 void Log::Printf(const char *format, ...) {
@@ -149,10 +142,20 @@ void Log::Printf(const char *format, ...) {
   va_end(args);
 }
 
+// All logging eventually boils down to this function call. If we have a
+// callback registered, then we call the logging callback. If we have a valid
+// file handle, we also log to the file.
 void Log::VAPrintf(const char *format, va_list args) {
+  std::string FinalMessage;
+  llvm::raw_string_ostream Stream(FinalMessage);
+  WriteHeader(Stream, "", "");
+
   llvm::SmallString<64> Content;
   lldb_private::VASprintf(Content, format, args);
-  PutString(Content);
+
+  Stream << Content << "\n";
+
+  WriteMessage(FinalMessage);
 }
 
 // Printing of errors that are not fatal.
@@ -341,8 +344,6 @@ void Log::WriteHeader(llvm::raw_ostream &OS, llvm::StringRef file,
   }
 }
 
-// If we have a callback registered, then we call the logging callback. If we
-// have a valid file handle, we also log to the file.
 void Log::WriteMessage(llvm::StringRef message) {
   // Make a copy of our stream shared pointer in case someone disables our log
   // while we are logging and releases the stream

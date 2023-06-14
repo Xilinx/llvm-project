@@ -1195,7 +1195,7 @@ bool TargetLowering::SimplifyDemandedBits(
       return true;
 
     if (!!DemandedVecElts)
-      Known = Known.intersectWith(KnownVec);
+      Known = KnownBits::commonBits(Known, KnownVec);
 
     return false;
   }
@@ -1223,9 +1223,9 @@ bool TargetLowering::SimplifyDemandedBits(
     Known.Zero.setAllBits();
     Known.One.setAllBits();
     if (!!DemandedSubElts)
-      Known = Known.intersectWith(KnownSub);
+      Known = KnownBits::commonBits(Known, KnownSub);
     if (!!DemandedSrcElts)
-      Known = Known.intersectWith(KnownSrc);
+      Known = KnownBits::commonBits(Known, KnownSrc);
 
     // Attempt to avoid multi-use src if we don't need anything from it.
     if (!DemandedBits.isAllOnes() || !DemandedSubElts.isAllOnes() ||
@@ -1287,7 +1287,7 @@ bool TargetLowering::SimplifyDemandedBits(
         return true;
       // Known bits are shared by every demanded subvector element.
       if (!!DemandedSubElts)
-        Known = Known.intersectWith(Known2);
+        Known = KnownBits::commonBits(Known, Known2);
     }
     break;
   }
@@ -1311,13 +1311,13 @@ bool TargetLowering::SimplifyDemandedBits(
         if (SimplifyDemandedBits(Op0, DemandedBits, DemandedLHS, Known2, TLO,
                                  Depth + 1))
           return true;
-        Known = Known.intersectWith(Known2);
+        Known = KnownBits::commonBits(Known, Known2);
       }
       if (!!DemandedRHS) {
         if (SimplifyDemandedBits(Op1, DemandedBits, DemandedRHS, Known2, TLO,
                                  Depth + 1))
           return true;
-        Known = Known.intersectWith(Known2);
+        Known = KnownBits::commonBits(Known, Known2);
       }
 
       // Attempt to avoid multi-use ops if we don't need anything from them.
@@ -1619,7 +1619,7 @@ bool TargetLowering::SimplifyDemandedBits(
       return true;
 
     // Only known if known in both the LHS and RHS.
-    Known = Known.intersectWith(Known2);
+    Known = KnownBits::commonBits(Known, Known2);
     break;
   case ISD::VSELECT:
     if (SimplifyDemandedBits(Op.getOperand(2), DemandedBits, DemandedElts,
@@ -1632,7 +1632,7 @@ bool TargetLowering::SimplifyDemandedBits(
     assert(!Known2.hasConflict() && "Bits known to be one AND zero?");
 
     // Only known if known in both the LHS and RHS.
-    Known = Known.intersectWith(Known2);
+    Known = KnownBits::commonBits(Known, Known2);
     break;
   case ISD::SELECT_CC:
     if (SimplifyDemandedBits(Op.getOperand(3), DemandedBits, Known, TLO,
@@ -1649,7 +1649,7 @@ bool TargetLowering::SimplifyDemandedBits(
       return true;
 
     // Only known if known in both the LHS and RHS.
-    Known = Known.intersectWith(Known2);
+    Known = KnownBits::commonBits(Known, Known2);
     break;
   case ISD::SETCC: {
     SDValue Op0 = Op.getOperand(0);
@@ -1997,7 +1997,8 @@ bool TargetLowering::SimplifyDemandedBits(
       Known2.Zero <<= (IsFSHL ? Amt : (BitWidth - Amt));
       Known.One.lshrInPlace(IsFSHL ? (BitWidth - Amt) : Amt);
       Known.Zero.lshrInPlace(IsFSHL ? (BitWidth - Amt) : Amt);
-      Known = Known.unionWith(Known2);
+      Known.One |= Known2.One;
+      Known.Zero |= Known2.Zero;
 
       // Attempt to avoid multi-use ops if we don't need anything from them.
       if (!Demanded0.isAllOnes() || !Demanded1.isAllOnes() ||
@@ -2591,10 +2592,9 @@ bool TargetLowering::SimplifyDemandedBits(
     SDNodeFlags Flags = Op.getNode()->getFlags();
     unsigned DemandedBitsLZ = DemandedBits.countl_zero();
     APInt LoMask = APInt::getLowBitsSet(BitWidth, BitWidth - DemandedBitsLZ);
-    KnownBits KnownOp0, KnownOp1;
-    if (SimplifyDemandedBits(Op0, LoMask, DemandedElts, KnownOp0, TLO,
+    if (SimplifyDemandedBits(Op0, LoMask, DemandedElts, Known2, TLO,
                              Depth + 1) ||
-        SimplifyDemandedBits(Op1, LoMask, DemandedElts, KnownOp1, TLO,
+        SimplifyDemandedBits(Op1, LoMask, DemandedElts, Known2, TLO,
                              Depth + 1) ||
         // See if the operation should be performed at a smaller bit width.
         ShrinkDemandedOp(Op, BitWidth, DemandedBits, TLO)) {
@@ -2691,16 +2691,7 @@ bool TargetLowering::SimplifyDemandedBits(
       }
     }
 
-    if (Op.getOpcode() == ISD::MUL) {
-      Known = KnownBits::mul(KnownOp0, KnownOp1);
-    } else { // Op.getOpcode() is either ISD::ADD or ISD::SUB.
-      // TODO: Update `computeForAddCarry` to handle the NSW flag as well so
-      //       that `Flags.hasNoSignedWrap()` can be passed through here
-      //       instead of false.
-      Known = KnownBits::computeForAddSub(Op.getOpcode() == ISD::ADD, false,
-                                          KnownOp0, KnownOp1);
-    }
-    break;
+    [[fallthrough]];
   }
   default:
     // We also ask the target about intrinsics (which could be specific to it).
@@ -5989,19 +5980,6 @@ SDValue TargetLowering::BuildSDIV(SDNode *N, SelectionDAG &DAG,
           DAG.getNode(ISD::SMUL_LOHI, dl, DAG.getVTList(VT, VT), X, Y);
       return SDValue(LoHi.getNode(), 1);
     }
-    // If type twice as wide legal, widen and use a mul plus a shift.
-    if (!VT.isVector()) {
-      unsigned Size = VT.getSizeInBits();
-      EVT WideVT = EVT::getIntegerVT(*DAG.getContext(), Size * 2);
-      if (isOperationLegal(ISD::MUL, WideVT)) {
-        X = DAG.getNode(ISD::SIGN_EXTEND, dl, WideVT, X);
-        Y = DAG.getNode(ISD::SIGN_EXTEND, dl, WideVT, Y);
-        Y = DAG.getNode(ISD::MUL, dl, WideVT, X, Y);
-        Y = DAG.getNode(ISD::SRL, dl, WideVT, Y,
-                        DAG.getShiftAmountConstant(EltBits, WideVT, dl));
-        return DAG.getNode(ISD::TRUNCATE, dl, VT, Y);
-      }
-    }
     return SDValue();
   };
 
@@ -6174,19 +6152,6 @@ SDValue TargetLowering::BuildUDIV(SDNode *N, SelectionDAG &DAG,
       SDValue LoHi =
           DAG.getNode(ISD::UMUL_LOHI, dl, DAG.getVTList(VT, VT), X, Y);
       return SDValue(LoHi.getNode(), 1);
-    }
-    // If type twice as wide legal, widen and use a mul plus a shift.
-    if (!VT.isVector()) {
-      unsigned Size = VT.getSizeInBits();
-      EVT WideVT = EVT::getIntegerVT(*DAG.getContext(), Size * 2);
-      if (isOperationLegal(ISD::MUL, WideVT)) {
-        X = DAG.getNode(ISD::ZERO_EXTEND, dl, WideVT, X);
-        Y = DAG.getNode(ISD::ZERO_EXTEND, dl, WideVT, Y);
-        Y = DAG.getNode(ISD::MUL, dl, WideVT, X, Y);
-        Y = DAG.getNode(ISD::SRL, dl, WideVT, Y,
-                        DAG.getShiftAmountConstant(EltBits, WideVT, dl));
-        return DAG.getNode(ISD::TRUNCATE, dl, VT, Y);
-      }
     }
     return SDValue(); // No mulhu or equivalent
   };

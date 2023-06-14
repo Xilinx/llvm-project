@@ -23,7 +23,6 @@ def Affine_Dialect : Dialect {
   let name = "affine";
   let cppNamespace = "::mlir::affine";
   let hasConstantMaterializer = 1;
-  let usePropertiesForAttributes = 1;
   let dependentDialects = ["arith::ArithDialect"];
 }
 
@@ -285,18 +284,18 @@ def AffineForOp : Affine_Op<"for",
 
     /// Returns loop step.
     int64_t getStep() {
-      return ::llvm::cast<IntegerAttr>((*this)->getAttr(getStepAttrStrName())).getInt();
+      return (*this)->getAttr(getStepAttrStrName()).cast<IntegerAttr>().getInt();
     }
 
     /// Returns affine map for the lower bound.
     AffineMap getLowerBoundMap() { return getLowerBoundMapAttr().getValue(); }
     AffineMapAttr getLowerBoundMapAttr() {
-      return ::llvm::cast<AffineMapAttr>((*this)->getAttr(getLowerBoundAttrStrName()));
+      return (*this)->getAttr(getLowerBoundAttrStrName()).cast<AffineMapAttr>();
     }
     /// Returns affine map for the upper bound. The upper bound is exclusive.
     AffineMap getUpperBoundMap() { return getUpperBoundMapAttr().getValue(); }
     AffineMapAttr getUpperBoundMapAttr() {
-      return ::llvm::cast<AffineMapAttr>((*this)->getAttr(getUpperBoundAttrStrName()));
+      return (*this)->getAttr(getUpperBoundAttrStrName()).cast<AffineMapAttr>();
     }
 
     /// Set lower bound. The new bound must have the same number of operands as
@@ -508,7 +507,7 @@ class AffineLoadOpBase<string mnemonic, list<Trait> traits = []> :
 
     /// Returns the affine map used to index the memref for this operation.
     AffineMapAttr getAffineMapAttr() {
-      return ::llvm::cast<AffineMapAttr>((*this)->getAttr(getMapAttrStrName()));
+      return (*this)->getAttr(getMapAttrStrName()).cast<AffineMapAttr>();
     }
 
     static StringRef getMapAttrStrName() { return "map"; }
@@ -824,13 +823,13 @@ def AffinePrefetchOp : Affine_Op<"prefetch",
 
   let extraClassDeclaration = [{
     MemRefType getMemRefType() {
-      return ::llvm::cast<MemRefType>(getMemref().getType());
+      return getMemref().getType().cast<MemRefType>();
     }
 
     /// Returns the affine map used to index the memref for this operation.
     AffineMap getAffineMap() { return getAffineMapAttr().getValue(); }
     AffineMapAttr getAffineMapAttr() {
-      return ::llvm::cast<AffineMapAttr>((*this)->getAttr(getMapAttrStrName()));
+      return (*this)->getAttr(getMapAttrStrName()).cast<AffineMapAttr>();
     }
 
     /// Impelements the AffineMapAccessInterface.
@@ -875,7 +874,7 @@ class AffineStoreOpBase<string mnemonic, list<Trait> traits = []> :
 
     /// Returns the affine map used to index the memref for this operation.
     AffineMapAttr getAffineMapAttr() {
-      return ::llvm::cast<AffineMapAttr>((*this)->getAttr(getMapAttrStrName()));
+      return (*this)->getAttr(getMapAttrStrName()).cast<AffineMapAttr>();
     }
 
     static StringRef getMapAttrStrName() { return "map"; }
@@ -1012,7 +1011,7 @@ def AffineVectorLoadOp : AffineLoadOpBase<"vector_load"> {
 
   let extraClassDeclaration = extraClassDeclarationBase # [{
     VectorType getVectorType() {
-      return ::llvm::cast<VectorType>(getResult().getType());
+      return getResult().getType().cast<VectorType>();
     }
   }];
 
@@ -1078,7 +1077,7 @@ def AffineVectorStoreOp : AffineStoreOpBase<"vector_store"> {
 
   let extraClassDeclaration = extraClassDeclarationBase # [{
     VectorType getVectorType() {
-      return ::llvm::cast<VectorType>(getValue().getType());
+      return getValue().getType().cast<VectorType>();
     }
   }];
 

@@ -168,7 +168,7 @@ public:
   llvm::Module *getLLVMModule() { return llvmModule.get(); }
 
   /// Translates the given location.
-  llvm::DILocation *translateLoc(Location loc, llvm::DILocalScope *scope);
+  const llvm::DILocation *translateLoc(Location loc, llvm::DILocalScope *scope);
 
   /// Translates the given LLVM debug info metadata.
   llvm::Metadata *translateDebugInfo(LLVM::DINodeAttr attr);

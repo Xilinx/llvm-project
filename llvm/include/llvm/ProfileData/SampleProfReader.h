@@ -483,9 +483,6 @@ public:
   /// Whether input profile contains ShouldBeInlined contexts.
   bool profileIsPreInlined() const { return ProfileIsPreInlined; }
 
-  /// Whether input profile is flow-sensitive.
-  bool profileIsFS() const { return ProfileIsFS; }
-
   virtual std::unique_ptr<ProfileSymbolList> getProfileSymbolList() {
     return nullptr;
   };
@@ -639,6 +636,9 @@ protected:
   /// Read the string index and check whether it overflows the table.
   template <typename T> inline ErrorOr<size_t> readStringIndex(T &Table);
 
+  /// Return true if we've reached the end of file.
+  bool at_eof() const { return Data >= End; }
+
   /// Read the next function profile instance.
   std::error_code readFuncProfile(const uint8_t *Start);
 
@@ -656,13 +656,6 @@ protected:
 
   /// Read a string indirectly via the name table.
   ErrorOr<StringRef> readStringFromTable();
-
-  /// Read a context indirectly via the CSNameTable.
-  ErrorOr<SampleContextFrames> readContextFromTable();
-
-  /// Read a context indirectly via the CSNameTable if the profile has context,
-  /// otherwise same as readStringFromTable.
-  ErrorOr<SampleContext> readSampleContextFromTable();
 
   /// Points to the current location in the buffer.
   const uint8_t *Data = nullptr;
@@ -685,9 +678,7 @@ protected:
   /// The starting address of NameTable containing fixed length MD5.
   const uint8_t *MD5NameMemStart = nullptr;
 
-  /// CSNameTable is used to save full context vectors. It is the backing buffer
-  /// for SampleContextFrames.
-  std::vector<SampleContextFrameVector> CSNameTable;
+  virtual ErrorOr<SampleContext> readSampleContextFromTable();
 
 private:
   std::error_code readSummaryEntry(std::vector<ProfileSummaryEntry> &Entries);
@@ -755,28 +746,31 @@ protected:
                                          const SecHdrTableEntry &Entry);
   // placeholder for subclasses to dispatch their own section readers.
   virtual std::error_code readCustomSection(const SecHdrTableEntry &Entry) = 0;
-
-  /// Determine which container readFuncOffsetTable() should populate, the list
-  /// FuncOffsetList or the map FuncOffsetTable.
-  bool useFuncOffsetList() const;
+  ErrorOr<SampleContext> readSampleContextFromTable() override;
+  ErrorOr<SampleContextFrames> readContextFromTable();
 
   std::unique_ptr<ProfileSymbolList> ProfSymList;
 
   /// The table mapping from function context to the offset of its
   /// FunctionSample towards file start.
-  /// At most one of FuncOffsetTable and FuncOffsetList is populated.
   DenseMap<SampleContext, uint64_t> FuncOffsetTable;
 
-  /// The list version of FuncOffsetTable. This is used if every entry is
-  /// being accessed.
-  std::vector<std::pair<SampleContext, uint64_t>> FuncOffsetList;
+  /// Function offset mapping ordered by contexts.
+  std::unique_ptr<std::vector<std::pair<SampleContext, uint64_t>>>
+      OrderedFuncOffsets;
 
   /// The set containing the functions to use when compiling a module.
   DenseSet<StringRef> FuncsToUse;
 
+  /// CSNameTable is used to save full context vectors. This serves as an
+  /// underlying immutable buffer for all clients.
+  std::unique_ptr<const std::vector<SampleContextFrameVector>> CSNameTable;
+
   /// If SkipFlatProf is true, skip the sections with
   /// SecFlagFlat flag.
   bool SkipFlatProf = false;
+
+  bool FuncOffsetsOrdered = false;
 
 public:
   SampleProfileReaderExtBinaryBase(std::unique_ptr<MemoryBuffer> B,

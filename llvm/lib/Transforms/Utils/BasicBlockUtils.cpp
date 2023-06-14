@@ -1471,12 +1471,11 @@ ReturnInst *llvm::FoldReturnIntoUncondBranch(ReturnInst *RI, BasicBlock *BB,
   return cast<ReturnInst>(NewRet);
 }
 
-Instruction *llvm::SplitBlockAndInsertIfThen(Value *Cond,
-                                             Instruction *SplitBefore,
-                                             bool Unreachable,
-                                             MDNode *BranchWeights,
-                                             DomTreeUpdater *DTU, LoopInfo *LI,
-                                             BasicBlock *ThenBlock) {
+static Instruction *
+SplitBlockAndInsertIfThenImpl(Value *Cond, Instruction *SplitBefore,
+                              bool Unreachable, MDNode *BranchWeights,
+                              DomTreeUpdater *DTU, DominatorTree *DT,
+                              LoopInfo *LI, BasicBlock *ThenBlock) {
   SmallVector<DominatorTree::UpdateType, 8> Updates;
   BasicBlock *Head = SplitBefore->getParent();
   BasicBlock *Tail = Head->splitBasicBlock(SplitBefore->getIterator());
@@ -1515,6 +1514,21 @@ Instruction *llvm::SplitBlockAndInsertIfThen(Value *Cond,
 
   if (DTU)
     DTU->applyUpdates(Updates);
+  else if (DT) {
+    if (DomTreeNode *OldNode = DT->getNode(Head)) {
+      std::vector<DomTreeNode *> Children(OldNode->begin(), OldNode->end());
+
+      DomTreeNode *NewNode = DT->addNewBlock(Tail, Head);
+      for (DomTreeNode *Child : Children)
+        DT->changeImmediateDominator(Child, NewNode);
+
+      // Head dominates ThenBlock.
+      if (CreateThenBlock)
+        DT->addNewBlock(ThenBlock, Head);
+      else
+        DT->changeImmediateDominator(ThenBlock, Head);
+    }
+  }
 
   if (LI) {
     if (Loop *L = LI->getLoopFor(Head)) {
@@ -1524,6 +1538,27 @@ Instruction *llvm::SplitBlockAndInsertIfThen(Value *Cond,
   }
 
   return CheckTerm;
+}
+
+Instruction *llvm::SplitBlockAndInsertIfThen(Value *Cond,
+                                             Instruction *SplitBefore,
+                                             bool Unreachable,
+                                             MDNode *BranchWeights,
+                                             DominatorTree *DT, LoopInfo *LI,
+                                             BasicBlock *ThenBlock) {
+  return SplitBlockAndInsertIfThenImpl(Cond, SplitBefore, Unreachable,
+                                       BranchWeights,
+                                       /*DTU=*/nullptr, DT, LI, ThenBlock);
+}
+Instruction *llvm::SplitBlockAndInsertIfThen(Value *Cond,
+                                             Instruction *SplitBefore,
+                                             bool Unreachable,
+                                             MDNode *BranchWeights,
+                                             DomTreeUpdater *DTU, LoopInfo *LI,
+                                             BasicBlock *ThenBlock) {
+  return SplitBlockAndInsertIfThenImpl(Cond, SplitBefore, Unreachable,
+                                       BranchWeights, DTU, /*DT=*/nullptr, LI,
+                                       ThenBlock);
 }
 
 void llvm::SplitBlockAndInsertIfThenElse(Value *Cond, Instruction *SplitBefore,

@@ -40,7 +40,6 @@
 #include "llvm/DebugInfo/DWARF/DWARFDebugLine.h"
 #include "llvm/DebugInfo/DWARF/DWARFDebugRangeList.h"
 #include "llvm/DebugInfo/DWARF/DWARFDie.h"
-#include "llvm/DebugInfo/DWARF/DWARFExpression.h"
 #include "llvm/DebugInfo/DWARF/DWARFFormValue.h"
 #include "llvm/DebugInfo/DWARF/DWARFSection.h"
 #include "llvm/DebugInfo/DWARF/DWARFUnit.h"
@@ -571,7 +570,6 @@ bool DwarfLinkerForBinary::link(const DebugMap &Map) {
   remarks::RemarkLinker RL;
   if (!Options.RemarksPrependPath.empty())
     RL.setExternalFilePrependPath(Options.RemarksPrependPath);
-  RL.setKeepAllRemarks(Options.RemarksKeepAll);
   GeneralLinker.setObjectPrefixMap(&Options.ObjectPrefixMap);
 
   std::function<StringRef(StringRef)> TranslationLambda = [&](StringRef Input) {
@@ -987,27 +985,23 @@ getAttributeOffsets(const DWARFAbbreviationDeclaration *Abbrev, unsigned Idx,
 }
 
 std::optional<int64_t>
-DwarfLinkerForBinary::AddressManager::getExprOpAddressRelocAdjustment(
-    DWARFUnit &U, const DWARFExpression::Operation &Op, uint64_t StartOffset,
-    uint64_t EndOffset) {
-  switch (Op.getCode()) {
-  default: {
-    assert(false && "Specified operation does not have address operand");
-  } break;
-  case dwarf::DW_OP_const4u:
-  case dwarf::DW_OP_const8u:
-  case dwarf::DW_OP_const4s:
-  case dwarf::DW_OP_const8s:
-  case dwarf::DW_OP_addr: {
-    return hasValidRelocationAt(ValidDebugInfoRelocs, StartOffset, EndOffset);
-  } break;
-  case dwarf::DW_OP_constx:
-  case dwarf::DW_OP_addrx: {
-    return hasValidRelocationAt(ValidDebugAddrRelocs, StartOffset, EndOffset);
-  } break;
-  }
+DwarfLinkerForBinary::AddressManager::getVariableRelocAdjustment(
+    const DWARFDie &DIE) {
+  const auto *Abbrev = DIE.getAbbreviationDeclarationPtr();
 
-  return std::nullopt;
+  std::optional<uint32_t> LocationIdx =
+      Abbrev->findAttributeIndex(dwarf::DW_AT_location);
+  if (!LocationIdx)
+    return std::nullopt;
+
+  uint64_t Offset = DIE.getOffset() + getULEB128Size(Abbrev->getCode());
+  uint64_t LocationOffset, LocationEndOffset;
+  std::tie(LocationOffset, LocationEndOffset) =
+      getAttributeOffsets(Abbrev, *LocationIdx, Offset, *DIE.getDwarfUnit());
+
+  // FIXME: Support relocations debug_addr.
+  return hasValidRelocationAt(ValidDebugInfoRelocs, LocationOffset,
+                              LocationEndOffset);
 }
 
 std::optional<int64_t>

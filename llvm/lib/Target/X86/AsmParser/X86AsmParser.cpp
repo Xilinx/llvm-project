@@ -433,7 +433,6 @@ private:
     InlineAsmIdentifierInfo Info;
     short BracCount = 0;
     bool MemExpr = false;
-    bool BracketUsed = false;
     bool OffsetOperator = false;
     bool AttachToOperandIdx = false;
     bool IsPIC = false;
@@ -456,7 +455,6 @@ private:
     void addImm(int64_t imm) { Imm += imm; }
     short getBracCount() const { return BracCount; }
     bool isMemExpr() const { return MemExpr; }
-    bool isBracketUsed() const { return BracketUsed; }
     bool isOffsetOperator() const { return OffsetOperator; }
     SMLoc getOffsetLoc() const { return OffsetOperatorLoc; }
     unsigned getBaseReg() const { return BaseReg; }
@@ -957,7 +955,6 @@ private:
         break;
       }
       MemExpr = true;
-      BracketUsed = true;
       BracCount++;
       return false;
     }
@@ -2631,9 +2628,9 @@ bool X86AsmParser::parseIntelOperand(OperandVector &Operands, StringRef Name) {
   unsigned DefaultBaseReg = X86::NoRegister;
   bool MaybeDirectBranchDest = true;
 
-  bool IsUnconditionalBranch =
-      Name.equals_insensitive("jmp") || Name.equals_insensitive("call");
   if (Parser.isParsingMasm()) {
+    bool IsUnconditionalBranch =
+        Name.equals_insensitive("jmp") || Name.equals_insensitive("call");
     if (is64BitMode() && SM.getElementSize() > 0) {
       DefaultBaseReg = X86::RIP;
     }
@@ -2655,13 +2652,6 @@ bool X86AsmParser::parseIntelOperand(OperandVector &Operands, StringRef Name) {
         }
       }
     }
-  } else if (IsUnconditionalBranch) {
-    // Treat `call [offset fn_ref]` (or `jmp`) syntax as an error.
-    if (!PtrInOperand && SM.isOffsetOperator())
-      return Error(
-          Start, "`OFFSET` operator cannot be used in an unconditional branch");
-    if (PtrInOperand || SM.isBracketUsed())
-      MaybeDirectBranchDest = false;
   }
 
   if ((BaseReg || IndexReg || RegNo || DefaultBaseReg != X86::NoRegister))
@@ -3635,7 +3625,7 @@ bool X86AsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
 
 bool X86AsmParser::processInstruction(MCInst &Inst, const OperandVector &Ops) {
   if (ForcedVEXEncoding != VEXEncoding_VEX3 &&
-      X86::optimizeInstFromVEX3ToVEX2(Inst, MII.get(Inst.getOpcode())))
+      X86::optimizeInstFromVEX3ToVEX2(Inst))
     return true;
 
   if (X86::optimizeShiftRotateWithImmediateOne(Inst))

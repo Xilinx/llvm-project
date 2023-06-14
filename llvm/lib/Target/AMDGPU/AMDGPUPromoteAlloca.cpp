@@ -162,15 +162,7 @@ unsigned getMaxVGPRs(const TargetMachine &TM, const Function &F) {
     return 128;
 
   const GCNSubtarget &ST = TM.getSubtarget<GCNSubtarget>(F);
-  unsigned MaxVGPRs = ST.getMaxNumVGPRs(ST.getWavesPerEU(F).first);
-
-  // A non-entry function has only 32 caller preserved registers.
-  // Do not promote alloca which will force spilling unless we know the function
-  // will be inlined.
-  if (!F.hasFnAttribute(Attribute::AlwaysInline) &&
-      !AMDGPU::isEntryFunctionCC(F.getCallingConv()))
-    MaxVGPRs = std::min(MaxVGPRs, 32u);
-  return MaxVGPRs;
+  return ST.getMaxNumVGPRs(ST.getWavesPerEU(F).first);
 }
 
 } // end anonymous namespace

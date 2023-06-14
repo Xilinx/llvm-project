@@ -28,7 +28,7 @@
 // RUN: %{compile} | mlir-translate -mlir-to-llvmir | %{run}
 
 #SortedCOO = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed-nu", "singleton" ]
+  dimLevelType = [ "compressed-nu", "singleton" ]
 }>
 
 module {

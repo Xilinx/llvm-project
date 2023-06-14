@@ -125,10 +125,10 @@ func.func @shape_cast_1d3d(%arg0 : vector<6xf32>) -> vector<2x1x3xf32> {
 }
 
 transform.sequence failures(propagate) {
-^bb1(%module_op: !transform.any_op):
+^bb1(%module_op: !pdl.operation):
   %f = transform.structured.match ops{["func.func"]} in %module_op 
-    : (!transform.any_op) -> !transform.any_op
+    : (!pdl.operation) -> !pdl.operation
 
   %f2 = transform.vector.lower_shape_cast %f
-      : (!transform.any_op) -> !transform.any_op
+      : (!pdl.operation) -> !pdl.operation
 }

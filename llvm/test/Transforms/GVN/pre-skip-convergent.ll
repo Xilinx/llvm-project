@@ -30,4 +30,6 @@ merge:
   ret i32 %r0
 }
 
-declare i32 @llvm.convergent(i32) convergent nounwind readnone willreturn
+declare i32 @llvm.convergent(i32) #0
+
+attributes #0 = { convergent nounwind readnone }

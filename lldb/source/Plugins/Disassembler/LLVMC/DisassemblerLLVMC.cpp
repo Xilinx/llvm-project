@@ -1572,14 +1572,16 @@ DisassemblerLLVMC::DisassemblerLLVMC(const ArchSpec &arch,
 
 DisassemblerLLVMC::~DisassemblerLLVMC() = default;
 
-lldb::DisassemblerSP DisassemblerLLVMC::CreateInstance(const ArchSpec &arch,
-                                                       const char *flavor) {
+Disassembler *DisassemblerLLVMC::CreateInstance(const ArchSpec &arch,
+                                                const char *flavor) {
   if (arch.GetTriple().getArch() != llvm::Triple::UnknownArch) {
-    auto disasm_sp = std::make_shared<DisassemblerLLVMC>(arch, flavor);
-    if (disasm_sp && disasm_sp->IsValid())
-      return disasm_sp;
+    std::unique_ptr<DisassemblerLLVMC> disasm_up(
+        new DisassemblerLLVMC(arch, flavor));
+
+    if (disasm_up.get() && disasm_up->IsValid())
+      return disasm_up.release();
   }
-  return lldb::DisassemblerSP();
+  return nullptr;
 }
 
 size_t DisassemblerLLVMC::DecodeInstructions(const Address &base_addr,

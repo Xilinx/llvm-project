@@ -218,8 +218,6 @@ add_object_library(
     rand_util.cpp
   HDRS
     rand_util.h
-  DEPENDS
-    libc.src.__support.common
 )
 
 add_entrypoint_object(

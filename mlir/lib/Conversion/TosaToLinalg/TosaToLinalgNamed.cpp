@@ -36,7 +36,7 @@ static mlir::Value applyPad(Location loc, Value input, ArrayRef<int64_t> pad,
   if (llvm::all_of(pad, [](int64_t p) { return p == 0; }))
     return input;
 
-  ShapedType inputTy = cast<ShapedType>(input.getType());
+  ShapedType inputTy = input.getType().cast<ShapedType>();
   Type inputETy = inputTy.getElementType();
   auto inputShape = inputTy.getShape();
 
@@ -67,7 +67,7 @@ static mlir::Value
 linalgIntBroadcastExtSIAdd(PatternRewriter &rewriter, Location loc, Value bias,
                            Value conv, Value result,
                            ArrayRef<AffineMap> indexingMaps) {
-  ShapedType resultTy = cast<ShapedType>(conv.getType());
+  ShapedType resultTy = conv.getType().cast<ShapedType>();
   return rewriter
       .create<linalg::GenericOp>(
           loc, resultTy, ValueRange({bias, conv}), result, indexingMaps,
@@ -125,7 +125,7 @@ static SmallVector<Value> inferDynamicDimsForConv(
     ArrayRef<int64_t> padAttr, ArrayRef<int64_t> strideAttr,
     ArrayRef<int64_t> dilationAttr, ArrayRef<int64_t> inputSizeDims,
     ArrayRef<int64_t> kernelSizeDims, OpBuilder &rewriter) {
-  ShapedType inputTy = cast<ShapedType>(input.getType());
+  ShapedType inputTy = input.getType().cast<ShapedType>();
   Type inputETy = inputTy.getElementType();
   int64_t inputRank = inputTy.getRank();
 
@@ -187,10 +187,11 @@ public:
     Value weight = op->getOperand(1);
     Value bias = op->getOperand(2);
 
-    ShapedType inputTy = cast<ShapedType>(input.getType());
-    ShapedType weightTy = cast<ShapedType>(weight.getType());
-    ShapedType biasTy = cast<ShapedType>(bias.getType());
-    ShapedType resultTy = cast<ShapedType>(op->getResult(0).getType());
+    ShapedType inputTy = input.getType().template cast<ShapedType>();
+    ShapedType weightTy = weight.getType().template cast<ShapedType>();
+    ShapedType biasTy = bias.getType().template cast<ShapedType>();
+    ShapedType resultTy =
+        op->getResult(0).getType().template cast<ShapedType>();
 
     Type inputETy = inputTy.getElementType();
     Type resultETy = resultTy.getElementType();
@@ -352,18 +353,18 @@ public:
     Value weight = op->getOperand(1);
     Value bias = op->getOperand(2);
 
-    ShapedType inputTy = cast<ShapedType>(input.getType());
-    ShapedType weightTy = cast<ShapedType>(weight.getType());
-    ShapedType biasTy = cast<ShapedType>(bias.getType());
-    ShapedType resultTy = cast<ShapedType>(op->getResult(0).getType());
+    ShapedType inputTy = input.getType().cast<ShapedType>();
+    ShapedType weightTy = weight.getType().cast<ShapedType>();
+    ShapedType biasTy = bias.getType().cast<ShapedType>();
+    ShapedType resultTy = op->getResult(0).getType().cast<ShapedType>();
     int64_t resultRank = resultTy.getRank();
 
     Type inputETy = inputTy.getElementType();
     Type resultETy = resultTy.getElementType();
 
-    auto padAttr = cast<DenseI64ArrayAttr>(op->getAttr("pad"));
-    auto strideTosaAttr = cast<DenseI64ArrayAttr>(op->getAttr("stride"));
-    auto dilationTosaAttr = cast<DenseI64ArrayAttr>(op->getAttr("dilation"));
+    auto padAttr = op->getAttr("pad").cast<DenseI64ArrayAttr>();
+    auto strideTosaAttr = op->getAttr("stride").cast<DenseI64ArrayAttr>();
+    auto dilationTosaAttr = op->getAttr("dilation").cast<DenseI64ArrayAttr>();
 
     if (!weightTy.hasStaticShape() || !biasTy.hasStaticShape())
       return rewriter.notifyMatchFailure(
@@ -381,7 +382,7 @@ public:
     IntegerAttr kZp;
     if (isQuantized) {
       auto quantizationInfo =
-          cast<tosa::ConvOpQuantizationAttr>(op->getAttr("quantization_info"));
+          op->getAttr("quantization_info").cast<tosa::ConvOpQuantizationAttr>();
       iZp = rewriter.getI32IntegerAttr(quantizationInfo.getInputZp());
       kZp = rewriter.getI32IntegerAttr(quantizationInfo.getWeightZp());
     }
@@ -393,7 +394,7 @@ public:
     TypedAttr zeroAttr = rewriter.getZeroAttr(inputETy);
     if (isQuantized) {
       auto quantizationInfo =
-          cast<tosa::ConvOpQuantizationAttr>(op->getAttr("quantization_info"));
+          op->getAttr("quantization_info").cast<tosa::ConvOpQuantizationAttr>();
       int64_t iZp = quantizationInfo.getInputZp();
 
       int64_t intMin =
@@ -504,14 +505,14 @@ public:
                   ConversionPatternRewriter &rewriter) const final {
     Location loc = op.getLoc();
 
-    auto outputTy = cast<ShapedType>(op.getType());
+    auto outputTy = op.getType().cast<ShapedType>();
     auto outputElementTy = outputTy.getElementType();
 
-    auto firstOperandTy = cast<ShapedType>(op->getOperand(0).getType());
-    auto secondOperandTy = cast<ShapedType>(op->getOperand(1).getType());
+    auto firstOperandTy = op->getOperand(0).getType().cast<ShapedType>();
+    auto secondOperandTy = op->getOperand(1).getType().cast<ShapedType>();
 
     SmallVector<Value> dynDims;
-    dynDims.resize(cast<ShapedType>(op->getResult(0).getType()).getRank());
+    dynDims.resize(op->getResult(0).getType().cast<ShapedType>().getRank());
 
     if (!firstOperandTy.hasRank() || firstOperandTy.isDynamicDim(0)) {
       dynDims[0] = rewriter.create<tensor::DimOp>(loc, op->getOperand(0), 0);
@@ -563,20 +564,20 @@ public:
   matchAndRewrite(tosa::FullyConnectedOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const final {
     Location loc = op.getLoc();
-    auto outputTy = cast<ShapedType>(op.getType());
+    auto outputTy = op.getType().cast<ShapedType>();
     auto input = op.getInput();
-    auto inputTy = cast<ShapedType>(input.getType());
+    auto inputTy = input.getType().cast<ShapedType>();
 
     auto bias = op.getBias();
 
     auto weight = op.getWeight();
-    auto weightTy = cast<ShapedType>(weight.getType());
+    auto weightTy = weight.getType().cast<ShapedType>();
     auto weightShape = weightTy.getShape();
 
     auto outputETy = outputTy.getElementType();
 
     SmallVector<Value> dynDims;
-    dynDims.resize(cast<ShapedType>(op->getResult(0).getType()).getRank());
+    dynDims.resize(op->getResult(0).getType().cast<ShapedType>().getRank());
 
     if (!inputTy.hasRank() || inputTy.isDynamicDim(0)) {
       dynDims[0] = rewriter.create<tensor::DimOp>(loc, input, 0);
@@ -675,9 +676,9 @@ public:
                                 PatternRewriter &rewriter) const final {
     Location loc = op.getLoc();
     Value input = op.getInput();
-    ShapedType inputTy = cast<ShapedType>(input.getType());
+    ShapedType inputTy = input.getType().cast<ShapedType>();
 
-    ShapedType resultTy = cast<ShapedType>(op.getType());
+    ShapedType resultTy = op.getType().template cast<ShapedType>();
     Type resultETy = inputTy.getElementType();
 
     auto dynamicDimsOr =
@@ -690,10 +691,11 @@ public:
     TypedAttr initialAttr;
     if (resultETy.isF32())
       initialAttr = rewriter.getFloatAttr(
-          resultETy, APFloat::getLargest(
-                         cast<FloatType>(resultETy).getFloatSemantics(), true));
+          resultETy,
+          APFloat::getLargest(resultETy.cast<FloatType>().getFloatSemantics(),
+                              true));
 
-    if (isa<IntegerType>(resultETy))
+    if (resultETy.isa<IntegerType>())
       initialAttr = rewriter.getIntegerAttr(
           resultETy,
           APInt::getSignedMinValue(resultETy.getIntOrFloatBitWidth()));
@@ -745,13 +747,14 @@ public:
                                 PatternRewriter &rewriter) const final {
     Location loc = op.getLoc();
     Value input = op.getInput();
-    ShapedType inputTy = cast<ShapedType>(input.getType());
+    ShapedType inputTy = input.getType().cast<ShapedType>();
     Type inElementTy = inputTy.getElementType();
 
-    ShapedType resultTy = cast<ShapedType>(op.getType());
-    Type resultETy = cast<ShapedType>(op.getType()).getElementType();
+    ShapedType resultTy = op.getType().template cast<ShapedType>();
+    Type resultETy = op.getType().cast<ShapedType>().getElementType();
 
-    Type accETy = op.getAccType();
+    Type accETy =
+        inElementTy.isa<IntegerType>() ? rewriter.getI32Type() : inElementTy;
     ShapedType accTy = resultTy.clone(accETy);
 
     auto dynamicDimsOr =
@@ -766,9 +769,6 @@ public:
     llvm::append_range(pad, op.getPad());
     pad.resize(pad.size() + 2, 0);
     TypedAttr padAttr = rewriter.getZeroAttr(inElementTy);
-    // Unsupported element type
-    if (!padAttr)
-      return failure();
     Value paddedInput = applyPad(loc, input, pad, padAttr, rewriter);
 
     auto initialAttr = rewriter.getZeroAttr(accETy);
@@ -872,7 +872,7 @@ public:
           // a div however for quantized values input normalization had
           // to be applied.
           Value poolVal = args[0];
-          if (isa<FloatType>(accETy)) {
+          if (accETy.isa<FloatType>()) {
             auto countF = rewriter.create<arith::SIToFPOp>(loc, accETy, count);
             poolVal = rewriter.create<arith::DivFOp>(loc, poolVal, countF)
                           ->getResult(0);

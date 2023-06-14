@@ -1992,7 +1992,7 @@ public:
 
 private:
   PredefinedExpr(SourceLocation L, QualType FNTy, IdentKind IK,
-                 bool IsTransparent, StringLiteral *SL);
+                 StringLiteral *SL);
 
   explicit PredefinedExpr(EmptyShell Empty, bool HasFunctionName);
 
@@ -2007,12 +2007,8 @@ private:
 
 public:
   /// Create a PredefinedExpr.
-  ///
-  /// If IsTransparent, the PredefinedExpr is transparently handled as a
-  /// StringLiteral.
   static PredefinedExpr *Create(const ASTContext &Ctx, SourceLocation L,
-                                QualType FNTy, IdentKind IK, bool IsTransparent,
-                                StringLiteral *SL);
+                                QualType FNTy, IdentKind IK, StringLiteral *SL);
 
   /// Create an empty PredefinedExpr.
   static PredefinedExpr *CreateEmpty(const ASTContext &Ctx,
@@ -2021,8 +2017,6 @@ public:
   IdentKind getIdentKind() const {
     return static_cast<IdentKind>(PredefinedExprBits.Kind);
   }
-
-  bool isTransparent() const { return PredefinedExprBits.IsTransparent; }
 
   SourceLocation getLocation() const { return PredefinedExprBits.Loc; }
   void setLocation(SourceLocation L) { PredefinedExprBits.Loc = L; }
@@ -4691,22 +4685,14 @@ public:
 };
 
 /// Represents a function call to one of __builtin_LINE(), __builtin_COLUMN(),
-/// __builtin_FUNCTION(), __builtin_FUNCSIG(), __builtin_FILE(),
-/// __builtin_FILE_NAME() or __builtin_source_location().
+/// __builtin_FUNCTION(), __builtin_FILE(), __builtin_FILE_NAME(),
+/// or __builtin_source_location().
 class SourceLocExpr final : public Expr {
   SourceLocation BuiltinLoc, RParenLoc;
   DeclContext *ParentContext;
 
 public:
-  enum IdentKind {
-    Function,
-    FuncSig,
-    File,
-    FileName,
-    Line,
-    Column,
-    SourceLocStruct
-  };
+  enum IdentKind { Function, File, FileName, Line, Column, SourceLocStruct };
 
   SourceLocExpr(const ASTContext &Ctx, IdentKind Type, QualType ResultTy,
                 SourceLocation BLoc, SourceLocation RParenLoc,
@@ -4732,7 +4718,6 @@ public:
     case File:
     case FileName:
     case Function:
-    case FuncSig:
     case SourceLocStruct:
       return false;
     case Line:

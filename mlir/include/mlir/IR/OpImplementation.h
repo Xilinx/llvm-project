@@ -204,7 +204,7 @@ public:
     auto &os = getStream() << " -> ";
 
     bool wrapped = !llvm::hasSingleElement(types) ||
-                   llvm::isa<FunctionType>((*types.begin()));
+                   (*types.begin()).template isa<FunctionType>();
     if (wrapped)
       os << '(';
     llvm::interleaveComma(types, *this);
@@ -778,7 +778,7 @@ public:
     /// The parsed keyword itself.
     StringRef keyword;
 
-    /// The result of the switch statement or std::nullopt if currently unknown.
+    /// The result of the switch statement or none if currently unknown.
     std::optional<ResultT> result;
   };
 
@@ -865,7 +865,7 @@ public:
       return failure();
 
     // Check for the right kind of attribute.
-    if (!(result = llvm::dyn_cast<AttrType>(attr)))
+    if (!(result = attr.dyn_cast<AttrType>()))
       return emitError(loc, "invalid kind of attribute specified");
 
     return success();
@@ -899,7 +899,7 @@ public:
       return failure();
 
     // Check for the right kind of attribute.
-    result = llvm::dyn_cast<AttrType>(attr);
+    result = attr.dyn_cast<AttrType>();
     if (!result)
       return emitError(loc, "invalid kind of attribute specified");
 
@@ -936,7 +936,7 @@ public:
       return failure();
 
     // Check for the right kind of attribute.
-    result = llvm::dyn_cast<AttrType>(attr);
+    result = attr.dyn_cast<AttrType>();
     if (!result)
       return emitError(loc, "invalid kind of attribute specified");
 
@@ -970,7 +970,7 @@ public:
       return failure();
 
     // Check for the right kind of attribute.
-    result = llvm::dyn_cast<AttrType>(attr);
+    result = attr.dyn_cast<AttrType>();
     if (!result)
       return emitError(loc, "invalid kind of attribute specified");
     return success();
@@ -1126,7 +1126,7 @@ public:
       return failure();
 
     // Check for the right kind of type.
-    result = llvm::dyn_cast<TypeT>(type);
+    result = type.dyn_cast<TypeT>();
     if (!result)
       return emitError(loc, "invalid kind of type specified");
 
@@ -1158,7 +1158,7 @@ public:
       return failure();
 
     // Check for the right kind of Type.
-    result = llvm::dyn_cast<TypeT>(type);
+    result = type.dyn_cast<TypeT>();
     if (!result)
       return emitError(loc, "invalid kind of Type specified");
     return success();
@@ -1198,7 +1198,7 @@ public:
       return failure();
 
     // Check for the right kind of type.
-    result = llvm::dyn_cast<TypeType>(type);
+    result = type.dyn_cast<TypeType>();
     if (!result)
       return emitError(loc, "invalid kind of type specified");
 

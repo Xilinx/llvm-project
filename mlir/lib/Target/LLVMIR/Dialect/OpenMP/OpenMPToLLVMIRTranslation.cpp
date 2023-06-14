@@ -367,7 +367,7 @@ convertOmpCritical(Operation &opInst, llvm::IRBuilderBase &builder,
   if (criticalOp.getNameAttr()) {
     // The verifiers in OpenMP Dialect guarentee that all the pointers are
     // non-null
-    auto symbolRef = cast<SymbolRefAttr>(criticalOp.getNameAttr());
+    auto symbolRef = criticalOp.getNameAttr().cast<SymbolRefAttr>();
     auto criticalDeclareOp =
         SymbolTable::lookupNearestSymbolFrom<omp::CriticalDeclareOp>(criticalOp,
                                                                      symbolRef);
@@ -389,7 +389,7 @@ static omp::ReductionDeclareOp findReductionDecl(omp::WsLoopOp container,
   for (unsigned i = 0, e = container.getNumReductionVars(); i < e; ++i) {
     if (container.getReductionVars()[i] != reduction.getAccumulator())
       continue;
-    reductionSymbol = cast<SymbolRefAttr>((*container.getReductions())[i]);
+    reductionSymbol = (*container.getReductions())[i].cast<SymbolRefAttr>();
     break;
   }
   assert(reductionSymbol &&
@@ -694,11 +694,6 @@ convertOmpTaskOp(omp::TaskOp taskOp, llvm::IRBuilderBase &builder,
     return taskOp.emitError("unhandled clauses for translation to LLVM IR");
   }
   auto bodyCB = [&](InsertPointTy allocaIP, InsertPointTy codegenIP) {
-    // Save the alloca insertion point on ModuleTranslation stack for use in
-    // nested regions.
-    LLVM::ModuleTranslation::SaveStack<OpenMPAllocaStackFrame> frame(
-        moduleTranslation, allocaIP);
-
     builder.restoreIP(codegenIP);
     convertOmpOpRegions(taskOp.getRegion(), "omp.task.region", builder,
                         moduleTranslation, bodyGenStatus);
@@ -710,7 +705,7 @@ convertOmpTaskOp(omp::TaskOp taskOp, llvm::IRBuilderBase &builder,
          llvm::zip(taskOp.getDependVars(), taskOp.getDepends()->getValue())) {
       llvm::omp::RTLDependenceKindTy type;
       switch (
-          cast<mlir::omp::ClauseTaskDependAttr>(std::get<1>(dep)).getValue()) {
+          std::get<1>(dep).cast<mlir::omp::ClauseTaskDependAttr>().getValue()) {
       case mlir::omp::ClauseTaskDepend::taskdependin:
         type = llvm::omp::RTLDependenceKindTy::DepIn;
         break;
@@ -1384,7 +1379,7 @@ static LogicalResult processMapOperand(
     llvm::Value *mapOpPtr;
     llvm::Value *mapOpSize;
 
-    if (isa<LLVM::LLVMPointerType>(mapOp.getType())) {
+    if (mapOp.getType().isa<LLVM::LLVMPointerType>()) {
       mapOpPtrBase = mapOpValue;
       mapOpPtr = mapOpValue;
       mapOpSize = ompBuilder->getSizeInBytes(mapOpValue);
@@ -1415,7 +1410,7 @@ static LogicalResult processMapOperand(
         {builder.getInt32(0), builder.getInt32(index)});
     builder.CreateStore(mapOpSize, sizeGEP);
 
-    mapTypeFlags.push_back(dyn_cast<mlir::IntegerAttr>(mapTypeOp).getInt());
+    mapTypeFlags.push_back(mapTypeOp.dyn_cast<mlir::IntegerAttr>().getInt());
     llvm::Constant *mapName =
         mlir::LLVM::createMappingInformation(mapOp.getLoc(), *ompBuilder);
     mapNames.push_back(mapName);
@@ -1450,7 +1445,7 @@ convertOmpTargetData(Operation *op, llvm::IRBuilderBase &builder,
               if (auto constOp = mlir::dyn_cast<mlir::LLVM::ConstantOp>(
                       devId.getDefiningOp()))
                 if (auto intAttr =
-                        dyn_cast<mlir::IntegerAttr>(constOp.getValue()))
+                        constOp.getValue().dyn_cast<mlir::IntegerAttr>())
                   deviceID = intAttr.getInt();
 
             numMapOperands = dataOp.getMapOperands().size();
@@ -1469,7 +1464,7 @@ convertOmpTargetData(Operation *op, llvm::IRBuilderBase &builder,
               if (auto constOp = mlir::dyn_cast<mlir::LLVM::ConstantOp>(
                       devId.getDefiningOp()))
                 if (auto intAttr =
-                        dyn_cast<mlir::IntegerAttr>(constOp.getValue()))
+                        constOp.getValue().dyn_cast<mlir::IntegerAttr>())
                   deviceID = intAttr.getInt();
 
             numMapOperands = enterDataOp.getMapOperands().size();
@@ -1488,7 +1483,7 @@ convertOmpTargetData(Operation *op, llvm::IRBuilderBase &builder,
               if (auto constOp = mlir::dyn_cast<mlir::LLVM::ConstantOp>(
                       devId.getDefiningOp()))
                 if (auto intAttr =
-                        dyn_cast<mlir::IntegerAttr>(constOp.getValue()))
+                        constOp.getValue().dyn_cast<mlir::IntegerAttr>())
                   deviceID = intAttr.getInt();
 
             numMapOperands = exitDataOp.getMapOperands().size();
@@ -1578,8 +1573,7 @@ LogicalResult convertFlagsAttr(Operation *op, mlir::omp::FlagsAttr attribute,
           .getAssumeNoNestedParallelism() /*LangOpts().OpenMPNoNestedParallelism*/
       ,
       "__omp_rtl_assume_no_nested_parallelism");
-  ompBuilder->M.addModuleFlag(llvm::Module::Max, "openmp-device",
-                              attribute.getOpenmpDeviceVersion());
+
   return success();
 }
 
@@ -1634,6 +1628,15 @@ convertOmpTarget(Operation &opInst, llvm::IRBuilderBase &builder,
 
   if (!targetOpSupported(opInst))
     return failure();
+
+  bool isDevice = false;
+  if (auto offloadMod = dyn_cast<mlir::omp::OffloadModuleInterface>(
+          opInst.getParentOfType<mlir::ModuleOp>().getOperation())) {
+    isDevice = offloadMod.getIsDevice();
+  }
+
+  if (isDevice) // TODO: Implement device codegen.
+    return success();
 
   auto targetOp = cast<omp::TargetOp>(opInst);
   auto &targetRegion = targetOp.getRegion();
@@ -1706,13 +1709,6 @@ LogicalResult OpenMPDialectLLVMIRTranslationInterface::amendOperation(
   return llvm::TypeSwitch<Attribute, LogicalResult>(attribute.getValue())
       .Case([&](mlir::omp::FlagsAttr rtlAttr) {
         return convertFlagsAttr(op, rtlAttr, moduleTranslation);
-      })
-      .Case([&](mlir::omp::VersionAttr versionAttr) {
-        llvm::OpenMPIRBuilder *ompBuilder =
-            moduleTranslation.getOpenMPBuilder();
-        ompBuilder->M.addModuleFlag(llvm::Module::Max, "openmp",
-                                    versionAttr.getVersion());
-        return success();
       })
       .Default([&](Attribute attr) {
         // fall through for omp attributes that do not require lowering and/or

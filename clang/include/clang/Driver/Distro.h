@@ -77,7 +77,6 @@ public:
     UbuntuJammy,
     UbuntuKinetic,
     UbuntuLunar,
-    UbuntuMantic,
     UnknownDistro
   };
 
@@ -129,7 +128,7 @@ public:
   }
 
   bool IsUbuntu() const {
-    return DistroVal >= UbuntuHardy && DistroVal <= UbuntuMantic;
+    return DistroVal >= UbuntuHardy && DistroVal <= UbuntuLunar;
   }
 
   bool IsAlpineLinux() const { return DistroVal == AlpineLinux; }

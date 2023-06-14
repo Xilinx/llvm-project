@@ -5659,7 +5659,8 @@ void LSRInstance::RewriteForPHI(
       }
     }
 
-  formLCSSAForInstructions(InsertedNonLCSSAInsts, DT, LI);
+  IRBuilder<> Builder(L->getHeader()->getContext());
+  formLCSSAForInstructions(InsertedNonLCSSAInsts, DT, LI, Builder);
 }
 
 /// Emit instructions for the leading candidate expression for this LSRUse (this

@@ -1385,20 +1385,11 @@ void TypePrinter::printTag(TagDecl *D, raw_ostream &OS) {
       if (PLoc.isValid()) {
         OS << " at ";
         StringRef File = PLoc.getFilename();
-        llvm::SmallString<1024> WrittenFile(File);
         if (auto *Callbacks = Policy.Callbacks)
-          WrittenFile = Callbacks->remapPath(File);
-        // Fix inconsistent path separator created by
-        // clang::DirectoryLookup::LookupFile when the file path is relative
-        // path.
-        llvm::sys::path::Style Style =
-            llvm::sys::path::is_absolute(WrittenFile)
-                ? llvm::sys::path::Style::native
-                : (Policy.MSVCFormatting
-                       ? llvm::sys::path::Style::windows_backslash
-                       : llvm::sys::path::Style::posix);
-        llvm::sys::path::native(WrittenFile, Style);
-        OS << WrittenFile << ':' << PLoc.getLine() << ':' << PLoc.getColumn();
+          OS << Callbacks->remapPath(File);
+        else
+          OS << File;
+        OS << ':' << PLoc.getLine() << ':' << PLoc.getColumn();
       }
     }
 
@@ -1854,7 +1845,7 @@ void TypePrinter::printAttributedAfter(const AttributedType *T,
 void TypePrinter::printBTFTagAttributedBefore(const BTFTagAttributedType *T,
                                               raw_ostream &OS) {
   printBefore(T->getWrappedType(), OS);
-  OS << " __attribute__((btf_type_tag(\"" << T->getAttr()->getBTFTypeTag() << "\")))";
+  OS << " btf_type_tag(" << T->getAttr()->getBTFTypeTag() << ")";
 }
 
 void TypePrinter::printBTFTagAttributedAfter(const BTFTagAttributedType *T,

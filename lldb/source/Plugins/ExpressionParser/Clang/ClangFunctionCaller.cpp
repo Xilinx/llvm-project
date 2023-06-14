@@ -207,8 +207,6 @@ ClangFunctionCaller::CompileFunction(lldb::ThreadSP thread_to_use_sp,
   return num_errors;
 }
 
-char ClangFunctionCaller::ClangFunctionCallerHelper::ID;
-
 clang::ASTConsumer *
 ClangFunctionCaller::ClangFunctionCallerHelper::ASTTransformer(
     clang::ASTConsumer *passthrough) {

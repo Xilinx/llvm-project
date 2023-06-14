@@ -224,15 +224,6 @@ void DiscardOutput(int Fd) {
   fclose(Temp);
 }
 
-size_t PageSize() {
-  static size_t PageSizeCached = []() -> size_t {
-    SYSTEM_INFO si;
-    GetSystemInfo(&si);
-    return si.dwPageSize;
-  }();
-  return PageSizeCached;
-}
-
 } // namespace fuzzer
 
 #endif // LIBFUZZER_WINDOWS

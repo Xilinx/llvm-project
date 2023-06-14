@@ -15,7 +15,6 @@
 #ifndef MLIR_DIALECT_SPIRV_IR_STRUCTURE_OPS
 #define MLIR_DIALECT_SPIRV_IR_STRUCTURE_OPS
 
-include "mlir/Dialect/SPIRV/IR/SPIRVAttributes.td"
 include "mlir/Dialect/SPIRV/IR/SPIRVBase.td"
 include "mlir/IR/BuiltinAttributeInterfaces.td"
 include "mlir/IR/FunctionInterfaces.td"
@@ -295,8 +294,7 @@ def SPIRV_FuncOp : SPIRV_Op<"func", [
     OptionalAttr<DictArrayAttr>:$arg_attrs,
     OptionalAttr<DictArrayAttr>:$res_attrs,
     StrAttr:$sym_name,
-    SPIRV_FunctionControlAttr:$function_control,
-    OptionalAttr<SPIRV_LinkageAttributesAttr>:$linkage_attributes
+    SPIRV_FunctionControlAttr:$function_control
   );
 
   let results = (outs);
@@ -387,8 +385,7 @@ def SPIRV_GlobalVariableOp : SPIRV_Op<"GlobalVariable", [InModuleScope, Symbol]>
     OptionalAttr<I32Attr>:$location,
     OptionalAttr<I32Attr>:$binding,
     OptionalAttr<I32Attr>:$descriptor_set,
-    OptionalAttr<StrAttr>:$builtin,
-    OptionalAttr<SPIRV_LinkageAttributesAttr>:$linkage_attributes
+    OptionalAttr<StrAttr>:$builtin
   );
 
   let results = (outs);
@@ -429,7 +426,7 @@ def SPIRV_GlobalVariableOp : SPIRV_Op<"GlobalVariable", [InModuleScope, Symbol]>
 
   let extraClassDeclaration = [{
     ::mlir::spirv::StorageClass storageClass() {
-      return ::llvm::cast<::mlir::spirv::PointerType>(this->getType()).getStorageClass();
+      return this->getType().cast<::mlir::spirv::PointerType>().getStorageClass();
     }
   }];
 }

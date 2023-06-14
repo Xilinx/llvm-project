@@ -57,10 +57,11 @@ SBProcessInfo::operator bool() const {
 const char *SBProcessInfo::GetName() {
   LLDB_INSTRUMENT_VA(this);
 
-  if (!m_opaque_up)
-    return nullptr;
-
-  return ConstString(m_opaque_up->GetName()).GetCString();
+  const char *name = nullptr;
+  if (m_opaque_up) {
+    name = m_opaque_up->GetName();
+  }
+  return name;
 }
 
 SBFileSpec SBProcessInfo::GetExecutableFile() {
@@ -176,12 +177,14 @@ lldb::pid_t SBProcessInfo::GetParentProcessID() {
 const char *SBProcessInfo::GetTriple() {
   LLDB_INSTRUMENT_VA(this);
 
-  if (!m_opaque_up)
-    return nullptr;
-
-  const auto &arch = m_opaque_up->GetArchitecture();
-  if (!arch.IsValid())
-    return nullptr;
-
-  return ConstString(arch.GetTriple().getTriple().c_str()).GetCString();
+  const char *triple = nullptr;
+  if (m_opaque_up) {
+    const auto &arch = m_opaque_up->GetArchitecture();
+    if (arch.IsValid()) {
+      // Const-ify the string so we don't need to worry about the lifetime of
+      // the string
+      triple = ConstString(arch.GetTriple().getTriple().c_str()).GetCString();
+    }
+  }
+  return triple;
 }

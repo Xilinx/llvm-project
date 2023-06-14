@@ -52,7 +52,6 @@ def SPIRV_Dialect : Dialect {
   let hasOperationAttrVerify = 1;
   let hasRegionArgAttrVerify = 1;
   let hasRegionResultAttrVerify = 1;
-  let usePropertiesForAttributes = 1;
 
   let extraClassDeclaration = [{
     void registerAttributes();
@@ -4046,7 +4045,7 @@ def SPIRV_MatrixLayoutAttr  :
 
 def SPIRV_VerCapExtAttr : DialectAttr<
     SPIRV_Dialect,
-    CPred<"::llvm::isa<::mlir::spirv::VerCapExtAttr>($_self)">,
+    CPred<"$_self.isa<::mlir::spirv::VerCapExtAttr>()">,
     "version-capability-extension attribute"> {
   let storageType = "::mlir::spirv::VerCapExtAttr";
   let returnType = "::mlir::spirv::VerCapExtAttr";
@@ -4068,17 +4067,17 @@ class SignlessOrUnsignedIntOfWidths<list<int> widths> :
     AnyTypeOf<!foreach(w, widths, IOrUI<w>),
               !interleave(widths, "/") # "-bit signless/unsigned integer">;
 
-def SPIRV_IsArrayType : CPred<"::llvm::isa<::mlir::spirv::ArrayType>($_self)">;
+def SPIRV_IsArrayType : CPred<"$_self.isa<::mlir::spirv::ArrayType>()">;
 def SPIRV_IsCooperativeMatrixType :
-  CPred<"::llvm::isa<::mlir::spirv::CooperativeMatrixNVType>($_self)">;
-def SPIRV_IsImageType : CPred<"::llvm::isa<::mlir::spirv::ImageType>($_self)">;
+  CPred<"$_self.isa<::mlir::spirv::CooperativeMatrixNVType>()">;
+def SPIRV_IsImageType : CPred<"$_self.isa<::mlir::spirv::ImageType>()">;
 def SPIRV_IsJointMatrixType :
-  CPred<"::llvm::isa<::mlir::spirv::JointMatrixINTELType>($_self)">;
-def SPIRV_IsMatrixType : CPred<"::llvm::isa<::mlir::spirv::MatrixType>($_self)">;
-def SPIRV_IsPtrType : CPred<"::llvm::isa<::mlir::spirv::PointerType>($_self)">;
-def SPIRV_IsRTArrayType : CPred<"::llvm::isa<::mlir::spirv::RuntimeArrayType>($_self)">;
-def SPIRV_IsSampledImageType : CPred<"::llvm::isa<::mlir::spirv::SampledImageType>($_self)">;
-def SPIRV_IsStructType : CPred<"::llvm::isa<::mlir::spirv::StructType>($_self)">;
+  CPred<"$_self.isa<::mlir::spirv::JointMatrixINTELType>()">;
+def SPIRV_IsMatrixType : CPred<"$_self.isa<::mlir::spirv::MatrixType>()">;
+def SPIRV_IsPtrType : CPred<"$_self.isa<::mlir::spirv::PointerType>()">;
+def SPIRV_IsRTArrayType : CPred<"$_self.isa<::mlir::spirv::RuntimeArrayType>()">;
+def SPIRV_IsSampledImageType : CPred<"$_self.isa<::mlir::spirv::SampledImageType>()">;
+def SPIRV_IsStructType : CPred<"$_self.isa<::mlir::spirv::StructType>()">;
 
 
 // See https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#_types
@@ -4134,12 +4133,12 @@ def SPIRV_SignlessOrUnsignedInt : SignlessOrUnsignedIntOfWidths<[8, 16, 32, 64]>
 
 class SPIRV_CoopMatrixOfType<list<Type> allowedTypes> :
   ContainerType<AnyTypeOf<allowedTypes>, SPIRV_IsCooperativeMatrixType,
-    "::llvm::cast<::mlir::spirv::CooperativeMatrixNVType>($_self).getElementType()",
+    "$_self.cast<::mlir::spirv::CooperativeMatrixNVType>().getElementType()",
     "Cooperative Matrix">;
 
 class SPIRV_JointMatrixOfType<list<Type> allowedTypes> :
   ContainerType<AnyTypeOf<allowedTypes>, SPIRV_IsJointMatrixType,
-    "::llvm::cast<::mlir::spirv::JointMatrixINTELType>($_self).getElementType()",
+    "$_self.cast<::mlir::spirv::JointMatrixINTELType>().getElementType()",
     "Joint Matrix">;
 
 class SPIRV_ScalarOrVectorOf<Type type> :
@@ -4267,8 +4266,6 @@ def SPIRV_OC_OpConvertUToF                : I32EnumAttrCase<"OpConvertUToF", 112
 def SPIRV_OC_OpUConvert                   : I32EnumAttrCase<"OpUConvert", 113>;
 def SPIRV_OC_OpSConvert                   : I32EnumAttrCase<"OpSConvert", 114>;
 def SPIRV_OC_OpFConvert                   : I32EnumAttrCase<"OpFConvert", 115>;
-def SPIRV_OC_OpConvertPtrToU              : I32EnumAttrCase<"OpConvertPtrToU", 117>;
-def SPIRV_OC_OpConvertUToPtr              : I32EnumAttrCase<"OpConvertUToPtr", 120>;
 def SPIRV_OC_OpPtrCastToGeneric           : I32EnumAttrCase<"OpPtrCastToGeneric", 121>;
 def SPIRV_OC_OpGenericCastToPtr           : I32EnumAttrCase<"OpGenericCastToPtr", 122>;
 def SPIRV_OC_OpGenericCastToPtrExplicit   : I32EnumAttrCase<"OpGenericCastToPtrExplicit", 123>;
@@ -4449,7 +4446,6 @@ def SPIRV_OpcodeAttr :
       SPIRV_OC_OpImage, SPIRV_OC_OpImageQuerySize, SPIRV_OC_OpConvertFToU,
       SPIRV_OC_OpConvertFToS, SPIRV_OC_OpConvertSToF, SPIRV_OC_OpConvertUToF,
       SPIRV_OC_OpUConvert, SPIRV_OC_OpSConvert, SPIRV_OC_OpFConvert,
-      SPIRV_OC_OpConvertPtrToU, SPIRV_OC_OpConvertUToPtr,
       SPIRV_OC_OpPtrCastToGeneric, SPIRV_OC_OpGenericCastToPtr,
       SPIRV_OC_OpGenericCastToPtrExplicit, SPIRV_OC_OpBitcast, SPIRV_OC_OpSNegate,
       SPIRV_OC_OpFNegate, SPIRV_OC_OpIAdd, SPIRV_OC_OpFAdd, SPIRV_OC_OpISub,

@@ -75,7 +75,7 @@ LogicalResult
 VecOpToScalarOp<Op>::matchAndRewrite(Op op, PatternRewriter &rewriter) const {
   auto opType = op.getType();
   auto loc = op.getLoc();
-  auto vecType = dyn_cast<VectorType>(opType);
+  auto vecType = opType.template dyn_cast<VectorType>();
 
   if (!vecType)
     return failure();
@@ -107,7 +107,7 @@ template <typename Op>
 LogicalResult
 PromoteOpToF32<Op>::matchAndRewrite(Op op, PatternRewriter &rewriter) const {
   auto opType = op.getType();
-  if (!isa<Float16Type, BFloat16Type>(opType))
+  if (!opType.template isa<Float16Type, BFloat16Type>())
     return failure();
 
   auto loc = op.getLoc();
@@ -127,7 +127,7 @@ ScalarOpToLibmCall<Op>::matchAndRewrite(Op op,
                                         PatternRewriter &rewriter) const {
   auto module = SymbolTable::getNearestSymbolTable(op);
   auto type = op.getType();
-  if (!isa<Float32Type, Float64Type>(type))
+  if (!type.template isa<Float32Type, Float64Type>())
     return failure();
 
   auto name = type.getIntOrFloatBitWidth() == 64 ? doubleFunc : floatFunc;

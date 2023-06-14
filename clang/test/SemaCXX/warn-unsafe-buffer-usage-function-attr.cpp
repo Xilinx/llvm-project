@@ -1,5 +1,4 @@
-// RUN: %clang_cc1 -std=c++20 -Wunsafe-buffer-usage \
-// RUN:            -fsafe-buffer-usage-suggestions -verify %s
+// RUN: %clang_cc1 -std=c++20 -Wunsafe-buffer-usage -verify %s
 
 [[clang::unsafe_buffer_usage]]
 void deprecatedFunction3();

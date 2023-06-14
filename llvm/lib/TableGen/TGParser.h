@@ -77,66 +77,55 @@ namespace llvm {
     SmallVector<Init *, 16> Elements;
   };
 
-  struct MultiClass {
-    Record Rec; // Placeholder for template args and Name.
-    std::vector<RecordsEntry> Entries;
+class TGLocalVarScope {
+  // A scope to hold local variable definitions from defvar.
+  std::map<std::string, Init *, std::less<>> vars;
+  std::unique_ptr<TGLocalVarScope> parent;
 
-    void dump() const;
+public:
+  TGLocalVarScope() = default;
+  TGLocalVarScope(std::unique_ptr<TGLocalVarScope> parent)
+      : parent(std::move(parent)) {}
 
-    MultiClass(StringRef Name, SMLoc Loc, RecordKeeper &Records)
-        : Rec(Name, Loc, Records) {}
-  };
+  std::unique_ptr<TGLocalVarScope> extractParent() {
+    // This is expected to be called just before we are destructed, so
+    // it doesn't much matter what state we leave 'parent' in.
+    return std::move(parent);
+  }
 
-  class TGVarScope {
-  public:
-    enum ScopeKind { SK_Local, SK_Record, SK_ForeachLoop, SK_MultiClass };
+  Init *getVar(StringRef Name) const {
+    auto It = vars.find(Name);
+    if (It != vars.end())
+      return It->second;
+    if (parent)
+      return parent->getVar(Name);
+    return nullptr;
+  }
 
-  private:
-    ScopeKind Kind;
-    std::unique_ptr<TGVarScope> Parent;
-    // A scope to hold variable definitions from defvar.
-    std::map<std::string, Init *, std::less<>> Vars;
-    Record *CurRec = nullptr;
-    ForeachLoop *CurLoop = nullptr;
-    MultiClass *CurMultiClass = nullptr;
+  bool varAlreadyDefined(StringRef Name) const {
+    // When we check whether a variable is already defined, for the purpose of
+    // reporting an error on redefinition, we don't look up to the parent
+    // scope, because it's all right to shadow an outer definition with an
+    // inner one.
+    return vars.find(Name) != vars.end();
+  }
 
-  public:
-    TGVarScope(std::unique_ptr<TGVarScope> Parent)
-        : Kind(SK_Local), Parent(std::move(Parent)) {}
-    TGVarScope(std::unique_ptr<TGVarScope> Parent, Record *Rec)
-        : Kind(SK_Record), Parent(std::move(Parent)), CurRec(Rec) {}
-    TGVarScope(std::unique_ptr<TGVarScope> Parent, ForeachLoop *Loop)
-        : Kind(SK_ForeachLoop), Parent(std::move(Parent)), CurLoop(Loop) {}
-    TGVarScope(std::unique_ptr<TGVarScope> Parent, MultiClass *Multiclass)
-        : Kind(SK_MultiClass), Parent(std::move(Parent)),
-          CurMultiClass(Multiclass) {}
+  void addVar(StringRef Name, Init *I) {
+    bool Ins = vars.insert(std::make_pair(std::string(Name), I)).second;
+    (void)Ins;
+    assert(Ins && "Local variable already exists");
+  }
+};
 
-    std::unique_ptr<TGVarScope> extractParent() {
-      // This is expected to be called just before we are destructed, so
-      // it doesn't much matter what state we leave 'parent' in.
-      return std::move(Parent);
-    }
+struct MultiClass {
+  Record Rec;  // Placeholder for template args and Name.
+  std::vector<RecordsEntry> Entries;
 
-    Init *getVar(RecordKeeper &Records, MultiClass *ParsingMultiClass,
-                 StringInit *Name, SMRange NameLoc,
-                 bool TrackReferenceLocs) const;
+  void dump() const;
 
-    bool varAlreadyDefined(StringRef Name) const {
-      // When we check whether a variable is already defined, for the purpose of
-      // reporting an error on redefinition, we don't look up to the parent
-      // scope, because it's all right to shadow an outer definition with an
-      // inner one.
-      return Vars.find(Name) != Vars.end();
-    }
-
-    void addVar(StringRef Name, Init *I) {
-      bool Ins = Vars.insert(std::make_pair(std::string(Name), I)).second;
-      (void)Ins;
-      assert(Ins && "Local variable already exists");
-    }
-
-    bool isOutermost() const { return Parent == nullptr; }
-  };
+  MultiClass(StringRef Name, SMLoc Loc, RecordKeeper &Records) :
+    Rec(Name, Loc, Records) {}
+};
 
 class TGParser {
   TGLexer Lex;
@@ -153,8 +142,9 @@ class TGParser {
   /// current value.
   MultiClass *CurMultiClass;
 
-  /// CurScope - Innermost of the current nested scopes for 'defvar' variables.
-  std::unique_ptr<TGVarScope> CurScope;
+  /// CurLocalScope - Innermost of the current nested scopes for 'defvar' local
+  /// variables.
+  std::unique_ptr<TGLocalVarScope> CurLocalScope;
 
   // Record tracker
   RecordKeeper &Records;
@@ -196,29 +186,17 @@ public:
     return Lex.getDependencies();
   }
 
-  TGVarScope *PushScope() {
-    CurScope = std::make_unique<TGVarScope>(std::move(CurScope));
+  TGLocalVarScope *PushLocalScope() {
+    CurLocalScope = std::make_unique<TGLocalVarScope>(std::move(CurLocalScope));
     // Returns a pointer to the new scope, so that the caller can pass it back
-    // to PopScope which will check by assertion that the pushes and pops
+    // to PopLocalScope which will check by assertion that the pushes and pops
     // match up properly.
-    return CurScope.get();
+    return CurLocalScope.get();
   }
-  TGVarScope *PushScope(Record *Rec) {
-    CurScope = std::make_unique<TGVarScope>(std::move(CurScope), Rec);
-    return CurScope.get();
-  }
-  TGVarScope *PushScope(ForeachLoop *Loop) {
-    CurScope = std::make_unique<TGVarScope>(std::move(CurScope), Loop);
-    return CurScope.get();
-  }
-  TGVarScope *PushScope(MultiClass *Multiclass) {
-    CurScope = std::make_unique<TGVarScope>(std::move(CurScope), Multiclass);
-    return CurScope.get();
-  }
-  void PopScope(TGVarScope *ExpectedStackTop) {
-    assert(ExpectedStackTop == CurScope.get() &&
+  void PopLocalScope(TGLocalVarScope *ExpectedStackTop) {
+    assert(ExpectedStackTop == CurLocalScope.get() &&
            "Mismatched pushes and pops of local variable scopes");
-    CurScope = CurScope->extractParent();
+    CurLocalScope = CurLocalScope->extractParent();
   }
 
 private: // Semantic analysis methods.

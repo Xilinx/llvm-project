@@ -159,11 +159,9 @@ static void handleHVXTargetFeatures(const Driver &D, const ArgList &Args,
 }
 
 // Hexagon target features.
-void hexagon::getHexagonTargetFeatures(const Driver &D,
-                                       const llvm::Triple &Triple,
-                                       const ArgList &Args,
+void hexagon::getHexagonTargetFeatures(const Driver &D, const ArgList &Args,
                                        std::vector<StringRef> &Features) {
-  handleTargetFeaturesGroup(D, Triple, Args, Features,
+  handleTargetFeaturesGroup(Args, Features,
                             options::OPT_m_hexagon_Features_Group);
 
   bool UseLongCalls = false;

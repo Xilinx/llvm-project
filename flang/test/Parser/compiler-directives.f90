@@ -2,12 +2,6 @@
 
 ! Test that compiler directives can appear in various places.
 
-#define PROC(KIND) \
-  interface; integer(KIND) function foo(a); \
-    integer(KIND), intent(in) :: a; \
-    !dir$ ignore_tkr a; \
-  end; end interface
-
 !dir$ integer
 module m
   !dir$ integer
@@ -17,7 +11,6 @@ module m
   !dir$ integer
   !dir$ integer=64
   !dir$ integer = 64
-  PROC(4)
   !dir$ optimize:1
   !dir$ optimize : 1
   !dir$ loop count (10000)

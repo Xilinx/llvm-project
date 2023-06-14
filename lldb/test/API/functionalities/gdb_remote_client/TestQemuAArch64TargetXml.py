@@ -4,13 +4,10 @@ from lldbsuite.test.gdbclientutils import *
 from textwrap import dedent
 from lldbsuite.test.lldbgdbclient import GDBRemoteTestBase
 
-
 class MyResponder(MockGDBServerResponder):
     def qXferRead(self, obj, annex, offset, length):
         if annex == "target.xml":
-            return (
-                dedent(
-                    """\
+            return dedent("""\
                 <?xml version="1.0"?>
                   <target version="1.0">
                     <architecture>aarch64</architecture>
@@ -50,15 +47,12 @@ class MyResponder(MockGDBServerResponder):
                       <reg name="pc" bitsize="64"/>
                     </feature>
                   </target>
-                """
-                ),
-                False,
-            )
+                """), False
         else:
             return None, False
 
-
 class TestQemuAarch64TargetXml(GDBRemoteTestBase):
+
     @skipIfXmlSupportMissing
     @skipIfRemote
     @skipIfLLVMTargetMissing("AArch64")
@@ -72,11 +66,9 @@ class TestQemuAarch64TargetXml(GDBRemoteTestBase):
         self.server.responder = MyResponder()
 
         process = self.connect(target)
-        lldbutil.expect_state_changes(
-            self, self.dbg.GetListener(), process, [lldb.eStateStopped]
-        )
-        self.filecheck("image show-unwind -n foo", __file__, "--check-prefix=UNWIND")
-
-
+        lldbutil.expect_state_changes(self, self.dbg.GetListener(), process,
+                [lldb.eStateStopped])
+        self.filecheck("image show-unwind -n foo", __file__,
+            "--check-prefix=UNWIND")
 # UNWIND: eh_frame UnwindPlan:
 # UNWIND: row[0]:    0: CFA=x29+16 => x30=[CFA-8]

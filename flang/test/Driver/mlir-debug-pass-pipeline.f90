@@ -25,8 +25,6 @@ end program
 ! ALL: Pass statistics report
 
 ! ALL: Fortran::lower::VerifierPass
-! ALL-NEXT: 'func.func' Pipeline
-! ALL-NEXT:   InlineElementals
 ! ALL-NEXT: LowerHLFIROrderedAssignments
 ! ALL-NEXT: LowerHLFIRIntrinsics
 ! ALL-NEXT: BufferizeHLFIR

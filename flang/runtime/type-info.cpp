@@ -112,7 +112,7 @@ void Component::EstablishDescriptor(Descriptor &descriptor,
   } else {
     descriptor.Establish(cat, kind_, nullptr, rank_, nullptr, attribute);
   }
-  if (rank_ && genre_ != Genre::Allocatable && genre_ != Genre::Pointer) {
+  if (rank_ && genre_ != Genre::Allocatable) {
     const typeInfo::Value *boundValues{bounds()};
     RUNTIME_CHECK(terminator, boundValues != nullptr);
     auto byteStride{static_cast<SubscriptValue>(descriptor.ElementBytes())};

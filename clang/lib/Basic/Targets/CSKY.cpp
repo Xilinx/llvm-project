@@ -33,6 +33,7 @@ bool CSKYTargetInfo::setCPU(const std::string &Name) {
 
 void CSKYTargetInfo::getTargetDefines(const LangOptions &Opts,
                                       MacroBuilder &Builder) const {
+  Builder.defineMacro("__ELF__");
   Builder.defineMacro("__csky__", "2");
   Builder.defineMacro("__CSKY__", "2");
   Builder.defineMacro("__ckcore__", "2");
@@ -51,10 +52,8 @@ void CSKYTargetInfo::getTargetDefines(const LangOptions &Opts,
 
   Builder.defineMacro("__" + ArchName.upper() + "__");
   Builder.defineMacro("__" + ArchName.lower() + "__");
-  if (ArchName != CPUName) {
-    Builder.defineMacro("__" + CPUName.upper() + "__");
-    Builder.defineMacro("__" + CPUName.lower() + "__");
-  }
+  Builder.defineMacro("__" + CPUName.upper() + "__");
+  Builder.defineMacro("__" + CPUName.lower() + "__");
 
   // TODO: Add support for BE if BE was supported later
   StringRef endian = "__cskyLE__";

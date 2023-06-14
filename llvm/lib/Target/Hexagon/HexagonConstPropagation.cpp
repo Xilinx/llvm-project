@@ -357,6 +357,7 @@ namespace {
 
     bool getCell(const RegisterSubReg &R, const CellMap &Inputs, LatticeCell &RC);
     bool constToInt(const Constant *C, APInt &Val) const;
+    bool constToFloat(const Constant *C, APFloat &Val) const;
     const ConstantInt *intToConst(const APInt &Val) const;
 
     // Compares.

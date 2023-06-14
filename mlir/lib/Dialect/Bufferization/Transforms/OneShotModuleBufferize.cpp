@@ -109,9 +109,9 @@ static void annotateEquivalentReturnBbArg(OpOperand &returnVal,
 
   SmallVector<int64_t> equivBbArgs;
   if (op->hasAttr(kEquivalentArgsAttr)) {
-    auto attr = cast<ArrayAttr>(op->getAttr(kEquivalentArgsAttr));
+    auto attr = op->getAttr(kEquivalentArgsAttr).cast<ArrayAttr>();
     equivBbArgs = llvm::to_vector<4>(llvm::map_range(attr, [](Attribute a) {
-      return cast<IntegerAttr>(a).getValue().getSExtValue();
+      return a.cast<IntegerAttr>().getValue().getSExtValue();
     }));
   } else {
     equivBbArgs.append(op->getNumOperands(), -1);
@@ -132,10 +132,10 @@ aliasingFuncOpBBArgsAnalysis(FuncOp funcOp, OneShotAnalysisState &state,
     // return value may alias with any tensor bbArg.
     FunctionType type = funcOp.getFunctionType();
     for (const auto &inputIt : llvm::enumerate(type.getInputs())) {
-      if (!isa<TensorType>(inputIt.value()))
+      if (!inputIt.value().isa<TensorType>())
         continue;
       for (const auto &resultIt : llvm::enumerate(type.getResults())) {
-        if (!isa<TensorType>(resultIt.value()))
+        if (!resultIt.value().isa<TensorType>())
           continue;
         int64_t returnIdx = resultIt.index();
         int64_t bbArgIdx = inputIt.index();
@@ -150,9 +150,9 @@ aliasingFuncOpBBArgsAnalysis(FuncOp funcOp, OneShotAnalysisState &state,
   assert(returnOp && "expected func with single return op");
 
   for (OpOperand &returnVal : returnOp->getOpOperands())
-    if (isa<RankedTensorType>(returnVal.get().getType()))
+    if (returnVal.get().getType().isa<RankedTensorType>())
       for (BlockArgument bbArg : funcOp.getArguments())
-        if (isa<RankedTensorType>(bbArg.getType())) {
+        if (bbArg.getType().isa<RankedTensorType>()) {
           int64_t returnIdx = returnVal.getOperandNumber();
           int64_t bbArgIdx = bbArg.getArgNumber();
           if (state.areEquivalentBufferizedValues(returnVal.get(), bbArg)) {
@@ -193,7 +193,7 @@ funcOpBbArgReadWriteAnalysis(FuncOp funcOp, OneShotAnalysisState &state,
   for (int64_t idx = 0, e = funcOp.getFunctionType().getNumInputs(); idx < e;
        ++idx) {
     // Skip non-tensor arguments.
-    if (!isa<TensorType>(funcOp.getFunctionType().getInput(idx)))
+    if (!funcOp.getFunctionType().getInput(idx).isa<TensorType>())
       continue;
     bool isRead;
     bool isWritten;
@@ -238,7 +238,7 @@ static void removeBufferizationAttributes(BlockArgument bbArg) {
 
 /// Return the func::FuncOp called by `callOp`.
 static func::FuncOp getCalledFunction(func::CallOp callOp) {
-  SymbolRefAttr sym = llvm::dyn_cast_if_present<SymbolRefAttr>(callOp.getCallableForCallee());
+  SymbolRefAttr sym = callOp.getCallableForCallee().dyn_cast<SymbolRefAttr>();
   if (!sym)
     return nullptr;
   return dyn_cast_or_null<func::FuncOp>(

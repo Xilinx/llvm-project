@@ -11,9 +11,7 @@ from lldbsuite.test.lldbpexpect import PExpectTest
 
 
 class BreakpointCallbackCommandSource(PExpectTest):
-    file_to_source = os.path.join(
-        os.path.abspath(os.path.dirname(__file__)), "source.lldb"
-    )
+    file_to_source = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'source.lldb')
 
     # PExpect uses many timeouts internally and doesn't play well
     # under ASAN on a loaded machine..
@@ -29,10 +27,8 @@ class BreakpointCallbackCommandSource(PExpectTest):
         self.expect("b main", substrs=["Breakpoint 1"])
         self.child.send("breakpoint command add -s python\n")
         self.child.send(
-            "frame.GetThread().GetProcess().GetTarget().GetDebugger().HandleCommand('command source -s true {}')\n".format(
-                self.file_to_source
-            )
-        )
+            "frame.GetThread().GetProcess().GetTarget().GetDebugger().HandleCommand('command source -s true {}')\n"
+            .format(self.file_to_source))
         self.child.send("DONE\n")
         self.expect_prompt()
         self.expect("run", substrs=["Process", "stopped"])

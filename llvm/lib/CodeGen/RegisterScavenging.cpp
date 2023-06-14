@@ -272,18 +272,9 @@ BitVector RegScavenger::getRegsAvailable(const TargetRegisterClass *RC) {
 
 Register RegScavenger::findSurvivorReg(MachineBasicBlock::iterator StartMI,
                                        BitVector &Candidates,
-                                       ArrayRef<MCPhysReg> AllocationOrder,
                                        unsigned InstrLimit,
                                        MachineBasicBlock::iterator &UseMI) {
-  auto FindFirstCandidate = [&]() -> int {
-    for (MCPhysReg Reg : AllocationOrder) {
-      if (Candidates.test(Reg))
-        return Reg;
-    }
-    return -1;
-  };
-
-  int Survivor = FindFirstCandidate();
+  int Survivor = Candidates.find_first();
   assert(Survivor > 0 && "No candidates for scavenging");
 
   MachineBasicBlock::iterator ME = MBB->getFirstTerminator();
@@ -331,7 +322,7 @@ Register RegScavenger::findSurvivorReg(MachineBasicBlock::iterator StartMI,
     if (Candidates.none())
       break;
 
-    Survivor = FindFirstCandidate();
+    Survivor = Candidates.find_first();
   }
   // If we ran off the end, that's where we want to restore.
   if (MI == ME) RestorePointMI = ME;
@@ -560,8 +551,7 @@ Register RegScavenger::scavengeRegister(const TargetRegisterClass *RC,
 
   // Find the register whose use is furthest away.
   MachineBasicBlock::iterator UseMI;
-  Register SReg =
-      findSurvivorReg(I, Candidates, RC->getRawAllocationOrder(MF), 25, UseMI);
+  Register SReg = findSurvivorReg(I, Candidates, 25, UseMI);
 
   // If we found an unused register there is no reason to spill it.
   if (!isRegUsed(SReg)) {

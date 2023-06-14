@@ -594,15 +594,17 @@ static void addRegUnits(const SIRegisterInfo &TRI, BitVector &BV,
 
 static void addRegsToSet(const SIRegisterInfo &TRI,
                          iterator_range<MachineInstr::const_mop_iterator> Ops,
-                         BitVector &DefSet, BitVector &UseSet) {
+                         BitVector &Set) {
   for (const MachineOperand &Op : Ops) {
     if (Op.isReg())
-      addRegUnits(TRI, Op.isDef() ? DefSet : UseSet, Op.getReg().asMCReg());
+      addRegUnits(TRI, Set, Op.getReg().asMCReg());
   }
 }
 
 void GCNHazardRecognizer::addClauseInst(const MachineInstr &MI) {
-  addRegsToSet(TRI, MI.operands(), ClauseDefs, ClauseUses);
+  // XXX: Do we need to worry about implicit operands
+  addRegsToSet(TRI, MI.defs(), ClauseDefs);
+  addRegsToSet(TRI, MI.uses(), ClauseUses);
 }
 
 static bool breaksSMEMSoftClause(MachineInstr *MI) {

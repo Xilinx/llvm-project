@@ -9,7 +9,7 @@ typedef unsigned char       uint8_t;    // NOLINT
 typedef unsigned short      uint16_t;   // NOLINT
 typedef unsigned long       uint32_t;   // NOLINT
 typedef unsigned long long  uint64_t;   // NOLINT
-#ifndef _MSC_VER
+#ifndef _WIN32
 typedef unsigned long long  size_t;     // NOLINT
 #endif
 typedef long                intptr_t;   // NOLINT

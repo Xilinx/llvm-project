@@ -65,7 +65,7 @@ const char *SBTypeNameSpecifier::GetName() {
   if (!IsValid())
     return nullptr;
 
-  return ConstString(m_opaque_sp->GetName()).GetCString();
+  return m_opaque_sp->GetName();
 }
 
 SBType SBTypeNameSpecifier::GetType() {

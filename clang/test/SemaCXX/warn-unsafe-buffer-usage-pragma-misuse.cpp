@@ -1,5 +1,4 @@
-// RUN: %clang_cc1 -std=c++20 -Wunsafe-buffer-usage \
-// RUN:            -fsafe-buffer-usage-suggestions -verify %s
+// RUN: %clang_cc1 -std=c++20 -Wunsafe-buffer-usage -verify %s
 
 void beginUnclosed(int * x) {
 #pragma clang unsafe_buffer_usage begin

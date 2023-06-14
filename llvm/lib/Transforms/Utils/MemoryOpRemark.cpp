@@ -387,8 +387,7 @@ bool AutoInitRemark::canHandle(const Instruction *I) {
     return false;
   return any_of(I->getMetadata(LLVMContext::MD_annotation)->operands(),
                 [](const MDOperand &Op) {
-                  return isa<MDString>(Op.get()) &&
-                         cast<MDString>(Op.get())->getString() == "auto-init";
+                  return cast<MDString>(Op.get())->getString() == "auto-init";
                 });
 }
 

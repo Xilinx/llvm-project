@@ -3,6 +3,7 @@ import sys
 
 
 class WelcomeCommand(object):
+
     def __init__(self, debugger, session_dict):
         pass
 
@@ -10,11 +11,11 @@ class WelcomeCommand(object):
         return "Just a docstring for Welcome\nA command that says hello to LLDB users"
 
     def __call__(self, debugger, args, exe_ctx, result):
-        print("Hello " + args + ", welcome to LLDB", file=result)
+        print('Hello ' + args + ', welcome to LLDB', file=result)
         return None
 
-
 class WelcomeCommand2(object):
+
     def __init__(self, debugger, session_dict):
         pass
 
@@ -22,5 +23,5 @@ class WelcomeCommand2(object):
         return "A docstring for the second Welcome\nA command that says hello to LLDB users"
 
     def __call__(self, debugger, args, exe_ctx, result):
-        print("Hello " + args + ", welcome again to LLDB", file=result)
+        print('Hello ' + args + ', welcome again to LLDB', file=result)
         return None

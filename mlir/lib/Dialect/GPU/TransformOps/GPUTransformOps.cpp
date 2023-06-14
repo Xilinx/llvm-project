@@ -13,6 +13,7 @@
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/GPU/TransformOps/GPUTransformOps.h"
+#include "mlir/Dialect/PDL/IR/PDL.h"
 #include "mlir/Dialect/SCF/IR/DeviceMappingInterface.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Transform/IR/TransformDialect.h"
@@ -256,19 +257,19 @@ checkMappingAttributeTypes(std::optional<TransformOpInterface> transformOp,
 
   bool hasBlockMapping =
       llvm::any_of(forallOp.getMapping().value(), [](Attribute attr) {
-        return isa<GPUBlockMappingAttr>(attr);
+        return attr.isa<GPUBlockMappingAttr>();
       });
   bool hasThreadMapping =
       llvm::any_of(forallOp.getMapping().value(), [](Attribute attr) {
-        return isa<GPUThreadMappingAttr>(attr);
+        return attr.isa<GPUThreadMappingAttr>();
       });
   bool hasWarpMapping =
       llvm::any_of(forallOp.getMapping().value(), [](Attribute attr) {
-        return isa<GPUWarpMappingAttr>(attr);
+        return attr.isa<GPUWarpMappingAttr>();
       });
   bool hasLinearMapping =
       llvm::any_of(forallOp.getMapping().value(), [](Attribute attr) {
-        return isa<GPULinearIdMappingAttr>(attr);
+        return attr.isa<GPULinearIdMappingAttr>();
       });
   int64_t countMappingTypes = 0;
   countMappingTypes += hasBlockMapping ? 1 : 0;
@@ -519,7 +520,7 @@ static DiagnosedSilenceableFailure rewriteOneForallCommonImpl(
                        ArrayRef<Attribute>{forallMappingAttrs}.take_front(
                            forallOp.getInductionVars().size()))) {
     Value peIdOp = mappingIdOps[static_cast<int64_t>(
-        cast<DeviceMappingAttrInterface>(dim).getMappingId())];
+        dim.cast<DeviceMappingAttrInterface>().getMappingId())];
     bvm.map(iv, peIdOp);
   }
 
@@ -903,6 +904,7 @@ class GPUTransformDialectExtension
           GPUTransformDialectExtension> {
 public:
   GPUTransformDialectExtension() {
+    declareDependentDialect<pdl::PDLDialect>();
     declareGeneratedDialect<scf::SCFDialect>();
     declareGeneratedDialect<arith::ArithDialect>();
     declareGeneratedDialect<GPUDialect>();

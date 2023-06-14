@@ -64,6 +64,7 @@ namespace {
     Value*        LHS;
     Value*        RHS;
     bool          Exchange = false;
+    bool          ReadOnly = true;
     bool          Paired = false;
     SmallVector<LoadInst*, 2> VecLd;    // Container for loads to widen.
 
@@ -150,6 +151,10 @@ namespace {
         Mul1->Exchange = true;
       MulPairs.push_back(std::make_pair(Mul0, Mul1));
     }
+
+    /// Return true if enough mul operations are found that can be executed in
+    /// parallel.
+    bool CreateParallelPairs();
 
     /// Return the add instruction which is the root of the reduction.
     Instruction *getRoot() { return Root; }

@@ -48,7 +48,6 @@ if(TARGET libc.src.__support.threads.${LIBC_TARGET_OS}.thread)
     DEPENDS
       .mutex
       .${LIBC_TARGET_OS}.thread
-      libc.src.__support.common
       libc.src.__support.fixedvector
       libc.src.__support.CPP.array
       libc.src.__support.CPP.optional

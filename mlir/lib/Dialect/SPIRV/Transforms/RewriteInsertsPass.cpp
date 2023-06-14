@@ -84,13 +84,15 @@ void RewriteInsertsPass::runOnOperation() {
 LogicalResult RewriteInsertsPass::collectInsertionChain(
     spirv::CompositeInsertOp op,
     SmallVectorImpl<spirv::CompositeInsertOp> &insertions) {
-  auto indicesArrayAttr = cast<ArrayAttr>(op.getIndices());
+  auto indicesArrayAttr = op.getIndices().cast<ArrayAttr>();
   // TODO: handle nested composite object.
   if (indicesArrayAttr.size() == 1) {
-    auto numElements = cast<spirv::CompositeType>(op.getComposite().getType())
+    auto numElements = op.getComposite()
+                           .getType()
+                           .cast<spirv::CompositeType>()
                            .getNumElements();
 
-    auto index = cast<IntegerAttr>(indicesArrayAttr[0]).getInt();
+    auto index = indicesArrayAttr[0].cast<IntegerAttr>().getInt();
     // Need a last index to collect a sequential chain.
     if (index + 1 != numElements)
       return failure();
@@ -107,9 +109,9 @@ LogicalResult RewriteInsertsPass::collectInsertionChain(
         return failure();
 
       --index;
-      indicesArrayAttr = cast<ArrayAttr>(op.getIndices());
+      indicesArrayAttr = op.getIndices().cast<ArrayAttr>();
       if ((indicesArrayAttr.size() != 1) ||
-          (cast<IntegerAttr>(indicesArrayAttr[0]).getInt() != index))
+          (indicesArrayAttr[0].cast<IntegerAttr>().getInt() != index))
         return failure();
     }
   }

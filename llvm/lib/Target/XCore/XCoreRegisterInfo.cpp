@@ -97,8 +97,7 @@ static void InsertFPConstInst(MachineBasicBlock::iterator II,
   MachineInstr &MI = *II;
   MachineBasicBlock &MBB = *MI.getParent();
   DebugLoc dl = MI.getDebugLoc();
-  Register ScratchOffset =
-      RS->scavengeRegisterBackwards(XCore::GRRegsRegClass, II, false, 0);
+  Register ScratchOffset = RS->scavengeRegister(&XCore::GRRegsRegClass, II, 0);
   RS->setRegUsed(ScratchOffset);
   TII.loadImmediate(MBB, II, ScratchOffset, Offset);
 
@@ -170,14 +169,12 @@ static void InsertSPConstInst(MachineBasicBlock::iterator II,
 
   unsigned ScratchBase;
   if (OpCode==XCore::STWFI) {
-    ScratchBase =
-        RS->scavengeRegisterBackwards(XCore::GRRegsRegClass, II, false, 0);
+    ScratchBase = RS->scavengeRegister(&XCore::GRRegsRegClass, II, 0);
     RS->setRegUsed(ScratchBase);
   } else
     ScratchBase = Reg;
   BuildMI(MBB, II, dl, TII.get(XCore::LDAWSP_ru6), ScratchBase).addImm(0);
-  Register ScratchOffset =
-      RS->scavengeRegisterBackwards(XCore::GRRegsRegClass, II, false, 0);
+  Register ScratchOffset = RS->scavengeRegister(&XCore::GRRegsRegClass, II, 0);
   RS->setRegUsed(ScratchOffset);
   TII.loadImmediate(MBB, II, ScratchOffset, Offset);
 

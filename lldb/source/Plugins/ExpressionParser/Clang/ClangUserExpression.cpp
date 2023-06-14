@@ -981,8 +981,6 @@ lldb::ExpressionVariableSP ClangUserExpression::GetResultAfterDematerialization(
   return m_result_delegate.GetVariable();
 }
 
-char ClangUserExpression::ClangUserExpressionHelper::ID;
-
 void ClangUserExpression::ClangUserExpressionHelper::ResetDeclMap(
     ExecutionContext &exe_ctx,
     Materializer::PersistentVariableDelegate &delegate,

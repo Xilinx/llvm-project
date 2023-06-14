@@ -13,7 +13,7 @@ add_mlir_conversion_library(MLIRGPUToROCDLTransforms
   MLIRArithToLLVM
   MLIRAMDGPUToROCDL
   MLIRFuncToLLVM
-  MLIRGPUDialect
+  MLIRGPUOps
   MLIRGPUToGPURuntimeTransforms
   MLIRLLVMCommonConversion
   MLIRLLVMDialect

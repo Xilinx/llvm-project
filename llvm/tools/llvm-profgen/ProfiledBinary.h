@@ -190,12 +190,10 @@ class ProfiledBinary {
   std::string Path;
   // Path of the debug info binary.
   std::string DebugBinaryPath;
-  // The target triple.
-  Triple TheTriple;
   // Path of symbolizer path which should be pointed to binary with debug info.
   StringRef SymbolizerPath;
-  // Options used to configure the symbolizer
-  symbolize::LLVMSymbolizer::Options SymbolizerOpts;
+  // The target triple.
+  Triple TheTriple;
   // The runtime base address that the first executable segment is loaded at.
   uint64_t BaseAddress = 0;
   // The runtime base address that the first loadabe segment is loaded at.
@@ -306,7 +304,7 @@ class ProfiledBinary {
 
   // Set up disassembler and related components.
   void setUpDisassembler(const ELFObjectFileBase *Obj);
-  symbolize::LLVMSymbolizer::Options getSymbolizerOpts() const;
+  void setupSymbolizer();
 
   // Load debug info of subprograms from DWARF section.
   void loadSymbolsFromDWARF(ObjectFile &Obj);
@@ -497,7 +495,7 @@ public:
   SampleContextFrameVector
   getFrameLocationStack(uint64_t Address, bool UseProbeDiscriminator = false) {
     InstructionPointer IP(this, Address);
-    return symbolize(IP, SymbolizerOpts.UseSymbolTable, UseProbeDiscriminator);
+    return symbolize(IP, true, UseProbeDiscriminator);
   }
 
   const SampleContextFrameVector &

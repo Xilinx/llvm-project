@@ -36,8 +36,7 @@ void populateDialectTransformSubmodule(const pybind11::module &m) {
   //===-------------------------------------------------------------------===//
 
   auto operationType =
-      mlir_type_subclass(m, "OperationType", mlirTypeIsATransformOperationType,
-                         mlirTransformOperationTypeGetTypeID);
+      mlir_type_subclass(m, "OperationType", mlirTypeIsATransformOperationType);
   operationType.def_classmethod(
       "get",
       [](py::object cls, const std::string &operationName, MlirContext ctx) {

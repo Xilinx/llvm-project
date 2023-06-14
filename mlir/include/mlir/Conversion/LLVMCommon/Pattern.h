@@ -82,12 +82,12 @@ protected:
   /// Returns the type of a pointer to an element of the memref.
   Type getElementPtrType(MemRefType type) const;
 
-  /// Computes sizes, strides and buffer size of `memRefType` with identity
-  /// layout. Emits constant ops for the static sizes of `memRefType`, and uses
-  /// `dynamicSizes` for the others. Emits instructions to compute strides and
-  /// buffer size from these sizes.
+  /// Computes sizes, strides and buffer size in bytes of `memRefType` with
+  /// identity layout. Emits constant ops for the static sizes of `memRefType`,
+  /// and uses `dynamicSizes` for the others. Emits instructions to compute
+  /// strides and buffer size from these sizes.
   ///
-  /// For example, memref<4x?xf32> with `sizeInBytes = true` emits:
+  /// For example, memref<4x?xf32> emits:
   /// `sizes[0]`   = llvm.mlir.constant(4 : index) : i64
   /// `sizes[1]`   = `dynamicSizes[0]`
   /// `strides[1]` = llvm.mlir.constant(1 : index) : i64
@@ -97,27 +97,19 @@ protected:
   /// %gep         = llvm.getelementptr %nullptr[%size]
   ///                  : (!llvm.ptr<f32>, i64) -> !llvm.ptr<f32>
   /// `sizeBytes`  = llvm.ptrtoint %gep : !llvm.ptr<f32> to i64
-  ///
-  /// If `sizeInBytes = false`, memref<4x?xf32> emits:
-  /// `sizes[0]`   = llvm.mlir.constant(4 : index) : i64
-  /// `sizes[1]`   = `dynamicSizes[0]`
-  /// `strides[1]` = llvm.mlir.constant(1 : index) : i64
-  /// `strides[0]` = `sizes[0]`
-  /// %size        = llvm.mul `sizes[0]`, `sizes[1]` : i64
   void getMemRefDescriptorSizes(Location loc, MemRefType memRefType,
                                 ValueRange dynamicSizes,
                                 ConversionPatternRewriter &rewriter,
                                 SmallVectorImpl<Value> &sizes,
-                                SmallVectorImpl<Value> &strides, Value &size,
-                                bool sizeInBytes = true) const;
+                                SmallVectorImpl<Value> &strides,
+                                Value &sizeBytes) const;
 
   /// Computes the size of type in bytes.
   Value getSizeInBytes(Location loc, Type type,
                        ConversionPatternRewriter &rewriter) const;
 
-  /// Computes total number of elements for the given MemRef and dynamicSizes.
-  Value getNumElements(Location loc, MemRefType memRefType,
-                       ValueRange dynamicSizes,
+  /// Computes total number of elements for the given shape.
+  Value getNumElements(Location loc, ArrayRef<Value> shape,
                        ConversionPatternRewriter &rewriter) const;
 
   /// Creates and populates a canonical memref descriptor struct.
@@ -155,11 +147,11 @@ public:
                ConversionPatternRewriter &rewriter) const final {
     if constexpr (SourceOp::hasProperties())
       rewrite(cast<SourceOp>(op),
-              OpAdaptor(operands, op->getDiscardableAttrDictionary(),
+              OpAdaptor(operands, op->getAttrDictionary(),
                         cast<SourceOp>(op).getProperties()),
               rewriter);
-    rewrite(cast<SourceOp>(op),
-            OpAdaptor(operands, op->getDiscardableAttrDictionary()), rewriter);
+    rewrite(cast<SourceOp>(op), OpAdaptor(operands, op->getAttrDictionary()),
+            rewriter);
   }
   LogicalResult match(Operation *op) const final {
     return match(cast<SourceOp>(op));
@@ -169,13 +161,12 @@ public:
                   ConversionPatternRewriter &rewriter) const final {
     if constexpr (SourceOp::hasProperties())
       return matchAndRewrite(cast<SourceOp>(op),
-                             OpAdaptor(operands,
-                                       op->getDiscardableAttrDictionary(),
+                             OpAdaptor(operands, op->getAttrDictionary(),
                                        cast<SourceOp>(op).getProperties()),
                              rewriter);
-    return matchAndRewrite(
-        cast<SourceOp>(op),
-        OpAdaptor(operands, op->getDiscardableAttrDictionary()), rewriter);
+    return matchAndRewrite(cast<SourceOp>(op),
+                           OpAdaptor(operands, op->getAttrDictionary()),
+                           rewriter);
   }
 
   /// Rewrite and Match methods that operate on the SourceOp type. These must be

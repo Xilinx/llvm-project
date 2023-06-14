@@ -73,10 +73,10 @@ LogicalResult ApplyOp::verify() {
 bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
   Type input = inputs.front(), output = outputs.front();
 
-  return ((llvm::isa<IntegerType, FloatType, IndexType, emitc::OpaqueType,
-                     emitc::PointerType>(input)) &&
-          (llvm::isa<IntegerType, FloatType, IndexType, emitc::OpaqueType,
-                     emitc::PointerType>(output)));
+  return ((input.isa<IntegerType, FloatType, IndexType, emitc::OpaqueType,
+                     emitc::PointerType>()) &&
+          (output.isa<IntegerType, FloatType, IndexType, emitc::OpaqueType,
+                      emitc::PointerType>()));
 }
 
 //===----------------------------------------------------------------------===//
@@ -90,8 +90,8 @@ LogicalResult emitc::CallOp::verify() {
 
   if (std::optional<ArrayAttr> argsAttr = getArgs()) {
     for (Attribute arg : *argsAttr) {
-      auto intAttr = llvm::dyn_cast<IntegerAttr>(arg);
-      if (intAttr && llvm::isa<IndexType>(intAttr.getType())) {
+      auto intAttr = arg.dyn_cast<IntegerAttr>();
+      if (intAttr && intAttr.getType().isa<IndexType>()) {
         int64_t index = intAttr.getInt();
         // Args with elements of type index must be in range
         // [0..operands.size).
@@ -99,8 +99,7 @@ LogicalResult emitc::CallOp::verify() {
           return emitOpError("index argument is out of range");
 
         // Args with elements of type ArrayAttr must have a type.
-      } else if (llvm::isa<ArrayAttr>(
-                     arg) /*&& llvm::isa<NoneType>(arg.getType())*/) {
+      } else if (arg.isa<ArrayAttr>() /*&& arg.getType().isa<NoneType>()*/) {
         // FIXME: Array attributes never have types
         return emitOpError("array argument has no type");
       }
@@ -109,7 +108,7 @@ LogicalResult emitc::CallOp::verify() {
 
   if (std::optional<ArrayAttr> templateArgsAttr = getTemplateArgs()) {
     for (Attribute tArg : *templateArgsAttr) {
-      if (!llvm::isa<TypeAttr, IntegerAttr, FloatAttr, emitc::OpaqueAttr>(tArg))
+      if (!tArg.isa<TypeAttr, IntegerAttr, FloatAttr, emitc::OpaqueAttr>())
         return emitOpError("template argument has invalid type");
     }
   }
@@ -123,17 +122,17 @@ LogicalResult emitc::CallOp::verify() {
 
 /// The constant op requires that the attribute's type matches the return type.
 LogicalResult emitc::ConstantOp::verify() {
-  if (llvm::isa<emitc::OpaqueAttr>(getValueAttr()))
+  if (getValueAttr().isa<emitc::OpaqueAttr>())
     return success();
 
   // Value must not be empty
-  StringAttr strAttr = llvm::dyn_cast<StringAttr>(getValueAttr());
+  StringAttr strAttr = getValueAttr().dyn_cast<StringAttr>();
   if (strAttr && strAttr.getValue().empty())
     return emitOpError() << "value must not be empty";
 
   auto value = cast<TypedAttr>(getValueAttr());
   Type type = getType();
-  if (!llvm::isa<NoneType>(value.getType()) && type != value.getType())
+  if (!value.getType().isa<NoneType>() && type != value.getType())
     return emitOpError() << "requires attribute's type (" << value.getType()
                          << ") to match op's return type (" << type << ")";
   return success();
@@ -184,12 +183,12 @@ ParseResult IncludeOp::parse(OpAsmParser &parser, OperationState &result) {
 
 /// The variable op requires that the attribute's type matches the return type.
 LogicalResult emitc::VariableOp::verify() {
-  if (llvm::isa<emitc::OpaqueAttr>(getValueAttr()))
+  if (getValueAttr().isa<emitc::OpaqueAttr>())
     return success();
 
   auto value = cast<TypedAttr>(getValueAttr());
   Type type = getType();
-  if (!llvm::isa<NoneType>(value.getType()) && type != value.getType())
+  if (!value.getType().isa<NoneType>() && type != value.getType())
     return emitOpError() << "requires attribute's type (" << value.getType()
                          << ") to match op's return type (" << type << ")";
   return success();

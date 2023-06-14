@@ -888,10 +888,7 @@ private:
   }
 
   bool containsMustBreak(const AnnotatedLine *Line) {
-    assert(Line->First);
-    // Ignore the first token, because in this situation, it applies more to the
-    // last token of the previous line.
-    for (const FormatToken *Tok = Line->First->Next; Tok; Tok = Tok->Next)
+    for (const FormatToken *Tok = Line->First; Tok; Tok = Tok->Next)
       if (Tok->MustBreakBefore)
         return true;
     return false;

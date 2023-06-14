@@ -71,9 +71,11 @@ propagateSubViewOp(RewriterBase &rewriter,
                    UnrealizedConversionCastOp conversionOp, SubViewOp op) {
   OpBuilder::InsertionGuard g(rewriter);
   rewriter.setInsertionPoint(op);
-  auto newResultType = cast<MemRefType>(SubViewOp::inferRankReducedResultType(
-      op.getType().getShape(), op.getSourceType(), op.getMixedOffsets(),
-      op.getMixedSizes(), op.getMixedStrides()));
+  auto newResultType =
+      SubViewOp::inferRankReducedResultType(
+          op.getType().getShape(), op.getSourceType(), op.getMixedOffsets(),
+          op.getMixedSizes(), op.getMixedStrides())
+          .cast<MemRefType>();
   Value newSubview = rewriter.create<SubViewOp>(
       op.getLoc(), newResultType, conversionOp.getOperand(0),
       op.getMixedOffsets(), op.getMixedSizes(), op.getMixedStrides());

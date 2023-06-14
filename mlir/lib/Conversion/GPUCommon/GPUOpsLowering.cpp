@@ -26,20 +26,22 @@ GPUFuncOpLowering::matchAndRewrite(gpu::GPUFuncOp gpuFuncOp, OpAdaptor adaptor,
   for (const auto &en : llvm::enumerate(gpuFuncOp.getWorkgroupAttributions())) {
     BlockArgument attribution = en.value();
 
-    auto type = dyn_cast<MemRefType>(attribution.getType());
+    auto type = attribution.getType().dyn_cast<MemRefType>();
     assert(type && type.hasStaticShape() && "unexpected type in attribution");
 
     uint64_t numElements = type.getNumElements();
 
     auto elementType =
-        cast<Type>(typeConverter->convertType(type.getElementType()));
+        typeConverter->convertType(type.getElementType()).template cast<Type>();
     auto arrayType = LLVM::LLVMArrayType::get(elementType, numElements);
     std::string name = std::string(
         llvm::formatv("__wg_{0}_{1}", gpuFuncOp.getName(), en.index()));
     uint64_t alignment = 0;
     if (auto alignAttr =
-            dyn_cast_or_null<IntegerAttr>(gpuFuncOp.getWorkgroupAttributionAttr(
-                en.index(), LLVM::LLVMDialect::getAlignAttrName())))
+            gpuFuncOp
+                .getWorkgroupAttributionAttr(
+                    en.index(), LLVM::LLVMDialect::getAlignAttrName())
+                .dyn_cast_or_null<IntegerAttr>())
       alignment = alignAttr.getInt();
     auto globalOp = rewriter.create<LLVM::GlobalOp>(
         gpuFuncOp.getLoc(), arrayType, /*isConstant=*/false,
@@ -98,7 +100,7 @@ GPUFuncOpLowering::matchAndRewrite(gpu::GPUFuncOp gpuFuncOp, OpAdaptor adaptor,
                                              global.getAddrSpace()),
           global.getSymNameAttr());
       auto elementType =
-          cast<LLVM::LLVMArrayType>(global.getType()).getElementType();
+          global.getType().cast<LLVM::LLVMArrayType>().getElementType();
       Value memory = rewriter.create<LLVM::GEPOp>(
           loc,
           getTypeConverter()->getPointerType(elementType,
@@ -110,7 +112,7 @@ GPUFuncOpLowering::matchAndRewrite(gpu::GPUFuncOp gpuFuncOp, OpAdaptor adaptor,
       // otherwise necessary given that memref sizes are fixed, but we can try
       // and canonicalize that away later.
       Value attribution = gpuFuncOp.getWorkgroupAttributions()[en.index()];
-      auto type = cast<MemRefType>(attribution.getType());
+      auto type = attribution.getType().cast<MemRefType>();
       auto descr = MemRefDescriptor::fromStaticShape(
           rewriter, loc, *getTypeConverter(), type, memory);
       signatureConversion.remapInput(numProperArguments + en.index(), descr);
@@ -121,7 +123,7 @@ GPUFuncOpLowering::matchAndRewrite(gpu::GPUFuncOp gpuFuncOp, OpAdaptor adaptor,
     auto int64Ty = IntegerType::get(rewriter.getContext(), 64);
     for (const auto &en : llvm::enumerate(gpuFuncOp.getPrivateAttributions())) {
       Value attribution = en.value();
-      auto type = cast<MemRefType>(attribution.getType());
+      auto type = attribution.getType().cast<MemRefType>();
       assert(type && type.hasStaticShape() && "unexpected type in attribution");
 
       // Explicitly drop memory space when lowering private memory
@@ -134,8 +136,10 @@ GPUFuncOpLowering::matchAndRewrite(gpu::GPUFuncOp gpuFuncOp, OpAdaptor adaptor,
           gpuFuncOp.getLoc(), int64Ty, type.getNumElements());
       uint64_t alignment = 0;
       if (auto alignAttr =
-              dyn_cast_or_null<IntegerAttr>(gpuFuncOp.getPrivateAttributionAttr(
-                  en.index(), LLVM::LLVMDialect::getAlignAttrName())))
+              gpuFuncOp
+                  .getPrivateAttributionAttr(
+                      en.index(), LLVM::LLVMDialect::getAlignAttrName())
+                  .dyn_cast_or_null<IntegerAttr>())
         alignment = alignAttr.getInt();
       Value allocated = rewriter.create<LLVM::AllocaOp>(
           gpuFuncOp.getLoc(), ptrType, elementType, numElements, alignment);
@@ -160,7 +164,7 @@ GPUFuncOpLowering::matchAndRewrite(gpu::GPUFuncOp gpuFuncOp, OpAdaptor adaptor,
     OpBuilder::InsertionGuard guard(rewriter);
     rewriter.setInsertionPointToStart(&llvmFuncOp.getBody().front());
     for (const auto &en : llvm::enumerate(gpuFuncOp.getArgumentTypes())) {
-      auto memrefTy = dyn_cast<MemRefType>(en.value());
+      auto memrefTy = en.value().dyn_cast<MemRefType>();
       if (!memrefTy)
         continue;
       assert(memrefTy.hasStaticShape() &&
@@ -298,7 +302,7 @@ LogicalResult GPUPrintfOpToHIPLowering::matchAndRewrite(
         rewriter.create<LLVM::ConstantOp>(loc, llvmI32, numArgsThisCall));
     for (size_t i = group; i < bound; ++i) {
       Value arg = adaptor.getArgs()[i];
-      if (auto floatType = dyn_cast<FloatType>(arg.getType())) {
+      if (auto floatType = arg.getType().dyn_cast<FloatType>()) {
         if (!floatType.isF64())
           arg = rewriter.create<LLVM::FPExtOp>(
               loc, typeConverter->convertType(rewriter.getF64Type()), arg);
@@ -424,7 +428,7 @@ LogicalResult GPUPrintfOpToVPrintfLowering::matchAndRewrite(
     Type type = arg.getType();
     Value promotedArg = arg;
     assert(type.isIntOrFloat());
-    if (isa<FloatType>(type)) {
+    if (type.isa<FloatType>()) {
       type = rewriter.getF64Type();
       promotedArg = rewriter.create<LLVM::FPExtOp>(loc, type, arg);
     }
@@ -458,14 +462,14 @@ LogicalResult impl::scalarizeVectorOp(Operation *op, ValueRange operands,
                                       LLVMTypeConverter &converter) {
   TypeRange operandTypes(operands);
   if (llvm::none_of(operandTypes,
-                    [](Type type) { return isa<VectorType>(type); })) {
+                    [](Type type) { return type.isa<VectorType>(); })) {
     return rewriter.notifyMatchFailure(op, "expected vector operand");
   }
   if (op->getNumRegions() != 0 || op->getNumSuccessors() != 0)
     return rewriter.notifyMatchFailure(op, "expected no region/successor");
   if (op->getNumResults() != 1)
     return rewriter.notifyMatchFailure(op, "expected single result");
-  VectorType vectorType = dyn_cast<VectorType>(op->getResult(0).getType());
+  VectorType vectorType = op->getResult(0).getType().dyn_cast<VectorType>();
   if (!vectorType)
     return rewriter.notifyMatchFailure(op, "expected vector result");
 
@@ -478,7 +482,7 @@ LogicalResult impl::scalarizeVectorOp(Operation *op, ValueRange operands,
   for (int64_t i = 0; i < vectorType.getNumElements(); ++i) {
     Value index = rewriter.create<LLVM::ConstantOp>(loc, indexType, i);
     auto extractElement = [&](Value operand) -> Value {
-      if (!isa<VectorType>(operand.getType()))
+      if (!operand.getType().isa<VectorType>())
         return operand;
       return rewriter.create<LLVM::ExtractElementOp>(loc, operand, index);
     };

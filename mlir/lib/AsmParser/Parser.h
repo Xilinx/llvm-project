@@ -241,7 +241,7 @@ public:
       return std::nullopt;
 
     if (Attribute parsedAttr = parseAttribute(type)) {
-      attr = cast<AttributeT>(parsedAttr);
+      attr = parsedAttr.cast<AttributeT>();
       return success();
     }
     return failure();

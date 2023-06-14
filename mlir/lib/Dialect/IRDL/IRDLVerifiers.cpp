@@ -67,7 +67,7 @@ LogicalResult DynParametricAttrConstraint::verify(
     ConstraintVerifier &context) const {
 
   // Check that the base is the expected one.
-  auto dynAttr = dyn_cast<DynamicAttr>(attr);
+  auto dynAttr = attr.dyn_cast<DynamicAttr>();
   if (!dynAttr || dynAttr.getAttrDef() != attrDef) {
     if (emitError) {
       StringRef dialectName = attrDef->getDialect()->getNamespace();
@@ -102,7 +102,7 @@ LogicalResult DynParametricTypeConstraint::verify(
     function_ref<InFlightDiagnostic()> emitError, Attribute attr,
     ConstraintVerifier &context) const {
   // Check that the base is a TypeAttr.
-  auto typeAttr = dyn_cast<TypeAttr>(attr);
+  auto typeAttr = attr.dyn_cast<TypeAttr>();
   if (!typeAttr) {
     if (emitError)
       return emitError() << "expected type, got attribute '" << attr;
@@ -110,7 +110,7 @@ LogicalResult DynParametricTypeConstraint::verify(
   }
 
   // Check that the type base is the expected one.
-  auto dynType = dyn_cast<DynamicType>(typeAttr.getValue());
+  auto dynType = typeAttr.getValue().dyn_cast<DynamicType>();
   if (!dynType || dynType.getTypeDef() != typeDef) {
     if (emitError) {
       StringRef dialectName = typeDef->getDialect()->getNamespace();

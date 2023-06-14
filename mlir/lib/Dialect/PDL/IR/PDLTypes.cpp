@@ -60,7 +60,7 @@ bool PDLType::classof(Type type) {
 }
 
 Type pdl::getRangeElementTypeOrSelf(Type type) {
-  if (auto rangeType = llvm::dyn_cast<RangeType>(type))
+  if (auto rangeType = type.dyn_cast<RangeType>())
     return rangeType.getElementType();
   return type;
 }
@@ -78,7 +78,7 @@ Type RangeType::parse(AsmParser &parser) {
   if (!elementType || parser.parseGreater())
     return Type();
 
-  if (llvm::isa<RangeType>(elementType)) {
+  if (elementType.isa<RangeType>()) {
     parser.emitError(elementLoc)
         << "element of pdl.range cannot be another range, but got"
         << elementType;
@@ -95,7 +95,7 @@ void RangeType::print(AsmPrinter &printer) const {
 
 LogicalResult RangeType::verify(function_ref<InFlightDiagnostic()> emitError,
                                 Type elementType) {
-  if (!llvm::isa<PDLType>(elementType) || llvm::isa<RangeType>(elementType)) {
+  if (!elementType.isa<PDLType>() || elementType.isa<RangeType>()) {
     return emitError()
            << "expected element of pdl.range to be one of [!pdl.attribute, "
               "!pdl.operation, !pdl.type, !pdl.value], but got "

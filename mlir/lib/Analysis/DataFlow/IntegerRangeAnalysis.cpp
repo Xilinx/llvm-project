@@ -94,7 +94,7 @@ void IntegerRangeAnalysis::visitOperation(
       }));
 
   auto joinCallback = [&](Value v, const ConstantIntRanges &attrs) {
-    auto result = dyn_cast<OpResult>(v);
+    auto result = v.dyn_cast<OpResult>();
     if (!result)
       return;
     assert(llvm::is_contained(op->getResults(), result));
@@ -139,7 +139,7 @@ void IntegerRangeAnalysis::visitNonControlFlowArguments(
         }));
 
     auto joinCallback = [&](Value v, const ConstantIntRanges &attrs) {
-      auto arg = dyn_cast<BlockArgument>(v);
+      auto arg = v.dyn_cast<BlockArgument>();
       if (!arg)
         return;
       if (!llvm::is_contained(successor.getSuccessor()->getArguments(), arg))
@@ -179,9 +179,9 @@ void IntegerRangeAnalysis::visitNonControlFlowArguments(
     if (loopBound.has_value()) {
       if (loopBound->is<Attribute>()) {
         if (auto bound =
-                dyn_cast_or_null<IntegerAttr>(loopBound->get<Attribute>()))
+                loopBound->get<Attribute>().dyn_cast_or_null<IntegerAttr>())
           return bound.getValue();
-      } else if (auto value = llvm::dyn_cast_if_present<Value>(*loopBound)) {
+      } else if (auto value = loopBound->dyn_cast<Value>()) {
         const IntegerValueRangeLattice *lattice =
             getLatticeElementFor(op, value);
         if (lattice != nullptr)

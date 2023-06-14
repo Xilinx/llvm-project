@@ -162,7 +162,7 @@ public:
           ->addOperand(llvmMetadataNode);
     };
     if (attribute.getName() == NVVM::NVVMDialect::getMaxntidAttrName()) {
-      if (!dyn_cast<ArrayAttr>(attribute.getValue()))
+      if (!attribute.getValue().dyn_cast<ArrayAttr>())
         return failure();
       SmallVector<int64_t> values =
           extractFromI64ArrayAttr(attribute.getValue());
@@ -172,7 +172,7 @@ public:
       if (values.size() > 2)
         generateMetadata(values[2], NVVM::NVVMDialect::getMaxntidZName());
     } else if (attribute.getName() == NVVM::NVVMDialect::getReqntidAttrName()) {
-      if (!dyn_cast<ArrayAttr>(attribute.getValue()))
+      if (!attribute.getValue().dyn_cast<ArrayAttr>())
         return failure();
       SmallVector<int64_t> values =
           extractFromI64ArrayAttr(attribute.getValue());
@@ -183,10 +183,10 @@ public:
         generateMetadata(values[2], NVVM::NVVMDialect::getReqntidZName());
     } else if (attribute.getName() ==
                NVVM::NVVMDialect::getMinctasmAttrName()) {
-      auto value = dyn_cast<IntegerAttr>(attribute.getValue());
+      auto value = attribute.getValue().dyn_cast<IntegerAttr>();
       generateMetadata(value.getInt(), "minctasm");
     } else if (attribute.getName() == NVVM::NVVMDialect::getMaxnregAttrName()) {
-      auto value = dyn_cast<IntegerAttr>(attribute.getValue());
+      auto value = attribute.getValue().dyn_cast<IntegerAttr>();
       generateMetadata(value.getInt(), "maxnreg");
     } else if (attribute.getName() ==
                NVVM::NVVMDialect::getKernelFuncAttrName()) {

@@ -38,7 +38,6 @@ def PDLInterp_Dialect : Dialect {
   let name = "pdl_interp";
   let cppNamespace = "::mlir::pdl_interp";
   let dependentDialects = ["pdl::PDLDialect"];
-  let usePropertiesForAttributes = 1;
   let extraClassDeclaration = [{
     /// Returns the name of the function containing the matcher code. This
     /// function is called by the interpreter when matching an operation.
@@ -559,7 +558,7 @@ def PDLInterp_ExtractOp
   let builders = [
     OpBuilder<(ins "Value":$range, "unsigned":$index), [{
       build($_builder, $_state,
-            ::llvm::cast<pdl::RangeType>(range.getType()).getElementType(),
+            range.getType().cast<pdl::RangeType>().getElementType(),
             range, index);
     }]>,
   ];
@@ -964,7 +963,7 @@ def PDLInterp_GetValueTypeOp : PDLInterp_Op<"get_value_type", [Pure,
       Type valType = value.getType();
       Type typeType = $_builder.getType<pdl::TypeType>();
       build($_builder, $_state,
-            ::llvm::isa<pdl::RangeType>(valType) ? pdl::RangeType::get(typeType)
+            valType.isa<pdl::RangeType>() ? pdl::RangeType::get(typeType)
                                           : typeType,
             value);
     }]>

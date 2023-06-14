@@ -240,10 +240,6 @@ class CopyOnWriteVector {
 
     VectorData() = default;
     VectorData(const VectorData &VD) : Vect(VD.Vect) {}
-
-    // The copy assignment operator is defined as deleted pending further
-    // motivation.
-    VectorData &operator=(const VectorData &) = delete;
   };
 
 public:

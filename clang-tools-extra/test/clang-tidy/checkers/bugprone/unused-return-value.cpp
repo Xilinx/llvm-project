@@ -52,9 +52,6 @@ struct vector {
   bool empty() const noexcept;
 };
 
-class error_code {
-};
-
 // the check should be able to match std lib calls even if the functions are
 // declared inside inline namespaces
 inline namespace v1 {
@@ -74,10 +71,6 @@ int increment(int i) {
 }
 
 void useFuture(const std::future &fut);
-
-std::error_code errorFunc() {
-    return std::error_code();
-}
 
 void warning() {
   std::async(increment, 42);
@@ -192,10 +185,6 @@ void warning() {
     // CHECK-NOTES: [[@LINE-1]]:5: warning: the value {{.*}} should be used
     // CHECK-NOTES: [[@LINE-2]]:5: note: cast {{.*}} this warning
   }
-
-  errorFunc();
-  // CHECK-NOTES: [[@LINE-1]]:3: warning: the value {{.*}} should be used
-  // CHECK-NOTES: [[@LINE-2]]:3: note: cast {{.*}} this warning
 }
 
 void noWarning() {
@@ -219,8 +208,6 @@ void noWarning() {
 
   std::vector<Foo> VecNoWarning;
   auto VecEmptyRetval = VecNoWarning.empty();
-
-  (void) errorFunc();
 
   // test using the return value in different kinds of expressions
   useFuture(std::async(increment, 42));

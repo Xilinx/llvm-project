@@ -467,11 +467,12 @@ private:
   }
 
   void CheckDoControl(const parser::CharBlock &sourceLocation, bool isReal) {
-    if (isReal) {
-      if (context_.ShouldWarn(common::LanguageFeature::RealDoControls)) {
-        context_.Say(
-            sourceLocation, "DO controls should be INTEGER"_port_en_US);
-      }
+    const bool warn{context_.warnOnNonstandardUsage() ||
+        context_.ShouldWarn(common::LanguageFeature::RealDoControls)};
+    if (isReal && !warn) {
+      // No messages for the default case
+    } else if (isReal && warn) {
+      context_.Say(sourceLocation, "DO controls should be INTEGER"_port_en_US);
     } else {
       SayBadDoControl(sourceLocation);
     }

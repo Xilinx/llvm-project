@@ -171,11 +171,10 @@ SmallVector<Symbol *, 0> SymbolTable::findAllByVersion(SymbolVersion ver,
                                                        bool includeNonDefault) {
   SmallVector<Symbol *, 0> res;
   SingleStringMatcher m(ver.name);
-  auto check = [&](const Symbol &sym) -> bool {
-    if (!includeNonDefault)
-      return !sym.hasVersionSuffix;
-    StringRef name = sym.getName();
+  auto check = [&](StringRef name) {
     size_t pos = name.find('@');
+    if (!includeNonDefault)
+      return pos == StringRef::npos;
     return !(pos + 1 < name.size() && name[pos + 1] == '@');
   };
 
@@ -183,13 +182,14 @@ SmallVector<Symbol *, 0> SymbolTable::findAllByVersion(SymbolVersion ver,
     for (auto &p : getDemangledSyms())
       if (m.match(p.first()))
         for (Symbol *sym : p.second)
-          if (check(*sym))
+          if (check(sym->getName()))
             res.push_back(sym);
     return res;
   }
 
   for (Symbol *sym : symVector)
-    if (canBeVersioned(*sym) && check(*sym) && m.match(sym->getName()))
+    if (canBeVersioned(*sym) && check(sym->getName()) &&
+        m.match(sym->getName()))
       res.push_back(sym);
   return res;
 }

@@ -63,8 +63,7 @@ static void replaceFrameIndex(MachineBasicBlock::iterator II,
       // of the load offset.
       const TargetRegisterInfo *TRI =
           MBB.getParent()->getSubtarget().getRegisterInfo();
-      BaseReg =
-          RS->scavengeRegisterBackwards(ARC::GPR32RegClass, II, false, SPAdj);
+      BaseReg = RS->scavengeRegister(&ARC::GPR32RegClass, II, SPAdj);
       assert(BaseReg && "Register scavenging failed.");
       LLVM_DEBUG(dbgs() << "Scavenged register " << printReg(BaseReg, TRI)
                         << " for FrameReg=" << printReg(FrameReg, TRI)

@@ -59,7 +59,7 @@ DictionaryAttr NamedAttrList::getDictionary(MLIRContext *context) const {
   }
   if (!dictionarySorted.getPointer())
     dictionarySorted.setPointer(DictionaryAttr::getWithSorted(context, attrs));
-  return llvm::cast<DictionaryAttr>(dictionarySorted.getPointer());
+  return dictionarySorted.getPointer().cast<DictionaryAttr>();
 }
 
 /// Add an attribute with the specified name.
@@ -405,19 +405,18 @@ OperandRangeRange OperandRange::split(DenseI32ArrayAttr segmentSizes) const {
 OperandRangeRange::OperandRangeRange(OperandRange operands,
                                      Attribute operandSegments)
     : OperandRangeRange(OwnerT(operands.getBase(), operandSegments), 0,
-                        llvm::cast<DenseI32ArrayAttr>(operandSegments).size()) {
-}
+                        operandSegments.cast<DenseI32ArrayAttr>().size()) {}
 
 OperandRange OperandRangeRange::join() const {
   const OwnerT &owner = getBase();
-  ArrayRef<int32_t> sizeData = llvm::cast<DenseI32ArrayAttr>(owner.second);
+  ArrayRef<int32_t> sizeData = owner.second.cast<DenseI32ArrayAttr>();
   return OperandRange(owner.first,
                       std::accumulate(sizeData.begin(), sizeData.end(), 0));
 }
 
 OperandRange OperandRangeRange::dereference(const OwnerT &object,
                                             ptrdiff_t index) {
-  ArrayRef<int32_t> sizeData = llvm::cast<DenseI32ArrayAttr>(object.second);
+  ArrayRef<int32_t> sizeData = object.second.cast<DenseI32ArrayAttr>();
   uint32_t startIndex =
       std::accumulate(sizeData.begin(), sizeData.begin() + index, 0);
   return OperandRange(object.first + startIndex, *(sizeData.begin() + index));
@@ -509,7 +508,7 @@ void MutableOperandRange::updateLength(unsigned newLength) {
 
   // Update any of the provided segment attributes.
   for (OperandSegment &segment : operandSegments) {
-    auto attr = llvm::cast<DenseI32ArrayAttr>(segment.second.getValue());
+    auto attr = segment.second.getValue().cast<DenseI32ArrayAttr>();
     SmallVector<int32_t, 8> segments(attr.asArrayRef());
     segments[segment.first] += diff;
     segment.second.setValue(
@@ -525,8 +524,7 @@ MutableOperandRangeRange::MutableOperandRangeRange(
     const MutableOperandRange &operands, NamedAttribute operandSegmentAttr)
     : MutableOperandRangeRange(
           OwnerT(operands, operandSegmentAttr), 0,
-          llvm::cast<DenseI32ArrayAttr>(operandSegmentAttr.getValue()).size()) {
-}
+          operandSegmentAttr.getValue().cast<DenseI32ArrayAttr>().size()) {}
 
 MutableOperandRange MutableOperandRangeRange::join() const {
   return getBase().first;
@@ -539,7 +537,7 @@ MutableOperandRangeRange::operator OperandRangeRange() const {
 MutableOperandRange MutableOperandRangeRange::dereference(const OwnerT &object,
                                                           ptrdiff_t index) {
   ArrayRef<int32_t> sizeData =
-      llvm::cast<DenseI32ArrayAttr>(object.second.getValue());
+      object.second.getValue().cast<DenseI32ArrayAttr>();
   uint32_t startIndex =
       std::accumulate(sizeData.begin(), sizeData.begin() + index, 0);
   return object.first.slice(
@@ -626,17 +624,17 @@ ValueRange::ValueRange(ResultRange values)
 /// See `llvm::detail::indexed_accessor_range_base` for details.
 ValueRange::OwnerT ValueRange::offset_base(const OwnerT &owner,
                                            ptrdiff_t index) {
-  if (const auto *value = llvm::dyn_cast_if_present<const Value *>(owner))
+  if (const auto *value = owner.dyn_cast<const Value *>())
     return {value + index};
-  if (auto *operand = llvm::dyn_cast_if_present<OpOperand *>(owner))
+  if (auto *operand = owner.dyn_cast<OpOperand *>())
     return {operand + index};
   return owner.get<detail::OpResultImpl *>()->getNextResultAtOffset(index);
 }
 /// See `llvm::detail::indexed_accessor_range_base` for details.
 Value ValueRange::dereference_iterator(const OwnerT &owner, ptrdiff_t index) {
-  if (const auto *value = llvm::dyn_cast_if_present<const Value *>(owner))
+  if (const auto *value = owner.dyn_cast<const Value *>())
     return value[index];
-  if (auto *operand = llvm::dyn_cast_if_present<OpOperand *>(owner))
+  if (auto *operand = owner.dyn_cast<OpOperand *>())
     return operand[index].get();
   return owner.get<detail::OpResultImpl *>()->getNextResultAtOffset(index);
 }
@@ -653,7 +651,7 @@ llvm::hash_code OperationEquivalence::computeHash(
   //   - Attributes
   //   - Result Types
   llvm::hash_code hash =
-      llvm::hash_combine(op->getName(), op->getDiscardableAttrDictionary(),
+      llvm::hash_combine(op->getName(), op->getAttrDictionary(),
                          op->getResultTypes(), op->hashProperties());
 
   //   - Operands
@@ -768,13 +766,11 @@ OperationEquivalence::isRegionEquivalentTo(Region *lhs, Region *rhs,
 
   // 1. Compare the operation properties.
   if (lhs->getName() != rhs->getName() ||
-      lhs->getDiscardableAttrDictionary() !=
-          rhs->getDiscardableAttrDictionary() ||
+      lhs->getAttrDictionary() != rhs->getAttrDictionary() ||
       lhs->getNumRegions() != rhs->getNumRegions() ||
       lhs->getNumSuccessors() != rhs->getNumSuccessors() ||
       lhs->getNumOperands() != rhs->getNumOperands() ||
-      lhs->getNumResults() != rhs->getNumResults() ||
-      lhs->hashProperties() != rhs->hashProperties())
+      lhs->getNumResults() != rhs->getNumResults())
     return false;
   if (!(flags & IgnoreLocations) && lhs->getLoc() != rhs->getLoc())
     return false;
@@ -786,8 +782,8 @@ OperationEquivalence::isRegionEquivalentTo(Region *lhs, Region *rhs,
     auto sortValues = [](ValueRange values) {
       SmallVector<Value> sortedValues = llvm::to_vector(values);
       llvm::sort(sortedValues, [](Value a, Value b) {
-        auto aArg = llvm::dyn_cast<BlockArgument>(a);
-        auto bArg = llvm::dyn_cast<BlockArgument>(b);
+        auto aArg = a.dyn_cast<BlockArgument>();
+        auto bArg = b.dyn_cast<BlockArgument>();
 
         // Case 1. Both `a` and `b` are `BlockArgument`s.
         if (aArg && bArg) {
@@ -877,13 +873,8 @@ OperationFingerPrint::OperationFingerPrint(Operation *topOp) {
   topOp->walk([&](Operation *op) {
     //   - Operation pointer
     addDataToHash(hasher, op);
-    //   - Parent operation pointer (to take into account the nesting structure)
-    if (op != topOp)
-      addDataToHash(hasher, op->getParentOp());
     //   - Attributes
-    addDataToHash(hasher, op->getDiscardableAttrDictionary());
-    //   - Properties
-    addDataToHash(hasher, op->hashProperties());
+    addDataToHash(hasher, op->getAttrDictionary());
     //   - Blocks in Regions
     for (Region &region : op->getRegions()) {
       for (Block &block : region) {

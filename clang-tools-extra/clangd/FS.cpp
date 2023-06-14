@@ -11,7 +11,6 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/VirtualFileSystem.h"
 #include <optional>
-#include <utility>
 
 namespace clang {
 namespace clangd {
@@ -24,10 +23,9 @@ PreambleFileStatusCache::PreambleFileStatusCache(llvm::StringRef MainFilePath){
 }
 
 void PreambleFileStatusCache::update(const llvm::vfs::FileSystem &FS,
-                                     llvm::vfs::Status S,
-                                     llvm::StringRef File) {
+                                     llvm::vfs::Status S) {
   // Canonicalize path for later lookup, which is usually by absolute path.
-  llvm::SmallString<32> PathStore(File);
+  llvm::SmallString<32> PathStore(S.getName());
   if (FS.makeAbsolute(PathStore))
     return;
   llvm::sys::path::remove_dots(PathStore, /*remove_dot_dot=*/true);
@@ -74,14 +72,14 @@ PreambleFileStatusCache::getProducingFS(
       // many times (e.g. code completion) and the repeated status call is
       // likely to be cached in the underlying file system anyway.
       if (auto S = File->get()->status())
-        StatCache.update(getUnderlyingFS(), std::move(*S), Path.str());
+        StatCache.update(getUnderlyingFS(), std::move(*S));
       return File;
     }
 
     llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine &Path) override {
       auto S = getUnderlyingFS().status(Path);
       if (S)
-        StatCache.update(getUnderlyingFS(), *S, Path.str());
+        StatCache.update(getUnderlyingFS(), *S);
       return S;
     }
 

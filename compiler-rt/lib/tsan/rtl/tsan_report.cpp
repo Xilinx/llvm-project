@@ -98,6 +98,12 @@ static const char *ReportTypeString(ReportType typ, uptr tag) {
   UNREACHABLE("missing case");
 }
 
+#if SANITIZER_APPLE
+static const char *const kInterposedFunctionPrefix = "wrap_";
+#else
+static const char *const kInterposedFunctionPrefix = "__interceptor_";
+#endif
+
 void PrintStack(const ReportStack *ent) {
   if (ent == 0 || ent->frames == 0) {
     Printf("    [failed to restore the stack]\n\n");
@@ -109,7 +115,7 @@ void PrintStack(const ReportStack *ent) {
     RenderFrame(&res, common_flags()->stack_trace_format, i,
                 frame->info.address, &frame->info,
                 common_flags()->symbolize_vs_style,
-                common_flags()->strip_path_prefix);
+                common_flags()->strip_path_prefix, kInterposedFunctionPrefix);
     Printf("%s\n", res.data());
   }
   Printf("\n");

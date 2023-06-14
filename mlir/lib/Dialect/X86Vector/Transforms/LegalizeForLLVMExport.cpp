@@ -22,11 +22,11 @@ using namespace mlir::x86vector;
 /// Extracts the "main" vector element type from the given X86Vector operation.
 template <typename OpTy>
 static Type getSrcVectorElementType(OpTy op) {
-  return cast<VectorType>(op.getSrc().getType()).getElementType();
+  return op.getSrc().getType().template cast<VectorType>().getElementType();
 }
 template <>
 Type getSrcVectorElementType(Vp2IntersectOp op) {
-  return cast<VectorType>(op.getA().getType()).getElementType();
+  return op.getA().getType().template cast<VectorType>().getElementType();
 }
 
 namespace {

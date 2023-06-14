@@ -114,12 +114,7 @@ public:
       return 0;
     if (!haveRegionCounts())
       return 0;
-    // With profiles from a differing version of clang we can have mismatched
-    // decl counts. Don't crash in such a case.
-    auto Index = (*RegionCounterMap)[S];
-    if (Index >= RegionCounts.size())
-      return 0;
-    return RegionCounts[Index];
+    return RegionCounts[(*RegionCounterMap)[S]];
   }
 };
 

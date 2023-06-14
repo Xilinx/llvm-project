@@ -269,35 +269,15 @@ public:
   void dump() const { llvm::errs() << *this << "\n"; }
 };
 
-// Temporarily exit the MLIR namespace to add casting support as later code in
-// this uses it. The CastInfo must come after the OpFoldResult definition and
-// before any cast function calls depending on CastInfo.
-
-} // namespace mlir
-
-namespace llvm {
-
-// Allow llvm::cast style functions.
-template <typename To>
-struct CastInfo<To, mlir::OpFoldResult>
-    : public CastInfo<To, mlir::OpFoldResult::PointerUnion> {};
-
-template <typename To>
-struct CastInfo<To, const mlir::OpFoldResult>
-    : public CastInfo<To, const mlir::OpFoldResult::PointerUnion> {};
-
-} // namespace llvm
-
-namespace mlir {
-
 /// Allow printing to a stream.
 inline raw_ostream &operator<<(raw_ostream &os, OpFoldResult ofr) {
-  if (Value value = llvm::dyn_cast_if_present<Value>(ofr))
+  if (Value value = ofr.dyn_cast<Value>())
     value.print(os);
   else
-    llvm::dyn_cast_if_present<Attribute>(ofr).print(os);
+    ofr.dyn_cast<Attribute>().print(os);
   return os;
 }
+
 /// Allow printing to a stream.
 inline raw_ostream &operator<<(raw_ostream &os, OpState op) {
   op.print(os, OpPrintingFlags().useLocalScope());
@@ -1574,7 +1554,7 @@ foldTrait(Operation *op, ArrayRef<Attribute> operands,
     return failure();
 
   if (OpFoldResult result = Trait::foldTrait(op, operands)) {
-    if (llvm::dyn_cast_if_present<Value>(result) != op->getResult(0))
+    if (result.template dyn_cast<Value>() != op->getResult(0))
       results.push_back(result);
     return success();
   }
@@ -1910,12 +1890,11 @@ private:
     if constexpr (has_fold_adaptor_single_result_v<ConcreteOpT>) {
       if constexpr (hasProperties()) {
         result = cast<ConcreteOpT>(op).fold(typename ConcreteOpT::FoldAdaptor(
-            operands, op->getDiscardableAttrDictionary(),
+            operands, op->getAttrDictionary(),
             cast<ConcreteOpT>(op).getProperties(), op->getRegions()));
       } else {
         result = cast<ConcreteOpT>(op).fold(typename ConcreteOpT::FoldAdaptor(
-            operands, op->getDiscardableAttrDictionary(), {},
-            op->getRegions()));
+            operands, op->getAttrDictionary(), {}, op->getRegions()));
       }
     } else {
       result = cast<ConcreteOpT>(op).fold(operands);
@@ -1923,8 +1902,7 @@ private:
 
     // If the fold failed or was in-place, try to fold the traits of the
     // operation.
-    if (!result ||
-        llvm::dyn_cast_if_present<Value>(result) == op->getResult(0)) {
+    if (!result || result.template dyn_cast<Value>() == op->getResult(0)) {
       if (succeeded(op_definition_impl::foldTraits<Traits<ConcreteType>...>(
               op, operands, results)))
         return success();
@@ -1942,14 +1920,13 @@ private:
       if constexpr (hasProperties()) {
         result = cast<ConcreteOpT>(op).fold(
             typename ConcreteOpT::FoldAdaptor(
-                operands, op->getDiscardableAttrDictionary(),
+                operands, op->getAttrDictionary(),
                 cast<ConcreteOpT>(op).getProperties(), op->getRegions()),
             results);
       } else {
         result = cast<ConcreteOpT>(op).fold(
-            typename ConcreteOpT::FoldAdaptor(
-                operands, op->getDiscardableAttrDictionary(), {},
-                op->getRegions()),
+            typename ConcreteOpT::FoldAdaptor(operands, op->getAttrDictionary(),
+                                              {}, op->getRegions()),
             results);
       }
     } else {
@@ -2140,6 +2117,7 @@ struct DenseMapInfo<T,
   }
   static bool isEqual(T lhs, T rhs) { return lhs == rhs; }
 };
+
 } // namespace llvm
 
 #endif

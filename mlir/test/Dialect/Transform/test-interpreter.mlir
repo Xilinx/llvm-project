@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s --test-transform-dialect-interpreter -allow-unregistered-dialect --split-input-file --verify-diagnostics | FileCheck %s
+// RUN: mlir-opt %s --test-transform-dialect-interpreter -allow-unregistered-dialect --split-input-file --verify-diagnostics
 
 transform.sequence failures(propagate) {
 ^bb0(%arg0: !transform.any_op):
@@ -10,18 +10,18 @@ transform.sequence failures(propagate) {
 
 transform.sequence failures(propagate) {
 ^bb0(%arg0: !transform.any_op):
-  %0 = transform.test_produce_self_handle_or_forward_operand { foo = "bar" } : () -> !transform.any_op
+  %0 = transform.test_produce_self_handle_or_forward_operand { foo = "bar" }
   // expected-remark @below {{succeeded}}
-  transform.test_consume_operand_of_op_kind_or_fail %0, "transform.test_produce_self_handle_or_forward_operand" : !transform.any_op
+  transform.test_consume_operand_of_op_kind_or_fail %0, "transform.test_produce_self_handle_or_forward_operand"
 }
 
 // -----
 
 transform.sequence failures(propagate) {
 ^bb0(%arg0: !transform.any_op):
-  %0 = transform.test_produce_self_handle_or_forward_operand { foo = "bar" } : () -> !transform.any_op
+  %0 = transform.test_produce_self_handle_or_forward_operand { foo = "bar" }
   // expected-error @below {{expected the operand to be associated a payload op of kind transform.sequence got transform.test_produce_self_handle_or_forward_operand}}
-  transform.test_consume_operand_of_op_kind_or_fail %0, "transform.sequence" : !transform.any_op
+  transform.test_consume_operand_of_op_kind_or_fail %0, "transform.sequence"
 }
 
 // -----
@@ -31,18 +31,18 @@ transform.sequence failures(propagate) {
 // to detect double-consumption.
 transform.sequence failures(propagate) {
 ^bb0(%arg0: !transform.any_op):
-  %0 = transform.test_produce_self_handle_or_forward_operand { foo = "bar" } : () -> !transform.any_op
-  %1 = transform.test_copy_payload %0 : (!transform.any_op) -> !transform.any_op
+  %0 = transform.test_produce_self_handle_or_forward_operand { foo = "bar" }
+  %1 = transform.test_copy_payload %0
   // expected-remark @below {{succeeded}}
-  transform.test_consume_operand_of_op_kind_or_fail %0, "transform.test_produce_self_handle_or_forward_operand" : !transform.any_op
+  transform.test_consume_operand_of_op_kind_or_fail %0, "transform.test_produce_self_handle_or_forward_operand"
 }
 
 // -----
 
 transform.sequence failures(propagate) {
-^bb0(%arg0: !transform.any_op):
-  sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb0(%arg1: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
+  sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
     // expected-remark @below {{applying transformation "a"}}
     test_transform_op "a"
     // expected-remark @below {{applying transformation "b"}}
@@ -59,27 +59,54 @@ transform.sequence failures(propagate) {
 // -----
 
 transform.sequence failures(propagate) {
-^bb0(%arg0: !transform.any_op):
-  %0 = test_produce_self_handle_or_forward_operand : () -> !transform.any_op
-  sequence %0 : !transform.any_op failures(propagate) {
-  ^bb0(%arg1: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
+  %0 = test_produce_self_handle_or_forward_operand
+  sequence %0 : !pdl.operation failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
     // expected-remark @below {{succeeded}}
-    test_consume_operand_of_op_kind_or_fail %arg1, "transform.test_produce_self_handle_or_forward_operand" : !transform.any_op
+    test_consume_operand_of_op_kind_or_fail %arg1, "transform.test_produce_self_handle_or_forward_operand"
   }
 }
 
 // -----
 
 transform.sequence failures(propagate) {
-^bb0(%arg0: !transform.any_op):
-  %0 = sequence %arg0 : !transform.any_op -> !transform.any_op failures(propagate) {
-  ^bb0(%arg1: !transform.any_op):
-    %1 = test_produce_self_handle_or_forward_operand : () -> !transform.any_op
-    yield %1 : !transform.any_op
+^bb0(%arg0: !pdl.operation):
+  %0 = sequence %arg0 : !pdl.operation -> !pdl.operation failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %1 = test_produce_self_handle_or_forward_operand
+    yield %1 : !pdl.operation
   }
   // expected-remark @below {{succeeded}}
-  test_consume_operand_of_op_kind_or_fail %0, "transform.test_produce_self_handle_or_forward_operand" : !transform.any_op
+  test_consume_operand_of_op_kind_or_fail %0, "transform.test_produce_self_handle_or_forward_operand"
 }
+
+// -----
+
+transform.with_pdl_patterns {
+^bb0(%arg0: !pdl.operation):
+  sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = pdl_match @some in %arg1 : (!pdl.operation) -> !pdl.operation
+    test_print_remark_at_operand %0, "matched" : !pdl.operation
+  }
+
+  pdl.pattern @some : benefit(1) {
+    %0 = pdl.operation "test.some_op"
+    pdl.rewrite %0 with "transform.dialect"
+  }
+
+  pdl.pattern @other : benefit(1) {
+    %0 = pdl.operation "test.other_op"
+    pdl.rewrite %0 with "transform.dialect"
+  }
+}
+
+// expected-remark @below {{matched}}
+"test.some_op"() : () -> ()
+"test.other_op"() : () -> ()
+// expected-remark @below {{matched}}
+"test.some_op"() : () -> ()
 
 // -----
 
@@ -97,18 +124,18 @@ func.func @bar() {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @const : benefit(1) {
     %r = pdl.types
     %0 = pdl.operation "arith.constant" -> (%r : !pdl.range<type>)
     pdl.rewrite %0 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb1(%arg1: !transform.any_op):
-    %f = pdl_match @const in %arg1 : (!transform.any_op) -> !transform.any_op
-    %m = get_closest_isolated_parent %f : (!transform.any_op) -> !transform.any_op
-    test_print_remark_at_operand %m, "parent function" : !transform.any_op
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb1(%arg1: !pdl.operation):
+    %f = pdl_match @const in %arg1 : (!pdl.operation) -> !pdl.operation
+    %m = get_closest_isolated_parent %f : (!pdl.operation) -> !pdl.operation
+    test_print_remark_at_operand %m, "parent function" : !pdl.operation
   }
 }
 
@@ -120,7 +147,7 @@ func.func @foo() {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @match_func : benefit(1) {
     %0 = pdl.operands
     %1 = pdl.types
@@ -128,22 +155,22 @@ transform.with_pdl_patterns {
     pdl.rewrite %2 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb1(%arg1: !transform.any_op):
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb1(%arg1: !pdl.operation):
     // This is necessary to run the transformation on something other than the
     // top-level module, "alternatives" cannot be run on that.
-    %0 = pdl_match @match_func in %arg1 : (!transform.any_op) -> !transform.any_op
-    transform.alternatives %0 : !transform.any_op {
-    ^bb2(%arg2: !transform.any_op):
-      %1 = transform.test_produce_self_handle_or_forward_operand : () -> !transform.any_op
+    %0 = pdl_match @match_func in %arg1 : (!pdl.operation) -> !pdl.operation
+    transform.alternatives %0 : !pdl.operation {
+    ^bb2(%arg2: !pdl.operation):
+      %1 = transform.test_produce_self_handle_or_forward_operand
       // This operation fails, which triggers the next alternative without
       // reporting the error.
-      transform.test_consume_operand_of_op_kind_or_fail %1, "transform.sequence" : !transform.any_op
+      transform.test_consume_operand_of_op_kind_or_fail %1, "transform.sequence"
     }, {
-    ^bb2(%arg2: !transform.any_op):
-      %1 = transform.test_produce_self_handle_or_forward_operand : () -> !transform.any_op
+    ^bb2(%arg2: !pdl.operation):
+      %1 = transform.test_produce_self_handle_or_forward_operand
       // expected-remark @below {{succeeded}}
-      transform.test_consume_operand_of_op_kind_or_fail %1, "transform.test_produce_self_handle_or_forward_operand" : !transform.any_op
+      transform.test_consume_operand_of_op_kind_or_fail %1, "transform.test_produce_self_handle_or_forward_operand"
     }
   }
 }
@@ -158,7 +185,7 @@ func.func @foo() {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @match_call : benefit(1) {
     %0 = pdl.operands
     %1 = pdl.types
@@ -166,16 +193,16 @@ transform.with_pdl_patterns {
     pdl.rewrite %2 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb1(%arg1: !transform.any_op):
-    %0 = pdl_match @match_call in %arg1 : (!transform.any_op) -> !transform.any_op
-    %1 = get_closest_isolated_parent %0 : (!transform.any_op) -> !transform.any_op
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb1(%arg1: !pdl.operation):
+    %0 = pdl_match @match_call in %arg1 : (!pdl.operation) -> !pdl.operation
+    %1 = get_closest_isolated_parent %0 : (!pdl.operation) -> !pdl.operation
     // expected-error @below {{all alternatives failed}}
-    transform.alternatives %1 : !transform.any_op {
-    ^bb2(%arg2: !transform.any_op):
-      %2 = transform.pdl_match @match_call in %arg2 : (!transform.any_op) -> !transform.any_op
+    transform.alternatives %1 : !pdl.operation {
+    ^bb2(%arg2: !pdl.operation):
+      %2 = transform.pdl_match @match_call in %arg2 : (!pdl.operation) -> !pdl.operation
       // expected-remark @below {{applying}}
-      transform.test_emit_remark_and_erase_operand %2, "applying" {fail_after_erase} : !transform.any_op
+      transform.test_emit_remark_and_erase_operand %2, "applying" {fail_after_erase}
     }
   }
 }
@@ -191,7 +218,7 @@ func.func @foo() {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @match_call : benefit(1) {
     %0 = pdl.operands
     %1 = pdl.types
@@ -199,25 +226,25 @@ transform.with_pdl_patterns {
     pdl.rewrite %2 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb1(%arg1: !transform.any_op):
-    %0 = pdl_match @match_call in %arg1 : (!transform.any_op) -> !transform.any_op
-    %1 = get_closest_isolated_parent %0 : (!transform.any_op) -> !transform.any_op
-    transform.alternatives %1 : !transform.any_op {
-    ^bb2(%arg2: !transform.any_op):
-      %2 = transform.pdl_match @match_call in %arg2 : (!transform.any_op) -> !transform.any_op
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb1(%arg1: !pdl.operation):
+    %0 = pdl_match @match_call in %arg1 : (!pdl.operation) -> !pdl.operation
+    %1 = get_closest_isolated_parent %0 : (!pdl.operation) -> !pdl.operation
+    transform.alternatives %1 : !pdl.operation {
+    ^bb2(%arg2: !pdl.operation):
+      %2 = transform.pdl_match @match_call in %arg2 : (!pdl.operation) -> !pdl.operation
       // expected-remark @below {{applying}}
-      transform.test_emit_remark_and_erase_operand %2, "applying" {fail_after_erase} : !transform.any_op
+      transform.test_emit_remark_and_erase_operand %2, "applying" {fail_after_erase}
     }, {
-    ^bb2(%arg2: !transform.any_op):
-      %2 = transform.pdl_match @match_call in %arg2 : (!transform.any_op) -> !transform.any_op
-      transform.test_print_remark_at_operand %2, "still here" : !transform.any_op
+    ^bb2(%arg2: !pdl.operation):
+      %2 = transform.pdl_match @match_call in %arg2 : (!pdl.operation) -> !pdl.operation
+      transform.test_print_remark_at_operand %2, "still here" : !pdl.operation
       // This alternative succeeds.
     }, {
-    ^bb2(%arg2: !transform.any_op):
+    ^bb2(%arg2: !pdl.operation):
       // This alternative is never run, so we must not have a remark here.
-      %2 = transform.pdl_match @match_call in %arg2 : (!transform.any_op) -> !transform.any_op
-      transform.test_emit_remark_and_erase_operand %2, "should not happen" {fail_after_erase} : !transform.any_op
+      %2 = transform.pdl_match @match_call in %arg2 : (!pdl.operation) -> !pdl.operation
+      transform.test_emit_remark_and_erase_operand %2, "should not happen" {fail_after_erase}
     }
   }
 }
@@ -232,7 +259,7 @@ func.func @erase_call() {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @match_call : benefit(1) {
     %0 = pdl.operands
     %1 = pdl.types
@@ -240,20 +267,20 @@ transform.with_pdl_patterns {
     pdl.rewrite %2 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb1(%arg1: !transform.any_op):
-    %0 = pdl_match @match_call in %arg1 : (!transform.any_op) -> !transform.any_op
-    %1 = get_closest_isolated_parent %0 : (!transform.any_op) -> !transform.any_op
-    transform.alternatives %1 : !transform.any_op {
-    ^bb2(%arg2: !transform.any_op):
-      %2 = transform.pdl_match @match_call in %arg2 : (!transform.any_op) -> !transform.any_op
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb1(%arg1: !pdl.operation):
+    %0 = pdl_match @match_call in %arg1 : (!pdl.operation) -> !pdl.operation
+    %1 = get_closest_isolated_parent %0 : (!pdl.operation) -> !pdl.operation
+    transform.alternatives %1 : !pdl.operation {
+    ^bb2(%arg2: !pdl.operation):
+      %2 = transform.pdl_match @match_call in %arg2 : (!pdl.operation) -> !pdl.operation
       // expected-remark @below {{applying}}
-      transform.test_emit_remark_and_erase_operand %2, "applying" {fail_after_erase} : !transform.any_op
+      transform.test_emit_remark_and_erase_operand %2, "applying" {fail_after_erase}
     }, {
-    ^bb2(%arg2: !transform.any_op):
-      %2 = transform.pdl_match @match_call in %arg2 : (!transform.any_op) -> !transform.any_op
+    ^bb2(%arg2: !pdl.operation):
+      %2 = transform.pdl_match @match_call in %arg2 : (!pdl.operation) -> !pdl.operation
       // expected-remark @below {{applying second time}}
-      transform.test_emit_remark_and_erase_operand %2, "applying second time" : !transform.any_op
+      transform.test_emit_remark_and_erase_operand %2, "applying second time"
     }
   }
 }
@@ -268,7 +295,7 @@ func.func @foo() {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @match_call : benefit(1) {
     %0 = pdl.operands
     %1 = pdl.types
@@ -276,27 +303,27 @@ transform.with_pdl_patterns {
     pdl.rewrite %2 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb1(%arg1: !transform.any_op):
-    %0 = pdl_match @match_call in %arg1 : (!transform.any_op) -> !transform.any_op
-    %1 = get_closest_isolated_parent %0 : (!transform.any_op) -> !transform.any_op
-    %2 = transform.alternatives %1 : !transform.any_op -> !transform.any_op {
-    ^bb2(%arg2: !transform.any_op):
-      %3 = transform.pdl_match @match_call in %arg2 : (!transform.any_op) -> !transform.any_op
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb1(%arg1: !pdl.operation):
+    %0 = pdl_match @match_call in %arg1 : (!pdl.operation) -> !pdl.operation
+    %1 = get_closest_isolated_parent %0 : (!pdl.operation) -> !pdl.operation
+    %2 = transform.alternatives %1 : !pdl.operation -> !pdl.operation {
+    ^bb2(%arg2: !pdl.operation):
+      %3 = transform.pdl_match @match_call in %arg2 : (!pdl.operation) -> !pdl.operation
       // expected-remark @below {{applying}}
-      transform.test_emit_remark_and_erase_operand %3, "applying" {fail_after_erase} : !transform.any_op
-      %4 = transform.test_produce_self_handle_or_forward_operand %3 : (!transform.any_op) -> !transform.any_op
-      transform.yield %4 : !transform.any_op
+      transform.test_emit_remark_and_erase_operand %3, "applying" {fail_after_erase}
+      %4 = transform.test_produce_self_handle_or_forward_operand %3
+      transform.yield %4 : !pdl.operation
     }, {
-    ^bb2(%arg2: !transform.any_op):
-      %4 = transform.test_produce_self_handle_or_forward_operand : () -> !transform.any_op
-      transform.yield %4 : !transform.any_op
+    ^bb2(%arg2: !pdl.operation):
+      %4 = transform.test_produce_self_handle_or_forward_operand
+      transform.yield %4 : !pdl.operation
     }
     // The first alternative failed, so the returned value is taken from the
     // second alternative, associated test_produce_self_handle_or_forward_operand rather
     // than pdl_match.
     // expected-remark @below {{succeeded}}
-    transform.test_consume_operand_of_op_kind_or_fail %2, "transform.test_produce_self_handle_or_forward_operand" : !transform.any_op
+    transform.test_consume_operand_of_op_kind_or_fail %2, "transform.test_produce_self_handle_or_forward_operand"
   }
 }
 
@@ -316,16 +343,16 @@ module {
   }
 
   transform.sequence failures(propagate) {
-  ^bb1(%arg1: !transform.any_op):
+  ^bb1(%arg1: !pdl.operation):
     // expected-error @below {{scope must not contain the transforms being applied}}
-    transform.alternatives %arg1 : !transform.any_op {
-    ^bb2(%arg2: !transform.any_op):
-      %0 = transform.test_produce_self_handle_or_forward_operand : () -> !transform.any_op
-      transform.test_consume_operand_of_op_kind_or_fail %0, "transform.sequence" : !transform.any_op
+    transform.alternatives %arg1 : !pdl.operation {
+    ^bb2(%arg2: !pdl.operation):
+      %0 = transform.test_produce_self_handle_or_forward_operand
+      transform.test_consume_operand_of_op_kind_or_fail %0, "transform.sequence"
     }, {
-    ^bb2(%arg2: !transform.any_op):
-      %0 = transform.test_produce_self_handle_or_forward_operand : () -> !transform.any_op
-      transform.test_consume_operand_of_op_kind_or_fail %0, "transform.test_produce_self_handle_or_forward_operand" : !transform.any_op
+    ^bb2(%arg2: !pdl.operation):
+      %0 = transform.test_produce_self_handle_or_forward_operand
+      transform.test_consume_operand_of_op_kind_or_fail %0, "transform.test_produce_self_handle_or_forward_operand"
     }
   }
 }
@@ -341,7 +368,7 @@ func.func @foo(%arg0: index, %arg1: index, %arg2: index) {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @match_const : benefit(1) {
     %0 = pdl.operands
     %1 = pdl.types
@@ -350,13 +377,13 @@ transform.with_pdl_patterns {
   }
 
 
-  sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb1(%arg1: !transform.any_op):
-    %0 = transform.pdl_match @match_const in %arg1 : (!transform.any_op) -> !transform.any_op
-    %1 = transform.loop.get_parent_for %0 : (!transform.any_op) -> !transform.any_op
+  sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb1(%arg1: !pdl.operation):
+    %0 = transform.pdl_match @match_const in %arg1 : (!pdl.operation) -> !pdl.operation
+    %1 = transform.loop.get_parent_for %0 : (!pdl.operation) -> !pdl.operation
     // expected-error @below {{only isolated-from-above ops can be alternative scopes}}
-    alternatives %1 : !transform.any_op {
-    ^bb2(%arg2: !transform.any_op):
+    alternatives %1 : !pdl.operation {
+    ^bb2(%arg2: !pdl.operation):
     }
   }
 }
@@ -369,7 +396,7 @@ func.func @foo() {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @some : benefit(1) {
     %0 = pdl.operands
     %1 = pdl.types
@@ -377,12 +404,12 @@ transform.with_pdl_patterns {
     pdl.rewrite %2 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb0(%arg1: !transform.any_op):
-    %0 = pdl_match @some in %arg1 : (!transform.any_op) -> !transform.any_op
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = pdl_match @some in %arg1 : (!pdl.operation) -> !pdl.operation
     // expected-error @below {{application of transform.test_wrong_number_of_results expected to produce 3 results (actually produced 1).}}
     // expected-note @below {{if you need variadic results, consider a generic `apply` instead of the specialized `applyToOne`.}}
-    transform.test_wrong_number_of_results %0 : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+    transform.test_wrong_number_of_results %0
   }
 }
 
@@ -396,7 +423,7 @@ func.func @foo() {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @some : benefit(1) {
     %0 = pdl.operands
     %1 = pdl.types
@@ -404,12 +431,12 @@ transform.with_pdl_patterns {
     pdl.rewrite %2 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb0(%arg1: !transform.any_op):
-    %0 = pdl_match @some in %arg1 : (!transform.any_op) -> !transform.any_op
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = pdl_match @some in %arg1 : (!pdl.operation) -> !pdl.operation
     // expected-error @below {{application of transform.test_wrong_number_of_multi_results expected to produce 1 results (actually produced 0)}}
     // expected-note @below {{if you need variadic results, consider a generic `apply` instead of the specialized `applyToOne`.}}
-    transform.test_wrong_number_of_multi_results %0 : (!transform.any_op) -> (!transform.any_op)
+    transform.test_wrong_number_of_multi_results %0
   }
 }
 
@@ -423,7 +450,7 @@ func.func @foo() {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @some : benefit(1) {
     %0 = pdl.operands
     %1 = pdl.types
@@ -431,11 +458,11 @@ transform.with_pdl_patterns {
     pdl.rewrite %2 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb0(%arg1: !transform.any_op):
-    %0 = pdl_match @some in %arg1 : (!transform.any_op) -> !transform.any_op
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = pdl_match @some in %arg1 : (!pdl.operation) -> !pdl.operation
     // Transform matches 3 ops and produces 2 results.
-    %1:2 = transform.test_correct_number_of_multi_results %0 : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    %1:2 = transform.test_correct_number_of_multi_results %0
   }
 }
 
@@ -447,7 +474,7 @@ func.func @foo() {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @some : benefit(1) {
     %0 = pdl.operands
     %1 = pdl.types
@@ -455,11 +482,11 @@ transform.with_pdl_patterns {
     pdl.rewrite %2 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb0(%arg1: !transform.any_op):
-    %0 = pdl_match @some in %arg1 : (!transform.any_op) -> !transform.any_op
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = pdl_match @some in %arg1 : (!pdl.operation) -> !pdl.operation
     // Transform fails to match any but still produces 2 results.
-    %1:2 = transform.test_correct_number_of_multi_results %0 : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+    %1:2 = transform.test_correct_number_of_multi_results %0
   }
 }
 
@@ -473,7 +500,7 @@ func.func @foo() {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @some : benefit(1) {
     %0 = pdl.operands
     %1 = pdl.types
@@ -481,10 +508,10 @@ transform.with_pdl_patterns {
     pdl.rewrite %2 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb0(%arg1: !transform.any_op):
-    %0 = pdl_match @some in %arg1 : (!transform.any_op) -> !transform.any_op
-    transform.test_mixed_null_and_non_null_results %0 : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = pdl_match @some in %arg1 : (!pdl.operation) -> !pdl.operation
+    transform.test_mixed_null_and_non_null_results %0
   }
 }
 
@@ -503,7 +530,7 @@ func.func @foo(%arg0: index) {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @addi : benefit(1) {
     %0 = pdl.operands
     %1 = pdl.types
@@ -517,38 +544,12 @@ transform.with_pdl_patterns {
     pdl.rewrite %2 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb0(%arg1: !transform.any_op):
-    %0 = pdl_match @addi in %arg1 : (!transform.any_op) -> !transform.any_op
-    %1 = pdl_match @subi in %arg1 : (!transform.any_op) -> !transform.any_op
-    %2 = merge_handles %0, %1 : !transform.any_op
-    test_print_remark_at_operand %2, "matched" : !transform.any_op
-  }
-}
-
-// -----
-
-func.func @foo(%arg0: index) {
-  %0 = arith.addi %arg0, %arg0 : index
-  return
-}
-
-transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
-  pdl.pattern @addi : benefit(1) {
-    %0 = pdl.operands
-    %1 = pdl.types
-    %2 = pdl.operation "arith.addi"(%0 : !pdl.range<value>) -> (%1 : !pdl.range<type>)
-    pdl.rewrite %2 with "transform.dialect"
-  }
-
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb0(%arg1: !transform.any_op):
-    %0 = pdl_match @addi in %arg1 : (!transform.any_op) -> !transform.any_op
-    %1 = pdl_match @addi in %arg1 : (!transform.any_op) -> !transform.any_op
-    %2 = merge_handles deduplicate %0, %1 : !transform.any_op
-    // expected-remark @below {{1}}
-    test_print_number_of_associated_payload_ir_ops %2 : !transform.any_op
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = pdl_match @addi in %arg1 : (!pdl.operation) -> !pdl.operation
+    %1 = pdl_match @subi in %arg1 : (!pdl.operation) -> !pdl.operation
+    %2 = merge_handles %0, %1 : !pdl.operation
+    test_print_remark_at_operand %2, "matched" : !pdl.operation
   }
 }
 
@@ -562,7 +563,7 @@ func.func @foo() {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @some : benefit(1) {
     %0 = pdl.operands
     %1 = pdl.types
@@ -570,11 +571,11 @@ transform.with_pdl_patterns {
     pdl.rewrite %2 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb0(%arg1: !transform.any_op):
-    %0 = pdl_match @some in %arg1 : (!transform.any_op) -> !transform.any_op
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = pdl_match @some in %arg1 : (!pdl.operation) -> !pdl.operation
     // expected-error @below {{failed to apply}}
-    transform.test_mixed_success_and_silenceable %0 : !transform.any_op
+    transform.test_mixed_sucess_and_silenceable %0
   }
 }
 
@@ -586,7 +587,7 @@ func.func @foo() {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @some : benefit(1) {
     %0 = pdl.operands
     %1 = pdl.types
@@ -594,12 +595,12 @@ transform.with_pdl_patterns {
     pdl.rewrite %2 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(suppress) {
-  ^bb0(%arg1: !transform.any_op):
-    %0 = pdl_match @some in %arg1 : (!transform.any_op) -> !transform.any_op
+  transform.sequence %arg0 : !pdl.operation failures(suppress) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = pdl_match @some in %arg1 : (!pdl.operation) -> !pdl.operation
     // Not expecting error here because we are suppressing it.
     // expected-remark @below {{foo}}
-    test_emit_remark_and_erase_operand %0, "foo" {fail_after_erase} : !transform.any_op
+    test_emit_remark_and_erase_operand %0, "foo" {fail_after_erase}
   }
 }
 
@@ -611,7 +612,7 @@ func.func @foo() {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @some : benefit(1) {
     %0 = pdl.operands
     %1 = pdl.types
@@ -619,12 +620,12 @@ transform.with_pdl_patterns {
     pdl.rewrite %2 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb0(%arg1: !transform.any_op):
-    %0 = pdl_match @some in %arg1 : (!transform.any_op) -> !transform.any_op
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = pdl_match @some in %arg1 : (!pdl.operation) -> !pdl.operation
     // expected-error @below {{silenceable error}}
     // expected-remark @below {{foo}}
-    test_emit_remark_and_erase_operand %0, "foo" {fail_after_erase} : !transform.any_op
+    test_emit_remark_and_erase_operand %0, "foo" {fail_after_erase}
   }
 }
 
@@ -636,7 +637,7 @@ module {
   func.func private @bar()
 
   transform.with_pdl_patterns {
-  ^bb0(%arg0: !transform.any_op):
+  ^bb0(%arg0: !pdl.operation):
     pdl.pattern @func : benefit(1) {
       %0 = pdl.operands
       %1 = pdl.types
@@ -644,15 +645,15 @@ module {
       pdl.rewrite %2 with "transform.dialect"
     }
 
-    transform.sequence %arg0 : !transform.any_op failures(propagate) {
-    ^bb0(%arg1: !transform.any_op):
-      %0 = pdl_match @func in %arg1 : (!transform.any_op) -> !transform.any_op
-      %1 = replicate num(%0) %arg1 : !transform.any_op, !transform.any_op
+    transform.sequence %arg0 : !pdl.operation failures(propagate) {
+    ^bb0(%arg1: !pdl.operation):
+      %0 = pdl_match @func in %arg1 : (!pdl.operation) -> !pdl.operation
+      %1 = replicate num(%0) %arg1 : !pdl.operation, !pdl.operation
       // expected-remark @below {{2}}
-      test_print_number_of_associated_payload_ir_ops %1 : !transform.any_op
-      %2 = replicate num(%0) %1 : !transform.any_op, !transform.any_op
+      test_print_number_of_associated_payload_ir_ops %1
+      %2 = replicate num(%0) %1 : !pdl.operation, !pdl.operation
       // expected-remark @below {{4}}
-      test_print_number_of_associated_payload_ir_ops %2 : !transform.any_op
+      test_print_number_of_associated_payload_ir_ops %2
     }
   }
 }
@@ -668,21 +669,21 @@ func.func @bar() {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @const : benefit(1) {
     %r = pdl.types
     %0 = pdl.operation "arith.constant" -> (%r : !pdl.range<type>)
     pdl.rewrite %0 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb1(%arg1: !transform.any_op):
-    %f = pdl_match @const in %arg1 : (!transform.any_op) -> !transform.any_op
-    transform.foreach %f : !transform.any_op {
-    ^bb2(%arg2: !transform.any_op):
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb1(%arg1: !pdl.operation):
+    %f = pdl_match @const in %arg1 : (!pdl.operation) -> !pdl.operation
+    transform.foreach %f : !pdl.operation {
+    ^bb2(%arg2: !pdl.operation):
       // expected-remark @below {{1}}
-      transform.test_print_number_of_associated_payload_ir_ops %arg2 : !transform.any_op
-      transform.test_print_remark_at_operand %arg2, "transform applied" : !transform.any_op
+      transform.test_print_number_of_associated_payload_ir_ops %arg2
+      transform.test_print_remark_at_operand %arg2, "transform applied" : !pdl.operation
     }
   }
 }
@@ -708,7 +709,7 @@ func.func @bar() {
 }
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @const : benefit(1) {
     %r = pdl.types
     %0 = pdl.operation "arith.constant" -> (%r : !pdl.range<type>)
@@ -721,18 +722,18 @@ transform.with_pdl_patterns {
     pdl.rewrite %0 with "transform.dialect"
   }
 
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb1(%arg1: !transform.any_op):
-    %f = pdl_match @execute_region in %arg1 : (!transform.any_op) -> !transform.any_op
-    %results = transform.foreach %f : !transform.any_op -> !transform.any_op {
-    ^bb2(%arg2: !transform.any_op):
-      %g = transform.pdl_match @const in %arg2 : (!transform.any_op) -> !transform.any_op
-      transform.yield %g : !transform.any_op
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb1(%arg1: !pdl.operation):
+    %f = pdl_match @execute_region in %arg1 : (!pdl.operation) -> !pdl.operation
+    %results = transform.foreach %f : !pdl.operation -> !pdl.operation {
+    ^bb2(%arg2: !pdl.operation):
+      %g = transform.pdl_match @const in %arg2 : (!pdl.operation) -> !pdl.operation
+      transform.yield %g : !pdl.operation
     }
 
     // expected-remark @below {{3}}
-    transform.test_print_number_of_associated_payload_ir_ops %results : !transform.any_op
-    transform.test_print_remark_at_operand %results, "transform applied" : !transform.any_op
+    transform.test_print_number_of_associated_payload_ir_ops %results
+    transform.test_print_remark_at_operand %results, "transform applied" : !pdl.operation
   }
 }
 
@@ -746,10 +747,10 @@ func.func @get_parent_for_op_no_loop(%arg0: index, %arg1: index) {
 }
 
 transform.sequence failures(propagate) {
-^bb1(%arg1: !transform.any_op):
-  %addi = transform.structured.match ops{["arith.addi"]} in %arg1 : (!transform.any_op) -> !transform.any_op
-  %muli = get_producer_of_operand %addi[0] : (!transform.any_op) -> !transform.any_op
-  transform.test_print_remark_at_operand %muli, "found muli" : !transform.any_op
+^bb1(%arg1: !pdl.operation):
+  %addi = transform.structured.match ops{["arith.addi"]} in %arg1 : (!pdl.operation) -> !pdl.operation
+  %muli = get_producer_of_operand %addi[0] : (!pdl.operation) -> !pdl.operation
+  transform.test_print_remark_at_operand %muli, "found muli" : !pdl.operation
 }
 
 // -----
@@ -761,10 +762,10 @@ func.func @get_parent_for_op_no_loop(%arg0: index, %arg1: index) {
 }
 
 transform.sequence failures(propagate) {
-^bb1(%arg1: !transform.any_op):
-  %muli = transform.structured.match ops{["arith.muli"]} in %arg1 : (!transform.any_op) -> !transform.any_op
+^bb1(%arg1: !pdl.operation):
+  %muli = transform.structured.match ops{["arith.muli"]} in %arg1 : (!pdl.operation) -> !pdl.operation
   // expected-error @below {{could not find a producer for operand number: 0 of}}
-  %bbarg = get_producer_of_operand %muli[0] : (!transform.any_op) -> !transform.any_op
+  %bbarg = get_producer_of_operand %muli[0] : (!pdl.operation) -> !pdl.operation
 
 }
 
@@ -778,10 +779,10 @@ func.func @get_consumer(%arg0: index, %arg1: index) {
 }
 
 transform.sequence failures(propagate) {
-^bb1(%arg1: !transform.any_op):
-  %muli = transform.structured.match ops{["arith.muli"]} in %arg1 : (!transform.any_op) -> !transform.any_op
-  %addi = get_consumers_of_result %muli[0] : (!transform.any_op) -> !transform.any_op
-  transform.test_print_remark_at_operand %addi, "found addi" : !transform.any_op
+^bb1(%arg1: !pdl.operation):
+  %muli = transform.structured.match ops{["arith.muli"]} in %arg1 : (!pdl.operation) -> !pdl.operation
+  %addi = get_consumers_of_result %muli[0] : (!pdl.operation) -> !pdl.operation
+  transform.test_print_remark_at_operand %addi, "found addi" : !pdl.operation
 }
 
 // -----
@@ -793,10 +794,10 @@ func.func @get_consumer_fail_1(%arg0: index, %arg1: index) {
 }
 
 transform.sequence failures(propagate) {
-^bb1(%arg1: !transform.any_op):
-  %muli = transform.structured.match ops{["arith.muli"]} in %arg1 : (!transform.any_op) -> !transform.any_op
+^bb1(%arg1: !pdl.operation):
+  %muli = transform.structured.match ops{["arith.muli"]} in %arg1 : (!pdl.operation) -> !pdl.operation
   // expected-error @below {{handle must be mapped to exactly one payload op}}
-  %bbarg = get_consumers_of_result %muli[0] : (!transform.any_op) -> !transform.any_op
+  %bbarg = get_consumers_of_result %muli[0] : (!pdl.operation) -> !pdl.operation
 
 }
 
@@ -808,10 +809,10 @@ func.func @get_consumer_fail_2(%arg0: index, %arg1: index) {
 }
 
 transform.sequence failures(propagate) {
-^bb1(%arg1: !transform.any_op):
-  %muli = transform.structured.match ops{["arith.muli"]} in %arg1 : (!transform.any_op) -> !transform.any_op
+^bb1(%arg1: !pdl.operation):
+  %muli = transform.structured.match ops{["arith.muli"]} in %arg1 : (!pdl.operation) -> !pdl.operation
   // expected-error @below {{result number overflow}}
-  %bbarg = get_consumers_of_result %muli[1] : (!transform.any_op) -> !transform.any_op
+  %bbarg = get_consumers_of_result %muli[1] : (!pdl.operation) -> !pdl.operation
 
 }
 
@@ -824,14 +825,14 @@ func.func @split_handle(%a: index, %b: index, %c: index) {
 }
 
 transform.sequence failures(propagate) {
-^bb1(%fun: !transform.any_op):
-  %muli = transform.structured.match ops{["arith.muli"]} in %fun : (!transform.any_op) -> !transform.any_op
-  %h:2 = split_handle %muli : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+^bb1(%fun: !pdl.operation):
+  %muli = transform.structured.match ops{["arith.muli"]} in %fun : (!pdl.operation) -> !pdl.operation
+  %h:2 = split_handle %muli : (!pdl.operation) -> (!pdl.operation, !pdl.operation)
   // expected-remark @below {{1}}
-  transform.test_print_number_of_associated_payload_ir_ops %h#0 : !transform.any_op
-  %muli_2 = transform.structured.match ops{["arith.muli"]} in %fun : (!transform.any_op) -> !transform.any_op
+  transform.test_print_number_of_associated_payload_ir_ops %h#0
+  %muli_2 = transform.structured.match ops{["arith.muli"]} in %fun : (!pdl.operation) -> !pdl.operation
   // expected-error @below {{expected to contain 3 payload ops but it contains 2 payload ops}}
-  %h_2:3 = split_handle %muli_2 : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+  %h_2:3 = split_handle %muli_2 : (!pdl.operation) -> (!pdl.operation, !pdl.operation, !pdl.operation)
 }
 
 // -----
@@ -843,57 +844,16 @@ func.func @split_handle(%a: index, %b: index, %c: index) {
 }
 
 transform.sequence failures(suppress) {
-^bb1(%fun: !transform.any_op):
-  %muli = transform.structured.match ops{["arith.muli"]} in %fun : (!transform.any_op) -> !transform.any_op
-  %h:2 = split_handle %muli : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
+^bb1(%fun: !pdl.operation):
+  %muli = transform.structured.match ops{["arith.muli"]} in %fun : (!pdl.operation) -> !pdl.operation
+  %h:2 = split_handle %muli : (!pdl.operation) -> (!pdl.operation, !pdl.operation)
   // expected-remark @below {{1}}
-  transform.test_print_number_of_associated_payload_ir_ops %h#0 : !transform.any_op
-  %muli_2 = transform.structured.match ops{["arith.muli"]} in %fun : (!transform.any_op) -> !transform.any_op
+  transform.test_print_number_of_associated_payload_ir_ops %h#0
+  %muli_2 = transform.structured.match ops{["arith.muli"]} in %fun : (!pdl.operation) -> !pdl.operation
   // Silenceable failure and all handles are now empty.
-  %h_2:3 = split_handle %muli_2 : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+  %h_2:3 = split_handle %muli_2 : (!pdl.operation) -> (!pdl.operation, !pdl.operation, !pdl.operation)
   // expected-remark @below {{0}}
-  transform.test_print_number_of_associated_payload_ir_ops %h_2#0 : !transform.any_op
-}
-
-// -----
-
-func.func @split_handle(%a: index, %b: index, %c: index) {
-  %0 = arith.muli %a, %b : index
-  %1 = arith.muli %a, %c : index
-  return
-}
-
-transform.sequence failures(propagate) {
-^bb1(%fun: !transform.any_op):
-  %muli_2 = transform.structured.match ops{["arith.muli"]} in %fun : (!transform.any_op) -> !transform.any_op
-  // No error, last result handle is empty.
-  %h:3 = split_handle %muli_2 {fail_on_payload_too_small = false} : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
-  // expected-remark @below {{1}}
-  transform.test_print_number_of_associated_payload_ir_ops %h#0 : !transform.any_op
-  // expected-remark @below {{1}}
-  transform.test_print_number_of_associated_payload_ir_ops %h#1 : !transform.any_op
-  // expected-remark @below {{0}}
-  transform.test_print_number_of_associated_payload_ir_ops %h#2 : !transform.any_op
-}
-
-// -----
-
-func.func @split_handle(%a: index, %b: index, %c: index) {
-  %0 = arith.muli %a, %b : index
-  %1 = arith.muli %a, %c : index
-  %2 = arith.muli %a, %c : index
-  %3 = arith.muli %a, %c : index
-  return
-}
-
-transform.sequence failures(propagate) {
-^bb1(%fun: !transform.any_op):
-  %muli_2 = transform.structured.match ops{["arith.muli"]} in %fun : (!transform.any_op) -> !transform.any_op
-  %h:2 = split_handle %muli_2 {overflow_result = 0} : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
-  // expected-remark @below {{3}}
-  transform.test_print_number_of_associated_payload_ir_ops %h#0 : !transform.any_op
-  // expected-remark @below {{1}}
-  transform.test_print_number_of_associated_payload_ir_ops %h#1 : !transform.any_op
+  transform.test_print_number_of_associated_payload_ir_ops %h_2#0
 }
 
 // -----
@@ -902,17 +862,17 @@ transform.sequence failures(propagate) {
 "other_dialect.other_op"() : () -> ()
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @some : benefit(1) {
     %0 = pdl.operation "test.some_op"
     pdl.rewrite %0 with "transform.dialect"
   }
 
-  sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb1(%arg1: !transform.any_op):
-    %0 = pdl_match @some in %arg1 : (!transform.any_op) -> !transform.any_op
-    %2 = transform.cast %0 : !transform.any_op to !transform.test_dialect_op
-    transform.cast %2 : !transform.test_dialect_op to !transform.any_op
+  sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb1(%arg1: !pdl.operation):
+    %0 = pdl_match @some in %arg1 : (!pdl.operation) -> !pdl.operation
+    %2 = transform.cast %0 : !pdl.operation to !transform.test_dialect_op
+    transform.cast %2 : !transform.test_dialect_op to !pdl.operation
   }
 }
 
@@ -922,18 +882,18 @@ transform.with_pdl_patterns {
 "other_dialect.other_op"() : () -> ()
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @other : benefit(1) {
     %0 = pdl.operation "other_dialect.other_op"
     pdl.rewrite %0 with "transform.dialect"
   }
 
-  sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb1(%arg1: !transform.any_op):
-    %0 = pdl_match @other in %arg1 : (!transform.any_op) -> !transform.any_op
+  sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb1(%arg1: !pdl.operation):
+    %0 = pdl_match @other in %arg1 : (!pdl.operation) -> !pdl.operation
     // expected-error @below {{expected the payload operation to belong to the 'test' dialect}}
-    %2 = transform.cast %0 : !transform.any_op to !transform.test_dialect_op
-    transform.cast %2 : !transform.test_dialect_op to !transform.any_op
+    %2 = transform.cast %0 : !pdl.operation to !transform.test_dialect_op
+    transform.cast %2 : !transform.test_dialect_op to !pdl.operation
   }
 }
 
@@ -943,17 +903,17 @@ transform.with_pdl_patterns {
 "other_dialect.other_op"() : () -> ()
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @some : benefit(1) {
     %0 = pdl.operation "test.some_op"
     pdl.rewrite %0 with "transform.dialect"
   }
 
-  sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb1(%arg1: !transform.any_op):
-    %0 = pdl_match @some in %arg1 : (!transform.any_op) -> !transform.any_op
-    %2 = transform.cast %0 : !transform.any_op to !transform.op<"test.some_op">
-    transform.cast %2 : !transform.op<"test.some_op"> to !transform.any_op
+  sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb1(%arg1: !pdl.operation):
+    %0 = pdl_match @some in %arg1 : (!pdl.operation) -> !pdl.operation
+    %2 = transform.cast %0 : !pdl.operation to !transform.op<"test.some_op">
+    transform.cast %2 : !transform.op<"test.some_op"> to !pdl.operation
   }
 }
 
@@ -964,36 +924,36 @@ transform.with_pdl_patterns {
 "other_dialect.other_op"() : () -> ()
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
+^bb0(%arg0: !pdl.operation):
   pdl.pattern @other : benefit(1) {
     %0 = pdl.operation "other_dialect.other_op"
     pdl.rewrite %0 with "transform.dialect"
   }
 
-  sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb1(%arg1: !transform.any_op):
-    %0 = pdl_match @other in %arg1 : (!transform.any_op) -> !transform.any_op
+  sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb1(%arg1: !pdl.operation):
+    %0 = pdl_match @other in %arg1 : (!pdl.operation) -> !pdl.operation
     // expected-error @below {{incompatible payload operation name}}
-    %2 = transform.cast %0 : !transform.any_op to !transform.op<"test.some_op">
-    transform.cast %2 : !transform.op<"test.some_op"> to !transform.any_op
+    %2 = transform.cast %0 : !pdl.operation to !transform.op<"test.some_op">
+    transform.cast %2 : !transform.op<"test.some_op"> to !pdl.operation
   }
 }
 
 // -----
 
 transform.with_pdl_patterns {
-^bb0(%arg0: !transform.any_op):
-  transform.sequence %arg0 : !transform.any_op failures(propagate) {
-  ^bb0(%arg1: !transform.any_op):
-    %0 = pdl_match @some in %arg1 : (!transform.any_op) -> !transform.any_op
+^bb0(%arg0: !pdl.operation):
+  transform.sequence %arg0 : !pdl.operation failures(propagate) {
+  ^bb0(%arg1: !pdl.operation):
+    %0 = pdl_match @some in %arg1 : (!pdl.operation) -> !pdl.operation
     // here, the handles nested under are {%arg0, %arg1, %0}
     // expected-remark @below {{3 handles nested under}}
-    transform.test_report_number_of_tracked_handles_nested_under %arg1 : !transform.any_op
+    transform.test_report_number_of_tracked_handles_nested_under %arg1
     // expected-remark @below {{erased}}
-    transform.test_emit_remark_and_erase_operand %0, "erased" : !transform.any_op
+    transform.test_emit_remark_and_erase_operand %0, "erased"
     // here, the handles nested under are only {%arg0, %arg1}
     // expected-remark @below {{2 handles nested under}}
-    transform.test_report_number_of_tracked_handles_nested_under %arg1 : !transform.any_op
+    transform.test_report_number_of_tracked_handles_nested_under %arg1
   }
 
   pdl.pattern @some : benefit(1) {
@@ -1012,14 +972,14 @@ func.func @split_handle(%a: index, %b: index, %c: index) {
   return
 }
 
-transform.sequence -> !transform.any_op failures(propagate) {
-^bb1(%fun: !transform.any_op):
-  %muli = transform.structured.match ops{["arith.muli"]} in %fun : (!transform.any_op) -> !transform.any_op
+transform.sequence -> !pdl.operation failures(propagate) {
+^bb1(%fun: !pdl.operation):
+  %muli = transform.structured.match ops{["arith.muli"]} in %fun : (!pdl.operation) -> !pdl.operation
   // expected-error @below {{expected to contain 3 payload ops but it contains 2 payload ops}}
-  %h_2:3 = split_handle %muli : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+  %h_2:3 = split_handle %muli : (!pdl.operation) -> (!pdl.operation, !pdl.operation, !pdl.operation)
   /// Test that yield does not crash in the presence of silenceable error in
   /// propagate mode.
-  yield %fun : !transform.any_op
+  yield %fun : !pdl.operation
 }
 
 // -----
@@ -1064,9 +1024,9 @@ transform.sequence failures(propagate) {
 // -----
 
 transform.sequence failures(propagate) {
-^bb0(%arg0: !transform.any_op):
-  %0 = transform.structured.match ops{["func.func"]} in %arg0 : (!transform.any_op) -> !transform.any_op
-  %1 = transform.test_produce_param_with_number_of_test_ops %0 : !transform.any_op
+^bb0(%arg0: !pdl.operation):
+  %0 = transform.structured.match ops{["func.func"]} in %arg0 : (!pdl.operation) -> !pdl.operation
+  %1 = transform.test_produce_param_with_number_of_test_ops %0 : !pdl.operation
   // expected-remark @below {{1 : i32, 3 : i32}}
   transform.test_print_param %1 : !transform.test_dialect_param
   %2 = transform.test_add_to_param %1, 100
@@ -1596,27 +1556,4 @@ module attributes { transform.with_named_sequence } {
     "test.something"() : () -> ()
     return
   }
-}
-
-// -----
-
-// CHECK-LABEL: func @test_tracked_rewrite() {
-//  CHECK-NEXT:   "test.update_mapping"() {original_op = "test.replace_me"}
-//  CHECK-NEXT:   "test.drop_mapping"() {original_op = "test.replace_me"}
-//  CHECK-NEXT:   "test.update_mapping"() {original_op = "test.replace_me"}
-//  CHECK-NEXT: }
-func.func @test_tracked_rewrite() {
-  %0 = "test.replace_me"() {replacement = "test.update_mapping"} : () -> (i1)
-  %1 = "test.replace_me"() {replacement = "test.drop_mapping"} : () -> (i1)
-  %2 = "test.replace_me"() {replacement = "test.update_mapping"} : () -> (i1)
-}
-
-transform.sequence failures(propagate) {
-^bb1(%arg1: !transform.any_op):
-  %0 = transform.structured.match ops{["test.replace_me"]} in %arg1 : (!transform.any_op) -> !transform.any_op
-  // expected-remark @below {{2 iterations}}
-  transform.test_tracked_rewrite %0 : (!transform.any_op) -> ()
-  // One replacement op (test.drop_mapping) is dropped from the mapping.
-  // expected-remark @below {{2}}
-  test_print_number_of_associated_payload_ir_ops %0 : !transform.any_op
 }

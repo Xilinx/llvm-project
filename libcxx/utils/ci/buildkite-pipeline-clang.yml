@@ -14,7 +14,6 @@
 # in various configurations.
 #
 env:
-    # LLVM RELEASE bump version
     LLVM_HEAD_VERSION: "17"
 steps:
   - label: "Building clang"
@@ -25,8 +24,8 @@ steps:
       # but with the number of jobs we run daily, this can result in thousands of GB of network I/O.
       - "cmake -S llvm -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=install -DLLVM_ENABLE_PROJECTS=\"clang;compiler-rt\""
       - "ninja -C build install-clang install-clang-resource-headers"
-      - "tar -cJvf install.tar.xz install/"
-      - "buildkite-agent artifact upload --debug install.tar.xz"
+      - "tar -czvf install.tar.gz install/"
+      - "buildkite-agent artifact upload --debug install.tar.gz"
     env:
         CC: "clang-${LLVM_HEAD_VERSION}"
         CXX: "clang++-${LLVM_HEAD_VERSION}"
@@ -43,8 +42,8 @@ steps:
 
   - label: "C++03"
     commands:
-      - "buildkite-agent artifact download install.tar.xz ."
-      - "tar -xvf install.tar.xz"
+      - "buildkite-agent artifact download install.tar.gz ."
+      - "tar -xzvf install.tar.gz"
       - "export CC=$(pwd)/install/bin/clang"
       - "export CXX=$(pwd)/install/bin/clang++"
       - "chmod +x install/bin/clang install/bin/clang++"
@@ -64,14 +63,14 @@ steps:
           limit: 2
     timeout_in_minutes: 120
 
-  - label: "C++26"
+  - label: "C++2b"
     commands:
-      - "buildkite-agent artifact download install.tar.xz ."
-      - "tar -xvf install.tar.xz"
+      - "buildkite-agent artifact download install.tar.gz ."
+      - "tar -xzvf install.tar.gz"
       - "export CC=$(pwd)/install/bin/clang"
       - "export CXX=$(pwd)/install/bin/clang++"
       - "chmod +x install/bin/clang install/bin/clang++"
-      - "libcxx/utils/ci/run-buildbot generic-cxx26"
+      - "libcxx/utils/ci/run-buildbot generic-cxx2b"
     artifact_paths:
       - "**/test-results.xml"
       - "**/crash_diagnostics/*"
@@ -89,8 +88,8 @@ steps:
 
   - label: "Modules"
     commands:
-      - "buildkite-agent artifact download install.tar.xz ."
-      - "tar -xvf install.tar.xz"
+      - "buildkite-agent artifact download install.tar.gz ."
+      - "tar -xzvf install.tar.gz"
       - "export CC=$(pwd)/install/bin/clang"
       - "export CXX=$(pwd)/install/bin/clang++"
       - "chmod +x install/bin/clang install/bin/clang++"

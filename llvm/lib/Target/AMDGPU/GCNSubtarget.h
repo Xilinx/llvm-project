@@ -206,7 +206,6 @@ protected:
   bool HasMADIntraFwdBug = false;
   bool HasVOPDInsts = false;
   bool HasVALUTransUseHazard = false;
-  bool HasForceStoreSC0SC1 = false;
 
   // Dummy feature to use for assembler in tablegen.
   bool FeatureDisable = false;
@@ -1098,8 +1097,6 @@ public:
   }
 
   bool hasVALUTransUseHazard() const { return HasVALUTransUseHazard; }
-
-  bool hasForceStoreSC0SC1() const { return HasForceStoreSC0SC1; }
 
   bool hasVALUMaskWriteHazard() const { return getGeneration() >= GFX11; }
 

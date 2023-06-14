@@ -15,7 +15,7 @@ include "mlir/Interfaces/CastInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/CopyOpInterface.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
-include "mlir/Interfaces/MemorySlotInterfaces.td"
+include "mlir/Interfaces/Mem2RegInterfaces.td"
 include "mlir/Interfaces/ShapedOpInterfaces.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
@@ -111,7 +111,7 @@ class AllocLikeOp<string mnemonic,
   let extraClassDeclaration = [{
     static StringRef getAlignmentAttrStrName() { return "alignment"; }
 
-    MemRefType getType() { return ::llvm::cast<MemRefType>(getResult().getType()); }
+    MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
 
     SmallVector<OpFoldResult> getMixedSizes() {
       SmallVector<OpFoldResult> result;
@@ -293,7 +293,7 @@ def MemRef_ReallocOp : MemRef_Op<"realloc"> {
 
     let extraClassDeclaration = [{
     /// The result of a realloc is always a memref.
-    MemRefType getType() { return ::llvm::cast<MemRefType>(getResult().getType()); }
+    MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
   }];
 
   let assemblyFormat = [{
@@ -311,8 +311,7 @@ def MemRef_ReallocOp : MemRef_Op<"realloc"> {
 
 def MemRef_AllocaOp : AllocLikeOp<"alloca", AutomaticAllocationScopeResource,[
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>,
-    DeclareOpInterfaceMethods<PromotableAllocationOpInterface>,
-    DeclareOpInterfaceMethods<DestructurableAllocationOpInterface>]> {
+    DeclareOpInterfaceMethods<PromotableAllocationOpInterface>]> {
   let summary = "stack memory allocation operation";
   let description = [{
     The `alloca` operation allocates memory on the stack, to be automatically
@@ -700,7 +699,7 @@ def MemRef_DmaStartOp : MemRef_Op<"dma_start"> {
     Value getSrcMemRef() { return getOperand(0); }
     // Returns the rank (number of indices) of the source MemRefType.
     unsigned getSrcMemRefRank() {
-      return ::llvm::cast<MemRefType>(getSrcMemRef().getType()).getRank();
+      return getSrcMemRef().getType().cast<MemRefType>().getRank();
     }
     // Returns the source memref indices for this DMA operation.
     operand_range getSrcIndices() {
@@ -712,13 +711,13 @@ def MemRef_DmaStartOp : MemRef_Op<"dma_start"> {
     Value getDstMemRef() { return getOperand(1 + getSrcMemRefRank()); }
     // Returns the rank (number of indices) of the destination MemRefType.
     unsigned getDstMemRefRank() {
-      return ::llvm::cast<MemRefType>(getDstMemRef().getType()).getRank();
+      return getDstMemRef().getType().cast<MemRefType>().getRank();
     }
     unsigned getSrcMemorySpace() {
-      return ::llvm::cast<MemRefType>(getSrcMemRef().getType()).getMemorySpaceAsInt();
+      return getSrcMemRef().getType().cast<MemRefType>().getMemorySpaceAsInt();
     }
     unsigned getDstMemorySpace() {
-      return ::llvm::cast<MemRefType>(getDstMemRef().getType()).getMemorySpaceAsInt();
+      return getDstMemRef().getType().cast<MemRefType>().getMemorySpaceAsInt();
     }
 
     // Returns the destination memref indices for this DMA operation.
@@ -740,7 +739,7 @@ def MemRef_DmaStartOp : MemRef_Op<"dma_start"> {
 
     // Returns the rank (number of indices) of the tag MemRefType.
     unsigned getTagMemRefRank() {
-      return ::llvm::cast<MemRefType>(getTagMemRef().getType()).getRank();
+      return getTagMemRef().getType().cast<MemRefType>().getRank();
     }
 
     // Returns the tag memref index for this DMA operation.
@@ -840,7 +839,7 @@ def MemRef_DmaWaitOp : MemRef_Op<"dma_wait"> {
   let extraClassDeclaration = [{
     /// Returns the rank (number of indices) of the tag memref.
     unsigned getTagMemRefRank() {
-      return ::llvm::cast<MemRefType>(getTagMemRef().getType()).getRank();
+      return getTagMemRef().getType().cast<MemRefType>().getRank();
     }
     void getEffects(
         SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>> &
@@ -989,7 +988,7 @@ def GenericAtomicRMWOp : MemRef_Op<"generic_atomic_rmw", [
       SingleBlockImplicitTerminator<"AtomicYieldOp">,
       TypesMatchWith<"result type matches element type of memref",
                      "memref", "result",
-                     "::llvm::cast<MemRefType>($_self).getElementType()">
+                     "$_self.cast<MemRefType>().getElementType()">
     ]> {
   let summary = "atomic read-modify-write operation with a region";
   let description = [{
@@ -1036,7 +1035,7 @@ def GenericAtomicRMWOp : MemRef_Op<"generic_atomic_rmw", [
       return getRegion().getArgument(0);
     }
     MemRefType getMemRefType() {
-      return ::llvm::cast<MemRefType>(getMemref().getType());
+      return getMemref().getType().cast<MemRefType>();
     }
   }];
   let hasCustomAssemblyFormat = 1;
@@ -1145,7 +1144,7 @@ def MemRef_GlobalOp : MemRef_Op<"global", [Symbol]> {
   let extraClassDeclaration = [{
      bool isExternal() { return !getInitialValue(); }
      bool isUninitialized() {
-       return !isExternal() && ::llvm::isa<UnitAttr>(*getInitialValue());
+       return !isExternal() && getInitialValue()->isa<UnitAttr>();
      }
      /// Returns the constant initial value if the memref.global is a constant,
      /// or null otherwise.
@@ -1161,10 +1160,9 @@ def MemRef_GlobalOp : MemRef_Op<"global", [Symbol]> {
 def LoadOp : MemRef_Op<"load",
      [TypesMatchWith<"result type matches element type of 'memref'",
                      "memref", "result",
-                     "::llvm::cast<MemRefType>($_self).getElementType()">,
+                     "$_self.cast<MemRefType>().getElementType()">,
       MemRefsNormalizable,
-      DeclareOpInterfaceMethods<PromotableMemOpInterface>,
-      DeclareOpInterfaceMethods<DestructurableAccessorOpInterface>]> {
+      DeclareOpInterfaceMethods<PromotableMemOpInterface>]> {
   let summary = "load operation";
   let description = [{
     The `load` op reads an element from a memref specified by an index list. The
@@ -1213,7 +1211,7 @@ def LoadOp : MemRef_Op<"load",
     Value getMemRef() { return getOperand(0); }
     void setMemRef(Value value) { setOperand(0, value); }
     MemRefType getMemRefType() {
-      return ::llvm::cast<MemRefType>(getMemRef().getType());
+      return getMemRef().getType().cast<MemRefType>();
     }
   }];
 
@@ -1302,7 +1300,7 @@ def MemRef_PrefetchOp : MemRef_Op<"prefetch"> {
 
   let extraClassDeclaration = [{
     MemRefType getMemRefType() {
-      return ::llvm::cast<MemRefType>(getMemref().getType());
+      return getMemref().getType().cast<MemRefType>();
     }
     static StringRef getLocalityHintAttrStrName() { return "localityHint"; }
     static StringRef getIsWriteAttrStrName() { return "isWrite"; }
@@ -1521,7 +1519,7 @@ def MemRef_ReshapeOp: MemRef_Op<"reshape", [
      }]>];
 
   let extraClassDeclaration = [{
-    MemRefType getType() { return ::llvm::cast<MemRefType>(getResult().getType()); }
+    MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
     Value getViewSource() { return getSource(); }
   }];
 
@@ -1550,15 +1548,15 @@ class MemRef_ReassociativeReshapeOp<string mnemonic, list<Trait> traits = []> :
       SmallVector<ReassociationIndices, 4> reassociationIndices;
       for (auto attr : getReassociation())
         reassociationIndices.push_back(llvm::to_vector<2>(
-            llvm::map_range(::llvm::cast<ArrayAttr>(attr), [&](Attribute indexAttr) {
-              return ::llvm::cast<IntegerAttr>(indexAttr).getInt();
+            llvm::map_range(attr.cast<ArrayAttr>(), [&](Attribute indexAttr) {
+              return indexAttr.cast<IntegerAttr>().getInt();
             })));
       return reassociationIndices;
     };
 
-    MemRefType getSrcType() { return ::llvm::cast<MemRefType>(getSrc().getType()); }
+    MemRefType getSrcType() { return getSrc().getType().cast<MemRefType>(); }
 
-    MemRefType getResultType() { return ::llvm::cast<MemRefType>(getResult().getType()); }
+    MemRefType getResultType() { return getResult().getType().cast<MemRefType>(); }
 
     Value getViewSource() { return getSrc(); }
   }];
@@ -1752,10 +1750,9 @@ def MemRef_CollapseShapeOp : MemRef_ReassociativeReshapeOp<"collapse_shape", [
 def MemRef_StoreOp : MemRef_Op<"store",
      [TypesMatchWith<"type of 'value' matches element type of 'memref'",
                      "memref", "value",
-                     "::llvm::cast<MemRefType>($_self).getElementType()">,
+                     "$_self.cast<MemRefType>().getElementType()">,
       MemRefsNormalizable,
-      DeclareOpInterfaceMethods<PromotableMemOpInterface>,
-      DeclareOpInterfaceMethods<DestructurableAccessorOpInterface>]> {
+      DeclareOpInterfaceMethods<PromotableMemOpInterface>]> {
   let summary = "store operation";
   let description = [{
     Store a value to a memref location given by indices. The value stored should
@@ -1804,7 +1801,7 @@ def MemRef_StoreOp : MemRef_Op<"store",
       Value getMemRef() { return getOperand(1); }
       void setMemRef(Value value) { setOperand(1, value); }
       MemRefType getMemRefType() {
-        return ::llvm::cast<MemRefType>(getMemRef().getType());
+        return getMemRef().getType().cast<MemRefType>();
       }
   }];
 
@@ -2013,11 +2010,11 @@ def SubViewOp : MemRef_OpWithOffsetSizesAndStrides<"subview", [
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     /// Returns the type of the base memref operand.
     MemRefType getSourceType() {
-      return ::llvm::cast<MemRefType>(getSource().getType());
+      return getSource().getType().cast<MemRefType>();
     }
 
     /// The result of a subview is always a memref.
-    MemRefType getType() { return ::llvm::cast<MemRefType>(getResult().getType()); }
+    MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
 
     /// A subview result type can be fully inferred from the source type and the
     /// static representation of offsets, sizes and strides. Special sentinels
@@ -2197,7 +2194,7 @@ def MemRef_ViewOp : MemRef_Op<"view", [
 
   let extraClassDeclaration = [{
     /// The result of a view is always a memref.
-    MemRefType getType() { return ::llvm::cast<MemRefType>(getResult().getType()); }
+    MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
 
     /// Returns the dynamic sizes for this view operation. This is redundant
     /// with `sizes` but needed in template implementations. More specifically:
@@ -2228,7 +2225,7 @@ def AtomicRMWOp : MemRef_Op<"atomic_rmw", [
       AllTypesMatch<["value", "result"]>,
       TypesMatchWith<"value type matches element type of memref",
                      "memref", "value",
-                     "::llvm::cast<MemRefType>($_self).getElementType()">
+                     "$_self.cast<MemRefType>().getElementType()">
     ]> {
   let summary = "atomic read-modify-write operation";
   let description = [{
@@ -2261,7 +2258,7 @@ def AtomicRMWOp : MemRef_Op<"atomic_rmw", [
 
   let extraClassDeclaration = [{
     MemRefType getMemRefType() {
-      return ::llvm::cast<MemRefType>(getMemref().getType());
+      return getMemref().getType().cast<MemRefType>();
     }
   }];
   let hasFolder = 1;

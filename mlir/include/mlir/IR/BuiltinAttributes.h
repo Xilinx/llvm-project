@@ -389,7 +389,7 @@ public:
                        !std::is_same<Attribute, T>::value,
                    T>
   getSplatValue() const {
-    return llvm::cast<T>(getSplatValue<Attribute>());
+    return getSplatValue<Attribute>().template cast<T>();
   }
 
   /// Try to get an iterator of the given type to the start of the held element
@@ -510,7 +510,7 @@ public:
                                      T>::mapped_iterator_base;
 
     /// Map the element to the iterator result type.
-    T mapElement(Attribute attr) const { return llvm::cast<T>(attr); }
+    T mapElement(Attribute attr) const { return attr.cast<T>(); }
   };
   template <typename T, typename = DerivedAttrValueTemplateCheckT<T>>
   FailureOr<iterator_range_impl<DerivedAttributeElementIterator<T>>>
@@ -684,7 +684,7 @@ public:
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
   static bool classof(Attribute attr) {
-    auto denseAttr = llvm::dyn_cast<DenseElementsAttr>(attr);
+    auto denseAttr = attr.dyn_cast<DenseElementsAttr>();
     return denseAttr && denseAttr.isSplat();
   }
 };
@@ -887,7 +887,7 @@ public:
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool classof(Attribute attr) {
-    SymbolRefAttr refAttr = llvm::dyn_cast<SymbolRefAttr>(attr);
+    SymbolRefAttr refAttr = attr.dyn_cast<SymbolRefAttr>();
     return refAttr && refAttr.getNestedReferences().empty();
   }
 
@@ -912,13 +912,14 @@ public:
   /// simply wraps the DenseElementsAttr::get calls.
   template <typename Arg>
   static DenseFPElementsAttr get(const ShapedType &type, Arg &&arg) {
-    return llvm::cast<DenseFPElementsAttr>(
-        DenseElementsAttr::get(type, llvm::ArrayRef(arg)));
+    return DenseElementsAttr::get(type, llvm::ArrayRef(arg))
+        .template cast<DenseFPElementsAttr>();
   }
   template <typename T>
   static DenseFPElementsAttr get(const ShapedType &type,
                                  const std::initializer_list<T> &list) {
-    return llvm::cast<DenseFPElementsAttr>(DenseElementsAttr::get(type, list));
+    return DenseElementsAttr::get(type, list)
+        .template cast<DenseFPElementsAttr>();
   }
 
   /// Generates a new DenseElementsAttr by mapping each value attribute, and
@@ -953,13 +954,14 @@ public:
   /// simply wraps the DenseElementsAttr::get calls.
   template <typename Arg>
   static DenseIntElementsAttr get(const ShapedType &type, Arg &&arg) {
-    return llvm::cast<DenseIntElementsAttr>(
-        DenseElementsAttr::get(type, llvm::ArrayRef(arg)));
+    return DenseElementsAttr::get(type, llvm::ArrayRef(arg))
+        .template cast<DenseIntElementsAttr>();
   }
   template <typename T>
   static DenseIntElementsAttr get(const ShapedType &type,
                                   const std::initializer_list<T> &list) {
-    return llvm::cast<DenseIntElementsAttr>(DenseElementsAttr::get(type, list));
+    return DenseElementsAttr::get(type, list)
+        .template cast<DenseIntElementsAttr>();
   }
 
   /// Generates a new DenseElementsAttr by mapping each value attribute, and

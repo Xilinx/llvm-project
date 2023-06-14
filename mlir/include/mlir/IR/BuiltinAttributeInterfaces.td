@@ -397,7 +397,7 @@ def ElementsAttrInterface : AttrInterface<"ElementsAttr", [TypedAttrInterface]> 
       detail::ElementsAttrRange<DerivedAttrValueIterator<T>>;
     template <typename T, typename = DerivedAttrValueCheckT<T>>
     DerivedAttrValueIteratorRange<T> getValues() const {
-      auto castFn = [](Attribute attr) { return ::llvm::cast<T>(attr); };
+      auto castFn = [](Attribute attr) { return attr.template cast<T>(); };
       return {getShapedType(), llvm::map_range(getValues<Attribute>(),
               static_cast<T (*)(Attribute)>(castFn))};
     }
@@ -432,7 +432,7 @@ def ElementsAttrInterface : AttrInterface<"ElementsAttr", [TypedAttrInterface]> 
       if (!values)
         return std::nullopt;
 
-      auto castFn = [](Attribute attr) { return ::llvm::cast<T>(attr); };
+      auto castFn = [](Attribute attr) { return attr.template cast<T>(); };
       return DerivedAttrValueIteratorRange<T>(
         getShapedType(),
         llvm::map_range(*values, static_cast<T (*)(Attribute)>(castFn))

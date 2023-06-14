@@ -74,7 +74,7 @@ struct TestOpaqueLoc
 
     ScopedDiagnosticHandler diagHandler(&getContext(), [](Diagnostic &diag) {
       auto &os = llvm::outs();
-      if (isa<OpaqueLoc>(diag.getLocation())) {
+      if (diag.getLocation().isa<OpaqueLoc>()) {
         MyLocation *loc = OpaqueLoc::getUnderlyingLocationOrNull<MyLocation *>(
             diag.getLocation());
         if (loc)

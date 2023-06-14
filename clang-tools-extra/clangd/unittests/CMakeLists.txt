@@ -79,9 +79,8 @@ add_unittest(ClangdUnitTests ClangdTests
   PrintASTTests.cpp
   ProjectAwareIndexTests.cpp
   QualityTests.cpp
-  RIFFTests.cpp
   RenameTests.cpp
-  ReplayPeambleTests.cpp
+  RIFFTests.cpp
   SelectionTests.cpp
   SemanticHighlightingTests.cpp
   SemanticSelectionTests.cpp

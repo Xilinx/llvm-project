@@ -12,6 +12,7 @@ add_mlir_dialect_library(MLIRAffineTransformOps
   MLIRAffineDialect
   MLIRFuncDialect
   MLIRIR
+  MLIRPDLDialect
   MLIRAffineDialect
   MLIRAffineTransforms
   MLIRAffineUtils

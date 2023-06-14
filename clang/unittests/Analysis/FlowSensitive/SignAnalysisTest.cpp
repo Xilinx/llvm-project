@@ -109,15 +109,17 @@ getValueAndSignProperties(const UnaryOperator *UO,
   // The DeclRefExpr refers to this variable in the operand.
   const auto *OperandVar = M.Nodes.getNodeAs<clang::VarDecl>(kVar);
   assert(OperandVar != nullptr);
-  const auto *OperandValue = State.Env.getValue(*OperandVar);
+  const auto *OperandValue = State.Env.getValue(*OperandVar, SkipPast::None);
   if (!OperandValue)
     return {nullptr, {}, {}};
 
   // Value of the unary op.
-  auto *UnaryOpValue = State.Env.getValueStrict(*UO);
+  auto *UnaryOpValue = State.Env.getValue(*UO, SkipPast::None);
   if (!UnaryOpValue) {
+    auto &Loc = State.Env.createStorageLocation(*UO);
+    State.Env.setStorageLocation(*UO, Loc);
     UnaryOpValue = &State.Env.makeAtomicBoolValue();
-    State.Env.setValueStrict(*UO, *UnaryOpValue);
+    State.Env.setValue(Loc, *UnaryOpValue);
   }
 
   // Properties for the operand (sub expression).
@@ -131,17 +133,22 @@ getValueAndSignProperties(const UnaryOperator *UO,
 
 void transferBinary(const BinaryOperator *BO, const MatchFinder::MatchResult &M,
                     LatticeTransferState &State) {
-  BoolValue *Comp = cast_or_null<BoolValue>(State.Env.getValueStrict(*BO));
+  StorageLocation *Loc = State.Env.getStorageLocation(*BO, SkipPast::None);
+  if (!Loc) {
+    Loc = &State.Env.createStorageLocation(*BO);
+    State.Env.setStorageLocation(*BO, *Loc);
+  }
+  BoolValue *Comp = cast_or_null<BoolValue>(State.Env.getValue(*Loc));
   if (!Comp) {
     Comp = &State.Env.makeAtomicBoolValue();
-    State.Env.setValueStrict(*BO, *Comp);
+    State.Env.setValue(*Loc, *Comp);
   }
 
   // FIXME Use this as well:
   // auto *NegatedComp = &State.Env.makeNot(*Comp);
 
-  auto *LHS = State.Env.getValueStrict(*BO->getLHS());
-  auto *RHS = State.Env.getValueStrict(*BO->getRHS());
+  auto *LHS = State.Env.getValue(*BO->getLHS(), SkipPast::None);
+  auto *RHS = State.Env.getValue(*BO->getRHS(), SkipPast::None);
 
   if (!LHS || !RHS)
     return;
@@ -237,43 +244,19 @@ void transferUnaryNot(const UnaryOperator *UO,
   }
 }
 
-// Returns the `Value` associated with `E` (which may be either a prvalue or
-// glvalue). Creates a `Value` or `StorageLocation` as needed if `E` does not
-// have either of these associated with it yet.
-//
-// If this functionality turns out to be needed in more cases, this function
-// should be moved to a more central location.
-Value *getOrCreateValue(const Expr *E, Environment &Env) {
-  Value *Val = nullptr;
-  if (E->isGLValue()) {
-    StorageLocation *Loc = Env.getStorageLocationStrict(*E);
-    if (!Loc) {
-      Loc = &Env.createStorageLocation(*E);
-      Env.setStorageLocationStrict(*E, *Loc);
-    }
-    Val = Env.getValue(*Loc);
-    if (!Val) {
-      Val = Env.createValue(E->getType());
-      Env.setValue(*Loc, *Val);
-    }
-  } else {
-    Val = Env.getValueStrict(*E);
-    if (!Val) {
-      Val = Env.createValue(E->getType());
-      Env.setValueStrict(*E, *Val);
-    }
-  }
-  assert(Val != nullptr);
-
-  return Val;
-}
-
 void transferExpr(const Expr *E, const MatchFinder::MatchResult &M,
                   LatticeTransferState &State) {
   const ASTContext &Context = *M.Context;
-
-  Value *Val = getOrCreateValue(E, State.Env);
-
+  StorageLocation *Loc = State.Env.getStorageLocation(*E, SkipPast::None);
+  if (!Loc) {
+    Loc = &State.Env.createStorageLocation(*E);
+    State.Env.setStorageLocation(*E, *Loc);
+  }
+  Value *Val = State.Env.getValue(*Loc);
+  if (!Val) {
+    Val = State.Env.createValue(Context.IntTy);
+    State.Env.setValue(*Loc, *Val);
+  }
   // The sign symbolic values have been initialized already.
   if (Val->getProperty("neg"))
     return;

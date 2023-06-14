@@ -358,7 +358,7 @@ private:
     return [callback = std::forward<FnT>(callback)](
                Type type, SmallVectorImpl<Type> &results,
                ArrayRef<Type> callStack) -> std::optional<LogicalResult> {
-      T derivedType = dyn_cast<T>(type);
+      T derivedType = type.dyn_cast<T>();
       if (!derivedType)
         return std::nullopt;
       return callback(derivedType, results, callStack);
@@ -380,7 +380,7 @@ private:
     return [callback = std::forward<FnT>(callback)](
                OpBuilder &builder, Type resultType, ValueRange inputs,
                Location loc) -> std::optional<Value> {
-      if (T derivedType = dyn_cast<T>(resultType))
+      if (T derivedType = resultType.dyn_cast<T>())
         return callback(builder, derivedType, inputs, loc);
       return std::nullopt;
     };
@@ -395,8 +395,8 @@ private:
   wrapTypeAttributeConversion(FnT &&callback) {
     return [callback = std::forward<FnT>(callback)](
                Type type, Attribute attr) -> AttributeConversionResult {
-      if (T derivedType = dyn_cast<T>(type)) {
-        if (A derivedAttr = dyn_cast_or_null<A>(attr))
+      if (T derivedType = type.dyn_cast<T>()) {
+        if (A derivedAttr = attr.dyn_cast_or_null<A>())
           return callback(derivedType, derivedAttr);
       }
       return AttributeConversionResult::na();
@@ -520,10 +520,7 @@ public:
   }
   void rewrite(Operation *op, ArrayRef<Value> operands,
                ConversionPatternRewriter &rewriter) const final {
-    auto sourceOp = cast<SourceOp>(op);
-    rewrite(sourceOp,
-            OpAdaptor(operands, op->getDiscardableAttrDictionary(),
-                      sourceOp.getProperties()),
+    rewrite(cast<SourceOp>(op), OpAdaptor(operands, op->getAttrDictionary()),
             rewriter);
   }
   LogicalResult
@@ -532,13 +529,11 @@ public:
     auto sourceOp = cast<SourceOp>(op);
     if constexpr (SourceOp::hasProperties())
       return matchAndRewrite(sourceOp,
-                             OpAdaptor(operands,
-                                       op->getDiscardableAttrDictionary(),
+                             OpAdaptor(operands, op->getAttrDictionary(),
                                        sourceOp.getProperties()),
                              rewriter);
     return matchAndRewrite(
-        sourceOp, OpAdaptor(operands, op->getDiscardableAttrDictionary()),
-        rewriter);
+        sourceOp, OpAdaptor(operands, op->getAttrDictionary()), rewriter);
   }
 
   /// Rewrite and Match methods that operate on the SourceOp type. These must be

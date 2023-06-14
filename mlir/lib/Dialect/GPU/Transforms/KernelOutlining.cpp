@@ -338,7 +338,7 @@ public:
       if (!resultAttr)
         return failure();
 
-      dataLayoutSpec = dyn_cast<DataLayoutSpecInterface>(resultAttr);
+      dataLayoutSpec = resultAttr.dyn_cast<DataLayoutSpecInterface>();
       if (!dataLayoutSpec)
         return failure();
     }
@@ -410,7 +410,7 @@ private:
               SymbolTable::getSymbolUses(symbolDefWorklist.pop_back_val())) {
         for (SymbolTable::SymbolUse symbolUse : *symbolUses) {
           StringRef symbolName =
-              cast<FlatSymbolRefAttr>(symbolUse.getSymbolRef()).getValue();
+              symbolUse.getSymbolRef().cast<FlatSymbolRefAttr>().getValue();
           if (symbolTable.lookup(symbolName))
             continue;
 

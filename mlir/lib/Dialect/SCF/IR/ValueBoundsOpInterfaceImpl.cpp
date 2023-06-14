@@ -27,10 +27,10 @@ struct ForOpInterface
                                     ValueBoundsConstraintSet &cstr) {
     // `value` is an iter_arg or an OpResult.
     int64_t iterArgIdx;
-    if (auto iterArg = llvm::dyn_cast<BlockArgument>(value)) {
+    if (auto iterArg = value.dyn_cast<BlockArgument>()) {
       iterArgIdx = iterArg.getArgNumber() - forOp.getNumInductionVars();
     } else {
-      iterArgIdx = llvm::cast<OpResult>(value).getResultNumber();
+      iterArgIdx = value.cast<OpResult>().getResultNumber();
     }
 
     // An EQ constraint can be added if the yielded value (dimension size)
@@ -63,7 +63,7 @@ struct ForOpInterface
         bound, boundOperands, BoundType::EQ, yieldedValue, dim,
         [&](Value v, std::optional<int64_t> d) {
           // Stop when reaching a block argument of the loop body.
-          if (auto bbArg = llvm::dyn_cast<BlockArgument>(v))
+          if (auto bbArg = v.dyn_cast<BlockArgument>())
             return bbArg.getOwner()->getParentOp() == forOp;
           // Stop when reaching a value that is defined outside of the loop. It
           // is impossible to reach an iter_arg from there.

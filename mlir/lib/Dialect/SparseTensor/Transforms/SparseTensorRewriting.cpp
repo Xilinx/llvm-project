@@ -44,7 +44,8 @@ static bool isZeroValue(Value val) {
 // Helper to detect a sparse tensor type operand.
 static bool isSparseTensor(OpOperand *op) {
   auto enc = getSparseTensorEncoding(op->get().getType());
-  return enc && llvm::is_contained(enc.getLvlTypes(), DimLevelType::Compressed);
+  return enc &&
+         llvm::is_contained(enc.getDimLevelType(), DimLevelType::Compressed);
 }
 
 // Helper method to find zero/uninitialized allocation.
@@ -78,7 +79,7 @@ static bool isSampling(GenericOp op) {
 
 // Helper to detect chain of multiplications that do not involve x.
 static bool isMulChain(Value val, Value x) {
-  if (auto arg = dyn_cast<BlockArgument>(val))
+  if (auto arg = val.dyn_cast<BlockArgument>())
     return arg != x;
   if (auto *def = val.getDefiningOp()) {
     if (isa<arith::MulFOp>(def) || isa<arith::MulIOp>(def))
@@ -104,7 +105,7 @@ static bool isSumOfMul(GenericOp op) {
 // Helper to detect direct yield of a zero value.
 static bool isZeroYield(GenericOp op) {
   auto yieldOp = cast<linalg::YieldOp>(op.getRegion().front().getTerminator());
-  if (auto arg = dyn_cast<BlockArgument>(yieldOp.getOperand(0))) {
+  if (auto arg = yieldOp.getOperand(0).dyn_cast<BlockArgument>()) {
     if (arg.getOwner()->getParentOp() == op) {
       return isZeroValue(op->getOperand(arg.getArgNumber()));
     }
@@ -367,9 +368,7 @@ public:
     if (tensor::isSameTypeWithoutEncoding(srcType, dstType)) {
       if (Operation *def = op.getSource().getDefiningOp()) {
         if (def->hasOneUse() && isa<tensor::ExtractSliceOp>(def)) {
-          rewriter.updateRootInPlace(def, [&]() {
-            def->getResult(0).setType(op->getResultTypes()[0]);
-          });
+          def->getResult(0).setType(op->getResultTypes()[0]);
           rewriter.replaceOp(op, def->getResult(0));
           return success();
         }
@@ -383,106 +382,6 @@ public:
     }
     // Fail otherwise.
     return failure();
-  }
-};
-
-/// Sparse rewriting rule for sparse-to-sparse reshape operator.
-struct TensorReshapeRewriter : public OpRewritePattern<tensor::ReshapeOp> {
-public:
-  using OpRewritePattern<tensor::ReshapeOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(tensor::ReshapeOp op,
-                                PatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
-    Value srcTensor = op.getSource();
-    const auto srcTp = getSparseTensorType(srcTensor);
-    const auto dstTp = getSparseTensorType(op.getResult());
-
-    if (!srcTp.hasEncoding() || !dstTp.hasEncoding() ||
-        !dstTp.hasStaticDimShape())
-      return failure();
-
-    SmallVector<Value> srcSizes;
-    sizesForTensor(rewriter, srcSizes, loc, srcTp, srcTensor);
-    SmallVector<Value> dstSizes;
-    for (Dimension d : dstTp.getDimShape())
-      dstSizes.push_back(constantIndex(rewriter, loc, d));
-
-    Value nnz = rewriter.create<NumberOfEntriesOp>(loc, srcTensor);
-    // Only need an unordered COO buffer if input and output are not sorted
-    // in the same way.
-    Type bufferTp =
-        srcTp.isAllOrdered() && srcTp.isIdentity() && dstTp.isIdentity()
-            ? dstTp.getRankedTensorType()
-            : getUnorderedCOOFromType(dstTp);
-    SmallVector<Value> dynSizes;
-    Value buffer = rewriter
-                       .create<AllocTensorOp>(loc, bufferTp, dynSizes, Value(),
-                                              nnz, Attribute())
-                       .getResult();
-
-    // Convert src coordinates to dst coordinates by first collapsing it to 1D
-    // and then expand it to the match the rank of the destination tensor.
-    // Implemented as follows:
-    //   foreach srcCoords %srcTensor
-    //     collapsedCoords = reshapeCvs(srcCoords, [1, ..., srcRank])
-    //     expandedCoords = reshapeCvs(collapsedCoords, [1, ..., dstRank])
-    //     insert expandedCoords, %buffer
-    //
-    // followed by an optional
-    //   %t = sparse_tensor.cast %tmp
-    // depending on whether the input/output are sorted in the same way.
-    const auto encSrc = srcTp.getEncoding();
-    ForeachOp foreachOp = rewriter.create<ForeachOp>(
-        loc, srcTensor, buffer,
-        [&](OpBuilder &builder, Location loc, ValueRange srcLcvs, Value v,
-            ValueRange reduc) {
-          const Dimension srcRank = srcTp.getDimRank();
-          SmallVector<Value> srcDcvs;
-          srcDcvs.reserve(srcRank);
-          for (Dimension d = 0; d < srcRank; d++) {
-            // FIXME: `toStoredDim` is deprecated
-            Level lvl = toStoredDim(encSrc, d);
-            srcDcvs.push_back(srcLcvs[lvl]);
-          }
-
-          Value collapsed_size = constantIndex(builder, loc, 1);
-          for (Dimension d = 0; d < srcRank; d++)
-            collapsed_size =
-                builder.create<arith::MulIOp>(loc, collapsed_size, srcSizes[d]);
-          SmallVector<Value, 1> collapsedSizes = {collapsed_size};
-
-          ReassociationIndices collapse_indices;
-          for (Dimension i = 0; i < srcRank; i++)
-            collapse_indices.push_back(i);
-          SmallVector<ReassociationIndices, 1> collapse_reassociation = {
-              collapse_indices};
-          SmallVector<Value, 1> collapsedDcvs;
-          reshapeCvs(builder, loc, collapse_reassociation, srcSizes, srcDcvs,
-                     collapsedSizes, collapsedDcvs);
-
-          ReassociationIndices expand_indices;
-          for (Dimension i = 0; i < dstTp.getDimRank(); i++)
-            expand_indices.push_back(i);
-          SmallVector<ReassociationIndices, 1> expand_reassociation = {
-              expand_indices};
-          SmallVector<Value> dstDcvs;
-          reshapeCvs(builder, loc, expand_reassociation, collapsedSizes,
-                     collapsedDcvs, dstSizes, dstDcvs);
-
-          auto t = builder.create<InsertOp>(loc, v, reduc.front(), dstDcvs);
-          builder.create<sparse_tensor::YieldOp>(loc, t);
-        });
-
-    Value t = rewriter.create<LoadOp>(loc, foreachOp.getResult(0), true);
-    if (bufferTp != dstTp) {
-      auto dstRTT = dstTp.getRankedTensorType();
-      Value converted = rewriter.create<ConvertOp>(loc, dstRTT, t).getResult();
-      rewriter.create<DeallocTensorOp>(loc, t);
-      t = converted;
-    }
-    rewriter.replaceOp(op, t);
-    return success();
   }
 };
 
@@ -820,7 +719,7 @@ private:
 
     bool fromSparseConst = false;
     if (auto constOp = op.getSource().getDefiningOp<arith::ConstantOp>()) {
-      if (dyn_cast<SparseElementsAttr>(constOp.getValue())) {
+      if (constOp.getValue().dyn_cast<SparseElementsAttr>()) {
         fromSparseConst = true;
       }
     }
@@ -996,7 +895,9 @@ private:
       // coordinates for the storage ordering of the dst tensor.  Use SortCoo
       // if the COO tensor has the same ordering as the dst tensor.
       if (dimRank > 1 && srcTp.hasSameDimToLvlMap(dstTp)) {
-        Value xs = genToCoordinatesBuffer(rewriter, loc, src);
+        MemRefType coordsTp =
+            get1DMemRefType(encSrc.getCrdType(), /*withLayout=*/false);
+        Value xs = rewriter.create<ToCoordinatesBufferOp>(loc, coordsTp, src);
         rewriter.create<SortCooOp>(
             loc, nnz, xs, ValueRange{y}, rewriter.getIndexAttr(dimRank),
             rewriter.getIndexAttr(0), SparseTensorSortKind::HybridQuickSort);
@@ -1073,7 +974,7 @@ public:
     // Special-case: for each over a sparse constant uses its own rewriting
     // rule.
     if (auto constOp = input.getDefiningOp<arith::ConstantOp>()) {
-      if (auto attr = dyn_cast<SparseElementsAttr>(constOp.getValue())) {
+      if (auto attr = constOp.getValue().dyn_cast<SparseElementsAttr>()) {
         return genForeachOnSparseConstant(op, rewriter, attr);
       }
     }
@@ -1270,8 +1171,7 @@ void mlir::populatePostSparsificationRewriting(RewritePatternSet &patterns,
                                                bool enableForeach,
                                                bool enableConvert) {
   patterns.add<ReshapeRewriter<tensor::ExpandShapeOp>,
-               ReshapeRewriter<tensor::CollapseShapeOp>, TensorReshapeRewriter>(
-      patterns.getContext());
+               ReshapeRewriter<tensor::CollapseShapeOp>>(patterns.getContext());
   if (enableForeach)
     patterns.add<ForeachRewriter>(patterns.getContext());
   // TODO: If RT not enabled, rewrite concatenate ops, etc here.

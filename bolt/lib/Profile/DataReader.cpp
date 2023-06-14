@@ -215,9 +215,9 @@ FuncBranchData::getDirectCallBranch(uint64_t From) const {
     }
   };
   auto Range = std::equal_range(Data.begin(), Data.end(), From, Compare());
-  for (const auto &RI : llvm::make_range(Range))
-    if (RI.From.Name != RI.To.Name)
-      return RI;
+  for (auto I = Range.first; I != Range.second; ++I)
+    if (I->From.Name != I->To.Name)
+      return *I;
 
   return make_error_code(llvm::errc::invalid_argument);
 }

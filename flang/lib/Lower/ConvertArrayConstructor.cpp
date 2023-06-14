@@ -16,7 +16,6 @@
 #include "flang/Optimizer/Builder/HLFIRTools.h"
 #include "flang/Optimizer/Builder/Runtime/ArrayConstructor.h"
 #include "flang/Optimizer/Builder/Runtime/RTBuilder.h"
-#include "flang/Optimizer/Builder/TemporaryStorage.h"
 #include "flang/Optimizer/Builder/Todo.h"
 #include "flang/Optimizer/HLFIR/HLFIROps.h"
 
@@ -102,11 +101,10 @@ protected:
 };
 
 /// Class that implements the "inlined temp strategy" to lower array
-/// constructors. It must be provided a boolean to indicate if the array
-/// constructor has any implied-do-loop.
-template <bool hasLoops>
-class InlinedTempStrategyImpl : public StrategyBase,
-                                public fir::factory::HomogeneousScalarStack {
+/// constructors. It must be further provided a CounterType class to specify how
+/// the current ac-value insertion position is tracked.
+template <typename CounterType>
+class InlinedTempStrategyImpl : public StrategyBase {
   /// Name that will be given to the temporary allocation and hlfir.declare in
   /// the IR.
   static constexpr char tempName[] = ".tmp.arrayctor";
@@ -120,14 +118,34 @@ public:
                           fir::SequenceType declaredType, mlir::Value extent,
                           llvm::ArrayRef<mlir::Value> lengths)
       : StrategyBase{stmtCtx, symMap},
-        fir::factory::HomogeneousScalarStack{
-            loc,      builder, declaredType,
-            extent,   lengths, /*allocateOnHeap=*/true,
-            hasLoops, tempName} {}
+        one{builder.createIntegerConstant(loc, builder.getIndexType(), 1)},
+        counter{loc, builder, one} {
+    // Allocate the temporary storage.
+    llvm::SmallVector<mlir::Value, 1> extents{extent};
+    mlir::Value tempStorage = builder.createHeapTemporary(
+        loc, declaredType, tempName, extents, lengths);
+    mlir::Value shape = builder.genShape(loc, extents);
+    temp =
+        builder
+            .create<hlfir::DeclareOp>(loc, tempStorage, tempName, shape,
+                                      lengths, fir::FortranVariableFlagsAttr{})
+            .getBase();
+  }
 
   /// Push a lowered ac-value into the current insertion point and
   /// increment the insertion point.
-  using fir::factory::HomogeneousScalarStack::pushValue;
+  void pushValue(mlir::Location loc, fir::FirOpBuilder &builder,
+                 hlfir::Entity value) {
+    assert(value.isScalar() && "cannot use inlined temp with array values");
+    mlir::Value indexValue = counter.getAndIncrementIndex(loc, builder, one);
+    hlfir::Entity tempElement = hlfir::getElementAt(
+        loc, builder, hlfir::Entity{temp}, mlir::ValueRange{indexValue});
+    // TODO: "copy" would probably be better than assign to ensure there are no
+    // side effects (user assignments, temp, lhs finalization)?
+    // This only makes a difference for derived types, so for now derived types
+    // will use the runtime strategy to avoid any bad behaviors.
+    builder.create<hlfir::AssignOp>(loc, value, tempElement);
+  }
 
   /// Start a fir.do_loop with the control from an implied-do and return
   /// the loop induction variable that is the ac-do-variable value.
@@ -135,7 +153,7 @@ public:
   mlir::Value startImpliedDo(mlir::Location loc, fir::FirOpBuilder &builder,
                              mlir::Value lower, mlir::Value upper,
                              mlir::Value stride) {
-    if constexpr (!hasLoops)
+    if constexpr (!CounterType::canCountThroughLoops)
       fir::emitFatalError(loc, "array constructor lowering is inconsistent");
     auto loop = builder.create<fir::DoLoopOp>(loc, lower, upper, stride,
                                               /*unordered=*/false,
@@ -148,21 +166,77 @@ public:
   /// variables and cannot be further modified).
   hlfir::Entity finishArrayCtorLowering(mlir::Location loc,
                                         fir::FirOpBuilder &builder) {
-    return moveStackAsArrayExpr(loc, builder);
+    // Temp is created using createHeapTemporary.
+    mlir::Value mustFree = builder.createBool(loc, true);
+    auto hlfirExpr = builder.create<hlfir::AsExprOp>(loc, temp, mustFree);
+    return hlfir::Entity{hlfirExpr};
   }
+
+private:
+  mlir::Value one;
+  CounterType counter;
+  mlir::Value temp;
 };
 
+/// A simple SSA value counter to lower array constructors without any
+/// implied-do in the "inlined temp strategy".
+/// The SSA value being tracked by the counter (hence, this
+/// cannot count through loops since the SSA value in the loop becomes
+/// inaccessible after the loop).
 /// Semantic analysis expression rewrites unroll implied do loop with
-/// compile time constant bounds (even if huge). So using a minimalistic
+/// compile time constant bounds (even if huge). So this minimalistic
 /// counter greatly reduces the generated IR for simple but big array
 /// constructors [(i,i=1,constant-expr)] that are expected to be quite
 /// common.
-using LooplessInlinedTempStrategy = InlinedTempStrategyImpl</*hasLoops=*/false>;
+class ValueCounter {
+public:
+  static constexpr bool canCountThroughLoops = false;
+  ValueCounter(mlir::Location loc, fir::FirOpBuilder &builder,
+               mlir::Value initialValue) {
+    indexValue = initialValue;
+  }
+
+  mlir::Value getAndIncrementIndex(mlir::Location loc,
+                                   fir::FirOpBuilder &builder,
+                                   mlir::Value increment) {
+    mlir::Value currentValue = indexValue;
+    indexValue =
+        builder.create<mlir::arith::AddIOp>(loc, indexValue, increment);
+    return currentValue;
+  }
+
+private:
+  mlir::Value indexValue;
+};
+using LooplessInlinedTempStrategy = InlinedTempStrategyImpl<ValueCounter>;
+
 /// A generic memory based counter that can deal with all cases of
 /// "inlined temp strategy". The counter value is stored in a temp
 /// from which it is loaded, incremented, and stored every time an
 /// ac-value is pushed.
-using InlinedTempStrategy = InlinedTempStrategyImpl</*hasLoops=*/true>;
+class InMemoryCounter {
+public:
+  static constexpr bool canCountThroughLoops = true;
+  InMemoryCounter(mlir::Location loc, fir::FirOpBuilder &builder,
+                  mlir::Value initialValue) {
+    indexVar = builder.createTemporary(loc, initialValue.getType());
+    builder.create<fir::StoreOp>(loc, initialValue, indexVar);
+  }
+
+  mlir::Value getAndIncrementIndex(mlir::Location loc,
+                                   fir::FirOpBuilder &builder,
+                                   mlir::Value increment) const {
+    mlir::Value indexValue = builder.create<fir::LoadOp>(loc, indexVar);
+    indexValue =
+        builder.create<mlir::arith::AddIOp>(loc, indexValue, increment);
+    builder.create<fir::StoreOp>(loc, indexValue, indexVar);
+    return indexValue;
+  }
+
+private:
+  mlir::Value indexVar;
+};
+using InlinedTempStrategy = InlinedTempStrategyImpl<InMemoryCounter>;
 
 /// Class that implements the "as function of the indices" lowering strategy.
 /// It will lower [(scalar_expr(i), i=l,u,s)] to:

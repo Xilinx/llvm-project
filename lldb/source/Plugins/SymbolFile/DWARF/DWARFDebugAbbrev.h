@@ -9,14 +9,13 @@
 #ifndef LLDB_SOURCE_PLUGINS_SYMBOLFILE_DWARF_DWARFDEBUGABBREV_H
 #define LLDB_SOURCE_PLUGINS_SYMBOLFILE_DWARF_DWARFDEBUGABBREV_H
 
-#include "DWARFDefines.h"
-#include "lldb/lldb-private.h"
-
-#include "llvm/DebugInfo/DWARF/DWARFAbbreviationDeclaration.h"
-
+#include <list>
 #include <map>
 
-using DWARFAbbreviationDeclaration = llvm::DWARFAbbreviationDeclaration;
+#include "lldb/lldb-private.h"
+
+#include "DWARFAbbreviationDeclaration.h"
+#include "DWARFDefines.h"
 
 typedef std::vector<DWARFAbbreviationDeclaration>
     DWARFAbbreviationDeclarationColl;
@@ -43,7 +42,7 @@ public:
   void GetUnsupportedForms(std::set<dw_form_t> &invalid_forms) const;
 
   const DWARFAbbreviationDeclaration *
-  GetAbbreviationDeclaration(uint32_t abbrCode) const;
+  GetAbbreviationDeclaration(dw_uleb128_t abbrCode) const;
 
   /// Unit test accessor functions.
   /// @{

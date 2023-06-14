@@ -3994,7 +3994,7 @@ bool PPCDAGToDAGISel::tryBitPermutation(SDNode *N) {
       if (SRLConst && SRLConst->getSExtValue() == 16)
         return false;
     }
-    [[fallthrough]];
+    LLVM_FALLTHROUGH;
   case ISD::ROTL:
   case ISD::SHL:
   case ISD::AND:

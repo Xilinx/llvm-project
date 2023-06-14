@@ -37,7 +37,7 @@ struct IndexOpInterface
     int64_t flatDimCtr = 0;
     for (Value operand : linalgOp->getOperands()) {
       assert(flatDimPos >= flatDimCtr && "invalid pos");
-      auto shapedType = llvm::cast<ShapedType>(operand.getType());
+      auto shapedType = operand.getType().cast<ShapedType>();
       if (flatDimPos < flatDimCtr + shapedType.getRank()) {
         cstr.bound(value) < cstr.getExpr(operand, flatDimPos - flatDimCtr);
         break;

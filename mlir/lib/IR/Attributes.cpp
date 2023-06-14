@@ -46,9 +46,7 @@ NamedAttribute::NamedAttribute(StringAttr name, Attribute value)
   assert(name.size() != 0 && "expected valid attribute name");
 }
 
-StringAttr NamedAttribute::getName() const {
-  return llvm::cast<StringAttr>(name);
-}
+StringAttr NamedAttribute::getName() const { return name.cast<StringAttr>(); }
 
 Dialect *NamedAttribute::getNameDialect() const {
   return getName().getReferencedDialect();

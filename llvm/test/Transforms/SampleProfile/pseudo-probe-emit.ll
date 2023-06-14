@@ -69,8 +69,7 @@ entry:
 
 ; CHECK-IL: ![[#FOO:]] = distinct !DISubprogram(name: "foo"
 ; CHECK-IL: ![[#FAKELINE]] = !DILocation(line: 0, scope: ![[#FOO]])
-; CHECK-IL: ![[#REALLINE]] = !DILocation(line: 2, scope: ![[#DISC0:]])
-; CHECK-IL: ![[#DISC0]] = !DILexicalBlockFile(scope: ![[#FOO]], file: ![[#]], discriminator: 0)
+; CHECK-IL: ![[#REALLINE]] = !DILocation(line: 2, scope: ![[#FOO]])
 ; CHECK-IL: ![[#PROBE0]] = !DILocation(line: 2, column: 20, scope: ![[#SCOPE0:]])
 ;; A discriminator of 67108887 which is 0x7200017 in hexdecimal, stands for a direct call probe
 ;; with an index of 2.
@@ -110,6 +109,5 @@ entry:
 !9 = !{i32 2, !"Dwarf Version", i32 4}
 !10 = !{i32 2, !"Debug Info Version", i32 3}
 !11 = !{!"clang version 3.9.0"}
-!12 = !DILocation(line: 2, scope: !14)
+!12 = !DILocation(line: 2, scope: !3)
 !13 = !DILocation(line: 2, column: 20, scope: !4)
-!14 = !DILexicalBlockFile(scope: !3, file: !1, discriminator: 1)

@@ -36,9 +36,7 @@ add_header_library(
     .platform_defs
     .float_properties
     libc.src.__support.builtin_wrappers
-    libc.src.__support.integer_to_string
     libc.src.__support.CPP.bit
-    libc.src.__support.CPP.string
     libc.src.__support.CPP.type_traits
     libc.src.__support.common
 )

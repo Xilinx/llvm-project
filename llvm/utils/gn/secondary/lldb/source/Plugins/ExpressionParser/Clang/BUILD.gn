@@ -48,7 +48,6 @@ static_library("Clang") {
     "ClangASTSource.cpp",
     "ClangDeclVendor.cpp",
     "ClangExpressionDeclMap.cpp",
-    "ClangExpressionHelper.cpp",
     "ClangExpressionParser.cpp",
     "ClangExpressionSourceCode.cpp",
     "ClangExpressionUtil.cpp",

@@ -11,6 +11,7 @@ from lldbsuite.test import lldbutil
 
 
 class TestSourceTextRegexBreakpoint(TestBase):
+
     @skipIfWindows
     def test_with_run_command(self):
         self.build()
@@ -20,15 +21,13 @@ class TestSourceTextRegexBreakpoint(TestBase):
 
         self.runCmd("file " + self.getBuildArtifact("a.out"), CURRENT_EXECUTABLE_SET)
 
-        lldbutil.run_break_set_by_source_regexp(self, "Set break point at this line.")
+        lldbutil.run_break_set_by_source_regexp(
+            self, "Set break point at this line.")
         self.runCmd("run", RUN_SUCCEEDED)
 
         # The stop reason of the thread should be breakpoint.
-        self.expect(
-            "thread list",
-            STOPPED_DUE_TO_BREAKPOINT,
-            substrs=["stopped", "stop reason = breakpoint"],
-        )
+        self.expect("thread list", STOPPED_DUE_TO_BREAKPOINT,
+                    substrs=['stopped', 'stop reason = breakpoint'])
 
         frame = self.frame()
         self.assertTrue(frame.IsValid())

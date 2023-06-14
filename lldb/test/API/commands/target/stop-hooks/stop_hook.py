@@ -1,6 +1,5 @@
 import lldb
 
-
 class stop_handler:
     def __init__(self, target, extra_args, dict):
         self.extra_args = extra_args
@@ -14,28 +13,26 @@ class stop_handler:
 
     def handle_stop(self, exe_ctx, stream):
         self.counter += 1
-        stream.Print("I have stopped %d times.\n" % (self.counter))
+        stream.Print("I have stopped %d times.\n"%(self.counter))
         increment = 1
         value = self.extra_args.GetValueForKey("increment")
         if value:
-            increment = value.GetUnsignedIntegerValue()
+            incr_as_str = value.GetStringValue(100)
+            increment = int(incr_as_str)
         else:
             stream.Print("Could not find increment in extra_args\n")
         frame = exe_ctx.GetFrame()
-        expression = "g_var += %d" % (increment)
+        expression = "g_var += %d"%(increment)
         expr_result = frame.EvaluateExpression(expression)
         if not expr_result.GetError().Success():
-            stream.Print(
-                "Error running expression: %s" % (expr_result.GetError().GetCString())
-            )
+            stream.Print("Error running expression: %s"%(expr_result.GetError().GetCString()))
         value = exe_ctx.target.FindFirstGlobalVariable("g_var")
         if not value.IsValid():
             stream.Print("Didn't get a valid value for g_var.")
         else:
             int_val = value.GetValueAsUnsigned()
-        stream.Print("Returning value: %d from handle_stop.\n" % (self.ret_val))
+        stream.Print("Returning value: %d from handle_stop.\n"%(self.ret_val))
         return self.ret_val
-
 
 class bad_handle_stop:
     def __init__(self, target, extra_args, dict):
@@ -44,7 +41,9 @@ class bad_handle_stop:
     def handle_stop(self):
         print("I am bad")
 
-
 class no_handle_stop:
     def __init__(self, target, extra_args, dict):
         print("I am okay")
+
+
+    

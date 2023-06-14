@@ -81,6 +81,3 @@ return:		; preds = %entry
 }
 
 declare i32 @f(ptr byval(%struct.X) align 4, ptr byval(%struct.X) align 4) nounwind ssp
-
-!llvm.module.flags = !{!0}
-!0 = !{i32 7, !"PIC Level", i32 2}

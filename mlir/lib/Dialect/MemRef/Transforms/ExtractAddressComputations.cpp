@@ -120,7 +120,7 @@ template <typename TransferLikeOp>
 static FailureOr<Value>
 getTransferLikeOpSrcMemRef(TransferLikeOp transferLikeOp) {
   Value src = transferLikeOp.getSource();
-  if (isa<MemRefType>(src.getType()))
+  if (src.getType().isa<MemRefType>())
     return src;
   return failure();
 }
@@ -240,7 +240,7 @@ struct LoadStoreLikeOpRewriter : public OpRewritePattern<LoadStoreLikeOp> {
       return rewriter.notifyMatchFailure(loadStoreLikeOp,
                                          "source is not a memref");
     Value srcMemRef = *failureOrSrcMemRef;
-    auto ldStTy = cast<MemRefType>(srcMemRef.getType());
+    auto ldStTy = srcMemRef.getType().cast<MemRefType>();
     unsigned loadStoreRank = ldStTy.getRank();
     // Don't waste compile time if there is nothing to rewrite.
     if (loadStoreRank == 0)

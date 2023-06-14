@@ -270,13 +270,13 @@ void LinkerDriver::parseManifest(StringRef arg) {
     ctx.config.manifest = Configuration::No;
     return;
   }
-  if (!arg.starts_with_insensitive("embed"))
+  if (!arg.startswith_insensitive("embed"))
     fatal("invalid option " + arg);
   ctx.config.manifest = Configuration::Embed;
   arg = arg.substr(strlen("embed"));
   if (arg.empty())
     return;
-  if (!arg.starts_with_insensitive(",id="))
+  if (!arg.startswith_insensitive(",id="))
     fatal("invalid option " + arg);
   arg = arg.substr(strlen(",id="));
   if (arg.getAsInteger(0, ctx.config.manifestID))
@@ -294,12 +294,12 @@ void LinkerDriver::parseManifestUAC(StringRef arg) {
     arg = arg.ltrim();
     if (arg.empty())
       return;
-    if (arg.starts_with_insensitive("level=")) {
+    if (arg.startswith_insensitive("level=")) {
       arg = arg.substr(strlen("level="));
       std::tie(ctx.config.manifestLevel, arg) = arg.split(" ");
       continue;
     }
-    if (arg.starts_with_insensitive("uiaccess=")) {
+    if (arg.startswith_insensitive("uiaccess=")) {
       arg = arg.substr(strlen("uiaccess="));
       std::tie(ctx.config.manifestUIAccess, arg) = arg.split(" ");
       continue;
@@ -904,14 +904,14 @@ ParsedDirectives ArgParser::parseDirectives(StringRef s) {
   SmallVector<StringRef, 16> tokens;
   cl::TokenizeWindowsCommandLineNoCopy(s, saver(), tokens);
   for (StringRef tok : tokens) {
-    if (tok.starts_with_insensitive("/export:") ||
-        tok.starts_with_insensitive("-export:"))
+    if (tok.startswith_insensitive("/export:") ||
+        tok.startswith_insensitive("-export:"))
       result.exports.push_back(tok.substr(strlen("/export:")));
-    else if (tok.starts_with_insensitive("/include:") ||
-             tok.starts_with_insensitive("-include:"))
+    else if (tok.startswith_insensitive("/include:") ||
+             tok.startswith_insensitive("-include:"))
       result.includes.push_back(tok.substr(strlen("/include:")));
-    else if (tok.starts_with_insensitive("/exclude-symbols:") ||
-             tok.starts_with_insensitive("-exclude-symbols:"))
+    else if (tok.startswith_insensitive("/exclude-symbols:") ||
+             tok.startswith_insensitive("-exclude-symbols:"))
       result.excludes.push_back(tok.substr(strlen("/exclude-symbols:")));
     else {
       // Copy substrings that are not valid C strings. The tokenizer may have

@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "UnusedReturnValueCheck.h"
-#include "../utils/Matchers.h"
 #include "../utils/OptionsUtils.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
@@ -28,6 +27,7 @@ AST_MATCHER_P(FunctionDecl, isInstantiatedFrom, Matcher<FunctionDecl>,
   return InnerMatcher.matches(InstantiatedFrom ? *InstantiatedFrom : Node,
                               Finder, Builder);
 }
+
 } // namespace
 
 UnusedReturnValueCheck::UnusedReturnValueCheck(llvm::StringRef Name,
@@ -124,30 +124,19 @@ UnusedReturnValueCheck::UnusedReturnValueCheck(llvm::StringRef Name,
                                    "::sigismember;"
                                    "::strcasecmp;"
                                    "::strsignal;"
-                                   "::ttyname")),
-      CheckedReturnTypes(utils::options::parseStringList(
-          Options.get("CheckedReturnTypes", "::std::error_code;"
-                                            "::std::expected;"
-                                            "::boost::system::error_code;"
-                                            "::abseil::Status"))) {}
+                                   "::ttyname")) {}
 
 void UnusedReturnValueCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
   Options.store(Opts, "CheckedFunctions", CheckedFunctions);
-  Options.store(Opts, "CheckedReturnTypes",
-                utils::options::serializeStringList(CheckedReturnTypes));
 }
 
 void UnusedReturnValueCheck::registerMatchers(MatchFinder *Finder) {
   auto FunVec = utils::options::parseStringList(CheckedFunctions);
-
   auto MatchedCallExpr = expr(ignoringImplicit(ignoringParenImpCasts(
       callExpr(callee(functionDecl(
                    // Don't match void overloads of checked functions.
                    unless(returns(voidType())),
-                   anyOf(isInstantiatedFrom(hasAnyName(FunVec)),
-                         returns(hasCanonicalType(hasDeclaration(
-                             namedDecl(matchers::matchesAnyListedName(
-                                 CheckedReturnTypes)))))))))
+                   isInstantiatedFrom(hasAnyName(FunVec)))))
           .bind("match"))));
 
   auto UnusedInCompoundStmt =

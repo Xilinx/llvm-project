@@ -798,10 +798,6 @@ struct Allocator {
     return m->UsedSize();
   }
 
-  uptr AllocationSizeFast(uptr p) {
-    return reinterpret_cast<AsanChunk *>(p - kChunkHeaderSize)->UsedSize();
-  }
-
   AsanChunkView FindHeapChunkByAddress(uptr addr) {
     AsanChunk *m1 = GetAsanChunkByAddr(addr);
     sptr offset = 0;
@@ -1200,13 +1196,6 @@ uptr __sanitizer_get_allocated_size(const void *p) {
     ReportSanitizerGetAllocatedSizeNotOwned(ptr, &stack);
   }
   return allocated_size;
-}
-
-uptr __sanitizer_get_allocated_size_fast(const void *p) {
-  DCHECK_EQ(p, __sanitizer_get_allocated_begin(p));
-  uptr ret = instance.AllocationSizeFast(reinterpret_cast<uptr>(p));
-  DCHECK_EQ(ret, __sanitizer_get_allocated_size(p));
-  return ret;
 }
 
 const void *__sanitizer_get_allocated_begin(const void *p) {

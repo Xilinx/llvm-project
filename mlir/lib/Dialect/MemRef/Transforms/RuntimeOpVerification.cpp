@@ -38,14 +38,14 @@ struct CastOpInterface
   void generateRuntimeVerification(Operation *op, OpBuilder &builder,
                                    Location loc) const {
     auto castOp = cast<CastOp>(op);
-    auto srcType = cast<BaseMemRefType>(castOp.getSource().getType());
+    auto srcType = castOp.getSource().getType().cast<BaseMemRefType>();
 
     // Nothing to check if the result is an unranked memref.
-    auto resultType = dyn_cast<MemRefType>(castOp.getType());
+    auto resultType = castOp.getType().dyn_cast<MemRefType>();
     if (!resultType)
       return;
 
-    if (isa<UnrankedMemRefType>(srcType)) {
+    if (srcType.isa<UnrankedMemRefType>()) {
       // Check rank.
       Value srcRank = builder.create<RankOp>(loc, castOp.getSource());
       Value resultRank =
@@ -75,7 +75,7 @@ struct CastOpInterface
     // Check dimension sizes.
     for (const auto &it : llvm::enumerate(resultType.getShape())) {
       // Static dim size -> static/dynamic dim size does not need verification.
-      if (auto rankedSrcType = dyn_cast<MemRefType>(srcType))
+      if (auto rankedSrcType = srcType.dyn_cast<MemRefType>())
         if (!rankedSrcType.isDynamicDim(it.index()))
           continue;
 

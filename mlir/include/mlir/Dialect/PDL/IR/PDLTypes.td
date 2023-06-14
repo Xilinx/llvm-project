@@ -100,13 +100,13 @@ def PDL_Value : PDL_Type<"Value", "value"> {
 //===----------------------------------------------------------------------===//
 
 def PDL_AnyType : Type<
-  CPred<"::llvm::isa<::mlir::pdl::PDLType>($_self)">, "pdl type",
+  CPred<"$_self.isa<::mlir::pdl::PDLType>()">, "pdl type",
         "::mlir::pdl::PDLType">;
 
 // A range of positional values of one of the provided types.
 class PDL_RangeOf<Type positionalType> :
   ContainerType<AnyTypeOf<[positionalType]>, PDL_Range.predicate,
-                "::llvm::cast<::mlir::pdl::RangeType>($_self).getElementType()",
+                "$_self.cast<::mlir::pdl::RangeType>().getElementType()",
                 "range", "::mlir::pdl::RangeType">,
     BuildableType<"::mlir::pdl::RangeType::get(" # positionalType.builderCall #
                   ")">;

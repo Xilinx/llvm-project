@@ -33,8 +33,6 @@ MLIR_CAPI_EXPORTED MlirType mlirTransformAnyOpTypeGet(MlirContext ctx);
 
 MLIR_CAPI_EXPORTED bool mlirTypeIsATransformOperationType(MlirType type);
 
-MLIR_CAPI_EXPORTED MlirTypeID mlirTransformOperationTypeGetTypeID(void);
-
 MLIR_CAPI_EXPORTED MlirType
 mlirTransformOperationTypeGet(MlirContext ctx, MlirStringRef operationName);
 

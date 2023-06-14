@@ -522,12 +522,13 @@ void *MapAllocator<Config>::allocate(Options Options, uptr Size, uptr Alignment,
       if (FillContents && !Zeroed)
         memset(Ptr, FillContents == ZeroFill ? 0 : PatternFillByte,
                BlockEnd - PtrInt);
+      const uptr BlockSize = BlockEnd - HInt;
       {
         ScopedLock L(Mutex);
         InUseBlocks.push_back(H);
-        AllocatedBytes += H->CommitSize;
+        AllocatedBytes += BlockSize;
         NumberOfAllocs++;
-        Stats.add(StatAllocated, H->CommitSize);
+        Stats.add(StatAllocated, BlockSize);
         Stats.add(StatMapped, H->MemMap.getCapacity());
       }
       return Ptr;

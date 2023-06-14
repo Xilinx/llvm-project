@@ -2,7 +2,7 @@
 // RUN: mlir-opt %s -sparsification | FileCheck %s
 
 #X = #sparse_tensor.encoding<{
- lvlTypes = [ "dense", "dense", "dense" ],
+ dimLevelType = [ "dense", "dense", "dense" ],
  dimOrdering = affine_map<(i,j,k) -> (k,i,j)>
 }>
 

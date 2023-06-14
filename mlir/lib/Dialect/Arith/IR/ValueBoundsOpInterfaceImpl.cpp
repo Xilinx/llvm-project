@@ -37,7 +37,7 @@ struct ConstantOpInterface
     auto constantOp = cast<ConstantOp>(op);
     assert(value == constantOp.getResult() && "invalid value");
 
-    if (auto attr = llvm::dyn_cast<IntegerAttr>(constantOp.getValue()))
+    if (auto attr = constantOp.getValue().dyn_cast<IntegerAttr>())
       cstr.bound(value) == attr.getInt();
   }
 };

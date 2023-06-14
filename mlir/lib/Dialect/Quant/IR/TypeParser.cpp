@@ -420,13 +420,13 @@ static void printCalibratedQuantizedType(CalibratedQuantizedType type,
 
 /// Print a type registered to this dialect.
 void QuantizationDialect::printType(Type type, DialectAsmPrinter &os) const {
-  if (auto anyType = llvm::dyn_cast<AnyQuantizedType>(type))
+  if (auto anyType = type.dyn_cast<AnyQuantizedType>())
     printAnyQuantizedType(anyType, os);
-  else if (auto uniformType = llvm::dyn_cast<UniformQuantizedType>(type))
+  else if (auto uniformType = type.dyn_cast<UniformQuantizedType>())
     printUniformQuantizedType(uniformType, os);
-  else if (auto perAxisType = llvm::dyn_cast<UniformQuantizedPerAxisType>(type))
+  else if (auto perAxisType = type.dyn_cast<UniformQuantizedPerAxisType>())
     printUniformQuantizedPerAxisType(perAxisType, os);
-  else if (auto calibratedType = llvm::dyn_cast<CalibratedQuantizedType>(type))
+  else if (auto calibratedType = type.dyn_cast<CalibratedQuantizedType>())
     printCalibratedQuantizedType(calibratedType, os);
   else
     llvm_unreachable("Unhandled quantized type");

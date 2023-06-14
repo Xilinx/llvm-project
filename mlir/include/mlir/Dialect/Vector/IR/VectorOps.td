@@ -29,7 +29,6 @@ def Vector_Dialect : Dialect {
 
   let useDefaultAttributePrinterParser = 1;
   let hasConstantMaterializer = 1;
-  let usePropertiesForAttributes = 1;
   let dependentDialects = ["arith::ArithDialect"];
 }
 
@@ -223,10 +222,10 @@ def Vector_ContractionOp :
   ];
   let extraClassDeclaration = [{
     VectorType getLhsType() {
-      return ::llvm::cast<VectorType>(getLhs().getType());
+      return getLhs().getType().cast<VectorType>();
     }
     VectorType getRhsType() {
-      return ::llvm::cast<VectorType>(getRhs().getType());
+      return getRhs().getType().cast<VectorType>();
     }
     Type getAccType() { return getAcc().getType(); }
     Type getResultType() { return getResult().getType(); }
@@ -302,7 +301,7 @@ def Vector_ReductionOp :
   }];
   let extraClassDeclaration = [{
     VectorType getSourceVectorType() {
-      return ::llvm::cast<VectorType>(getVector().getType());
+      return getVector().getType().cast<VectorType>();
     }
   }];
   let builders = [
@@ -358,7 +357,7 @@ def Vector_MultiDimReductionOp :
     static StringRef getReductionDimsAttrStrName() { return "reduction_dims"; }
 
     VectorType getSourceVectorType() {
-      return ::llvm::cast<VectorType>(getSource().getType());
+      return getSource().getType().cast<VectorType>();
     }
     Type getDestType() {
       return getDest().getType();
@@ -430,7 +429,7 @@ def Vector_BroadcastOp :
   let extraClassDeclaration = [{
     Type getSourceType() { return getSource().getType(); }
     VectorType getResultVectorType() {
-      return ::llvm::cast<VectorType>(getVector().getType());
+      return getVector().getType().cast<VectorType>();
     }
 
     /// Return the dimensions of the result vector that were formerly ones in the
@@ -512,13 +511,13 @@ def Vector_ShuffleOp :
   let extraClassDeclaration = [{
     static StringRef getMaskAttrStrName() { return "mask"; }
     VectorType getV1VectorType() {
-      return ::llvm::cast<VectorType>(getV1().getType());
+      return getV1().getType().cast<VectorType>();
     }
     VectorType getV2VectorType() {
-      return ::llvm::cast<VectorType>(getV2().getType());
+      return getV2().getType().cast<VectorType>();
     }
     VectorType getResultVectorType() {
-      return ::llvm::cast<VectorType>(getVector().getType());
+      return getVector().getType().cast<VectorType>();
     }
   }];
   let assemblyFormat = "operands $mask attr-dict `:` type(operands)";
@@ -530,7 +529,7 @@ def Vector_ExtractElementOp :
   Vector_Op<"extractelement", [Pure,
      TypesMatchWith<"result type matches element type of vector operand",
                     "vector", "result",
-                    "::llvm::cast<VectorType>($_self).getElementType()">]>,
+                    "$_self.cast<VectorType>().getElementType()">]>,
     Arguments<(ins AnyVectorOfAnyRank:$vector,
                    Optional<AnySignlessIntegerOrIndex>:$position)>,
     Results<(outs AnyType:$result)> {
@@ -565,7 +564,7 @@ def Vector_ExtractElementOp :
   ];
   let extraClassDeclaration = [{
     VectorType getSourceVectorType() {
-      return ::llvm::cast<VectorType>(getVector().getType());
+      return getVector().getType().cast<VectorType>();
     }
   }];
   let hasVerifier = 1;
@@ -600,7 +599,7 @@ def Vector_ExtractOp :
   let extraClassDeclaration = [{
     static StringRef getPositionAttrStrName() { return "position"; }
     VectorType getSourceVectorType() {
-      return ::llvm::cast<VectorType>(getVector().getType());
+      return getVector().getType().cast<VectorType>();
     }
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
   }];
@@ -637,7 +636,7 @@ def Vector_FMAOp :
   }];
   let assemblyFormat = "$lhs `,` $rhs `,` $acc attr-dict `:` type($lhs)";
   let extraClassDeclaration = [{
-    VectorType getVectorType() { return ::llvm::cast<VectorType>(getLhs().getType()); }
+    VectorType getVectorType() { return getLhs().getType().cast<VectorType>(); }
   }];
 }
 
@@ -645,7 +644,7 @@ def Vector_InsertElementOp :
   Vector_Op<"insertelement", [Pure,
      TypesMatchWith<"source operand type matches element type of result",
                     "result", "source",
-                    "::llvm::cast<VectorType>($_self).getElementType()">,
+                    "$_self.cast<VectorType>().getElementType()">,
      AllTypesMatch<["dest", "result"]>]>,
      Arguments<(ins AnyType:$source, AnyVectorOfAnyRank:$dest,
                     Optional<AnySignlessIntegerOrIndex>:$position)>,
@@ -682,7 +681,7 @@ def Vector_InsertElementOp :
   let extraClassDeclaration = [{
     Type getSourceType() { return getSource().getType(); }
     VectorType getDestVectorType() {
-      return ::llvm::cast<VectorType>(getDest().getType());
+      return getDest().getType().cast<VectorType>();
     }
   }];
   let hasVerifier = 1;
@@ -723,7 +722,7 @@ def Vector_InsertOp :
     static StringRef getPositionAttrStrName() { return "position"; }
     Type getSourceType() { return getSource().getType(); }
     VectorType getDestVectorType() {
-      return ::llvm::cast<VectorType>(getDest().getType());
+      return getDest().getType().cast<VectorType>();
     }
   }];
 
@@ -781,10 +780,10 @@ def Vector_ScalableInsertOp :
 
   let extraClassDeclaration = [{
     VectorType getSourceVectorType() {
-      return ::llvm::cast<VectorType>(getSource().getType());
+      return getSource().getType().cast<VectorType>();
     }
     VectorType getDestVectorType() {
-      return ::llvm::cast<VectorType>(getDest().getType());
+      return getDest().getType().cast<VectorType>();
     }
   }];
 }
@@ -832,10 +831,10 @@ def Vector_ScalableExtractOp :
 
   let extraClassDeclaration = [{
     VectorType getSourceVectorType() {
-      return ::llvm::cast<VectorType>(getSource().getType());
+      return getSource().getType().cast<VectorType>();
     }
     VectorType getResultVectorType() {
-      return ::llvm::cast<VectorType>(getRes().getType());
+      return getRes().getType().cast<VectorType>();
     }
   }];
 }
@@ -882,14 +881,14 @@ def Vector_InsertStridedSliceOp :
     static StringRef getOffsetsAttrStrName() { return "offsets"; }
     static StringRef getStridesAttrStrName() { return "strides"; }
     VectorType getSourceVectorType() {
-      return ::llvm::cast<VectorType>(getSource().getType());
+      return getSource().getType().cast<VectorType>();
     }
     VectorType getDestVectorType() {
-      return ::llvm::cast<VectorType>(getDest().getType());
+      return getDest().getType().cast<VectorType>();
     }
     bool hasNonUnitStrides() {
       return llvm::any_of(getStrides(), [](Attribute attr) {
-        return ::llvm::cast<IntegerAttr>(attr).getInt() != 1;
+        return attr.cast<IntegerAttr>().getInt() != 1;
       });
     }
   }];
@@ -965,7 +964,7 @@ def Vector_OuterProductOp :
   ];
   let extraClassDeclaration = [{
     VectorType getOperandVectorTypeLHS() {
-      return ::llvm::cast<VectorType>(getLhs().getType());
+      return getLhs().getType().cast<VectorType>();
     }
     Type getOperandTypeRHS() {
       return getRhs().getType();
@@ -973,10 +972,10 @@ def Vector_OuterProductOp :
     VectorType getOperandVectorTypeACC() {
       return getAcc().empty()
         ? VectorType()
-        : ::llvm::cast<VectorType>((*getAcc().begin()).getType());
+        : (*getAcc().begin()).getType().cast<VectorType>();
     }
     VectorType getResultVectorType() {
-      return ::llvm::cast<VectorType>(getResult().getType());
+      return getResult().getType().cast<VectorType>();
     }
     static constexpr StringRef getKindAttrStrName() {
       return "kind";
@@ -1083,10 +1082,10 @@ def Vector_ReshapeOp :
 
   let extraClassDeclaration = [{
     VectorType getInputVectorType() {
-      return ::llvm::cast<VectorType>(getVector().getType());
+      return getVector().getType().cast<VectorType>();
     }
     VectorType getOutputVectorType() {
-      return ::llvm::cast<VectorType>(getResult().getType());
+      return getResult().getType().cast<VectorType>();
     }
 
     /// Returns as integer value the number of input shape operands.
@@ -1152,12 +1151,12 @@ def Vector_ExtractStridedSliceOp :
     static StringRef getSizesAttrStrName() { return "sizes"; }
     static StringRef getStridesAttrStrName() { return "strides"; }
     VectorType getSourceVectorType() {
-      return ::llvm::cast<VectorType>(getVector().getType());
+      return getVector().getType().cast<VectorType>();
     }
     void getOffsets(SmallVectorImpl<int64_t> &results);
     bool hasNonUnitStrides() {
       return llvm::any_of(getStrides(), [](Attribute attr) {
-        return ::llvm::cast<IntegerAttr>(attr).getInt() != 1;
+        return attr.cast<IntegerAttr>().getInt() != 1;
       });
     }
   }];
@@ -1623,11 +1622,11 @@ def Vector_LoadOp : Vector_Op<"load"> {
 
   let extraClassDeclaration = [{
     MemRefType getMemRefType() {
-      return ::llvm::cast<MemRefType>(getBase().getType());
+      return getBase().getType().cast<MemRefType>();
     }
 
     VectorType getVectorType() {
-      return ::llvm::cast<VectorType>(getResult().getType());
+      return getResult().getType().cast<VectorType>();
     }
   }];
 
@@ -1700,11 +1699,11 @@ def Vector_StoreOp : Vector_Op<"store"> {
 
   let extraClassDeclaration = [{
     MemRefType getMemRefType() {
-      return ::llvm::cast<MemRefType>(getBase().getType());
+      return getBase().getType().cast<MemRefType>();
     }
 
     VectorType getVectorType() {
-      return ::llvm::cast<VectorType>(getValueToStore().getType());
+      return getValueToStore().getType().cast<VectorType>();
     }
   }];
 
@@ -1759,16 +1758,16 @@ def Vector_MaskedLoadOp :
   }];
   let extraClassDeclaration = [{
     MemRefType getMemRefType() {
-      return ::llvm::cast<MemRefType>(getBase().getType());
+      return getBase().getType().cast<MemRefType>();
     }
     VectorType getMaskVectorType() {
-      return ::llvm::cast<VectorType>(getMask().getType());
+      return getMask().getType().cast<VectorType>();
     }
     VectorType getPassThruVectorType() {
-      return ::llvm::cast<VectorType>(getPassThru().getType());
+      return getPassThru().getType().cast<VectorType>();
     }
     VectorType getVectorType() {
-      return ::llvm::cast<VectorType>(getResult().getType());
+      return getResult().getType().cast<VectorType>();
     }
   }];
   let assemblyFormat = "$base `[` $indices `]` `,` $mask `,` $pass_thru attr-dict `:` "
@@ -1821,13 +1820,13 @@ def Vector_MaskedStoreOp :
   }];
   let extraClassDeclaration = [{
     MemRefType getMemRefType() {
-      return ::llvm::cast<MemRefType>(getBase().getType());
+      return getBase().getType().cast<MemRefType>();
     }
     VectorType getMaskVectorType() {
-      return ::llvm::cast<VectorType>(getMask().getType());
+      return getMask().getType().cast<VectorType>();
     }
     VectorType getVectorType() {
-      return ::llvm::cast<VectorType>(getValueToStore().getType());
+      return getValueToStore().getType().cast<VectorType>();
     }
   }];
   let assemblyFormat =
@@ -2018,16 +2017,16 @@ def Vector_ExpandLoadOp :
   }];
   let extraClassDeclaration = [{
     MemRefType getMemRefType() {
-      return ::llvm::cast<MemRefType>(getBase().getType());
+      return getBase().getType().cast<MemRefType>();
     }
     VectorType getMaskVectorType() {
-      return ::llvm::cast<VectorType>(getMask().getType());
+      return getMask().getType().cast<VectorType>();
     }
     VectorType getPassThruVectorType() {
-      return ::llvm::cast<VectorType>(getPassThru().getType());
+      return getPassThru().getType().cast<VectorType>();
     }
     VectorType getVectorType() {
-      return ::llvm::cast<VectorType>(getResult().getType());
+      return getResult().getType().cast<VectorType>();
     }
   }];
   let assemblyFormat = "$base `[` $indices `]` `,` $mask `,` $pass_thru attr-dict `:` "
@@ -2081,13 +2080,13 @@ def Vector_CompressStoreOp :
   }];
   let extraClassDeclaration = [{
     MemRefType getMemRefType() {
-      return ::llvm::cast<MemRefType>(getBase().getType());
+      return getBase().getType().cast<MemRefType>();
     }
     VectorType getMaskVectorType() {
-      return ::llvm::cast<VectorType>(getMask().getType());
+      return getMask().getType().cast<VectorType>();
     }
     VectorType getVectorType() {
-      return ::llvm::cast<VectorType>(getValueToStore().getType());
+      return getValueToStore().getType().cast<VectorType>();
     }
   }];
   let assemblyFormat =
@@ -2099,8 +2098,8 @@ def Vector_CompressStoreOp :
 
 def Vector_ShapeCastOp :
   Vector_Op<"shape_cast", [Pure]>,
-    Arguments<(ins AnyVectorOfAnyRank:$source)>,
-    Results<(outs AnyVectorOfAnyRank:$result)> {
+    Arguments<(ins AnyVector:$source)>,
+    Results<(outs AnyVector:$result)> {
   let summary = "shape_cast casts between vector shapes";
   let description = [{
     The shape_cast operation casts between an n-D source vector shape and
@@ -2137,10 +2136,10 @@ def Vector_ShapeCastOp :
   }];
   let extraClassDeclaration = [{
     VectorType getSourceVectorType() {
-      return ::llvm::cast<VectorType>(getSource().getType());
+      return getSource().getType().cast<VectorType>();
     }
     VectorType getResultVectorType() {
-      return ::llvm::cast<VectorType>(getResult().getType());
+      return getResult().getType().cast<VectorType>();
     }
   }];
   let assemblyFormat = "$source attr-dict `:` type($source) `to` type($result)";
@@ -2178,10 +2177,10 @@ def Vector_BitCastOp :
   }];
   let extraClassDeclaration = [{
     VectorType getSourceVectorType() {
-      return ::llvm::cast<VectorType>(getSource().getType());
+      return getSource().getType().cast<VectorType>();
     }
     VectorType getResultVectorType() {
-      return ::llvm::cast<VectorType>(getResult().getType());
+      return getResult().getType().cast<VectorType>();
     }
   }];
   let assemblyFormat = "$source attr-dict `:` type($source) `to` type($result)";
@@ -2221,10 +2220,10 @@ def Vector_TypeCastOp :
 
   let extraClassDeclaration = [{
     MemRefType getMemRefType() {
-      return ::llvm::cast<MemRefType>(getMemref().getType());
+      return getMemref().getType().cast<MemRefType>();
     }
     MemRefType getResultMemRefType() {
-      return ::llvm::cast<MemRefType>(getResult().getType());
+      return getResult().getType().cast<MemRefType>();
     }
     // Implement ViewLikeOpInterface.
     Value getViewSource() { return getMemref(); }
@@ -2375,7 +2374,7 @@ def Vector_MaskOp : Vector_Op<"mask", [
     ```
   }];
 
-  // TODO: Support multiple passthru values.
+  // TODO: Support multiple results and passthru values.
   let arguments = (ins VectorOf<[I1]>:$mask,
                    Optional<AnyType>:$passthru);
   let results = (outs Variadic<AnyType>:$results);
@@ -2394,21 +2393,10 @@ def Vector_MaskOp : Vector_Op<"mask", [
 
   let extraClassDeclaration = [{
     Block *getMaskBlock() { return &getMaskRegion().front(); }
-
-    /// Returns true if mask op is not masking any operation.
-    bool isEmpty() {
-      Block *block = getMaskBlock();
-      if (block->getOperations().size() > 1)
-        return false;
-      return true;
-    }
-
-    static void ensureTerminator(Region &region, Builder &builder,
-                                 Location loc);
+    static void ensureTerminator(Region &region, Builder &builder, Location loc);
   }];
 
   let hasCanonicalizer = 1;
-  let hasFolder = 1;
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
 }
@@ -2450,10 +2438,10 @@ def Vector_TransposeOp :
   ];
   let extraClassDeclaration = [{
     VectorType getSourceVectorType() {
-      return ::llvm::cast<VectorType>(getVector().getType());
+      return getVector().getType().cast<VectorType>();
     }
     VectorType getResultVectorType() {
-      return ::llvm::cast<VectorType>(getResult().getType());
+      return getResult().getType().cast<VectorType>();
     }
     void getTransp(SmallVectorImpl<int64_t> &results);
     static StringRef getTranspAttrStrName() { return "transp"; }
@@ -2567,7 +2555,7 @@ def Vector_MatmulOp : Vector_Op<"matrix_multiply", [Pure,
      $_state.addAttribute("lhs_columns",$_builder.getI32IntegerAttr(lhsColumns));
      $_state.addAttribute("rhs_columns",$_builder.getI32IntegerAttr(rhsColumns));
      $_state.addTypes(VectorType::get(lhsRows * rhsColumns,
-       ::llvm::cast<VectorType>(lhs.getType()).getElementType()));
+       lhs.getType().cast<VectorType>().getElementType()));
    }]>,
   ];
   let assemblyFormat = "$lhs `,` $rhs attr-dict "
@@ -2625,7 +2613,7 @@ def Vector_SplatOp : Vector_Op<"splat", [
     Pure,
     TypesMatchWith<"operand type matches element type of result",
                    "aggregate", "input",
-                   "::llvm::cast<VectorType>($_self).getElementType()">
+                   "$_self.cast<VectorType>().getElementType()">
   ]> {
   let summary = "vector splat or broadcast operation";
   let description = [{
@@ -2724,16 +2712,16 @@ def Vector_ScanOp :
     static StringRef getKindAttrStrName() { return "kind"; }
     static StringRef getReductionDimAttrStrName() { return "reduction_dim"; }
     VectorType getSourceType() {
-      return ::llvm::cast<VectorType>(getSource().getType());
+      return getSource().getType().cast<VectorType>();
     }
     VectorType getDestType() {
-      return ::llvm::cast<VectorType>(getDest().getType());
+      return getDest().getType().cast<VectorType>();
     }
     VectorType getAccumulatorType() {
-      return ::llvm::cast<VectorType>(getAccumulatedValue().getType());
+      return getAccumulatedValue().getType().cast<VectorType>();
     }
     VectorType getInitialValueType() {
-      return ::llvm::cast<VectorType>(getInitialValue().getType());
+      return getInitialValue().getType().cast<VectorType>();
     }
   }];
   let assemblyFormat =

@@ -1119,9 +1119,9 @@ LogicalResult mlir::affine::replaceAllMemRefUsesWith(
     ArrayRef<Value> extraIndices, AffineMap indexRemap,
     ArrayRef<Value> extraOperands, ArrayRef<Value> symbolOperands,
     bool allowNonDereferencingOps) {
-  unsigned newMemRefRank = cast<MemRefType>(newMemRef.getType()).getRank();
+  unsigned newMemRefRank = newMemRef.getType().cast<MemRefType>().getRank();
   (void)newMemRefRank; // unused in opt mode
-  unsigned oldMemRefRank = cast<MemRefType>(oldMemRef.getType()).getRank();
+  unsigned oldMemRefRank = oldMemRef.getType().cast<MemRefType>().getRank();
   (void)oldMemRefRank; // unused in opt mode
   if (indexRemap) {
     assert(indexRemap.getNumSymbols() == symbolOperands.size() &&
@@ -1134,8 +1134,8 @@ LogicalResult mlir::affine::replaceAllMemRefUsesWith(
   }
 
   // Assert same elemental type.
-  assert(cast<MemRefType>(oldMemRef.getType()).getElementType() ==
-         cast<MemRefType>(newMemRef.getType()).getElementType());
+  assert(oldMemRef.getType().cast<MemRefType>().getElementType() ==
+         newMemRef.getType().cast<MemRefType>().getElementType());
 
   SmallVector<unsigned, 2> usePositions;
   for (const auto &opEntry : llvm::enumerate(op->getOperands())) {
@@ -1172,7 +1172,7 @@ LogicalResult mlir::affine::replaceAllMemRefUsesWith(
   // Perform index rewrites for the dereferencing op and then replace the op
   NamedAttribute oldMapAttrPair =
       affMapAccInterface.getAffineMapAttrForMemRef(oldMemRef);
-  AffineMap oldMap = cast<AffineMapAttr>(oldMapAttrPair.getValue()).getValue();
+  AffineMap oldMap = oldMapAttrPair.getValue().cast<AffineMapAttr>().getValue();
   unsigned oldMapNumInputs = oldMap.getNumInputs();
   SmallVector<Value, 4> oldMapOperands(
       op->operand_begin() + memRefOperandPos + 1,
@@ -1294,9 +1294,9 @@ LogicalResult mlir::affine::replaceAllMemRefUsesWith(
     ArrayRef<Value> symbolOperands, Operation *domOpFilter,
     Operation *postDomOpFilter, bool allowNonDereferencingOps,
     bool replaceInDeallocOp) {
-  unsigned newMemRefRank = cast<MemRefType>(newMemRef.getType()).getRank();
+  unsigned newMemRefRank = newMemRef.getType().cast<MemRefType>().getRank();
   (void)newMemRefRank; // unused in opt mode
-  unsigned oldMemRefRank = cast<MemRefType>(oldMemRef.getType()).getRank();
+  unsigned oldMemRefRank = oldMemRef.getType().cast<MemRefType>().getRank();
   (void)oldMemRefRank;
   if (indexRemap) {
     assert(indexRemap.getNumSymbols() == symbolOperands.size() &&
@@ -1309,8 +1309,8 @@ LogicalResult mlir::affine::replaceAllMemRefUsesWith(
   }
 
   // Assert same elemental type.
-  assert(cast<MemRefType>(oldMemRef.getType()).getElementType() ==
-         cast<MemRefType>(newMemRef.getType()).getElementType());
+  assert(oldMemRef.getType().cast<MemRefType>().getElementType() ==
+         newMemRef.getType().cast<MemRefType>().getElementType());
 
   std::unique_ptr<DominanceInfo> domInfo;
   std::unique_ptr<PostDominanceInfo> postDomInfo;
@@ -1734,7 +1734,7 @@ LogicalResult mlir::affine::normalizeMemRef(memref::AllocOp *allocOp) {
   SmallVector<std::tuple<AffineExpr, unsigned, unsigned>> tileSizePos;
   (void)getTileSizePos(layoutMap, tileSizePos);
   if (newMemRefType.getNumDynamicDims() > 0 && !tileSizePos.empty()) {
-    MemRefType oldMemRefType = cast<MemRefType>(oldMemRef.getType());
+    MemRefType oldMemRefType = oldMemRef.getType().cast<MemRefType>();
     SmallVector<Value, 4> newDynamicSizes;
     createNewDynamicSizes(oldMemRefType, newMemRefType, layoutMap, allocOp, b,
                           newDynamicSizes);

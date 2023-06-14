@@ -9,7 +9,8 @@ from lldbsuite.test.lldbtest import *
 
 
 class TestCase(TestBase):
-    NO_DEBUG_INFO_TESTCASE = True
 
-    def test(self):
-        self.assertEqual(repr(self.dbg), str(self.dbg))
+  NO_DEBUG_INFO_TESTCASE = True
+
+  def test(self):
+    self.assertEqual(repr(self.dbg), str(self.dbg))

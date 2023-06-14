@@ -144,13 +144,13 @@ static void wrapForExternalCallers(OpBuilder &rewriter, Location loc,
   size_t argOffset = resultStructType ? 1 : 0;
   for (auto [index, argType] : llvm::enumerate(type.getInputs())) {
     Value arg = wrapperFuncOp.getArgument(index + argOffset);
-    if (auto memrefType = dyn_cast<MemRefType>(argType)) {
+    if (auto memrefType = argType.dyn_cast<MemRefType>()) {
       Value loaded = rewriter.create<LLVM::LoadOp>(
           loc, typeConverter.convertType(memrefType), arg);
       MemRefDescriptor::unpack(rewriter, loc, loaded, memrefType, args);
       continue;
     }
-    if (isa<UnrankedMemRefType>(argType)) {
+    if (argType.isa<UnrankedMemRefType>()) {
       Value loaded = rewriter.create<LLVM::LoadOp>(
           loc, typeConverter.convertType(argType), arg);
       UnrankedMemRefDescriptor::unpack(rewriter, loc, loaded, args);
@@ -218,7 +218,8 @@ static void wrapExternalFunction(OpBuilder &builder, Location loc,
 
   if (resultStructType) {
     // Allocate the struct on the stack and pass the pointer.
-    Type resultType = cast<LLVM::LLVMFunctionType>(wrapperType).getParamType(0);
+    Type resultType =
+        wrapperType.cast<LLVM::LLVMFunctionType>().getParamType(0);
     Value one = builder.create<LLVM::ConstantOp>(
         loc, typeConverter.convertType(builder.getIndexType()),
         builder.getIntegerAttr(builder.getIndexType(), 1));
@@ -232,8 +233,8 @@ static void wrapExternalFunction(OpBuilder &builder, Location loc,
   for (Type input : type.getInputs()) {
     Value arg;
     int numToDrop = 1;
-    auto memRefType = dyn_cast<MemRefType>(input);
-    auto unrankedMemRefType = dyn_cast<UnrankedMemRefType>(input);
+    auto memRefType = input.dyn_cast<MemRefType>();
+    auto unrankedMemRefType = input.dyn_cast<UnrankedMemRefType>();
     if (memRefType || unrankedMemRefType) {
       numToDrop = memRefType
                       ? MemRefDescriptor::getNumUnpackedValues(memRefType)
@@ -300,9 +301,9 @@ static void modifyFuncOpToUseBarePtrCallingConv(
     // Unranked memrefs are not supported in the bare pointer calling
     // convention. We should have bailed out before in the presence of
     // unranked memrefs.
-    assert(!isa<UnrankedMemRefType>(argTy) &&
+    assert(!argTy.isa<UnrankedMemRefType>() &&
            "Unranked memref is not supported");
-    auto memrefTy = dyn_cast<MemRefType>(argTy);
+    auto memrefTy = argTy.dyn_cast<MemRefType>();
     if (!memrefTy)
       continue;
 
@@ -359,18 +360,18 @@ protected:
     }
     if (ArrayAttr argAttrDicts = funcOp.getAllArgAttrs()) {
       SmallVector<Attribute, 4> newArgAttrs(
-          cast<LLVM::LLVMFunctionType>(llvmType).getNumParams());
+          llvmType.cast<LLVM::LLVMFunctionType>().getNumParams());
       for (unsigned i = 0, e = funcOp.getNumArguments(); i < e; ++i) {
         // Some LLVM IR attribute have a type attached to them. During FuncOp ->
         // LLVMFuncOp conversion these types may have changed. Account for that
         // change by converting attributes' types as well.
         SmallVector<NamedAttribute, 4> convertedAttrs;
-        auto attrsDict = cast<DictionaryAttr>(argAttrDicts[i]);
+        auto attrsDict = argAttrDicts[i].cast<DictionaryAttr>();
         convertedAttrs.reserve(attrsDict.size());
         for (const NamedAttribute &attr : attrsDict) {
           const auto convert = [&](const NamedAttribute &attr) {
             return TypeAttr::get(getTypeConverter()->convertType(
-                cast<TypeAttr>(attr.getValue()).getValue()));
+                attr.getValue().cast<TypeAttr>().getValue()));
           };
           if (attr.getName().getValue() ==
               LLVM::LLVMDialect::getByValAttrName()) {
@@ -417,7 +418,7 @@ protected:
     LLVM::Linkage linkage = LLVM::Linkage::External;
     if (funcOp->hasAttr(linkageAttrName)) {
       auto attr =
-          dyn_cast<mlir::LLVM::LinkageAttr>(funcOp->getAttr(linkageAttrName));
+          funcOp->getAttr(linkageAttrName).dyn_cast<mlir::LLVM::LinkageAttr>();
       if (!attr) {
         funcOp->emitError() << "Contains " << linkageAttrName
                             << " attribute not of type LLVM::LinkageAttr";
@@ -544,7 +545,7 @@ struct CallOpInterfaceLowering : public ConvertOpToLLVMPattern<CallOpType> {
     if (useBarePtrCallConv) {
       for (auto it : callOp->getOperands()) {
         Type operandType = it.getType();
-        if (isa<UnrankedMemRefType>(operandType)) {
+        if (operandType.isa<UnrankedMemRefType>()) {
           // Unranked memref is not supported in the bare pointer calling
           // convention.
           return failure();
@@ -668,11 +669,11 @@ struct ReturnOpLowering : public ConvertOpToLLVMPattern<func::ReturnOp> {
       for (auto it : llvm::zip(op->getOperands(), adaptor.getOperands())) {
         Type oldTy = std::get<0>(it).getType();
         Value newOperand = std::get<1>(it);
-        if (isa<MemRefType>(oldTy) && getTypeConverter()->canConvertToBarePtr(
-                                          cast<BaseMemRefType>(oldTy))) {
+        if (oldTy.isa<MemRefType>() && getTypeConverter()->canConvertToBarePtr(
+                                           oldTy.cast<BaseMemRefType>())) {
           MemRefDescriptor memrefDesc(newOperand);
           newOperand = memrefDesc.allocatedPtr(rewriter, loc);
-        } else if (isa<UnrankedMemRefType>(oldTy)) {
+        } else if (oldTy.isa<UnrankedMemRefType>()) {
           // Unranked memref is not supported in the bare pointer calling
           // convention.
           return failure();

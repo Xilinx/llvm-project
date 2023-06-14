@@ -67,16 +67,20 @@ DisassemblerSP Disassembler::FindPlugin(const ArchSpec &arch,
     create_callback =
         PluginManager::GetDisassemblerCreateCallbackForPluginName(plugin_name);
     if (create_callback) {
-      if (auto disasm_sp = create_callback(arch, flavor))
-        return disasm_sp;
+      DisassemblerSP disassembler_sp(create_callback(arch, flavor));
+
+      if (disassembler_sp)
+        return disassembler_sp;
     }
   } else {
     for (uint32_t idx = 0;
          (create_callback = PluginManager::GetDisassemblerCreateCallbackAtIndex(
               idx)) != nullptr;
          ++idx) {
-      if (auto disasm_sp = create_callback(arch, flavor))
-        return disasm_sp;
+      DisassemblerSP disassembler_sp(create_callback(arch, flavor));
+
+      if (disassembler_sp)
+        return disassembler_sp;
     }
   }
   return DisassemblerSP();
@@ -239,7 +243,7 @@ bool Disassembler::ElideMixedSourceAndDisassemblyLine(
 
   // Skip any line #0 entries - they are implementation details
   if (line.line == 0)
-    return true;
+    return false;
 
   ThreadSP thread_sp = exe_ctx.GetThreadSP();
   if (thread_sp) {
@@ -904,7 +908,7 @@ bool Instruction::TestEmulation(Stream *out_stream, const char *file_name) {
     return false;
   }
 
-  SetDescription(value_sp->GetValueAs<llvm::StringRef>().value_or(""));
+  SetDescription(value_sp->GetStringValue().value_or(""));
 
   value_sp = data_dictionary->GetValueForKey(triple_key);
   if (!value_sp) {
@@ -914,8 +918,7 @@ bool Instruction::TestEmulation(Stream *out_stream, const char *file_name) {
   }
 
   ArchSpec arch;
-  arch.SetTriple(
-      llvm::Triple(value_sp->GetValueAs<llvm::StringRef>().value_or("")));
+  arch.SetTriple(llvm::Triple(value_sp->GetStringValue().value_or("")));
 
   bool success = false;
   std::unique_ptr<EmulateInstruction> insn_emulator_up(

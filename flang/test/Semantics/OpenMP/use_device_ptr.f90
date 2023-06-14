@@ -12,7 +12,7 @@ subroutine omp_target_data
    integer, pointer :: arrayB
    a = 1
    !$omp target data map(tofrom: a, arrayB) use_device_ptr(b)
-   !CHECK: b (OmpUseDevicePtr): HostAssoc
+   !CHECK: b (OmpUseDevicePtr)
       allocate(arrayB)
       call c_f_pointer(b, arrayB)
       a = arrayB

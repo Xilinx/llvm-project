@@ -31,35 +31,33 @@
 .section .text
 .file "hwasan_setjmp_aarch64.S"
 
-.global ASM_WRAPPER_NAME(setjmp)
-ASM_TYPE_FUNCTION(ASM_WRAPPER_NAME(setjmp))
-ASM_WRAPPER_NAME(setjmp):
+.global __interceptor_setjmp
+ASM_TYPE_FUNCTION(__interceptor_setjmp)
+__interceptor_setjmp:
   CFI_STARTPROC
   BTI_C
   mov	x1, #0
-  b	ASM_WRAPPER_NAME(sigsetjmp)
+  b	__interceptor_sigsetjmp
   CFI_ENDPROC
-ASM_SIZE(ASM_WRAPPER_NAME(setjmp))
+ASM_SIZE(__interceptor_setjmp)
 
 #if SANITIZER_ANDROID
 // Bionic also defines a function `setjmp` that calls `sigsetjmp` saving the
 // current signal.
-.global ASM_WRAPPER_NAME(setjmp_bionic)
-ASM_TYPE_FUNCTION(ASM_WRAPPER_NAME(setjmp_bionic))
-ASM_WRAPPER_NAME(setjmp_bionic):
+.global __interceptor_setjmp_bionic
+ASM_TYPE_FUNCTION(__interceptor_setjmp_bionic)
+__interceptor_setjmp_bionic:
   CFI_STARTPROC
   BTI_C
   mov	x1, #1
-  b	ASM_WRAPPER_NAME(sigsetjmp)
+  b	__interceptor_sigsetjmp
   CFI_ENDPROC
-ASM_SIZE(ASM_WRAPPER_NAME(setjmp_bionic))
-
-ASM_INTERCEPTOR_TRAMPOLINE(setjmp_bionic)
+ASM_SIZE(__interceptor_setjmp_bionic)
 #endif
 
-.global ASM_WRAPPER_NAME(sigsetjmp)
-ASM_TYPE_FUNCTION(ASM_WRAPPER_NAME(sigsetjmp))
-ASM_WRAPPER_NAME(sigsetjmp):
+.global __interceptor_sigsetjmp
+ASM_TYPE_FUNCTION(__interceptor_sigsetjmp)
+__interceptor_sigsetjmp:
   CFI_STARTPROC
   BTI_C
   stp	x19, x20, [x0, #0<<3]
@@ -79,19 +77,22 @@ ASM_WRAPPER_NAME(sigsetjmp):
   // This function is defined in hwasan_interceptors.cc
   b	__sigjmp_save
   CFI_ENDPROC
-ASM_SIZE(ASM_WRAPPER_NAME(sigsetjmp))
+ASM_SIZE(__interceptor_sigsetjmp)
 
-ASM_INTERCEPTOR_TRAMPOLINE(sigsetjmp)
 
+.macro WEAK_ALIAS first second
+  .weak \second
+  .equ \second\(), \first
+.endm
 
 #if SANITIZER_ANDROID
-ASM_TRAMPOLINE_ALIAS(sigsetjmp, sigsetjmp)
-ASM_TRAMPOLINE_ALIAS(setjmp, setjmp_bionic)
+WEAK_ALIAS __interceptor_sigsetjmp, sigsetjmp
+WEAK_ALIAS __interceptor_setjmp_bionic, setjmp
 #else
-ASM_TRAMPOLINE_ALIAS(__sigsetjmp, sigsetjmp)
+WEAK_ALIAS __interceptor_sigsetjmp, __sigsetjmp
 #endif
 
-ASM_TRAMPOLINE_ALIAS(_setjmp, setjmp)
+WEAK_ALIAS __interceptor_setjmp, _setjmp
 #endif
 
 // We do not need executable stack.

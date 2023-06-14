@@ -86,7 +86,6 @@ add_entrypoint_object(
     pthread_attr_getstack.h
   DEPENDS
     libc.include.pthread
-    libc.src.pthread.pthread_attr_getstacksize
 )
 
 add_entrypoint_object(
@@ -97,7 +96,6 @@ add_entrypoint_object(
     pthread_attr_setstack.h
   DEPENDS
     libc.include.pthread
-    libc.src.pthread.pthread_attr_setstacksize
 )
 
 add_header_library(
@@ -256,11 +254,6 @@ add_entrypoint_object(
     libc.include.errno
     libc.include.pthread
     libc.src.__support.threads.thread
-    libc.src.pthread.pthread_attr_destroy
-    libc.src.pthread.pthread_attr_init
-    libc.src.pthread.pthread_attr_getdetachstate
-    libc.src.pthread.pthread_attr_getguardsize
-    libc.src.pthread.pthread_attr_getstack
   COMPILE_OPTIONS
     -O3
     -fno-omit-frame-pointer

@@ -86,12 +86,12 @@ reifyValueBound(OpBuilder &b, Location loc, presburger::BoundType type,
       continue;
     }
 
-    assert(cast<ShapedType>(value.getType()).isDynamicDim(*dim) &&
+    assert(value.getType().cast<ShapedType>().isDynamicDim(*dim) &&
            "expected dynamic dim");
-    if (isa<RankedTensorType>(value.getType())) {
+    if (value.getType().isa<RankedTensorType>()) {
       // A tensor dimension is used: generate a tensor.dim.
       operands.push_back(b.create<tensor::DimOp>(loc, value, *dim));
-    } else if (isa<MemRefType>(value.getType())) {
+    } else if (value.getType().isa<MemRefType>()) {
       // A memref dimension is used: generate a memref.dim.
       operands.push_back(b.create<memref::DimOp>(loc, value, *dim));
     } else {

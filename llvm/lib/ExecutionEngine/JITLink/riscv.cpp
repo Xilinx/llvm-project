@@ -78,10 +78,6 @@ const char *getEdgeKindName(Edge::Kind K) {
     return "R_RISCV_SET32";
   case R_RISCV_32_PCREL:
     return "R_RISCV_32_PCREL";
-  case CallRelaxable:
-    return "CallRelaxable";
-  case AlignRelaxable:
-    return "AlignRelaxable";
   }
   return getGenericEdgeKindName(K);
 }

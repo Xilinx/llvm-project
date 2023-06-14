@@ -83,14 +83,9 @@ getNonRedundantWriteProcRes(const MCSchedClassDesc &SCDesc,
     const MCWriteProcResEntry *WPR = Entry.second;
     const MCProcResourceDesc *const ProcResDesc =
         SM.getProcResource(WPR->ProcResourceIdx);
-    // TODO: Handle StartAtCycle in llvm-exegesis and llvm-mca. See
-    // https://github.com/llvm/llvm-project/issues/62680 and
-    // https://github.com/llvm/llvm-project/issues/62681
-    assert(WPR->StartAtCycle == 0 &&
-           "`llvm-exegesis` does not handle StartAtCycle > 0");
     if (ProcResDesc->SubUnitsIdxBegin == nullptr) {
       // This is a ProcResUnit.
-      Result.push_back({WPR->ProcResourceIdx, WPR->Cycles, WPR->StartAtCycle});
+      Result.push_back({WPR->ProcResourceIdx, WPR->Cycles});
       ProcResUnitUsage[WPR->ProcResourceIdx] += WPR->Cycles;
     } else {
       // This is a ProcResGroup. First see if it contributes any cycles or if
@@ -107,8 +102,7 @@ getNonRedundantWriteProcRes(const MCSchedClassDesc &SCDesc,
       }
       // The ProcResGroup contributes `RemainingCycles` cycles of its own.
       Result.push_back({WPR->ProcResourceIdx,
-                        static_cast<uint16_t>(std::round(RemainingCycles)),
-                        WPR->StartAtCycle});
+                        static_cast<uint16_t>(std::round(RemainingCycles))});
       // Spread the remaining cycles over all subunits.
       for (const auto *SubResIdx = ProcResDesc->SubUnitsIdxBegin;
            SubResIdx != ProcResDesc->SubUnitsIdxBegin + ProcResDesc->NumUnits;

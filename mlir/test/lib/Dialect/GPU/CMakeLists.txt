@@ -10,7 +10,7 @@ add_mlir_library(MLIRGPUTestPasses
   LINK_LIBS PUBLIC
   MLIRAffineDialect
   MLIRFuncDialect
-  MLIRGPUDialect
+  MLIRGPUOps
   MLIRGPUToGPURuntimeTransforms
   MLIRLLVMToLLVMIRTranslation
   MLIRNVVMDialect

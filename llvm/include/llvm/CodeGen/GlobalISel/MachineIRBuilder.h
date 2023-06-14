@@ -284,10 +284,6 @@ public:
     return getMF().getFunction().getParent()->getDataLayout();
   }
 
-  LLVMContext &getContext() const {
-    return getMF().getFunction().getContext();
-  }
-
   /// Getter for DebugLoc
   const DebugLoc &getDL() { return State.DL; }
 

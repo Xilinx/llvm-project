@@ -17,7 +17,6 @@
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"
-#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"
 #include "mlir/Dialect/Tosa/Utils/ShapeUtils.h"
 #include "mlir/Pass/Pass.h"
 
@@ -38,10 +37,10 @@ TosaOp createOpAndInfer(PatternRewriter &rewriter, Location loc, Type resultTy,
 
   SmallVector<ShapedTypeComponents> returnedShapes;
   if (shapeInterface
-          .inferReturnTypeComponents(
-              op.getContext(), op.getLoc(), op->getOperands(),
-              op->getDiscardableAttrDictionary(), op->getPropertiesStorage(),
-              op->getRegions(), returnedShapes)
+          .inferReturnTypeComponents(op.getContext(), op.getLoc(),
+                                     op->getOperands(), op->getAttrDictionary(),
+                                     op->getPropertiesStorage(),
+                                     op->getRegions(), returnedShapes)
           .failed())
     return op;
 
@@ -57,7 +56,7 @@ TosaOp createOpAndInfer(PatternRewriter &rewriter, Location loc, Type resultTy,
   // Compute the knowledge based on the inferred type.
   auto inferredKnowledge =
       mlir::tosa::ValueKnowledge::getPessimisticValueState();
-  inferredKnowledge.dtype = cast<ShapedType>(resultTy).getElementType();
+  inferredKnowledge.dtype = resultTy.cast<ShapedType>().getElementType();
   inferredKnowledge.hasRank = predictedShape.hasRank();
   if (predictedShape.hasRank()) {
     for (auto dim : predictedShape.getDims()) {
@@ -84,10 +83,10 @@ public:
     Value weight = op->getOperand(1);
     Value bias = op->getOperand(2);
 
-    ShapedType inputTy = cast<ShapedType>(input.getType());
-    ShapedType weightTy = cast<ShapedType>(weight.getType());
-    ShapedType biasTy = cast<ShapedType>(bias.getType());
-    ShapedType resultTy = cast<ShapedType>(op->getResult(0).getType());
+    ShapedType inputTy = input.getType().cast<ShapedType>();
+    ShapedType weightTy = weight.getType().cast<ShapedType>();
+    ShapedType biasTy = bias.getType().cast<ShapedType>();
+    ShapedType resultTy = op->getResult(0).getType().cast<ShapedType>();
 
     llvm::ArrayRef<int64_t> stride = op.getStride();
     llvm::ArrayRef<int64_t> pad = op.getOutPad();
@@ -147,10 +146,10 @@ public:
     Value weight = op->getOperand(1);
     Value bias = op->getOperand(2);
 
-    ShapedType inputTy = cast<ShapedType>(input.getType());
-    ShapedType weightTy = cast<ShapedType>(weight.getType());
-    ShapedType biasTy = cast<ShapedType>(bias.getType());
-    ShapedType resultTy = cast<ShapedType>(op->getResult(0).getType());
+    ShapedType inputTy = input.getType().cast<ShapedType>();
+    ShapedType weightTy = weight.getType().cast<ShapedType>();
+    ShapedType biasTy = bias.getType().cast<ShapedType>();
+    ShapedType resultTy = op->getResult(0).getType().cast<ShapedType>();
 
     Type inputETy = inputTy.getElementType();
     Type weightETy = weightTy.getElementType();
@@ -203,7 +202,7 @@ public:
                                              weight, weightPaddingVal);
     }
 
-    weightTy = cast<ShapedType>(weight.getType());
+    weightTy = weight.getType().cast<ShapedType>();
     weightHeight = weightTy.getDimSize(1);
     weightWidth = weightTy.getDimSize(2);
 
@@ -232,7 +231,7 @@ public:
     weight = createOpAndInfer<tosa::ReshapeOp>(
         rewriter, loc, UnrankedTensorType::get(weightETy), weight,
         rewriter.getDenseI64ArrayAttr(weightReshapeDims1));
-    ShapedType restridedWeightTy = cast<ShapedType>(weight.getType());
+    ShapedType restridedWeightTy = weight.getType().cast<ShapedType>();
 
     weight = createOpAndInfer<tosa::ReverseOp>(
         rewriter, loc, UnrankedTensorType::get(weightETy), weight,
@@ -298,7 +297,7 @@ public:
     }
 
     // Factor the resulting width / height.
-    ShapedType convTy = cast<ShapedType>(conv2d.getType());
+    ShapedType convTy = conv2d.getType().cast<ShapedType>();
     Type convETy = convTy.getElementType();
 
     int64_t convHeight = convTy.getDimSize(1);
@@ -366,13 +365,9 @@ public:
     Value resultPaddingVal = createOpAndInfer<tosa::ConstOp>(
         rewriter, loc, resultPaddingAttr.getType(), resultPaddingAttr);
 
-    Value resultPad = createOpAndInfer<tosa::PadOp>(
+    auto resultPad = createOpAndInfer<tosa::PadOp>(
         rewriter, loc, UnrankedTensorType::get(resultETy), slice,
         resultPaddingVal);
-
-    if (EqualizeRanks(rewriter, op.getLoc(), resultPad, bias).failed()) {
-      return failure();
-    }
 
     rewriter.replaceOpWithNewOp<tosa::AddOp>(op, op.getType(), resultPad, bias);
     return success();

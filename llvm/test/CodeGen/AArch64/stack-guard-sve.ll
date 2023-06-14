@@ -337,6 +337,3 @@ entry:
 
 attributes #0 = { ssp "frame-pointer"="non-leaf" }
 attributes #1 = { sspstrong "frame-pointer"="non-leaf" }
-
-!llvm.module.flags = !{!0}
-!0 = !{i32 7, !"direct-access-external-data", i32 1}

@@ -80,7 +80,10 @@ group("unittests") {
     ]
   }
   if (llvm_build_ARM) {
-    deps += [ "Target/ARM:ARMTests" ]
+    deps += [
+      "Target/ARM:ARMTests",
+      "tools/llvm-exegesis/ARM:LLVMExegesisARMTests",
+    ]
   }
   if (llvm_build_LoongArch) {
     deps += [ "Target/LoongArch:LoongArchTests" ]
@@ -93,9 +96,6 @@ group("unittests") {
       "Target/PowerPC:PowerPCTests",
       "tools/llvm-exegesis/PowerPC:LLVMExegesisPowerPCTests",
     ]
-  }
-  if (llvm_build_RISCV) {
-    deps += [ "Target/RISCV:RISCVTests" ]
   }
   if (llvm_build_SystemZ) {
     deps += [ "MC/SystemZ:SystemZAsmLexerTests" ]

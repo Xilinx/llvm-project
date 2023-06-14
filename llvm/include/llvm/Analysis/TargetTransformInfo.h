@@ -293,26 +293,32 @@ public:
     /// All the GEPs in a set have same base address.
     unsigned IsSameBaseAddress : 1;
     /// These properties only valid if SameBaseAddress is set.
-    /// True if all pointers are separated by a unit stride.
-    unsigned IsUnitStride : 1;
+    /// True if distance between any two neigbouring pointers is same value.
+    unsigned IsUniformStride : 1;
     /// True if distance between any two neigbouring pointers is a known value.
     unsigned IsKnownStride : 1;
     unsigned Reserved : 29;
 
     bool isSameBase() const { return IsSameBaseAddress; }
-    bool isUnitStride() const { return IsSameBaseAddress && IsUnitStride; }
+    bool isUniformStride() const {
+      return IsSameBaseAddress && IsUniformStride;
+    }
     bool isKnownStride() const { return IsSameBaseAddress && IsKnownStride; }
 
-    static PointersChainInfo getUnitStride() {
-      return {/*IsSameBaseAddress=*/1, /*IsUnitStride=*/1,
+    static PointersChainInfo getKnownUniformStrided() {
+      return {/*IsSameBaseAddress=*/1, /*IsUniformStride=*/1,
               /*IsKnownStride=*/1, 0};
     }
-    static PointersChainInfo getKnownStride() {
-      return {/*IsSameBaseAddress=*/1, /*IsUnitStride=*/0,
+    static PointersChainInfo getUniformStrided() {
+      return {/*IsSameBaseAddress=*/1, /*IsUniformStride=*/1,
+              /*IsKnownStride=*/0, 0};
+    }
+    static PointersChainInfo getKnownNonUniformStrided() {
+      return {/*IsSameBaseAddress=*/1, /*IsUniformStride=*/0,
               /*IsKnownStride=*/1, 0};
     }
-    static PointersChainInfo getUnknownStride() {
-      return {/*IsSameBaseAddress=*/1, /*IsUnitStride=*/0,
+    static PointersChainInfo getNonUniformStrided() {
+      return {/*IsSameBaseAddress=*/1, /*IsUniformStride=*/0,
               /*IsKnownStride=*/0, 0};
     }
   };
@@ -320,11 +326,9 @@ public:
 
   /// Estimate the cost of a chain of pointers (typically pointer operands of a
   /// chain of loads or stores within same block) operations set when lowered.
-  /// \p AccessTy is the type of the loads/stores that will ultimately use the
-  /// \p Ptrs.
   InstructionCost
   getPointersChainCost(ArrayRef<const Value *> Ptrs, const Value *Base,
-                       const PointersChainInfo &Info, Type *AccessTy,
+                       const PointersChainInfo &Info,
                        TargetCostKind CostKind = TTI::TCK_RecipThroughput
 
   ) const;
@@ -569,8 +573,6 @@ public:
     /// Don't allow loop unrolling to simulate more than this number of
     /// iterations when checking full unroll profitability
     unsigned MaxIterationsCountToAnalyze;
-    /// Don't disable runtime unroll for the loops which were vectorized.
-    bool UnrollVectorizedLoop = false;
   };
 
   /// Get target-customized preferences for the generic loop unrolling
@@ -1667,7 +1669,7 @@ public:
                                      TTI::TargetCostKind CostKind) = 0;
   virtual InstructionCost
   getPointersChainCost(ArrayRef<const Value *> Ptrs, const Value *Base,
-                       const TTI::PointersChainInfo &Info, Type *AccessTy,
+                       const TTI::PointersChainInfo &Info,
                        TTI::TargetCostKind CostKind) = 0;
   virtual unsigned getInliningThresholdMultiplier() = 0;
   virtual unsigned adjustInliningThreshold(const CallBase *CB) = 0;
@@ -2028,9 +2030,8 @@ public:
   InstructionCost getPointersChainCost(ArrayRef<const Value *> Ptrs,
                                        const Value *Base,
                                        const PointersChainInfo &Info,
-                                       Type *AccessTy,
                                        TargetCostKind CostKind) override {
-    return Impl.getPointersChainCost(Ptrs, Base, Info, AccessTy, CostKind);
+    return Impl.getPointersChainCost(Ptrs, Base, Info, CostKind);
   }
   unsigned getInliningThresholdMultiplier() override {
     return Impl.getInliningThresholdMultiplier();

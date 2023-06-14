@@ -30,8 +30,8 @@ namespace {
 /// Helper function for loop bufferization. Cast the given buffer to the given
 /// memref type.
 static Value castBuffer(OpBuilder &b, Value buffer, Type type) {
-  assert(isa<BaseMemRefType>(type) && "expected BaseMemRefType");
-  assert(isa<BaseMemRefType>(buffer.getType()) && "expected BaseMemRefType");
+  assert(type.isa<BaseMemRefType>() && "expected BaseMemRefType");
+  assert(buffer.getType().isa<BaseMemRefType>() && "expected BaseMemRefType");
   // If the buffer already has the correct type, no cast is needed.
   if (buffer.getType() == type)
     return buffer;
@@ -78,7 +78,7 @@ struct ConditionOpInterface
     SmallVector<Value> newArgs;
     for (const auto &it : llvm::enumerate(conditionOp.getArgs())) {
       Value value = it.value();
-      if (isa<TensorType>(value.getType())) {
+      if (value.getType().isa<TensorType>()) {
         FailureOr<Value> maybeBuffer = getBuffer(rewriter, value, options);
         if (failed(maybeBuffer))
           return failure();
@@ -141,7 +141,7 @@ struct ExecuteRegionOpInterface
     rewriter.setInsertionPointAfter(newOp);
     SmallVector<Value> newResults;
     for (const auto &it : llvm::enumerate(executeRegionOp->getResultTypes())) {
-      if (isa<TensorType>(it.value())) {
+      if (it.value().isa<TensorType>()) {
         newResults.push_back(rewriter.create<bufferization::ToTensorOp>(
             executeRegionOp.getLoc(), newOp->getResult(it.index())));
       } else {
@@ -183,7 +183,7 @@ struct IfOpInterface
     // Compute bufferized result types.
     SmallVector<Type> newTypes;
     for (Value result : ifOp.getResults()) {
-      if (!isa<TensorType>(result.getType())) {
+      if (!result.getType().isa<TensorType>()) {
         newTypes.push_back(result.getType());
         continue;
       }
@@ -218,13 +218,13 @@ struct IfOpInterface
     assert(value.getDefiningOp() == op && "invalid valid");
 
     // Determine buffer types of the true/false branches.
-    auto opResult = cast<OpResult>(value);
+    auto opResult = value.cast<OpResult>();
     auto thenValue = thenYieldOp.getOperand(opResult.getResultNumber());
     auto elseValue = elseYieldOp.getOperand(opResult.getResultNumber());
     BaseMemRefType thenBufferType, elseBufferType;
-    if (isa<BaseMemRefType>(thenValue.getType())) {
+    if (thenValue.getType().isa<BaseMemRefType>()) {
       // True branch was already bufferized.
-      thenBufferType = cast<BaseMemRefType>(thenValue.getType());
+      thenBufferType = thenValue.getType().cast<BaseMemRefType>();
     } else {
       auto maybeBufferType =
           bufferization::getBufferType(thenValue, options, fixedTypes);
@@ -232,9 +232,9 @@ struct IfOpInterface
         return failure();
       thenBufferType = *maybeBufferType;
     }
-    if (isa<BaseMemRefType>(elseValue.getType())) {
+    if (elseValue.getType().isa<BaseMemRefType>()) {
       // False branch was already bufferized.
-      elseBufferType = cast<BaseMemRefType>(elseValue.getType());
+      elseBufferType = elseValue.getType().cast<BaseMemRefType>();
     } else {
       auto maybeBufferType =
           bufferization::getBufferType(elseValue, options, fixedTypes);
@@ -253,7 +253,7 @@ struct IfOpInterface
 
     // Layout maps are different: Promote to fully dynamic layout map.
     return getMemRefTypeWithFullyDynamicLayout(
-        cast<TensorType>(opResult.getType()), thenBufferType.getMemorySpace());
+        opResult.getType().cast<TensorType>(), thenBufferType.getMemorySpace());
   }
 };
 
@@ -262,7 +262,7 @@ struct IfOpInterface
 static DenseSet<int64_t> getTensorIndices(ValueRange values) {
   DenseSet<int64_t> result;
   for (const auto &it : llvm::enumerate(values))
-    if (isa<TensorType>(it.value().getType()))
+    if (it.value().getType().isa<TensorType>())
       result.insert(it.index());
   return result;
 }
@@ -275,8 +275,8 @@ DenseSet<int64_t> getEquivalentBuffers(Block::BlockArgListType bbArgs,
   unsigned int minSize = std::min(bbArgs.size(), yieldedValues.size());
   DenseSet<int64_t> result;
   for (unsigned int i = 0; i < minSize; ++i) {
-    if (!isa<TensorType>(bbArgs[i].getType()) ||
-        !isa<TensorType>(yieldedValues[i].getType()))
+    if (!bbArgs[i].getType().isa<TensorType>() ||
+        !yieldedValues[i].getType().isa<TensorType>())
       continue;
     if (state.areEquivalentBufferizedValues(bbArgs[i], yieldedValues[i]))
       result.insert(i);
@@ -291,7 +291,7 @@ getBuffers(RewriterBase &rewriter, MutableArrayRef<OpOperand> operands,
            const BufferizationOptions &options) {
   SmallVector<Value> result;
   for (OpOperand &opOperand : operands) {
-    if (isa<TensorType>(opOperand.get().getType())) {
+    if (opOperand.get().getType().isa<TensorType>()) {
       FailureOr<Value> resultBuffer =
           getBuffer(rewriter, opOperand.get(), options);
       if (failed(resultBuffer))
@@ -361,9 +361,9 @@ static FailureOr<BaseMemRefType> computeLoopRegionIterArgBufferType(
 
   // Compute the buffer type of the yielded value.
   BaseMemRefType yieldedValueBufferType;
-  if (isa<BaseMemRefType>(yieldedValue.getType())) {
+  if (yieldedValue.getType().isa<BaseMemRefType>()) {
     // scf.yield was already bufferized.
-    yieldedValueBufferType = cast<BaseMemRefType>(yieldedValue.getType());
+    yieldedValueBufferType = yieldedValue.getType().cast<BaseMemRefType>();
   } else {
     auto maybeBufferType =
         bufferization::getBufferType(yieldedValue, options, newFixedTypes);
@@ -379,16 +379,16 @@ static FailureOr<BaseMemRefType> computeLoopRegionIterArgBufferType(
   // If there is a mismatch between the yielded buffer type and the iter_arg
   // buffer type, the buffer type must be promoted to a fully dynamic layout
   // map.
-  auto yieldedRanked = cast<MemRefType>(yieldedValueBufferType);
+  auto yieldedRanked = yieldedValueBufferType.cast<MemRefType>();
 #ifndef NDEBUG
-  auto iterRanked = llvm::cast<MemRefType>(*initArgBufferType);
+  auto iterRanked = initArgBufferType->cast<MemRefType>();
   assert(llvm::equal(yieldedRanked.getShape(), iterRanked.getShape()) &&
          "expected same shape");
   assert(yieldedRanked.getMemorySpace() == iterRanked.getMemorySpace() &&
          "expected same memory space");
 #endif // NDEBUG
   return getMemRefTypeWithFullyDynamicLayout(
-      cast<RankedTensorType>(iterArg.getType()),
+      iterArg.getType().cast<RankedTensorType>(),
       yieldedRanked.getMemorySpace());
 }
 
@@ -516,16 +516,16 @@ struct ForOpInterface
                 const DenseMap<Value, BaseMemRefType> &fixedTypes) const {
     auto forOp = cast<scf::ForOp>(op);
     assert(getOwnerOfValue(value) == op && "invalid value");
-    assert(isa<TensorType>(value.getType()) && "expected tensor type");
+    assert(value.getType().isa<TensorType>() && "expected tensor type");
 
     // Get result/argument number.
     unsigned resultNum;
-    if (auto bbArg = dyn_cast<BlockArgument>(value)) {
+    if (auto bbArg = value.dyn_cast<BlockArgument>()) {
       resultNum =
           forOp.getResultForOpOperand(forOp.getOpOperandForRegionIterArg(bbArg))
               .getResultNumber();
     } else {
-      resultNum = cast<OpResult>(value).getResultNumber();
+      resultNum = value.cast<OpResult>().getResultNumber();
     }
 
     // Compute the bufferized type.
@@ -560,7 +560,7 @@ struct ForOpInterface
       Value initArg = it.value();
       Value result = forOp->getResult(it.index());
       // If the type is not a tensor, bufferization doesn't need to touch it.
-      if (!isa<TensorType>(result.getType())) {
+      if (!result.getType().isa<TensorType>()) {
         castedInitArgs.push_back(initArg);
         continue;
       }
@@ -611,7 +611,7 @@ struct ForOpInterface
     auto yieldOp =
         cast<scf::YieldOp>(forOp.getLoopBody().front().getTerminator());
     for (OpResult opResult : op->getOpResults()) {
-      if (!isa<TensorType>(opResult.getType()))
+      if (!opResult.getType().isa<TensorType>())
         continue;
 
       // Note: This is overly strict. We should check for aliasing bufferized
@@ -736,7 +736,7 @@ struct WhileOpInterface
     for (int64_t idx = 0;
          idx < static_cast<int64_t>(conditionOp.getArgs().size()); ++idx) {
       Value value = conditionOp.getArgs()[idx];
-      if (!isa<TensorType>(value.getType()) ||
+      if (!value.getType().isa<TensorType>() ||
           (equivalentYieldsAfter.contains(idx) &&
            equivalentYieldsBefore.contains(idx))) {
         beforeYieldValues.push_back(value);
@@ -786,7 +786,7 @@ struct WhileOpInterface
       Value initArg = it.value();
       Value beforeArg = whileOp.getBeforeArguments()[it.index()];
       // If the type is not a tensor, bufferization doesn't need to touch it.
-      if (!isa<TensorType>(beforeArg.getType())) {
+      if (!beforeArg.getType().isa<TensorType>()) {
         castedInitArgs.push_back(initArg);
         continue;
       }
@@ -799,10 +799,10 @@ struct WhileOpInterface
     // The result types of a WhileOp are the same as the "after" bbArg types.
     SmallVector<Type> argsTypesAfter = llvm::to_vector(
         llvm::map_range(whileOp.getAfterArguments(), [&](BlockArgument bbArg) {
-          if (!isa<TensorType>(bbArg.getType()))
+          if (!bbArg.getType().isa<TensorType>())
             return bbArg.getType();
           // TODO: error handling
-          return llvm::cast<Type>(*bufferization::getBufferType(bbArg, options));
+          return bufferization::getBufferType(bbArg, options)->cast<Type>();
         }));
 
     // Construct a new scf.while op with memref instead of tensor values.
@@ -848,10 +848,10 @@ struct WhileOpInterface
                 const DenseMap<Value, BaseMemRefType> &fixedTypes) const {
     auto whileOp = cast<scf::WhileOp>(op);
     assert(getOwnerOfValue(value) == op && "invalid value");
-    assert(isa<TensorType>(value.getType()) && "expected tensor type");
+    assert(value.getType().isa<TensorType>() && "expected tensor type");
 
     // Case 1: Block argument of the "before" region.
-    if (auto bbArg = dyn_cast<BlockArgument>(value)) {
+    if (auto bbArg = value.dyn_cast<BlockArgument>()) {
       if (bbArg.getOwner()->getParent() == &whileOp.getBefore()) {
         Value initArg = whileOp.getInits()[bbArg.getArgNumber()];
         auto yieldOp = whileOp.getYieldOp();
@@ -865,18 +865,18 @@ struct WhileOpInterface
     // The bufferized "after" bbArg type can be directly computed from the
     // bufferized "before" bbArg type.
     unsigned resultNum;
-    if (auto opResult = dyn_cast<OpResult>(value)) {
+    if (auto opResult = value.dyn_cast<OpResult>()) {
       resultNum = opResult.getResultNumber();
-    } else if (cast<BlockArgument>(value).getOwner()->getParent() ==
+    } else if (value.cast<BlockArgument>().getOwner()->getParent() ==
                &whileOp.getAfter()) {
-      resultNum = cast<BlockArgument>(value).getArgNumber();
+      resultNum = value.cast<BlockArgument>().getArgNumber();
     } else {
       llvm_unreachable("invalid value");
     }
     Value conditionYieldedVal = whileOp.getConditionOp().getArgs()[resultNum];
-    if (!isa<TensorType>(conditionYieldedVal.getType())) {
+    if (!conditionYieldedVal.getType().isa<TensorType>()) {
       // scf.condition was already bufferized.
-      return cast<BaseMemRefType>(conditionYieldedVal.getType());
+      return conditionYieldedVal.getType().cast<BaseMemRefType>();
     }
     return bufferization::getBufferType(conditionYieldedVal, options,
                                         fixedTypes);
@@ -902,12 +902,10 @@ struct WhileOpInterface
 
     auto conditionOp = whileOp.getConditionOp();
     for (const auto &it : llvm::enumerate(conditionOp.getArgs())) {
-      Block *block = conditionOp->getBlock();
-      if (!isa<TensorType>(it.value().getType()))
+      if (!it.value().getType().isa<TensorType>())
         continue;
-      if (it.index() >= block->getNumArguments() ||
-          !state.areEquivalentBufferizedValues(it.value(),
-                                               block->getArgument(it.index())))
+      if (!state.areEquivalentBufferizedValues(
+              it.value(), conditionOp->getBlock()->getArgument(it.index())))
         return conditionOp->emitError()
                << "Condition arg #" << it.index()
                << " is not equivalent to the corresponding iter bbArg";
@@ -915,12 +913,10 @@ struct WhileOpInterface
 
     auto yieldOp = whileOp.getYieldOp();
     for (const auto &it : llvm::enumerate(yieldOp.getResults())) {
-      Block *block = yieldOp->getBlock();
-      if (!isa<TensorType>(it.value().getType()))
+      if (!it.value().getType().isa<TensorType>())
         continue;
-      if (it.index() >= block->getNumArguments() ||
-          !state.areEquivalentBufferizedValues(it.value(),
-                                               block->getArgument(it.index())))
+      if (!state.areEquivalentBufferizedValues(
+              it.value(), yieldOp->getBlock()->getArgument(it.index())))
         return yieldOp->emitError()
                << "Yield operand #" << it.index()
                << " is not equivalent to the corresponding iter bbArg";
@@ -975,7 +971,7 @@ struct YieldOpInterface
     SmallVector<Value> newResults;
     for (const auto &it : llvm::enumerate(yieldOp.getResults())) {
       Value value = it.value();
-      if (isa<TensorType>(value.getType())) {
+      if (value.getType().isa<TensorType>()) {
         FailureOr<Value> maybeBuffer = getBuffer(rewriter, value, options);
         if (failed(maybeBuffer))
           return failure();
@@ -1114,7 +1110,7 @@ struct ForallOpInterface
                 const DenseMap<Value, BaseMemRefType> &fixedTypes) const {
     auto forallOp = cast<ForallOp>(op);
 
-    if (auto bbArg = dyn_cast<BlockArgument>(value))
+    if (auto bbArg = value.dyn_cast<BlockArgument>())
       // A tensor block argument has the same bufferized type as the
       // corresponding output operand.
       return bufferization::getBufferType(
@@ -1123,8 +1119,8 @@ struct ForallOpInterface
     // The bufferized result type is the same as the bufferized type of the
     // corresponding output operand.
     return bufferization::getBufferType(
-        forallOp.getOutputs()[cast<OpResult>(value).getResultNumber()], options,
-        fixedTypes);
+        forallOp.getOutputs()[value.cast<OpResult>().getResultNumber()],
+        options, fixedTypes);
   }
 
   bool isRepetitiveRegion(Operation *op, unsigned index) const {

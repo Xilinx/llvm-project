@@ -125,7 +125,7 @@ static LogicalResult collapseBranch(Block *&successor,
 
   // Otherwise, we need to remap any argument operands.
   for (Value operand : operands) {
-    BlockArgument argOperand = llvm::dyn_cast<BlockArgument>(operand);
+    BlockArgument argOperand = operand.dyn_cast<BlockArgument>();
     if (argOperand && argOperand.getOwner() == successor)
       argStorage.push_back(successorOperands[argOperand.getArgNumber()]);
     else
@@ -442,8 +442,7 @@ SuccessorOperands CondBranchOp::getSuccessorOperands(unsigned index) {
 }
 
 Block *CondBranchOp::getSuccessorForOperands(ArrayRef<Attribute> operands) {
-  if (IntegerAttr condAttr =
-          llvm::dyn_cast_or_null<IntegerAttr>(operands.front()))
+  if (IntegerAttr condAttr = operands.front().dyn_cast_or_null<IntegerAttr>())
     return condAttr.getValue().isOne() ? getTrueDest() : getFalseDest();
   return nullptr;
 }
@@ -602,7 +601,7 @@ Block *SwitchOp::getSuccessorForOperands(ArrayRef<Attribute> operands) {
     return getDefaultDestination();
 
   SuccessorRange caseDests = getCaseDestinations();
-  if (auto value = llvm::dyn_cast_or_null<IntegerAttr>(operands.front())) {
+  if (auto value = operands.front().dyn_cast_or_null<IntegerAttr>()) {
     for (const auto &it : llvm::enumerate(caseValues->getValues<APInt>()))
       if (it.value() == value.getValue())
         return caseDests[it.index()];

@@ -29,20 +29,20 @@
 !Filename = !llvm.ptr<i8>
 
 #SortedCOO = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed-nu", "singleton" ]
+  dimLevelType = [ "compressed-nu", "singleton" ]
 }>
 
 #SortedCOOPermuted = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed-nu", "singleton" ],
+  dimLevelType = [ "compressed-nu", "singleton" ],
   dimOrdering = affine_map<(i,j) -> (j,i)>
 }>
 
 #SortedCOO3D = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed-nu", "singleton-nu", "singleton" ]
+  dimLevelType = [ "compressed-nu", "singleton-nu", "singleton" ]
 }>
 
 #SortedCOO3DPermuted = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed-nu", "singleton-nu", "singleton" ],
+  dimLevelType = [ "compressed-nu", "singleton-nu", "singleton" ],
   dimOrdering = affine_map<(i,j,k) -> (k,i,j)>
 }>
 

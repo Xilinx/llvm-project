@@ -34,7 +34,7 @@ class IntEnumAttrCaseBase<I intType, string sym, string strVal, int intVal> :
     EnumAttrCaseInfo<sym, intVal, strVal>,
     SignlessIntegerAttrBase<intType, "case " # strVal> {
   let predicate =
-    CPred<"::llvm::cast<::mlir::IntegerAttr>($_self).getInt() == " # intVal>;
+    CPred<"$_self.cast<::mlir::IntegerAttr>().getInt() == " # intVal>;
 }
 
 // Cases of integer enum attributes with a specific type. By default, the string
@@ -168,7 +168,7 @@ class EnumAttrInfo<
 
   // Override Attr class fields for specialized class
   let predicate = !if(genSpecializedAttr,
-    CPred<"::llvm::isa<" # cppNamespace # "::" # specializedAttrClassName # ">($_self)">,
+    CPred<"$_self.isa<" # cppNamespace # "::" # specializedAttrClassName # ">()">,
     baseAttrClass.predicate);
   let storageType = !if(genSpecializedAttr,
     cppNamespace # "::" # specializedAttrClassName,
@@ -250,7 +250,7 @@ class BitEnumAttrBase<I intType, list<BitEnumAttrCaseBase> cases,
   let predicate = And<[
     SignlessIntegerAttrBase<intType, summary>.predicate,
     // Make sure we don't have unknown bit set.
-    CPred<"!(::llvm::cast<::mlir::IntegerAttr>($_self).getValue().getZExtValue() & (~("
+    CPred<"!($_self.cast<::mlir::IntegerAttr>().getValue().getZExtValue() & (~("
           # !interleave(!foreach(case, cases, case.value # "u"), "|") #
           ")))">
   ]>;

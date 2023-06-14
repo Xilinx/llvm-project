@@ -535,7 +535,7 @@ static Value buildLoopIterationCount(RewriterBase &rewriter, scf::ForOp outer,
 //   3. At the innermost loop level, create a InsertSliceOp.
 //   4. Iteratively pop and yield the result of the InsertSliceOp across the
 //      cloned loops.
-static FailureOr<PackingResult> buildPackingLoopNestImpl(
+static PackingResult buildPackingLoopNestImpl(
     RewriterBase &rewriter, IRMapping &bvm, tensor::PadOp opToHoist,
     ArrayRef<int64_t> transposeVector, RankedTensorType transposedTensorType,
     tensor::EmptyOp emptyOp, const HoistPaddingAnalysis &analysis) {
@@ -549,7 +549,7 @@ static FailureOr<PackingResult> buildPackingLoopNestImpl(
   int paddedRank = paddedTensorType.getRank();
 
   // Step 0. Populate bvm with opToHoist.getSource if relevant.
-  BlockArgument bbArg = dyn_cast<BlockArgument>(opToHoist.getSource());
+  BlockArgument bbArg = opToHoist.getSource().dyn_cast<BlockArgument>();
   while (bbArg) {
     auto forOp = dyn_cast<scf::ForOp>(bbArg.getOwner()->getParentOp());
     if (!forOp)
@@ -558,7 +558,7 @@ static FailureOr<PackingResult> buildPackingLoopNestImpl(
       break;
     OpOperand &operand = forOp.getOpOperandForRegionIterArg(bbArg);
     bvm.map(bbArg, operand.get());
-    bbArg = dyn_cast<BlockArgument>(operand.get());
+    bbArg = operand.get().dyn_cast<BlockArgument>();
   }
 
   // Step 1. iteratively clone loops and push `hoistedPackedTensor`.
@@ -621,8 +621,7 @@ static FailureOr<PackingResult> buildPackingLoopNestImpl(
   sizes = SmallVector<OpFoldResult>(nPackedLoops, rewriter.getIndexAttr(1));
   for (int64_t sz : transposedTensorType.getShape()) {
     // TODO: go grab dims when needed, atm tensor::PadOp yields a static tensor.
-    if (ShapedType::isDynamic(sz))
-      return failure();
+    assert(!ShapedType::isDynamic(sz) && "padded tensor needs static sizes");
     sizes.push_back(rewriter.getIndexAttr(sz));
   }
   // strides = [1 .. 1].
@@ -754,8 +753,9 @@ static bool tracesBackToExpectedValue(tensor::ExtractSliceOp extractSliceOp,
     if (!destOp)
       break;
     LLVM_DEBUG(DBGS() << "--step dest op: " << destOp << "\n");
-    source = destOp.getDpsInitOperand(cast<OpResult>(source).getResultNumber())
-                 ->get();
+    source =
+        destOp.getDpsInitOperand(source.cast<OpResult>().getResultNumber())
+            ->get();
   }
   LLVM_DEBUG(DBGS() << "--final source: " << source << "\n");
   LLVM_DEBUG(DBGS() << "--expected source: " << expectedSource << "\n");

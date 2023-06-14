@@ -308,7 +308,7 @@ struct MoveInitOperandsToInput : public OpRewritePattern<GenericOp> {
     for (OpOperand *op : candidates) {
       OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPointAfterValue(op->get());
-      auto elemType = cast<ShapedType>(op->get().getType()).getElementType();
+      auto elemType = op->get().getType().cast<ShapedType>().getElementType();
       auto empty = rewriter.create<tensor::EmptyOp>(
           loc, tensor::createDimValues(rewriter, loc, op->get()), elemType);
 
@@ -387,7 +387,7 @@ replaceUnitExtents(GenericOp genericOp, OpOperand *opOperand,
   // Early return for memrefs with affine maps to represent that we will always
   // leave them unchanged.
   Type actualType = opOperand->get().getType();
-  if (auto memref = dyn_cast<MemRefType>(actualType)) {
+  if (auto memref = actualType.dyn_cast<MemRefType>()) {
     if (!memref.getLayout().isIdentity())
       return std::nullopt;
   }
@@ -437,7 +437,7 @@ struct ReplaceUnitExtents : public OpRewritePattern<GenericOp> {
                     ArrayRef<ReassociationIndices> reassociation, Location loc,
                     PatternRewriter &rewriter) const {
     // There are no results for memref outputs.
-    auto origResultType = cast<RankedTensorType>(origOutput.getType());
+    auto origResultType = origOutput.getType().cast<RankedTensorType>();
     if (rankReductionStrategy == RankReductionStrategy::ExtractInsertSlice) {
       unsigned rank = origResultType.getRank();
       SmallVector<OpFoldResult> offsets(rank, rewriter.getIndexAttr(0));
@@ -459,7 +459,7 @@ struct ReplaceUnitExtents : public OpRewritePattern<GenericOp> {
   Value collapseValue(Value operand, ArrayRef<int64_t> targetShape,
                       ArrayRef<ReassociationIndices> reassociation,
                       Location loc, PatternRewriter &rewriter) const {
-    if (auto memrefType = dyn_cast<MemRefType>(operand.getType())) {
+    if (auto memrefType = operand.getType().dyn_cast<MemRefType>()) {
       if (rankReductionStrategy == RankReductionStrategy::ExtractInsertSlice) {
         FailureOr<Value> rankReducingExtract =
             memref::SubViewOp::rankReduceIfNeeded(rewriter, loc, operand,
@@ -478,7 +478,7 @@ struct ReplaceUnitExtents : public OpRewritePattern<GenericOp> {
       return rewriter.create<memref::CollapseShapeOp>(loc, targetType, operand,
                                                       reassociation);
     }
-    if (auto tensorType = dyn_cast<RankedTensorType>(operand.getType())) {
+    if (auto tensorType = operand.getType().dyn_cast<RankedTensorType>()) {
       if (rankReductionStrategy == RankReductionStrategy::ExtractInsertSlice) {
         FailureOr<Value> rankReducingExtract =
             tensor::ExtractSliceOp::rankReduceIfNeeded(rewriter, loc, operand,
@@ -502,7 +502,7 @@ struct ReplaceUnitExtents : public OpRewritePattern<GenericOp> {
                                 PatternRewriter &rewriter) const override {
     // Skip the pattern if the op has any tensor with special encoding.
     if (llvm::any_of(genericOp->getOperandTypes(), [](Type type) {
-          auto tensorType = dyn_cast<RankedTensorType>(type);
+          auto tensorType = type.dyn_cast<RankedTensorType>();
           return tensorType && tensorType.getEncoding() != nullptr;
         }))
       return failure();
@@ -607,10 +607,11 @@ struct RankReducedExtractSliceOp
     if (!reassociation ||
         reassociation->size() == static_cast<size_t>(resultType.getRank()))
       return failure();
-    auto rankReducedType = cast<RankedTensorType>(
+    auto rankReducedType =
         tensor::ExtractSliceOp::inferCanonicalRankReducedResultType(
             reassociation->size(), sliceOp.getSourceType(), offsets, sizes,
-            strides));
+            strides)
+            .cast<RankedTensorType>();
 
     Location loc = sliceOp.getLoc();
     Value newSlice = rewriter.create<tensor::ExtractSliceOp>(

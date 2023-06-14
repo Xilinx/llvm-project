@@ -19,5 +19,4 @@ add_llvm_component_library(LLVMFrontendOpenMP
   Analysis
   MC
   Scalar
-  BitReader
   )

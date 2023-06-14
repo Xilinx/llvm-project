@@ -21,8 +21,6 @@
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
-#include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/Instructions.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/Support/Alignment.h"
@@ -83,8 +81,9 @@ MachineFunction &createVoidVoidPtrMachineFunction(StringRef FunctionName,
       FunctionType::get(ReturnType, {MemParamType}, false);
   Function *const F = Function::Create(
       FunctionType, GlobalValue::InternalLinkage, FunctionName, Module);
-  BasicBlock *BB = BasicBlock::Create(Module->getContext(), "", F);
-  new UnreachableInst(Module->getContext(), BB);
+  // Making sure we can create a MachineFunction out of this Function even if it
+  // contains no IR.
+  F->setIsMaterializable(true);
   return MMI->getOrCreateMachineFunction(*F);
 }
 

@@ -31,33 +31,33 @@
 //
 
 #Dense  = #sparse_tensor.encoding<{
-  lvlTypes = [ "dense", "dense" ]
+  dimLevelType = [ "dense", "dense" ]
 }>
 
 #CSR  = #sparse_tensor.encoding<{
-  lvlTypes = [ "dense", "compressed" ]
+  dimLevelType = [ "dense", "compressed" ]
 }>
 
 #DCSR = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed", "compressed" ]
+  dimLevelType = [ "compressed", "compressed" ]
 }>
 
 #CSC = #sparse_tensor.encoding<{
-  lvlTypes = [ "dense", "compressed" ],
+  dimLevelType = [ "dense", "compressed" ],
   dimOrdering = affine_map<(i,j) -> (j,i)>
 }>
 
 #DCSC = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed", "compressed" ],
+  dimLevelType = [ "compressed", "compressed" ],
   dimOrdering = affine_map<(i,j) -> (j,i)>
 }>
 
 #BlockRow = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed", "dense" ]
+  dimLevelType = [ "compressed", "dense" ]
 }>
 
 #BlockCol = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed", "dense" ],
+  dimLevelType = [ "compressed", "dense" ],
   dimOrdering = affine_map<(i,j) -> (j,i)>
 }>
 

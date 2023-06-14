@@ -23,8 +23,6 @@
 
 #define DEBUG_TYPE "flang-lower-type"
 
-using Fortran::common::VectorElementCategory;
-
 //===--------------------------------------------------------------------===//
 // Intrinsic type translation helpers
 //===--------------------------------------------------------------------===//
@@ -55,25 +53,20 @@ int getIntegerBits() {
   return Fortran::evaluate::Type<Fortran::common::TypeCategory::Integer,
                                  KIND>::Scalar::bits;
 }
-static mlir::Type genIntegerType(mlir::MLIRContext *context, int kind,
-                                 bool isUnsigned = false) {
+static mlir::Type genIntegerType(mlir::MLIRContext *context, int kind) {
   if (Fortran::evaluate::IsValidKindOfIntrinsicType(
           Fortran::common::TypeCategory::Integer, kind)) {
-    mlir::IntegerType::SignednessSemantics signedness =
-        (isUnsigned ? mlir::IntegerType::SignednessSemantics::Unsigned
-                    : mlir::IntegerType::SignednessSemantics::Signless);
-
     switch (kind) {
     case 1:
-      return mlir::IntegerType::get(context, getIntegerBits<1>(), signedness);
+      return mlir::IntegerType::get(context, getIntegerBits<1>());
     case 2:
-      return mlir::IntegerType::get(context, getIntegerBits<2>(), signedness);
+      return mlir::IntegerType::get(context, getIntegerBits<2>());
     case 4:
-      return mlir::IntegerType::get(context, getIntegerBits<4>(), signedness);
+      return mlir::IntegerType::get(context, getIntegerBits<4>());
     case 8:
-      return mlir::IntegerType::get(context, getIntegerBits<8>(), signedness);
+      return mlir::IntegerType::get(context, getIntegerBits<8>());
     case 16:
-      return mlir::IntegerType::get(context, getIntegerBits<16>(), signedness);
+      return mlir::IntegerType::get(context, getIntegerBits<16>());
     }
   }
   llvm_unreachable("INTEGER kind not translated");
@@ -315,66 +308,12 @@ struct TypeBuilderImpl {
     return false;
   }
 
-  mlir::Type genVectorType(const Fortran::semantics::DerivedTypeSpec &tySpec) {
-    assert(tySpec.scope() && "Missing scope for Vector type");
-    auto vectorSize{tySpec.scope()->size()};
-    switch (tySpec.category()) {
-      SWITCH_COVERS_ALL_CASES
-    case (Fortran::semantics::DerivedTypeSpec::Category::IntrinsicVector): {
-      int64_t vecElemKind;
-      int64_t vecElemCategory;
-
-      for (const auto &pair : tySpec.parameters()) {
-        if (pair.first == "element_category") {
-          vecElemCategory =
-              Fortran::evaluate::ToInt64(pair.second.GetExplicit())
-                  .value_or(-1);
-        } else if (pair.first == "element_kind") {
-          vecElemKind =
-              Fortran::evaluate::ToInt64(pair.second.GetExplicit()).value_or(0);
-        }
-      }
-
-      assert((vecElemCategory >= 0 &&
-              static_cast<size_t>(vecElemCategory) <
-                  Fortran::common::VectorElementCategory_enumSize) &&
-             "Vector element type is not specified");
-      assert(vecElemKind && "Vector element kind is not specified");
-
-      int64_t numOfElements = vectorSize / vecElemKind;
-      switch (static_cast<VectorElementCategory>(vecElemCategory)) {
-        SWITCH_COVERS_ALL_CASES
-      case VectorElementCategory::Integer:
-        return fir::VectorType::get(numOfElements,
-                                    genIntegerType(context, vecElemKind));
-      case VectorElementCategory::Unsigned:
-        return fir::VectorType::get(numOfElements,
-                                    genIntegerType(context, vecElemKind, true));
-      case VectorElementCategory::Real:
-        return fir::VectorType::get(numOfElements,
-                                    genRealType(context, vecElemKind));
-      }
-      break;
-    }
-    case (Fortran::semantics::DerivedTypeSpec::Category::PairVector):
-    case (Fortran::semantics::DerivedTypeSpec::Category::QuadVector):
-      return fir::VectorType::get(vectorSize * 8,
-                                  mlir::IntegerType::get(context, 1));
-    case (Fortran::semantics::DerivedTypeSpec::Category::DerivedType):
-      Fortran::common::die("Vector element type not implemented");
-    }
-  }
-
   mlir::Type genDerivedType(const Fortran::semantics::DerivedTypeSpec &tySpec) {
     std::vector<std::pair<std::string, mlir::Type>> ps;
     std::vector<std::pair<std::string, mlir::Type>> cs;
     const Fortran::semantics::Symbol &typeSymbol = tySpec.typeSymbol();
     if (mlir::Type ty = getTypeIfDerivedAlreadyInConstruction(typeSymbol))
       return ty;
-
-    if (tySpec.IsVectorType()) {
-      return genVectorType(tySpec);
-    }
 
     auto rec = fir::RecordType::get(context, converter.mangleName(tySpec));
     // Maintain the stack of types for recursive references.

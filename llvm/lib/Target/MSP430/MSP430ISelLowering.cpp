@@ -631,7 +631,7 @@ SDValue MSP430TargetLowering::LowerCCCArguments(
 
   // Create frame index for the start of the first vararg value
   if (isVarArg) {
-    unsigned Offset = CCInfo.getStackSize();
+    unsigned Offset = CCInfo.getNextStackOffset();
     FuncInfo->setVarArgsFrameIndex(MFI.CreateFixedObject(1, Offset, true));
   }
 
@@ -814,7 +814,7 @@ SDValue MSP430TargetLowering::LowerCCCCallTo(
   AnalyzeArguments(CCInfo, ArgLocs, Outs);
 
   // Get a count of how many bytes are to be pushed on the stack.
-  unsigned NumBytes = CCInfo.getStackSize();
+  unsigned NumBytes = CCInfo.getNextStackOffset();
   MVT PtrVT = getFrameIndexTy(DAG.getDataLayout());
 
   Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, dl);

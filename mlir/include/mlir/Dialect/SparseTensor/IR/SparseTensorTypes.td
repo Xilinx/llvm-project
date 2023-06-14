@@ -73,10 +73,10 @@ def SparseTensor_StorageSpecifier : SparseTensor_Type<"StorageSpecifier"> {
 }
 
 def IsSparseTensorStorageSpecifierTypePred
-    : CPred<"::llvm::isa<::mlir::sparse_tensor::StorageSpecifierType>($_self)">;
+    : CPred<"$_self.isa<::mlir::sparse_tensor::StorageSpecifierType>()">;
 
 def SparseTensorStorageSpecifier
-    : Type<CPred<"::llvm::isa<::mlir::sparse_tensor::StorageSpecifierType>($_self)">, "metadata",
+    : Type<CPred<"$_self.isa<::mlir::sparse_tensor::StorageSpecifierType>()">, "metadata",
           "::mlir::sparse_tensor::StorageSpecifierType">;
 
 #endif // SPARSETENSOR_TYPES

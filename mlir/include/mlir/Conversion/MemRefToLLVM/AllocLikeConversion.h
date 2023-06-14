@@ -20,10 +20,8 @@ struct AllocationOpLLVMLowering : public ConvertToLLVMPattern {
   using ConvertToLLVMPattern::getVoidPtrType;
 
   explicit AllocationOpLLVMLowering(StringRef opName,
-                                    LLVMTypeConverter &converter,
-                                    PatternBenefit benefit = 1)
-      : ConvertToLLVMPattern(opName, &converter.getContext(), converter,
-                             benefit) {}
+                                    LLVMTypeConverter &converter)
+      : ConvertToLLVMPattern(opName, &converter.getContext(), converter) {}
 
 protected:
   /// Computes the aligned value for 'input' as follows:
@@ -33,7 +31,7 @@ protected:
                              Value input, Value alignment);
 
   static MemRefType getMemRefResultType(Operation *op) {
-    return cast<MemRefType>(op->getResult(0).getType());
+    return op->getResult(0).getType().cast<MemRefType>();
   }
 
   /// Computes the alignment for the given memory allocation op.
@@ -105,20 +103,15 @@ private:
 /// Lowering for AllocOp and AllocaOp.
 struct AllocLikeOpLLVMLowering : public AllocationOpLLVMLowering {
   explicit AllocLikeOpLLVMLowering(StringRef opName,
-                                   LLVMTypeConverter &converter,
-                                   PatternBenefit benefit = 1)
-      : AllocationOpLLVMLowering(opName, converter, benefit) {}
+                                   LLVMTypeConverter &converter)
+      : AllocationOpLLVMLowering(opName, converter) {}
 
 protected:
   /// Allocates the underlying buffer. Returns the allocated pointer and the
   /// aligned pointer.
   virtual std::tuple<Value, Value>
-  allocateBuffer(ConversionPatternRewriter &rewriter, Location loc, Value size,
-                 Operation *op) const = 0;
-
-  /// Sets the flag 'requiresNumElements', specifying the Op requires the number
-  /// of elements instead of the size in bytes.
-  void setRequiresNumElements();
+  allocateBuffer(ConversionPatternRewriter &rewriter, Location loc,
+                 Value sizeBytes, Operation *op) const = 0;
 
 private:
   // An `alloc` is converted into a definition of a memref descriptor value and
@@ -140,10 +133,6 @@ private:
   LogicalResult
   matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override;
-
-  // Flag for specifying the Op requires the number of elements instead of the
-  // size in bytes.
-  bool requiresNumElements = false;
 };
 
 } // namespace mlir

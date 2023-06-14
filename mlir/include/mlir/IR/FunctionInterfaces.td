@@ -445,11 +445,11 @@ def FunctionOpInterface : OpInterface<"FunctionOpInterface", [Symbol]> {
 
     template <typename AttrClass>
     AttrClass getArgAttrOfType(unsigned index, StringAttr name) {
-      return ::llvm::dyn_cast_or_null<AttrClass>(getArgAttr(index, name));
+      return getArgAttr(index, name).template dyn_cast_or_null<AttrClass>();
     }
     template <typename AttrClass>
     AttrClass getArgAttrOfType(unsigned index, StringRef name) {
-      return ::llvm::dyn_cast_or_null<AttrClass>(getArgAttr(index, name));
+      return getArgAttr(index, name).template dyn_cast_or_null<AttrClass>();
     }
 
     /// Set the attributes held by the argument at 'index'.
@@ -534,11 +534,11 @@ def FunctionOpInterface : OpInterface<"FunctionOpInterface", [Symbol]> {
 
     template <typename AttrClass>
     AttrClass getResultAttrOfType(unsigned index, StringAttr name) {
-      return ::llvm::dyn_cast_or_null<AttrClass>(getResultAttr(index, name));
+      return getResultAttr(index, name).template dyn_cast_or_null<AttrClass>();
     }
     template <typename AttrClass>
     AttrClass getResultAttrOfType(unsigned index, StringRef name) {
-      return ::llvm::dyn_cast_or_null<AttrClass>(getResultAttr(index, name));
+      return getResultAttr(index, name).template dyn_cast_or_null<AttrClass>();
     }
 
     /// Set the attributes held by the result at 'index'.

@@ -26,6 +26,7 @@
 
 namespace llvm {
 
+class FoldingSetNodeID;
 class MDNode;
 class raw_ostream;
 class MachineFunction;
@@ -323,6 +324,10 @@ public:
   void setType(LLT NewTy) {
     MemoryType = NewTy;
   }
+
+  /// Profile - Gather unique data for the object.
+  ///
+  void Profile(FoldingSetNodeID &ID) const;
 
   /// Support for operator<<.
   /// @{

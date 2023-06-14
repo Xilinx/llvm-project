@@ -1385,7 +1385,7 @@ Expected<Header> Header::readFromBuffer(const unsigned char *Buffer) {
   case 10ull:
     H.TemporalProfTracesOffset =
         read(Buffer, offsetOf(&Header::TemporalProfTracesOffset));
-    [[fallthrough]];
+    LLVM_FALLTHROUGH;
   case 9ull:
     H.BinaryIdOffset = read(Buffer, offsetOf(&Header::BinaryIdOffset));
     [[fallthrough]];

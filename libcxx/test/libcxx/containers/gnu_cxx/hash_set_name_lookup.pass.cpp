@@ -16,7 +16,9 @@ struct equal_to;
 struct unique_ptr;
 
 // Prevent <ext/hash_set> from generating deprecated warnings for this test.
-// ADDITIONAL_COMPILE_FLAGS: -Wno-deprecated
+#if defined(__DEPRECATED)
+#   undef __DEPRECATED
+#endif
 
 #include <ext/hash_set>
 

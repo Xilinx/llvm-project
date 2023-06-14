@@ -297,19 +297,16 @@ int64_t SBData::GetSignedInt64(lldb::SBError &error, lldb::offset_t offset) {
 const char *SBData::GetString(lldb::SBError &error, lldb::offset_t offset) {
   LLDB_INSTRUMENT_VA(this, error, offset);
 
-  if (!m_opaque_sp) {
+  const char *value = nullptr;
+  if (!m_opaque_sp.get()) {
     error.SetErrorString("no value to read from");
-    return nullptr;
+  } else {
+    uint32_t old_offset = offset;
+    value = m_opaque_sp->GetCStr(&offset);
+    if (offset == old_offset || (value == nullptr))
+      error.SetErrorString("unable to read data");
   }
-
-  lldb::offset_t old_offset = offset;
-  const char *value = m_opaque_sp->GetCStr(&offset);
-  if (offset == old_offset || value == nullptr) {
-    error.SetErrorString("unable to read data");
-    return nullptr;
-  }
-
-  return ConstString(value).GetCString();
+  return value;
 }
 
 bool SBData::GetDescription(lldb::SBStream &description,

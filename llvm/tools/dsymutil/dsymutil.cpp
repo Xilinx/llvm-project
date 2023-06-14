@@ -387,9 +387,6 @@ static Expected<DsymutilOptions> getOptions(opt::InputArgList &Args) {
       return FormatOrErr.takeError();
   }
 
-  Options.LinkOpts.RemarksKeepAll =
-      !Args.hasArg(OPT_remarks_drop_without_debug);
-
   if (Error E = verifyOptions(Options))
     return std::move(E);
   return Options;

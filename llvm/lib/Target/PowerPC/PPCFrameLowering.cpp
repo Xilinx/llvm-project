@@ -458,19 +458,19 @@ PPCFrameLowering::findScratchRegister(MachineBasicBlock *MBB,
       (!UseAtEnd && (&MBB->getParent()->front() == MBB)))
     return true;
 
-  if (UseAtEnd) {
-    // The scratch register will be used before the first terminator (or at the
-    // end of the block if there are no terminators).
+  RS.enterBasicBlock(*MBB);
+
+  if (UseAtEnd && !MBB->empty()) {
+    // The scratch register will be used at the end of the block, so must
+    // consider all registers used within the block
+
     MachineBasicBlock::iterator MBBI = MBB->getFirstTerminator();
-    if (MBBI == MBB->begin()) {
-      RS.enterBasicBlock(*MBB);
-    } else {
-      RS.enterBasicBlockEnd(*MBB);
-      RS.backward(std::prev(MBBI));
-    }
-  } else {
-    // The scratch register will be used at the start of the block.
-    RS.enterBasicBlock(*MBB);
+    // If no terminator, back iterator up to previous instruction.
+    if (MBBI == MBB->end())
+      MBBI = std::prev(MBBI);
+
+    if (MBBI != MBB->begin())
+      RS.forward(MBBI);
   }
 
   // If the two registers are available, we're all good.

@@ -1122,11 +1122,11 @@ SDValue XCoreTargetLowering::LowerCCCCallTo(
   // Analyze return values to determine the number of bytes of stack required.
   CCState RetCCInfo(CallConv, isVarArg, DAG.getMachineFunction(), RVLocs,
                     *DAG.getContext());
-  RetCCInfo.AllocateStack(CCInfo.getStackSize(), Align(4));
+  RetCCInfo.AllocateStack(CCInfo.getNextStackOffset(), Align(4));
   RetCCInfo.AnalyzeCallResult(Ins, RetCC_XCore);
 
   // Get a count of how many bytes are to be pushed on the stack.
-  unsigned NumBytes = RetCCInfo.getStackSize();
+  unsigned NumBytes = RetCCInfo.getNextStackOffset();
 
   Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, dl);
 
@@ -1272,7 +1272,7 @@ SDValue XCoreTargetLowering::LowerCCCArguments(
   unsigned LRSaveSize = StackSlotSize;
 
   if (!isVarArg)
-    XFI->setReturnStackOffset(CCInfo.getStackSize() + LRSaveSize);
+    XFI->setReturnStackOffset(CCInfo.getNextStackOffset() + LRSaveSize);
 
   // All getCopyFromReg ops must precede any getMemcpys to prevent the
   // scheduler clobbering a register before it has been copied.
@@ -1366,7 +1366,8 @@ SDValue XCoreTargetLowering::LowerCCCArguments(
     } else {
       // This will point to the next argument passed via stack.
       XFI->setVarArgsFrameIndex(
-          MFI.CreateFixedObject(4, LRSaveSize + CCInfo.getStackSize(), true));
+        MFI.CreateFixedObject(4, LRSaveSize + CCInfo.getNextStackOffset(),
+                              true));
     }
   }
 
@@ -1418,7 +1419,7 @@ CanLowerReturn(CallingConv::ID CallConv, MachineFunction &MF,
   CCState CCInfo(CallConv, isVarArg, MF, RVLocs, Context);
   if (!CCInfo.CheckReturn(Outs, RetCC_XCore))
     return false;
-  if (CCInfo.getStackSize() != 0 && isVarArg)
+  if (CCInfo.getNextStackOffset() != 0 && isVarArg)
     return false;
   return true;
 }

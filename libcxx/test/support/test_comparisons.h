@@ -241,8 +241,7 @@ struct LessAndEqComp {
   }
 };
 
-#if TEST_STD_VER >= 20
-
+#if TEST_STD_VER > 17
 struct StrongOrder {
   int value;
   constexpr StrongOrder(int v) : value(v) {}
@@ -260,8 +259,6 @@ struct PartialOrder {
   constexpr PartialOrder(int v) : value(v) {}
   friend constexpr std::partial_ordering operator<=>(PartialOrder lhs, PartialOrder rhs) {
     if (lhs.value == std::numeric_limits<int>::min() || rhs.value == std::numeric_limits<int>::min())
-      return std::partial_ordering::unordered;
-    if (lhs.value == std::numeric_limits<int>::max() || rhs.value == std::numeric_limits<int>::max())
       return std::partial_ordering::unordered;
     return lhs.value <=> rhs.value;
   }

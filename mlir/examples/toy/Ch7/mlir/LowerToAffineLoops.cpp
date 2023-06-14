@@ -62,7 +62,7 @@ using LoopIterationFn = function_ref<Value(
 static void lowerOpToLoops(Operation *op, ValueRange operands,
                            PatternRewriter &rewriter,
                            LoopIterationFn processIteration) {
-  auto tensorType = llvm::cast<RankedTensorType>((*op->result_type_begin()));
+  auto tensorType = (*op->result_type_begin()).cast<RankedTensorType>();
   auto loc = op->getLoc();
 
   // Insert an allocation and deallocation for the result of this operation.
@@ -144,7 +144,7 @@ struct ConstantOpLowering : public OpRewritePattern<toy::ConstantOp> {
 
     // When lowering the constant operation, we allocate and assign the constant
     // values to a corresponding memref allocation.
-    auto tensorType = llvm::cast<RankedTensorType>(op.getType());
+    auto tensorType = op.getType().cast<RankedTensorType>();
     auto memRefType = convertTensorToMemRef(tensorType);
     auto alloc = insertAllocAndDealloc(memRefType, loc, rewriter);
 
@@ -342,7 +342,7 @@ void ToyToAffineLoweringPass::runOnOperation() {
   target.addIllegalDialect<toy::ToyDialect>();
   target.addDynamicallyLegalOp<toy::PrintOp>([](toy::PrintOp op) {
     return llvm::none_of(op->getOperandTypes(),
-                         [](Type type) { return llvm::isa<TensorType>(type); });
+                         [](Type type) { return type.isa<TensorType>(); });
   });
 
   // Now that the conversion target has been defined, we just need to provide

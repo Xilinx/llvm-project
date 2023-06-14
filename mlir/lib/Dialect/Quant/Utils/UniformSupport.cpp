@@ -14,13 +14,13 @@ using namespace mlir;
 using namespace mlir::quant;
 
 static bool isQuantizablePrimitiveType(Type inputType) {
-  return isa<FloatType>(inputType);
+  return inputType.isa<FloatType>();
 }
 
 ExpressedToQuantizedConverter
 ExpressedToQuantizedConverter::forInputType(Type inputType) {
-  if (isa<TensorType, VectorType>(inputType)) {
-    Type elementType = cast<ShapedType>(inputType).getElementType();
+  if (inputType.isa<TensorType, VectorType>()) {
+    Type elementType = inputType.cast<ShapedType>().getElementType();
     if (!isQuantizablePrimitiveType(elementType))
       return ExpressedToQuantizedConverter{inputType, nullptr};
     return ExpressedToQuantizedConverter{inputType, elementType};
@@ -34,11 +34,11 @@ ExpressedToQuantizedConverter::forInputType(Type inputType) {
 
 Type ExpressedToQuantizedConverter::convert(QuantizedType elementalType) const {
   assert(expressedType && "convert() on unsupported conversion");
-  if (auto tensorType = dyn_cast<RankedTensorType>(inputType))
+  if (auto tensorType = inputType.dyn_cast<RankedTensorType>())
     return RankedTensorType::get(tensorType.getShape(), elementalType);
-  if (auto tensorType = dyn_cast<UnrankedTensorType>(inputType))
+  if (auto tensorType = inputType.dyn_cast<UnrankedTensorType>())
     return UnrankedTensorType::get(elementalType);
-  if (auto vectorType = dyn_cast<VectorType>(inputType))
+  if (auto vectorType = inputType.dyn_cast<VectorType>())
     return VectorType::get(vectorType.getShape(), elementalType);
 
   // If the expressed types match, just use the new elemental type.
@@ -50,7 +50,7 @@ Type ExpressedToQuantizedConverter::convert(QuantizedType elementalType) const {
 
 ElementsAttr
 UniformQuantizedPerAxisValueConverter::convert(Attribute realValue) {
-  if (auto attr = dyn_cast<DenseFPElementsAttr>(realValue)) {
+  if (auto attr = realValue.dyn_cast<DenseFPElementsAttr>()) {
     return convert(attr);
   }
   // TODO: handles sparse elements attribute

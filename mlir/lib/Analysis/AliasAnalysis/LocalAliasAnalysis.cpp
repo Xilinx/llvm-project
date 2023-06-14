@@ -59,11 +59,11 @@ static void collectUnderlyingAddressValues(RegionBranchOpInterface branch,
       }
       unsigned firstInputIndex, lastInputIndex;
       if (region) {
-        firstInputIndex = cast<BlockArgument>(inputs[0]).getArgNumber();
-        lastInputIndex = cast<BlockArgument>(inputs.back()).getArgNumber();
+        firstInputIndex = inputs[0].cast<BlockArgument>().getArgNumber();
+        lastInputIndex = inputs.back().cast<BlockArgument>().getArgNumber();
       } else {
-        firstInputIndex = cast<OpResult>(inputs[0]).getResultNumber();
-        lastInputIndex = cast<OpResult>(inputs.back()).getResultNumber();
+        firstInputIndex = inputs[0].cast<OpResult>().getResultNumber();
+        lastInputIndex = inputs.back().cast<OpResult>().getResultNumber();
       }
       if (firstInputIndex > inputIndex || lastInputIndex < inputIndex) {
         output.push_back(inputValue);
@@ -186,9 +186,9 @@ static void collectUnderlyingAddressValues(Value value, unsigned maxDepth,
   }
   --maxDepth;
 
-  if (BlockArgument arg = dyn_cast<BlockArgument>(value))
+  if (BlockArgument arg = value.dyn_cast<BlockArgument>())
     return collectUnderlyingAddressValues(arg, maxDepth, visited, output);
-  collectUnderlyingAddressValues(cast<OpResult>(value), maxDepth, visited,
+  collectUnderlyingAddressValues(value.cast<OpResult>(), maxDepth, visited,
                                  output);
 }
 
@@ -216,10 +216,10 @@ getAllocEffectFor(Value value,
                   Operation *&allocScopeOp) {
   // Try to get a memory effect interface for the parent operation.
   Operation *op;
-  if (BlockArgument arg = dyn_cast<BlockArgument>(value))
+  if (BlockArgument arg = value.dyn_cast<BlockArgument>())
     op = arg.getOwner()->getParentOp();
   else
-    op = cast<OpResult>(value).getOwner();
+    op = value.cast<OpResult>().getOwner();
   MemoryEffectOpInterface interface = dyn_cast<MemoryEffectOpInterface>(op);
   if (!interface)
     return failure();
@@ -305,7 +305,7 @@ AliasResult LocalAliasAnalysis::aliasImpl(Value lhs, Value rhs) {
     if (rhsParentOp->isProperAncestor(lhsAllocScope))
       return AliasResult::NoAlias;
     if (rhsParentOp == lhsAllocScope) {
-      BlockArgument rhsArg = dyn_cast<BlockArgument>(rhs);
+      BlockArgument rhsArg = rhs.dyn_cast<BlockArgument>();
       if (rhsArg && rhs.getParentBlock()->isEntryBlock())
         return AliasResult::NoAlias;
     }

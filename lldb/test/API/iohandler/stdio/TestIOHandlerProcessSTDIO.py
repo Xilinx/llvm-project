@@ -3,7 +3,6 @@ from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 from lldbsuite.test.lldbpexpect import PExpectTest
 
-
 class TestIOHandlerProcessSTDIO(PExpectTest):
     NO_DEBUG_INFO_TESTCASE = True
 
@@ -25,5 +24,5 @@ class TestIOHandlerProcessSTDIO(PExpectTest):
         self.child.send("baz\n")
         self.child.expect_exact("stdout: baz")
 
-        self.child.sendcontrol("d")
+        self.child.sendcontrol('d')
         self.quit()

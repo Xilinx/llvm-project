@@ -25,11 +25,11 @@ using namespace mlir;
 
 /// Attempt to extract a filename for the given loc.
 static FileLineColLoc extractFileLoc(Location loc) {
-  if (auto fileLoc = dyn_cast<FileLineColLoc>(loc))
+  if (auto fileLoc = loc.dyn_cast<FileLineColLoc>())
     return fileLoc;
-  if (auto nameLoc = dyn_cast<NameLoc>(loc))
+  if (auto nameLoc = loc.dyn_cast<NameLoc>())
     return extractFileLoc(nameLoc.getChildLoc());
-  if (auto opaqueLoc = dyn_cast<OpaqueLoc>(loc))
+  if (auto opaqueLoc = loc.dyn_cast<OpaqueLoc>())
     return extractFileLoc(opaqueLoc.getFallbackLocation());
   return FileLineColLoc();
 }

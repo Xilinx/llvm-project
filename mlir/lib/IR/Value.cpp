@@ -18,7 +18,7 @@ using namespace mlir::detail;
 /// If this value is the result of an Operation, return the operation that
 /// defines it.
 Operation *Value::getDefiningOp() const {
-  if (auto result = llvm::dyn_cast<OpResult>(*this))
+  if (auto result = dyn_cast<OpResult>())
     return result.getOwner();
   return nullptr;
 }
@@ -27,28 +27,28 @@ Location Value::getLoc() const {
   if (auto *op = getDefiningOp())
     return op->getLoc();
 
-  return llvm::cast<BlockArgument>(*this).getLoc();
+  return cast<BlockArgument>().getLoc();
 }
 
 void Value::setLoc(Location loc) {
   if (auto *op = getDefiningOp())
     return op->setLoc(loc);
 
-  return llvm::cast<BlockArgument>(*this).setLoc(loc);
+  return cast<BlockArgument>().setLoc(loc);
 }
 
 /// Return the Region in which this Value is defined.
 Region *Value::getParentRegion() {
   if (auto *op = getDefiningOp())
     return op->getParentRegion();
-  return llvm::cast<BlockArgument>(*this).getOwner()->getParent();
+  return cast<BlockArgument>().getOwner()->getParent();
 }
 
 /// Return the Block in which this Value is defined.
 Block *Value::getParentBlock() {
   if (Operation *op = getDefiningOp())
     return op->getBlock();
-  return llvm::cast<BlockArgument>(*this).getOwner();
+  return cast<BlockArgument>().getOwner();
 }
 
 //===----------------------------------------------------------------------===//
@@ -91,11 +91,6 @@ bool Value::isUsedOutsideOfBlock(Block *block) {
   return llvm::any_of(getUsers(), [block](Operation *user) {
     return user->getBlock() != block;
   });
-}
-
-/// Shuffles the use-list order according to the provided indices.
-void Value::shuffleUseList(ArrayRef<unsigned> indices) {
-  getImpl()->shuffleUseList(indices);
 }
 
 //===----------------------------------------------------------------------===//

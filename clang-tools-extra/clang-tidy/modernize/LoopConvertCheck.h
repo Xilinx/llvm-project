@@ -29,13 +29,13 @@ public:
 
 private:
   struct RangeDescriptor {
-    RangeDescriptor() = default;
-    bool ContainerNeedsDereference = false;
-    bool DerefByConstRef = false;
-    bool DerefByValue = false;
+    RangeDescriptor();
+    bool ContainerNeedsDereference;
+    bool DerefByConstRef;
+    bool DerefByValue;
     std::string ContainerString;
     QualType ElemType;
-    bool NeedsReverseCall = false;
+    bool NeedsReverseCall;
   };
 
   void getAliasRange(SourceManager &SM, SourceRange &DeclRange);

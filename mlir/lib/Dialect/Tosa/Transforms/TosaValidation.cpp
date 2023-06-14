@@ -106,7 +106,7 @@ void TosaValidation::runOnOperation() {
   getOperation().walk([&](Operation *op) {
     for (Value operand : op->getOperands()) {
       if ((profileType == TosaProfileEnum::BaseInference) &&
-          isa<FloatType>(getElementTypeOrSelf(operand))) {
+          getElementTypeOrSelf(operand).isa<FloatType>()) {
         return signalPassFailure();
       }
       if (getElementTypeOrSelf(operand).isF64()) {

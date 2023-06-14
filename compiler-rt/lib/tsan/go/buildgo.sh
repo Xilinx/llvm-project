@@ -2,45 +2,6 @@
 
 set -e
 
-if [ "`uname -a | grep Linux`" != "" ]; then
-	HOST_GOOS="linux"
-	if [ "`uname -a | grep ppc64le`" != "" ]; then
-		HOST_GOARCH="ppc64le"
-	elif [ "`uname -a | grep x86_64`" != "" ]; then
-		HOST_GOARCH="amd64"
-	elif [ "`uname -a | grep aarch64`" != "" ]; then
-		HOST_GOARCH="arm64"
-	elif [ "`uname -a | grep -i mips64`" != "" ]; then
-		if [ "`lscpu | grep -i Little`" != "" ]; then
-			HOST_GOARCH="mips64le"
-		else
-			HOST_GOARCH="mips64"
-		fi
-	elif [ "`uname -a | grep s390x`" != "" ]; then
-		HOST_GOARCH="s390x"
-	fi
-elif [ "`uname -a | grep FreeBSD`" != "" ]; then
-	HOST_GOOS="freebsd"
-	HOST_GOARCH="amd64"
-elif [ "`uname -a | grep NetBSD`" != "" ]; then
-	HOST_GOOS="netbsd"
-	HOST_GOARCH="amd64"
-elif [ "`uname -a | grep Darwin`" != "" ]; then
-	HOST_GOOS="darwin"
-	if [ "`uname -a | grep x86_64`" != "" ]; then
-		HOST_GOARCH="amd64"
-	elif [ "`uname -a | grep arm64`" != "" ]; then
-		HOST_GOARCH="arm64"
-	fi
-elif [ "`uname -a | grep MINGW`" != "" ]; then
-	HOST_GOOS="windows"
-	HOST_GOARCH="amd64"
-fi
-
-GOOS=${GOOS:-$HOST_GOOS}
-GOARCH=${GOARCH:-$HOST_GOARCH}
-SUFFIX="${GOOS}_${GOARCH}"
-
 SRCS="
 	tsan_go.cpp
 	../rtl/tsan_external.cpp
@@ -78,7 +39,7 @@ SRCS="
 	../../sanitizer_common/sanitizer_termination.cpp
 "
 
-if [ "$GOOS" = "linux" ]; then
+if [ "`uname -a | grep Linux`" != "" ]; then
 	OSCFLAGS="-fPIC -Wno-maybe-uninitialized"
 	OSLDFLAGS="-lpthread -fPIC -fpie"
 	SRCS="
@@ -93,30 +54,39 @@ if [ "$GOOS" = "linux" ]; then
 		../../sanitizer_common/sanitizer_stoptheworld_linux_libcdep.cpp
 		../../sanitizer_common/sanitizer_stoptheworld_netbsd_libcdep.cpp
 		"
-	if [ "$GOARCH" = "ppc64le" ]; then
+	if [ "`uname -a | grep ppc64le`" != "" ]; then
+		SUFFIX="linux_ppc64le"
 		ARCHCFLAGS="-m64 -mcpu=power8 -fno-function-sections"
-	elif [ "$GOARCH" = "amd64" ]; then
+	elif [ "`uname -a | grep x86_64`" != "" ]; then
+		SUFFIX="linux_amd64"
 		if [ "$GOAMD64" = "v3" ]; then
 			ARCHCFLAGS="-m64 -msse4.2"
 		else
 			ARCHCFLAGS="-m64 -msse3"
 		fi
 		OSCFLAGS="$OSCFLAGS -ffreestanding -Wno-unused-const-variable -Wno-unknown-warning-option"
-	elif [ "$GOARCH" = "arm64" ]; then
+	elif [ "`uname -a | grep aarch64`" != "" ]; then
+		SUFFIX="linux_arm64"
 		ARCHCFLAGS=""
-	elif [ "$GOARCH" = "mips64le" ]; then
-		ARCHCFLAGS="-mips64 -EL"
-	elif [ "$GOARCH" = "mips64" ]; then
-		ARCHCFLAGS="-mips64 -EB"
-	elif [ "$GOARCH" = "s390x" ]; then
+	elif [ "`uname -a | grep -i mips64`" != "" ]; then
+		if [ "`lscpu | grep -i Little`" != "" ]; then
+			SUFFIX="linux_mips64le"
+			ARCHCFLAGS="-mips64 -EL"
+		else
+			SUFFIX="linux_mips64"
+			ARCHCFLAGS="-mips64 -EB"
+		fi
+	elif [ "`uname -a | grep s390x`" != "" ]; then
 		SRCS="$SRCS ../../sanitizer_common/sanitizer_linux_s390.cpp"
+		SUFFIX="linux_s390x"
 		ARCHCFLAGS=""
 	fi
-elif [ "$GOOS" = "freebsd" ]; then
+elif [ "`uname -a | grep FreeBSD`" != "" ]; then
 	# The resulting object still depends on libc.
 	# We removed this dependency for Go runtime for other OSes,
 	# and we should remove it for FreeBSD as well, but there is no pressing need.
 	DEPENDS_ON_LIBC=1
+	SUFFIX="freebsd_amd64"
 	OSCFLAGS="-fno-strict-aliasing -fPIC -Werror"
 	ARCHCFLAGS="-m64"
 	OSLDFLAGS="-lpthread -fPIC -fpie"
@@ -132,11 +102,12 @@ elif [ "$GOOS" = "freebsd" ]; then
 		../../sanitizer_common/sanitizer_stoptheworld_linux_libcdep.cpp
 		../../sanitizer_common/sanitizer_stoptheworld_netbsd_libcdep.cpp
 	"
-elif [ "$GOOS" = "netbsd" ]; then
+elif [ "`uname -a | grep NetBSD`" != "" ]; then
 	# The resulting object still depends on libc.
 	# We removed this dependency for Go runtime for other OSes,
 	# and we should remove it for NetBSD as well, but there is no pressing need.
 	DEPENDS_ON_LIBC=1
+	SUFFIX="netbsd_amd64"
 	OSCFLAGS="-fno-strict-aliasing -fPIC -Werror"
 	ARCHCFLAGS="-m64"
 	OSLDFLAGS="-lpthread -fPIC -fpie"
@@ -153,7 +124,7 @@ elif [ "$GOOS" = "netbsd" ]; then
 		../../sanitizer_common/sanitizer_stoptheworld_linux_libcdep.cpp
 		../../sanitizer_common/sanitizer_stoptheworld_netbsd_libcdep.cpp
 	"
-elif [ "$GOOS" = "darwin" ]; then
+elif [ "`uname -a | grep Darwin`" != "" ]; then
 	OSCFLAGS="-fPIC -Wno-unused-const-variable -Wno-unknown-warning-option -mmacosx-version-min=10.7"
 	OSLDFLAGS="-lpthread -fPIC -fpie -mmacosx-version-min=10.7"
 	SRCS="
@@ -165,12 +136,15 @@ elif [ "$GOOS" = "darwin" ]; then
 		../../sanitizer_common/sanitizer_posix_libcdep.cpp
 		../../sanitizer_common/sanitizer_procmaps_mac.cpp
 	"
-	if [ "$GOARCH" = "amd64" ]; then
+	if [ "`uname -a | grep x86_64`" != "" ]; then
+		SUFFIX="darwin_amd64"
 		ARCHCFLAGS="-m64"
-	elif [ "$GOARCH" = "arm64" ]; then
+	elif [ "`uname -a | grep arm64`" != "" ]; then
+		SUFFIX="darwin_arm64"
 		ARCHCFLAGS=""
 	fi
-elif [ "$GOOS" = "windows" ]; then
+elif [ "`uname -a | grep MINGW`" != "" ]; then
+	SUFFIX="windows_amd64"
 	OSCFLAGS="-Wno-error=attributes -Wno-attributes -Wno-unused-const-variable -Wno-unknown-warning-option"
 	ARCHCFLAGS="-m64"
 	OSLDFLAGS=""
@@ -228,10 +202,6 @@ if [ "$DEPENDS_ON_LIBC" != "1" ]; then
 		printf -- '%s seems to link to libc\n' "race_$SUFFIX.syso"
 		exit 1
 	fi
-fi
-
-if [ "$SKIP_TEST" = "1" ]; then
-	exit 0
 fi
 
 if [ "`uname -a | grep NetBSD`" != "" ]; then

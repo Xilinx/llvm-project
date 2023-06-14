@@ -184,7 +184,7 @@ Liveness::OperationListT Liveness::resolveLiveness(Value value) const {
   if (Operation *defOp = value.getDefiningOp())
     currentBlock = defOp->getBlock();
   else
-    currentBlock = cast<BlockArgument>(value).getOwner();
+    currentBlock = value.cast<BlockArgument>().getOwner();
   toProcess.push_back(currentBlock);
   visited.insert(currentBlock);
 
@@ -280,7 +280,7 @@ void Liveness::print(raw_ostream &os) const {
     if (value.getDefiningOp())
       os << "val_" << valueIds[value];
     else {
-      auto blockArg = cast<BlockArgument>(value);
+      auto blockArg = value.cast<BlockArgument>();
       os << "arg" << blockArg.getArgNumber() << "@"
          << blockIds[blockArg.getOwner()];
     }
@@ -404,7 +404,7 @@ LivenessBlockInfo::currentlyLiveValues(Operation *op) const {
     Operation *endOfLiveRange = nullptr;
     // If it's a live in or a block argument, then the start is the beginning
     // of the block.
-    if (isLiveIn(value) || isa<BlockArgument>(value))
+    if (isLiveIn(value) || value.isa<BlockArgument>())
       startOfLiveRange = &block->front();
     else
       startOfLiveRange = block->findAncestorOpInBlock(*startOfLiveRange);

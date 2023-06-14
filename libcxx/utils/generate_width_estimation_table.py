@@ -326,7 +326,10 @@ def generate_data_tables() -> str:
     Generate Unicode data for [format.string.std]/12
     """
     east_asian_width_path = (
-        Path(__file__).absolute().parent / "data" / "unicode" / "EastAsianWidth.txt"
+        Path(__file__).absolute().parent
+        / "data"
+        / "unicode"
+        / "EastAsianWidth.txt"
     )
 
     properties = list()

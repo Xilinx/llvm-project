@@ -111,10 +111,10 @@ private:
     resultTypes.reserve(1 + op->getNumResults());
     copy(op->getResultTypes(), std::back_inserter(resultTypes));
     resultTypes.push_back(tokenType);
-    auto *newOp = Operation::create(
-        op->getLoc(), op->getName(), resultTypes, op->getOperands(),
-        op->getDiscardableAttrDictionary(), op->getPropertiesStorage(),
-        op->getSuccessors(), op->getNumRegions());
+    auto *newOp = Operation::create(op->getLoc(), op->getName(), resultTypes,
+                                    op->getOperands(), op->getAttrDictionary(),
+                                    op->getPropertiesStorage(),
+                                    op->getSuccessors(), op->getNumRegions());
 
     // Clone regions into new op.
     IRMapping mapping;
@@ -158,9 +158,9 @@ async::ExecuteOp addExecuteResults(async::ExecuteOp executeOp,
   transform(executeOp.getResultTypes(), std::back_inserter(resultTypes),
             [](Type type) {
               // Extract value type from !async.value.
-              if (auto valueType = dyn_cast<async::ValueType>(type))
+              if (auto valueType = type.dyn_cast<async::ValueType>())
                 return valueType.getValueType();
-              assert(isa<async::TokenType>(type) && "expected token type");
+              assert(type.isa<async::TokenType>() && "expected token type");
               return type;
             });
   transform(results, std::back_inserter(resultTypes),
@@ -305,9 +305,9 @@ struct GpuAsyncRegionPass::SingleTokenUseCallback {
         executeOp.getBodyResults(), [](OpResult result) {
           if (result.use_empty() || result.hasOneUse())
             return false;
-          auto valueType = dyn_cast<async::ValueType>(result.getType());
+          auto valueType = result.getType().dyn_cast<async::ValueType>();
           return valueType &&
-                 isa<gpu::AsyncTokenType>(valueType.getValueType());
+                 valueType.getValueType().isa<gpu::AsyncTokenType>();
         });
     if (multiUseResults.empty())
       return;

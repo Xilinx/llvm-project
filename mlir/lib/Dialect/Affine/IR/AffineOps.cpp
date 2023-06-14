@@ -38,7 +38,7 @@ using namespace mlir::affine;
 /// top level of a `AffineScope` region is always a valid symbol for all
 /// uses in that region.
 bool mlir::affine::isTopLevelValue(Value value, Region *region) {
-  if (auto arg = llvm::dyn_cast<BlockArgument>(value))
+  if (auto arg = value.dyn_cast<BlockArgument>())
     return arg.getParentRegion() == region;
   return value.getDefiningOp()->getParentRegion() == region;
 }
@@ -62,7 +62,7 @@ remainsLegalAfterInline(Value value, Region *src, Region *dest,
   // If it's a top-level value because it's a block operand, i.e. a
   // function argument, check whether the value replacing it after
   // inlining is a valid dimension in the new region.
-  if (llvm::isa<BlockArgument>(value))
+  if (value.isa<BlockArgument>())
     return legalityCheck(mapping.lookup(value), dest);
 
   // If it's a top-level value because it's defined in the region,
@@ -234,7 +234,7 @@ Operation *AffineDialect::materializeConstant(OpBuilder &builder,
 /// conservatively assume it is not top-level. A value of index type defined at
 /// the top level is always a valid symbol.
 bool mlir::affine::isTopLevelValue(Value value) {
-  if (auto arg = llvm::dyn_cast<BlockArgument>(value)) {
+  if (auto arg = value.dyn_cast<BlockArgument>()) {
     // The block owning the argument may be unlinked, e.g. when the surrounding
     // region has not yet been attached to an Op, at which point the parent Op
     // is null.
@@ -273,7 +273,7 @@ bool mlir::affine::isValidDim(Value value) {
 
   // This value has to be a block argument for an op that has the
   // `AffineScope` trait or for an affine.for or affine.parallel.
-  auto *parentOp = llvm::cast<BlockArgument>(value).getOwner()->getParentOp();
+  auto *parentOp = value.cast<BlockArgument>().getOwner()->getParentOp();
   return parentOp && (parentOp->hasTrait<OpTrait::AffineScope>() ||
                       isa<AffineForOp, AffineParallelOp>(parentOp));
 }
@@ -296,7 +296,7 @@ bool mlir::affine::isValidDim(Value value, Region *region) {
   if (!op) {
     // This value has to be a block argument for an affine.for or an
     // affine.parallel.
-    auto *parentOp = llvm::cast<BlockArgument>(value).getOwner()->getParentOp();
+    auto *parentOp = value.cast<BlockArgument>().getOwner()->getParentOp();
     return isa<AffineForOp, AffineParallelOp>(parentOp);
   }
 
@@ -334,7 +334,7 @@ static bool isDimOpValidSymbol(ShapedDimOpInterface dimOp, Region *region) {
 
   // Conservatively handle remaining BlockArguments as non-valid symbols.
   // E.g. scf.for iterArgs.
-  if (llvm::isa<BlockArgument>(dimOp.getShapedValue()))
+  if (dimOp.getShapedValue().template isa<BlockArgument>())
     return false;
 
   // The dim op is also okay if its operand memref is a view/subview whose
@@ -707,7 +707,7 @@ static std::optional<int64_t> getUpperBound(Value iv) {
 /// expressions (w.r.t constant coefficients) so as to not depend on anything
 /// heavyweight in `Analysis`. Expressions of the form: c0*d0 + c1*d1 + c2*s0 +
 /// ... + c_n are handled. Expressions involving floordiv, ceildiv, mod or
-/// semi-affine ones will lead std::nullopt being returned.
+/// semi-affine ones will lead a none being returned.
 static std::optional<int64_t>
 getBoundForExpr(AffineExpr expr, unsigned numDims, unsigned numSymbols,
                 ArrayRef<std::optional<int64_t>> constLowerBounds,
@@ -1212,7 +1212,7 @@ static void materializeConstants(OpBuilder &b, Location loc,
   actualValues.reserve(values.size());
   auto *dialect = b.getContext()->getLoadedDialect<AffineDialect>();
   for (OpFoldResult ofr : values) {
-    if (auto value = llvm::dyn_cast_if_present<Value>(ofr)) {
+    if (auto value = ofr.dyn_cast<Value>()) {
       actualValues.push_back(value);
       continue;
     }
@@ -1221,8 +1221,7 @@ static void materializeConstants(OpBuilder &b, Location loc,
     // AffineDialect materializer will create invalid `arith.constant`
     // operations if the provided Attribute is any other kind of integer.
     constants.push_back(dialect->materializeConstant(
-        b,
-        b.getIndexAttr(llvm::cast<IntegerAttr>(ofr.get<Attribute>()).getInt()),
+        b, b.getIndexAttr(ofr.get<Attribute>().cast<IntegerAttr>().getInt()),
         b.getIndexType(), loc));
     actualValues.push_back(constants.back()->getResult(0));
   }
@@ -1786,11 +1785,11 @@ ParseResult AffineDmaStartOp::parse(OpAsmParser &parser,
 }
 
 LogicalResult AffineDmaStartOp::verifyInvariantsImpl() {
-  if (!llvm::isa<MemRefType>(getOperand(getSrcMemRefOperandIndex()).getType()))
+  if (!getOperand(getSrcMemRefOperandIndex()).getType().isa<MemRefType>())
     return emitOpError("expected DMA source to be of memref type");
-  if (!llvm::isa<MemRefType>(getOperand(getDstMemRefOperandIndex()).getType()))
+  if (!getOperand(getDstMemRefOperandIndex()).getType().isa<MemRefType>())
     return emitOpError("expected DMA destination to be of memref type");
-  if (!llvm::isa<MemRefType>(getOperand(getTagMemRefOperandIndex()).getType()))
+  if (!getOperand(getTagMemRefOperandIndex()).getType().isa<MemRefType>())
     return emitOpError("expected DMA tag to be of memref type");
 
   unsigned numInputsAllMaps = getSrcMap().getNumInputs() +
@@ -1889,7 +1888,7 @@ ParseResult AffineDmaWaitOp::parse(OpAsmParser &parser,
       parser.resolveOperand(numElementsInfo, indexType, result.operands))
     return failure();
 
-  if (!llvm::isa<MemRefType>(type))
+  if (!type.isa<MemRefType>())
     return parser.emitError(parser.getNameLoc(),
                             "expected tag to be of memref type");
 
@@ -1900,7 +1899,7 @@ ParseResult AffineDmaWaitOp::parse(OpAsmParser &parser,
 }
 
 LogicalResult AffineDmaWaitOp::verifyInvariantsImpl() {
-  if (!llvm::isa<MemRefType>(getOperand(0).getType()))
+  if (!getOperand(0).getType().isa<MemRefType>())
     return emitOpError("expected DMA tag to be of memref type");
   Region *scope = getAffineScope(*this);
   for (auto idx : getTagIndices()) {
@@ -2074,7 +2073,7 @@ static ParseResult parseBound(bool isLower, OperationState &result,
     return failure();
 
   // Parse full form - affine map followed by dim and symbol list.
-  if (auto affineMapAttr = llvm::dyn_cast<AffineMapAttr>(boundAttr)) {
+  if (auto affineMapAttr = boundAttr.dyn_cast<AffineMapAttr>()) {
     unsigned currentNumOperands = result.operands.size();
     unsigned numDims;
     if (parseDimAndSymbolList(p, result.operands, numDims))
@@ -2107,7 +2106,7 @@ static ParseResult parseBound(bool isLower, OperationState &result,
   }
 
   // Parse custom assembly form.
-  if (auto integerAttr = llvm::dyn_cast<IntegerAttr>(boundAttr)) {
+  if (auto integerAttr = boundAttr.dyn_cast<IntegerAttr>()) {
     result.attributes.pop_back();
     result.addAttribute(
         boundAttrStrName,
@@ -2297,9 +2296,9 @@ static LogicalResult foldLoopBounds(AffineForOp forOp) {
 
     // Compute the max or min as applicable over the results.
     assert(!foldedResults.empty() && "bounds should have at least one result");
-    auto maxOrMin = llvm::cast<IntegerAttr>(foldedResults[0]).getValue();
+    auto maxOrMin = foldedResults[0].cast<IntegerAttr>().getValue();
     for (unsigned i = 1, e = foldedResults.size(); i < e; i++) {
-      auto foldedResult = llvm::cast<IntegerAttr>(foldedResults[i]).getValue();
+      auto foldedResult = foldedResults[i].cast<IntegerAttr>().getValue();
       maxOrMin = lower ? llvm::APIntOps::smax(maxOrMin, foldedResult)
                        : llvm::APIntOps::smin(maxOrMin, foldedResult);
     }
@@ -2482,12 +2481,9 @@ LogicalResult AffineForOp::fold(FoldAdaptor adaptor,
                                 SmallVectorImpl<OpFoldResult> &results) {
   bool folded = succeeded(foldLoopBounds(*this));
   folded |= succeeded(canonicalizeLoopBounds(*this));
-  if (hasTrivialZeroTripCount(*this) && getNumResults() != 0) {
+  if (hasTrivialZeroTripCount(*this)) {
     // The initial values of the loop-carried variables (iter_args) are the
-    // results of the op. But this must be avoided for an affine.for op that
-    // does not return any results. Since ops that do not return results cannot
-    // be folded away, we would enter an infinite loop of folds on the same
-    // affine.for op.
+    // results of the op.
     results.assign(getIterOperands().begin(), getIterOperands().end());
     folded = true;
   }
@@ -2657,7 +2653,7 @@ bool mlir::affine::isAffineInductionVar(Value val) {
 }
 
 AffineForOp mlir::affine::getForInductionVarOwner(Value val) {
-  auto ivArg = llvm::dyn_cast<BlockArgument>(val);
+  auto ivArg = val.dyn_cast<BlockArgument>();
   if (!ivArg || !ivArg.getOwner())
     return AffineForOp();
   auto *containingInst = ivArg.getOwner()->getParent()->getParentOp();
@@ -2668,7 +2664,7 @@ AffineForOp mlir::affine::getForInductionVarOwner(Value val) {
 }
 
 AffineParallelOp mlir::affine::getAffineParallelInductionVarOwner(Value val) {
-  auto ivArg = llvm::dyn_cast<BlockArgument>(val);
+  auto ivArg = val.dyn_cast<BlockArgument>();
   if (!ivArg || !ivArg.getOwner())
     return nullptr;
   Operation *containingOp = ivArg.getOwner()->getParentOp();
@@ -3117,7 +3113,7 @@ void AffineLoadOp::build(OpBuilder &builder, OperationState &result,
   result.addOperands(operands);
   if (map)
     result.addAttribute(getMapAttrStrName(), AffineMapAttr::get(map));
-  auto memrefType = llvm::cast<MemRefType>(operands[0].getType());
+  auto memrefType = operands[0].getType().cast<MemRefType>();
   result.types.push_back(memrefType.getElementType());
 }
 
@@ -3126,14 +3122,14 @@ void AffineLoadOp::build(OpBuilder &builder, OperationState &result,
   assert(map.getNumInputs() == mapOperands.size() && "inconsistent index info");
   result.addOperands(memref);
   result.addOperands(mapOperands);
-  auto memrefType = llvm::cast<MemRefType>(memref.getType());
+  auto memrefType = memref.getType().cast<MemRefType>();
   result.addAttribute(getMapAttrStrName(), AffineMapAttr::get(map));
   result.types.push_back(memrefType.getElementType());
 }
 
 void AffineLoadOp::build(OpBuilder &builder, OperationState &result,
                          Value memref, ValueRange indices) {
-  auto memrefType = llvm::cast<MemRefType>(memref.getType());
+  auto memrefType = memref.getType().cast<MemRefType>();
   int64_t rank = memrefType.getRank();
   // Create identity map for memrefs with at least one dimension or () -> ()
   // for zero-dimensional memrefs.
@@ -3242,11 +3238,11 @@ OpFoldResult AffineLoadOp::fold(FoldAdaptor adaptor) {
 
   // Check if the global memref is a constant.
   auto cstAttr =
-      llvm::dyn_cast_or_null<DenseElementsAttr>(global.getConstantInitValue());
+      global.getConstantInitValue().dyn_cast_or_null<DenseElementsAttr>();
   if (!cstAttr)
     return {};
   // If it's a splat constant, we can fold irrespective of indices.
-  if (auto splatAttr = llvm::dyn_cast<SplatElementsAttr>(cstAttr))
+  if (auto splatAttr = cstAttr.dyn_cast<SplatElementsAttr>())
     return splatAttr.getSplatValue<Attribute>();
   // Otherwise, we can fold only if we know the indices.
   if (!getAffineMap().isConstant())
@@ -3275,7 +3271,7 @@ void AffineStoreOp::build(OpBuilder &builder, OperationState &result,
 void AffineStoreOp::build(OpBuilder &builder, OperationState &result,
                           Value valueToStore, Value memref,
                           ValueRange indices) {
-  auto memrefType = llvm::cast<MemRefType>(memref.getType());
+  auto memrefType = memref.getType().cast<MemRefType>();
   int64_t rank = memrefType.getRank();
   // Create identity map for memrefs with at least one dimension or () -> ()
   // for zero-dimensional memrefs.
@@ -4021,7 +4017,7 @@ LogicalResult AffineParallelOp::verify() {
 
   // Verify reduction  ops are all valid
   for (Attribute attr : getReductions()) {
-    auto intAttr = llvm::dyn_cast<IntegerAttr>(attr);
+    auto intAttr = attr.dyn_cast<IntegerAttr>();
     if (!intAttr || !arith::symbolizeAtomicRMWKind(intAttr.getInt()))
       return emitOpError("invalid reduction attribute");
   }
@@ -4123,7 +4119,7 @@ void AffineParallelOp::print(OpAsmPrinter &p) {
     p << " reduce (";
     llvm::interleaveComma(getReductions(), p, [&](auto &attr) {
       arith::AtomicRMWKind sym = *arith::symbolizeAtomicRMWKind(
-          llvm::cast<IntegerAttr>(attr).getInt());
+          attr.template cast<IntegerAttr>().getInt());
       p << "\"" << arith::stringifyAtomicRMWKind(sym) << "\"";
     });
     p << ") -> (" << getResultTypes() << ")";
@@ -4433,7 +4429,7 @@ void AffineVectorLoadOp::build(OpBuilder &builder, OperationState &result,
 void AffineVectorLoadOp::build(OpBuilder &builder, OperationState &result,
                                VectorType resultType, Value memref,
                                ValueRange indices) {
-  auto memrefType = llvm::cast<MemRefType>(memref.getType());
+  auto memrefType = memref.getType().cast<MemRefType>();
   int64_t rank = memrefType.getRank();
   // Create identity map for memrefs with at least one dimension or () -> ()
   // for zero-dimensional memrefs.
@@ -4524,7 +4520,7 @@ void AffineVectorStoreOp::build(OpBuilder &builder, OperationState &result,
 void AffineVectorStoreOp::build(OpBuilder &builder, OperationState &result,
                                 Value valueToStore, Value memref,
                                 ValueRange indices) {
-  auto memrefType = llvm::cast<MemRefType>(memref.getType());
+  auto memrefType = memref.getType().cast<MemRefType>();
   int64_t rank = memrefType.getRank();
   // Create identity map for memrefs with at least one dimension or () -> ()
   // for zero-dimensional memrefs.
@@ -4602,7 +4598,7 @@ void AffineDelinearizeIndexOp::build(OpBuilder &builder, OperationState &result,
         if (staticDim.has_value())
           return builder.create<arith::ConstantIndexOp>(result.location,
                                                         *staticDim);
-        return llvm::dyn_cast_if_present<Value>(ofr);
+        return ofr.dyn_cast<Value>();
       });
   result.addOperands(basisValues);
 }

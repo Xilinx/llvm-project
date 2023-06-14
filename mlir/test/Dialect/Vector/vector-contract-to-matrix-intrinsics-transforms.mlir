@@ -44,14 +44,14 @@ func.func @matmul(%arg0: vector<2x4xf32>,
 }
 
 transform.sequence failures(propagate) {
-^bb1(%module_op: !transform.any_op):
+^bb1(%module_op: !pdl.operation):
   %f = transform.structured.match ops{["func.func"]} in %module_op 
-    : (!transform.any_op) -> !transform.any_op
+    : (!pdl.operation) -> !pdl.operation
 
   %f2 = transform.vector.lower_contraction %f
     lowering_strategy = "matmulintrinsics"
-      : (!transform.any_op) -> !transform.any_op
+      : (!pdl.operation) -> !pdl.operation
 
   %f3 = transform.vector.lower_shape_cast %f2
-    : (!transform.any_op) -> !transform.any_op
+    : (!pdl.operation) -> !pdl.operation
 }

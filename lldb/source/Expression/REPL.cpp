@@ -22,9 +22,7 @@
 
 using namespace lldb_private;
 
-char REPL::ID;
-
-REPL::REPL(Target &target) : m_target(target) {
+REPL::REPL(LLVMCastKind kind, Target &target) : m_target(target), m_kind(kind) {
   // Make sure all option values have sane defaults
   Debugger &debugger = m_target.GetDebugger();
   debugger.SetShowProgress(false);

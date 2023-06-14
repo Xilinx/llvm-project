@@ -75,7 +75,7 @@ transform::OperationType::checkPayload(Location loc,
 LogicalResult
 transform::ParamType::verify(function_ref<InFlightDiagnostic()> emitError,
                              Type type) {
-  IntegerType intType = llvm::dyn_cast<IntegerType>(type);
+  IntegerType intType = type.dyn_cast<IntegerType>();
   if (!intType || intType.getWidth() > 64)
     return emitError() << "only supports integer types with width <=64";
   return success();
@@ -85,7 +85,7 @@ DiagnosedSilenceableFailure
 transform::ParamType::checkPayload(Location loc,
                                    ArrayRef<Attribute> payload) const {
   for (Attribute attr : payload) {
-    auto integerAttr = llvm::dyn_cast<IntegerAttr>(attr);
+    auto integerAttr = attr.dyn_cast<IntegerAttr>();
     if (!integerAttr) {
       return emitSilenceableError(loc)
              << "expected parameter to be an integer attribute, got " << attr;

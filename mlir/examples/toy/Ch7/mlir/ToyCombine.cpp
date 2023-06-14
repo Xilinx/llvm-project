@@ -31,8 +31,7 @@ OpFoldResult StructConstantOp::fold(FoldAdaptor adaptor) { return getValue(); }
 
 /// Fold simple struct access operations that access into a constant.
 OpFoldResult StructAccessOp::fold(FoldAdaptor adaptor) {
-  auto structAttr =
-      llvm::dyn_cast_if_present<mlir::ArrayAttr>(adaptor.getInput());
+  auto structAttr = adaptor.getInput().dyn_cast_or_null<mlir::ArrayAttr>();
   if (!structAttr)
     return nullptr;
 

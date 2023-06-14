@@ -27,7 +27,7 @@ add_mlir_dialect_library(MLIRMemRefTransforms
   MLIRBufferizationDialect
   MLIRDialectUtils
   MLIRFuncDialect
-  MLIRGPUDialect
+  MLIRGPUOps
   MLIRInferTypeOpInterface
   MLIRLoopLikeInterface
   MLIRMemRefDialect

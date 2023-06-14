@@ -222,11 +222,11 @@ const char *SBTypeSummary::GetData() {
     const char *fname = script_summary_ptr->GetFunctionName();
     const char *ftext = script_summary_ptr->GetPythonScript();
     if (ftext && *ftext)
-      return ConstString(ftext).GetCString();
-    return ConstString(fname).GetCString();
+      return ftext;
+    return fname;
   } else if (StringSummaryFormat *string_summary_ptr =
                  llvm::dyn_cast<StringSummaryFormat>(m_opaque_sp.get()))
-    return ConstString(string_summary_ptr->GetSummaryString()).GetCString();
+    return string_summary_ptr->GetSummaryString();
   return nullptr;
 }
 

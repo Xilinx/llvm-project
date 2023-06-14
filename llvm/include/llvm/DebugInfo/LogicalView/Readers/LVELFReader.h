@@ -69,12 +69,7 @@ class LVELFReader final : public LVBinaryReader {
 
   // Cross references (Elements).
   using LVElementSet = std::unordered_set<LVElement *>;
-  struct LVElementEntry {
-    LVElement *Element;
-    LVElementSet References;
-    LVElementSet Types;
-    LVElementEntry(LVElement *Element = nullptr) : Element(Element) {}
-  };
+  using LVElementEntry = std::pair<LVElement *, LVElementSet>;
   using LVElementReference = std::unordered_map<LVOffset, LVElementEntry>;
   LVElementReference ElementTable;
 
@@ -119,8 +114,7 @@ class LVELFReader final : public LVBinaryReader {
   void updateReference(dwarf::Attribute Attr, const DWARFFormValue &FormValue);
 
   // Get an element given the DIE offset.
-  LVElement *getElementForOffset(LVOffset offset, LVElement *Element,
-                                 bool IsType);
+  LVElement *getElementForOffset(LVOffset offset, LVElement *Element);
 
 protected:
   Error createScopes() override;

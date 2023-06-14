@@ -73,7 +73,7 @@ const char *SBTypeCategory::GetName() {
 
   if (!IsValid())
     return nullptr;
-  return ConstString(m_opaque_sp->GetName()).GetCString();
+  return m_opaque_sp->GetName();
 }
 
 lldb::LanguageType SBTypeCategory::GetLanguageAtIndex(uint32_t idx) {

@@ -9,6 +9,5 @@ class BenchmarkRunConfig:
     class. The `compiler` attribute is optional, for example for python
     benchmarks.
     """
-
     runner: typing.Callable
     compiler: typing.Optional[typing.Callable] = None

@@ -9,7 +9,6 @@
 #ifndef MLIR_DIALECT_SPARSETENSOR_IR_SPARSETENSOR_H_
 #define MLIR_DIALECT_SPARSETENSOR_IR_SPARSETENSOR_H_
 
-#include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/Dialect/SparseTensor/IR/Enums.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
@@ -96,7 +95,7 @@ template <typename T>
 inline RankedTensorType getRankedTensorType(T &&t) {
   assert(static_cast<bool>(std::forward<T>(t)) &&
          "getRankedTensorType got null argument");
-  return cast<RankedTensorType>(std::forward<T>(t).getType());
+  return std::forward<T>(t).getType().template cast<RankedTensorType>();
 }
 
 /// Convenience method to abbreviate casting `getType()`.
@@ -104,22 +103,12 @@ template <typename T>
 inline MemRefType getMemRefType(T &&t) {
   assert(static_cast<bool>(std::forward<T>(t)) &&
          "getMemRefType got null argument");
-  return cast<MemRefType>(std::forward<T>(t).getType());
+  return std::forward<T>(t).getType().template cast<MemRefType>();
 }
 
 /// Convenience method to get a sparse encoding attribute from a type.
 /// Returns null-attribute for any type without an encoding.
 SparseTensorEncodingAttr getSparseTensorEncoding(Type type);
-
-/// Convenience method to query whether a given DLT needs both position and
-/// coordinates array or only coordinates array.
-constexpr inline bool isDLTWithPos(DimLevelType dlt) {
-  return isCompressedWithHiDLT(dlt) || isCompressedDLT(dlt);
-}
-constexpr inline bool isDLTWithCrd(DimLevelType dlt) {
-  return isSingletonDLT(dlt) || isCompressedWithHiDLT(dlt) ||
-         isCompressedDLT(dlt);
-}
 
 /// Returns true iff the given sparse tensor encoding attribute has a trailing
 /// COO region starting at the given level.

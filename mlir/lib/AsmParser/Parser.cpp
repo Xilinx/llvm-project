@@ -25,7 +25,6 @@
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/Endian.h"
-#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SourceMgr.h"
 #include <algorithm>
@@ -1334,7 +1333,7 @@ ParseResult OperationParser::parseGenericOperationAfterOpName(
     auto type = parseType();
     if (!type)
       return failure();
-    auto fnType = dyn_cast<FunctionType>(type);
+    auto fnType = type.dyn_cast<FunctionType>();
     if (!fnType)
       return mlir::emitError(typeLoc, "expected function type");
 
@@ -2060,7 +2059,7 @@ OperationParser::parseTrailingLocationSpecifier(OpOrArgument opOrArgument) {
   if (parseToken(Token::r_paren, "expected ')' in location"))
     return failure();
 
-  if (auto *op = llvm::dyn_cast_if_present<Operation *>(opOrArgument))
+  if (auto *op = opOrArgument.dyn_cast<Operation *>())
     op->setLoc(directLoc);
   else
     opOrArgument.get<BlockArgument>().setLoc(directLoc);
@@ -2353,7 +2352,7 @@ ParseResult OperationParser::codeCompleteSSAUse() {
         if (!forwardRefPlaceholders.count(result))
           detailOS << result.getOwner()->getName() << ": ";
       } else {
-        detailOS << "arg #" << cast<BlockArgument>(frontValue).getArgNumber()
+        detailOS << "arg #" << frontValue.cast<BlockArgument>().getArgNumber()
                  << ": ";
       }
 
@@ -2483,13 +2482,6 @@ public:
     }
     llvm::support::ulittle32_t align;
     memcpy(&align, blobData->data(), sizeof(uint32_t));
-    if (align && !llvm::isPowerOf2_32(align)) {
-      return p.emitError(value.getLoc(),
-                         "expected hex string blob for key '" + key +
-                             "' to encode alignment in first 4 bytes, but got "
-                             "non-power-of-2 value: " +
-                             Twine(align));
-    }
 
     // Get the data portion of the blob.
     StringRef data = StringRef(*blobData).drop_front(sizeof(uint32_t));

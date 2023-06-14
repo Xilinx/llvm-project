@@ -44,7 +44,7 @@ def Complex_NumberAttr : Complex_Attr<"Number", "number",
     AttrBuilderWithInferredContext<(ins "mlir::ComplexType":$type,
                                         "double":$real,
                                         "double":$imag), [{
-      auto elementType = ::llvm::cast<FloatType>(type.getElementType());
+      auto elementType = type.getElementType().cast<FloatType>();
       APFloat realFloat(real);
       bool unused;
       realFloat.convert(elementType.getFloatSemantics(),

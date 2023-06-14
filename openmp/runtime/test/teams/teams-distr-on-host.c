@@ -2,9 +2,7 @@
 // It checks that the bug in implementation of distribute construct is fixed.
 
 // RUN: %libomp-compile-and-run
-
-// gcc/icc target offloading is incompatible with libomp
-// UNSUPPORTED: icc, gcc
+// UNSUPPORTED: icc
 
 #include <stdio.h>
 #include <omp.h>

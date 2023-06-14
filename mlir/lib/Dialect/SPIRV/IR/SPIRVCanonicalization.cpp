@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <optional>
 #include <utility>
+#include <optional>
 
 #include "mlir/Dialect/SPIRV/IR/SPIRVOps.h"
 
@@ -20,8 +20,6 @@
 #include "mlir/Dialect/SPIRV/IR/SPIRVTypes.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallVectorExtras.h"
 
 using namespace mlir;
 
@@ -35,9 +33,9 @@ static std::optional<bool> getScalarOrSplatBoolAttr(Attribute attr) {
   if (!attr)
     return std::nullopt;
 
-  if (auto boolAttr = llvm::dyn_cast<BoolAttr>(attr))
+  if (auto boolAttr = attr.dyn_cast<BoolAttr>())
     return boolAttr.getValue();
-  if (auto splatAttr = llvm::dyn_cast<SplatElementsAttr>(attr))
+  if (auto splatAttr = attr.dyn_cast<SplatElementsAttr>())
     if (splatAttr.getElementType().isInteger(1))
       return splatAttr.getSplatValue<bool>();
   return std::nullopt;
@@ -54,12 +52,12 @@ static Attribute extractCompositeElement(Attribute composite,
   if (indices.empty())
     return composite;
 
-  if (auto vector = llvm::dyn_cast<ElementsAttr>(composite)) {
+  if (auto vector = composite.dyn_cast<ElementsAttr>()) {
     assert(indices.size() == 1 && "must have exactly one index for a vector");
     return vector.getValues<Attribute>()[indices[0]];
   }
 
-  if (auto array = llvm::dyn_cast<ArrayAttr>(composite)) {
+  if (auto array = composite.dyn_cast<ArrayAttr>()) {
     assert(!indices.empty() && "must have at least one index for an array");
     return extractCompositeElement(array.getValue()[indices[0]],
                                    indices.drop_front());
@@ -84,14 +82,14 @@ namespace {
 
 /// Combines chained `spirv::AccessChainOp` operations into one
 /// `spirv::AccessChainOp` operation.
-struct CombineChainedAccessChain final
-    : OpRewritePattern<spirv::AccessChainOp> {
-  using OpRewritePattern::OpRewritePattern;
+struct CombineChainedAccessChain
+    : public OpRewritePattern<spirv::AccessChainOp> {
+  using OpRewritePattern<spirv::AccessChainOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(spirv::AccessChainOp accessChainOp,
                                 PatternRewriter &rewriter) const override {
-    auto parentAccessChainOp =
-        accessChainOp.getBasePtr().getDefiningOp<spirv::AccessChainOp>();
+    auto parentAccessChainOp = dyn_cast_or_null<spirv::AccessChainOp>(
+        accessChainOp.getBasePtr().getDefiningOp());
 
     if (!parentAccessChainOp) {
       return failure();
@@ -99,7 +97,8 @@ struct CombineChainedAccessChain final
 
     // Combine indices.
     SmallVector<Value, 4> indices(parentAccessChainOp.getIndices());
-    llvm::append_range(indices, accessChainOp.getIndices());
+    indices.append(accessChainOp.getIndices().begin(),
+                   accessChainOp.getIndices().end());
 
     rewriter.replaceOpWithNewOp<spirv::AccessChainOp>(
         accessChainOp, parentAccessChainOp.getBasePtr(), indices);
@@ -142,30 +141,26 @@ OpFoldResult spirv::BitcastOp::fold(FoldAdaptor /*adaptor*/) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult spirv::CompositeExtractOp::fold(FoldAdaptor adaptor) {
-  Value compositeOp = getComposite();
-
-  while (auto insertOp =
-             compositeOp.getDefiningOp<spirv::CompositeInsertOp>()) {
+  if (auto insertOp =
+          getComposite().getDefiningOp<spirv::CompositeInsertOp>()) {
     if (getIndices() == insertOp.getIndices())
       return insertOp.getObject();
-    compositeOp = insertOp.getComposite();
   }
 
   if (auto constructOp =
-          compositeOp.getDefiningOp<spirv::CompositeConstructOp>()) {
-    auto type = llvm::cast<spirv::CompositeType>(constructOp.getType());
+          getComposite().getDefiningOp<spirv::CompositeConstructOp>()) {
+    auto type = constructOp.getType().cast<spirv::CompositeType>();
     if (getIndices().size() == 1 &&
         constructOp.getConstituents().size() == type.getNumElements()) {
-      auto i = llvm::cast<IntegerAttr>(*getIndices().begin());
-      if (i.getValue().getSExtValue() <
-          static_cast<int64_t>(constructOp.getConstituents().size()))
-        return constructOp.getConstituents()[i.getValue().getSExtValue()];
+      auto i = getIndices().begin()->cast<IntegerAttr>();
+      return constructOp.getConstituents()[i.getValue().getSExtValue()];
     }
   }
 
-  auto indexVector = llvm::map_to_vector(getIndices(), [](Attribute attr) {
-    return static_cast<unsigned>(llvm::cast<IntegerAttr>(attr).getInt());
-  });
+  auto indexVector =
+      llvm::to_vector<8>(llvm::map_range(getIndices(), [](Attribute attr) {
+        return static_cast<unsigned>(attr.cast<IntegerAttr>().getInt());
+      }));
   return extractCompositeElement(adaptor.getComposite(), indexVector);
 }
 
@@ -289,15 +284,13 @@ void spirv::LogicalNotOp::getCanonicalizationPatterns(
 
 OpFoldResult spirv::LogicalOrOp::fold(FoldAdaptor adaptor) {
   if (auto rhs = getScalarOrSplatBoolAttr(adaptor.getOperand2())) {
-    if (*rhs) {
+    if (*rhs)
       // x || true = true
       return adaptor.getOperand2();
-    }
 
-    if (!*rhs) {
-      // x || false = x
+    // x || false = x
+    if (!*rhs)
       return getOperand1();
-    }
   }
 
   return Attribute();
@@ -333,13 +326,14 @@ namespace {
 //                       | merge block |
 //                       +-------------+
 //
-struct ConvertSelectionOpToSelect final : OpRewritePattern<spirv::SelectionOp> {
-  using OpRewritePattern::OpRewritePattern;
+struct ConvertSelectionOpToSelect
+    : public OpRewritePattern<spirv::SelectionOp> {
+  using OpRewritePattern<spirv::SelectionOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(spirv::SelectionOp selectionOp,
                                 PatternRewriter &rewriter) const override {
-    Operation *op = selectionOp.getOperation();
-    Region &body = op->getRegion(0);
+    auto *op = selectionOp.getOperation();
+    auto &body = op->getRegion(0);
     // Verifier allows an empty region for `spirv.mlir.selection`.
     if (body.empty()) {
       return failure();
@@ -347,11 +341,11 @@ struct ConvertSelectionOpToSelect final : OpRewritePattern<spirv::SelectionOp> {
 
     // Check that region consists of 4 blocks:
     // header block, `true` block, `false` block and merge block.
-    if (llvm::range_size(body) != 4) {
+    if (std::distance(body.begin(), body.end()) != 4) {
       return failure();
     }
 
-    Block *headerBlock = selectionOp.getHeaderBlock();
+    auto *headerBlock = selectionOp.getHeaderBlock();
     if (!onlyContainsBranchConditionalOp(headerBlock)) {
       return failure();
     }
@@ -359,16 +353,16 @@ struct ConvertSelectionOpToSelect final : OpRewritePattern<spirv::SelectionOp> {
     auto brConditionalOp =
         cast<spirv::BranchConditionalOp>(headerBlock->front());
 
-    Block *trueBlock = brConditionalOp.getSuccessor(0);
-    Block *falseBlock = brConditionalOp.getSuccessor(1);
-    Block *mergeBlock = selectionOp.getMergeBlock();
+    auto *trueBlock = brConditionalOp.getSuccessor(0);
+    auto *falseBlock = brConditionalOp.getSuccessor(1);
+    auto *mergeBlock = selectionOp.getMergeBlock();
 
     if (failed(canCanonicalizeSelection(trueBlock, falseBlock, mergeBlock)))
       return failure();
 
-    Value trueValue = getSrcValue(trueBlock);
-    Value falseValue = getSrcValue(falseBlock);
-    Value ptrValue = getDstPtr(trueBlock);
+    auto trueValue = getSrcValue(trueBlock);
+    auto falseValue = getSrcValue(falseBlock);
+    auto ptrValue = getDstPtr(trueBlock);
     auto storeOpAttributes =
         cast<spirv::StoreOp>(trueBlock->front())->getAttrs();
 
@@ -394,14 +388,12 @@ private:
                                          Block *mergeBlock) const;
 
   bool onlyContainsBranchConditionalOp(Block *block) const {
-    return llvm::hasSingleElement(*block) &&
+    return std::next(block->begin()) == block->end() &&
            isa<spirv::BranchConditionalOp>(block->front());
   }
 
   bool isSameAttrList(spirv::StoreOp lhs, spirv::StoreOp rhs) const {
-    return lhs->getDiscardableAttrDictionary() ==
-               rhs->getDiscardableAttrDictionary() &&
-           lhs.getProperties() == rhs.getProperties();
+    return lhs->getAttrDictionary() == rhs->getAttrDictionary();
   }
 
   // Returns a source value for the given block.
@@ -420,7 +412,8 @@ private:
 LogicalResult ConvertSelectionOpToSelect::canCanonicalizeSelection(
     Block *trueBlock, Block *falseBlock, Block *mergeBlock) const {
   // Each block must consists of 2 operations.
-  if (llvm::range_size(*trueBlock) != 2 || llvm::range_size(*falseBlock) != 2) {
+  if ((std::distance(trueBlock->begin(), trueBlock->end()) != 2) ||
+      (std::distance(falseBlock->begin(), falseBlock->end()) != 2)) {
     return failure();
   }
 
@@ -441,9 +434,10 @@ LogicalResult ConvertSelectionOpToSelect::canCanonicalizeSelection(
   // "Before version 1.4, Result Type must be a pointer, scalar, or vector.
   // Starting with version 1.4, Result Type can additionally be a composite type
   // other than a vector."
-  bool isScalarOrVector =
-      llvm::cast<spirv::SPIRVType>(trueBrStoreOp.getValue().getType())
-          .isScalarOrVector();
+  bool isScalarOrVector = trueBrStoreOp.getValue()
+                              .getType()
+                              .cast<spirv::SPIRVType>()
+                              .isScalarOrVector();
 
   // Check that each `spirv.Store` uses the same pointer, memory access
   // attributes and a valid type of the value.

@@ -14,12 +14,6 @@
 #include <cstdio>
 #include <vector>
 
-namespace lldb_private {
-namespace python {
-class SWIGBridge;
-}
-} // namespace lldb_private
-
 namespace lldb {
 
 class SBBroadcaster;
@@ -32,6 +26,12 @@ public:
 
   // Make an event that contains a C string.
   SBEvent(uint32_t event, const char *cstr, uint32_t cstr_len);
+
+#ifndef SWIG
+  SBEvent(lldb::EventSP &event_sp);
+
+  SBEvent(lldb_private::Event *event_sp);
+#endif
 
   ~SBEvent();
 
@@ -72,12 +72,6 @@ protected:
   friend class SBTarget;
   friend class SBThread;
   friend class SBWatchpoint;
-
-  friend class lldb_private::python::SWIGBridge;
-
-  SBEvent(lldb::EventSP &event_sp);
-
-  SBEvent(lldb_private::Event *event_sp);
 
   lldb::EventSP &GetSP() const;
 

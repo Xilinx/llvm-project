@@ -318,8 +318,8 @@ size_t ObjectFilePECOFF::GetModuleSpecifications(
   llvm::Triple::EnvironmentType env;
   if (module_env_option)
     env =
-        module_env_option->GetValueAs<llvm::Triple::EnvironmentType>().value_or(
-            static_cast<llvm::Triple::EnvironmentType>(0));
+        (llvm::Triple::EnvironmentType)module_env_option->GetEnumerationValue()
+            .value_or(0);
   else
     env = GetGlobalPluginProperties().ABI();
 

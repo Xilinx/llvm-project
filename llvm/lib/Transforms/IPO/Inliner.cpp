@@ -333,9 +333,6 @@ PreservedAnalyses InlinerPass::run(LazyCallGraph::SCC &InitialC,
         LLVM_DEBUG(dbgs() << "Skipping inlining due to history: " << F.getName()
                           << " -> " << Callee.getName() << "\n");
         setInlineRemark(*CB, "recursive");
-        // Set noinline so that we don't forget this decision across CGSCC
-        // iterations.
-        CB->setIsNoInline();
         continue;
       }
 

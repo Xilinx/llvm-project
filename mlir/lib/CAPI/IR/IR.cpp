@@ -20,7 +20,6 @@
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Types.h"
-#include "mlir/IR/Value.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Parser/Parser.h"
@@ -172,7 +171,7 @@ MlirAttribute mlirLocationGetAttribute(MlirLocation location) {
 }
 
 MlirLocation mlirLocationFromAttribute(MlirAttribute attribute) {
-  return wrap(Location(llvm::cast<LocationAttr>(unwrap(attribute))));
+  return wrap(Location(unwrap(attribute).cast<LocationAttr>()));
 }
 
 MlirLocation mlirLocationFileLineColGet(MlirContext context,
@@ -727,33 +726,33 @@ bool mlirValueEqual(MlirValue value1, MlirValue value2) {
 }
 
 bool mlirValueIsABlockArgument(MlirValue value) {
-  return llvm::isa<BlockArgument>(unwrap(value));
+  return unwrap(value).isa<BlockArgument>();
 }
 
 bool mlirValueIsAOpResult(MlirValue value) {
-  return llvm::isa<OpResult>(unwrap(value));
+  return unwrap(value).isa<OpResult>();
 }
 
 MlirBlock mlirBlockArgumentGetOwner(MlirValue value) {
-  return wrap(llvm::cast<BlockArgument>(unwrap(value)).getOwner());
+  return wrap(unwrap(value).cast<BlockArgument>().getOwner());
 }
 
 intptr_t mlirBlockArgumentGetArgNumber(MlirValue value) {
   return static_cast<intptr_t>(
-      llvm::cast<BlockArgument>(unwrap(value)).getArgNumber());
+      unwrap(value).cast<BlockArgument>().getArgNumber());
 }
 
 void mlirBlockArgumentSetType(MlirValue value, MlirType type) {
-  llvm::cast<BlockArgument>(unwrap(value)).setType(unwrap(type));
+  unwrap(value).cast<BlockArgument>().setType(unwrap(type));
 }
 
 MlirOperation mlirOpResultGetOwner(MlirValue value) {
-  return wrap(llvm::cast<OpResult>(unwrap(value)).getOwner());
+  return wrap(unwrap(value).cast<OpResult>().getOwner());
 }
 
 intptr_t mlirOpResultGetResultNumber(MlirValue value) {
   return static_cast<intptr_t>(
-      llvm::cast<OpResult>(unwrap(value)).getResultNumber());
+      unwrap(value).cast<OpResult>().getResultNumber());
 }
 
 MlirType mlirValueGetType(MlirValue value) {
@@ -766,13 +765,6 @@ void mlirValuePrint(MlirValue value, MlirStringCallback callback,
                     void *userData) {
   detail::CallbackOstream stream(callback, userData);
   unwrap(value).print(stream);
-}
-
-void mlirValuePrintAsOperand(MlirValue value, MlirOpPrintingFlags flags,
-                             MlirStringCallback callback, void *userData) {
-  detail::CallbackOstream stream(callback, userData);
-  Value cppValue = unwrap(value);
-  cppValue.printAsOperand(stream, *unwrap(flags));
 }
 
 MlirOpOperand mlirValueGetFirstUse(MlirValue value) {
@@ -832,10 +824,6 @@ MlirTypeID mlirTypeGetTypeID(MlirType type) {
   return wrap(unwrap(type).getTypeID());
 }
 
-MlirDialect mlirTypeGetDialect(MlirType type) {
-  return wrap(&unwrap(type).getDialect());
-}
-
 bool mlirTypeEqual(MlirType t1, MlirType t2) {
   return unwrap(t1) == unwrap(t2);
 }
@@ -861,7 +849,7 @@ MlirContext mlirAttributeGetContext(MlirAttribute attribute) {
 
 MlirType mlirAttributeGetType(MlirAttribute attribute) {
   Attribute attr = unwrap(attribute);
-  if (auto typedAttr = llvm::dyn_cast<TypedAttr>(attr))
+  if (auto typedAttr = attr.dyn_cast<TypedAttr>())
     return wrap(typedAttr.getType());
   return wrap(NoneType::get(attr.getContext()));
 }

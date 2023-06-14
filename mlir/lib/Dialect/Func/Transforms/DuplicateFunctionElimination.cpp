@@ -48,28 +48,33 @@ struct DuplicateFuncOpEquivalenceInfo
     return hash;
   }
 
-  static bool isEqual(func::FuncOp lhs, func::FuncOp rhs) {
-    if (lhs == rhs)
+  static bool isEqual(const func::FuncOp cLhs, const func::FuncOp cRhs) {
+    if (cLhs == cRhs) {
       return true;
-    if (lhs == getTombstoneKey() || lhs == getEmptyKey() ||
-        rhs == getTombstoneKey() || rhs == getEmptyKey())
+    }
+    if (cLhs == getTombstoneKey() || cLhs == getEmptyKey() ||
+        cRhs == getTombstoneKey() || cRhs == getEmptyKey()) {
       return false;
-    // Check discardable attributes equivalence
-    if (lhs->getDiscardableAttrDictionary() !=
-        rhs->getDiscardableAttrDictionary())
-      return false;
+    }
 
-    // Check properties equivalence, ignoring the symbol name.
-    // Make a copy, so that we can erase the symbol name and perform the
-    // comparison.
-    auto pLhs = lhs.getProperties();
-    auto pRhs = rhs.getProperties();
-    pLhs.sym_name = nullptr;
-    pRhs.sym_name = nullptr;
-    if (pLhs != pRhs)
+    // Check attributes equivalence, ignoring the symbol name.
+    if (cLhs->getAttrDictionary().size() != cRhs->getAttrDictionary().size()) {
       return false;
+    }
+    func::FuncOp lhs = const_cast<func::FuncOp &>(cLhs);
+    StringAttr symNameAttrName = lhs.getSymNameAttrName();
+    for (NamedAttribute namedAttr : cLhs->getAttrs()) {
+      StringAttr attrName = namedAttr.getName();
+      if (attrName == symNameAttrName) {
+        continue;
+      }
+      if (namedAttr.getValue() != cRhs->getAttr(attrName)) {
+        return false;
+      }
+    }
 
     // Compare inner workings.
+    func::FuncOp rhs = const_cast<func::FuncOp &>(cRhs);
     return OperationEquivalence::isRegionEquivalentTo(
         &lhs.getBody(), &rhs.getBody(), OperationEquivalence::IgnoreLocations);
   }

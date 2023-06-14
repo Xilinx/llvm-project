@@ -40,6 +40,11 @@ END-SCRIPT
 
 #include <__config>
 
+// Prevent <ext/hash_map> from generating deprecated warnings for this test.
+#if defined(__DEPRECATED)
+#   undef __DEPRECATED
+#endif
+
 int main(int, char**) { return 0; }
 
 // DO NOT MANUALLY EDIT ANYTHING BETWEEN THE MARKERS BELOW
@@ -418,337 +423,343 @@ int main(int, char**) { return 0; }
 
 // RUN: %{build} -DTEST_71
 #if defined(TEST_71)
-#   include <mdspan>
+#   include <memory>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_72
 #if defined(TEST_72)
-#   include <memory>
-    using HandlerType = decltype(std::__libcpp_verbose_abort);
-#endif
-
-// RUN: %{build} -DTEST_73
-#if defined(TEST_73)
 #   include <memory_resource>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_74
-#if defined(TEST_74) && !defined(_LIBCPP_HAS_NO_THREADS)
+// RUN: %{build} -DTEST_73
+#if defined(TEST_73) && !defined(_LIBCPP_HAS_NO_THREADS)
 #   include <mutex>
+    using HandlerType = decltype(std::__libcpp_verbose_abort);
+#endif
+
+// RUN: %{build} -DTEST_74
+#if defined(TEST_74)
+#   include <new>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_75
 #if defined(TEST_75)
-#   include <new>
+#   include <numbers>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_76
 #if defined(TEST_76)
-#   include <numbers>
+#   include <numeric>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_77
 #if defined(TEST_77)
-#   include <numeric>
-    using HandlerType = decltype(std::__libcpp_verbose_abort);
-#endif
-
-// RUN: %{build} -DTEST_78
-#if defined(TEST_78)
 #   include <optional>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_79
-#if defined(TEST_79) && !defined(_LIBCPP_HAS_NO_LOCALIZATION)
+// RUN: %{build} -DTEST_78
+#if defined(TEST_78) && !defined(_LIBCPP_HAS_NO_LOCALIZATION)
 #   include <ostream>
+    using HandlerType = decltype(std::__libcpp_verbose_abort);
+#endif
+
+// RUN: %{build} -DTEST_79
+#if defined(TEST_79)
+#   include <queue>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_80
 #if defined(TEST_80)
-#   include <queue>
+#   include <random>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_81
 #if defined(TEST_81)
-#   include <random>
+#   include <ranges>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_82
 #if defined(TEST_82)
-#   include <ranges>
-    using HandlerType = decltype(std::__libcpp_verbose_abort);
-#endif
-
-// RUN: %{build} -DTEST_83
-#if defined(TEST_83)
 #   include <ratio>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_84
-#if defined(TEST_84) && !defined(_LIBCPP_HAS_NO_LOCALIZATION)
+// RUN: %{build} -DTEST_83
+#if defined(TEST_83) && !defined(_LIBCPP_HAS_NO_LOCALIZATION)
 #   include <regex>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_85
-#if defined(TEST_85)
+// RUN: %{build} -DTEST_84
+#if defined(TEST_84)
 #   include <scoped_allocator>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_86
-#if defined(TEST_86) && !defined(_LIBCPP_HAS_NO_THREADS)
+// RUN: %{build} -DTEST_85
+#if defined(TEST_85) && !defined(_LIBCPP_HAS_NO_THREADS)
 #   include <semaphore>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_87
-#if defined(TEST_87)
+// RUN: %{build} -DTEST_86
+#if defined(TEST_86)
 #   include <set>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_89
-#if defined(TEST_89) && !defined(_LIBCPP_HAS_NO_THREADS)
+// RUN: %{build} -DTEST_88
+#if defined(TEST_88) && !defined(_LIBCPP_HAS_NO_THREADS)
 #   include <shared_mutex>
+    using HandlerType = decltype(std::__libcpp_verbose_abort);
+#endif
+
+// RUN: %{build} -DTEST_89
+#if defined(TEST_89)
+#   include <source_location>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_90
 #if defined(TEST_90)
-#   include <source_location>
-    using HandlerType = decltype(std::__libcpp_verbose_abort);
-#endif
-
-// RUN: %{build} -DTEST_91
-#if defined(TEST_91)
 #   include <span>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_92
-#if defined(TEST_92) && !defined(_LIBCPP_HAS_NO_LOCALIZATION)
+// RUN: %{build} -DTEST_91
+#if defined(TEST_91) && !defined(_LIBCPP_HAS_NO_LOCALIZATION)
 #   include <sstream>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_93
-#if defined(TEST_93)
+// RUN: %{build} -DTEST_92
+#if defined(TEST_92)
 #   include <stack>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_97
-#if defined(TEST_97)
+// RUN: %{build} -DTEST_96
+#if defined(TEST_96)
 #   include <stdexcept>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_101
-#if defined(TEST_101) && !defined(_LIBCPP_HAS_NO_LOCALIZATION)
+// RUN: %{build} -DTEST_100
+#if defined(TEST_100) && !defined(_LIBCPP_HAS_NO_LOCALIZATION)
 #   include <streambuf>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_102
-#if defined(TEST_102)
+// RUN: %{build} -DTEST_101
+#if defined(TEST_101)
 #   include <string>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_104
-#if defined(TEST_104)
+// RUN: %{build} -DTEST_103
+#if defined(TEST_103)
 #   include <string_view>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_105
-#if defined(TEST_105) && !defined(_LIBCPP_HAS_NO_LOCALIZATION)
+// RUN: %{build} -DTEST_104
+#if defined(TEST_104) && !defined(_LIBCPP_HAS_NO_LOCALIZATION)
 #   include <strstream>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_106
-#if defined(TEST_106)
+// RUN: %{build} -DTEST_105
+#if defined(TEST_105)
 #   include <system_error>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_108
-#if defined(TEST_108) && !defined(_LIBCPP_HAS_NO_THREADS)
+// RUN: %{build} -DTEST_107
+#if defined(TEST_107) && !defined(_LIBCPP_HAS_NO_THREADS)
 #   include <thread>
+    using HandlerType = decltype(std::__libcpp_verbose_abort);
+#endif
+
+// RUN: %{build} -DTEST_108
+#if defined(TEST_108)
+#   include <tuple>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_109
 #if defined(TEST_109)
-#   include <tuple>
+#   include <type_traits>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_110
 #if defined(TEST_110)
-#   include <type_traits>
+#   include <typeindex>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_111
 #if defined(TEST_111)
-#   include <typeindex>
+#   include <typeinfo>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_112
-#if defined(TEST_112)
-#   include <typeinfo>
+// RUN: %{build} -DTEST_113
+#if defined(TEST_113)
+#   include <unordered_map>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_114
 #if defined(TEST_114)
-#   include <unordered_map>
+#   include <unordered_set>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_115
 #if defined(TEST_115)
-#   include <unordered_set>
+#   include <utility>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_116
 #if defined(TEST_116)
-#   include <utility>
+#   include <valarray>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_117
 #if defined(TEST_117)
-#   include <valarray>
+#   include <variant>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_118
 #if defined(TEST_118)
-#   include <variant>
+#   include <vector>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_119
 #if defined(TEST_119)
-#   include <vector>
+#   include <version>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_120
-#if defined(TEST_120)
-#   include <version>
+// RUN: %{build} -DTEST_122
+#if defined(TEST_122) && __cplusplus >= 201103L
+#   include <experimental/deque>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_123
 #if defined(TEST_123) && __cplusplus >= 201103L
-#   include <experimental/deque>
+#   include <experimental/forward_list>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_124
 #if defined(TEST_124) && __cplusplus >= 201103L
-#   include <experimental/forward_list>
+#   include <experimental/iterator>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_125
 #if defined(TEST_125) && __cplusplus >= 201103L
-#   include <experimental/iterator>
+#   include <experimental/list>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_126
 #if defined(TEST_126) && __cplusplus >= 201103L
-#   include <experimental/list>
+#   include <experimental/map>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_127
 #if defined(TEST_127) && __cplusplus >= 201103L
-#   include <experimental/map>
+#   include <experimental/memory_resource>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_128
 #if defined(TEST_128) && __cplusplus >= 201103L
-#   include <experimental/memory_resource>
-    using HandlerType = decltype(std::__libcpp_verbose_abort);
-#endif
-
-// RUN: %{build} -DTEST_129
-#if defined(TEST_129) && __cplusplus >= 201103L
 #   include <experimental/propagate_const>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
-// RUN: %{build} -DTEST_130
-#if defined(TEST_130) && !defined(_LIBCPP_HAS_NO_LOCALIZATION) && __cplusplus >= 201103L
+// RUN: %{build} -DTEST_129
+#if defined(TEST_129) && !defined(_LIBCPP_HAS_NO_LOCALIZATION) && __cplusplus >= 201103L
 #   include <experimental/regex>
+    using HandlerType = decltype(std::__libcpp_verbose_abort);
+#endif
+
+// RUN: %{build} -DTEST_130
+#if defined(TEST_130) && __cplusplus >= 201103L
+#   include <experimental/set>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_131
 #if defined(TEST_131) && __cplusplus >= 201103L
-#   include <experimental/set>
+#   include <experimental/simd>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_132
 #if defined(TEST_132) && __cplusplus >= 201103L
-#   include <experimental/simd>
+#   include <experimental/string>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_133
 #if defined(TEST_133) && __cplusplus >= 201103L
-#   include <experimental/string>
+#   include <experimental/type_traits>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_134
 #if defined(TEST_134) && __cplusplus >= 201103L
-#   include <experimental/type_traits>
+#   include <experimental/unordered_map>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_135
 #if defined(TEST_135) && __cplusplus >= 201103L
-#   include <experimental/unordered_map>
+#   include <experimental/unordered_set>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_136
 #if defined(TEST_136) && __cplusplus >= 201103L
-#   include <experimental/unordered_set>
+#   include <experimental/utility>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_137
 #if defined(TEST_137) && __cplusplus >= 201103L
-#   include <experimental/utility>
+#   include <experimental/vector>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 
 // RUN: %{build} -DTEST_138
-#if defined(TEST_138) && __cplusplus >= 201103L
-#   include <experimental/vector>
+#if defined(TEST_138)
+#   include <ext/hash_map>
+    using HandlerType = decltype(std::__libcpp_verbose_abort);
+#endif
+
+// RUN: %{build} -DTEST_139
+#if defined(TEST_139)
+#   include <ext/hash_set>
     using HandlerType = decltype(std::__libcpp_verbose_abort);
 #endif
 

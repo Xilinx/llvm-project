@@ -90,7 +90,8 @@ void AssignmentContext::Analyze(const parser::PointerAssignmentStmt &stmt) {
   if (const evaluate::Assignment * assignment{GetAssignment(stmt)}) {
     parser::CharBlock at{context_.location().value()};
     auto restorer{foldingContext().messages().SetLocation(at)};
-    CheckPointerAssignment(context_, *assignment, context_.FindScope(at));
+    CheckPointerAssignment(
+        foldingContext(), *assignment, context_.FindScope(at));
   }
 }
 

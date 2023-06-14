@@ -47,7 +47,6 @@ list(APPEND BOLT_TEST_DEPS
   llvm-objdump
   llvm-readelf
   llvm-readobj
-  llvm-strings
   llvm-strip
   llvm-objcopy
   merge-fdata

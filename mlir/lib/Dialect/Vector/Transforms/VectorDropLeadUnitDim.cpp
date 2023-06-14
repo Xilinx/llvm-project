@@ -136,10 +136,10 @@ struct CastAwayInsertLeadingOneDim : public OpRewritePattern<vector::InsertOp> {
     Type oldSrcType = insertOp.getSourceType();
     Type newSrcType = oldSrcType;
     int64_t oldSrcRank = 0, newSrcRank = 0;
-    if (auto type = dyn_cast<VectorType>(oldSrcType)) {
+    if (auto type = oldSrcType.dyn_cast<VectorType>()) {
       newSrcType = trimLeadingOneDims(type);
       oldSrcRank = type.getRank();
-      newSrcRank = cast<VectorType>(newSrcType).getRank();
+      newSrcRank = newSrcType.cast<VectorType>().getRank();
     }
 
     VectorType oldDstType = insertOp.getDestVectorType();
@@ -199,7 +199,7 @@ struct CastAwayTransferReadLeadingOneDim
     if (read.getMask())
       return failure();
 
-    auto shapedType = cast<ShapedType>(read.getSource().getType());
+    auto shapedType = read.getSource().getType().cast<ShapedType>();
     if (shapedType.getElementType() != read.getVectorType().getElementType())
       return failure();
 
@@ -247,7 +247,7 @@ struct CastAwayTransferWriteLeadingOneDim
     if (write.getMask())
       return failure();
 
-    auto shapedType = dyn_cast<ShapedType>(write.getSource().getType());
+    auto shapedType = write.getSource().getType().dyn_cast<ShapedType>();
     if (shapedType.getElementType() != write.getVectorType().getElementType())
       return failure();
 
@@ -284,7 +284,7 @@ struct CastAwayTransferWriteLeadingOneDim
 LogicalResult
 mlir::vector::castAwayContractionLeadingOneDim(vector::ContractionOp contractOp,
                                                RewriterBase &rewriter) {
-  VectorType oldAccType = dyn_cast<VectorType>(contractOp.getAccType());
+  VectorType oldAccType = contractOp.getAccType().dyn_cast<VectorType>();
   if (oldAccType == nullptr)
     return failure();
   if (oldAccType.getRank() < 2)
@@ -418,7 +418,7 @@ public:
                                 PatternRewriter &rewriter) const override {
     if (!OpTrait::hasElementwiseMappableTraits(op) || op->getNumResults() != 1)
       return failure();
-    auto vecType = dyn_cast<VectorType>(op->getResultTypes()[0]);
+    auto vecType = op->getResultTypes()[0].dyn_cast<VectorType>();
     if (!vecType)
       return failure();
     VectorType newVecType = trimLeadingOneDims(vecType);
@@ -427,7 +427,7 @@ public:
     int64_t dropDim = vecType.getRank() - newVecType.getRank();
     SmallVector<Value, 4> newOperands;
     for (Value operand : op->getOperands()) {
-      if (auto opVecType = dyn_cast<VectorType>(operand.getType())) {
+      if (auto opVecType = operand.getType().dyn_cast<VectorType>()) {
         newOperands.push_back(rewriter.create<vector::ExtractOp>(
             op->getLoc(), operand, splatZero(dropDim)));
       } else {

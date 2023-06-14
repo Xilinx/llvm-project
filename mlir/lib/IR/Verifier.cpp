@@ -174,7 +174,7 @@ LogicalResult OperationVerifier::verifyOperation(Operation &op) {
       return op.emitError("null operand found");
 
   /// Verify that all of the attributes are okay.
-  for (auto attr : op.getDiscardableAttrDictionary()) {
+  for (auto attr : op.getAttrs()) {
     // Check for any optional dialect specific attributes.
     if (auto *dialect = attr.getNameDialect())
       if (failed(dialect->verifyOperationAttribute(&op, attr)))
@@ -302,7 +302,7 @@ static void diagnoseInvalidOperandDominance(Operation &op, unsigned operandNo) {
   }
   // Block argument case.
   Block *block1 = op.getBlock();
-  Block *block2 = llvm::cast<BlockArgument>(operand).getOwner();
+  Block *block2 = operand.cast<BlockArgument>().getOwner();
   Region *region1 = block1->getParent();
   Region *region2 = block2->getParent();
   Location loc = UnknownLoc::get(op.getContext());

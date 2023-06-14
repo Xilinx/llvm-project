@@ -21,7 +21,6 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Matchers.h"
-#include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -55,7 +54,7 @@ void propagateShapesToTosaIf(
     for (unsigned int i = 1, s = op.getNumOperands(); i < s; i++) {
       auto inferredTy = shapesStorage[op.getOperand(i)];
       auto blockArg = frontBlock.getArgument(i - 1);
-      auto oldType = cast<ShapedType>(blockArg.getType());
+      auto oldType = blockArg.getType().cast<ShapedType>();
 
       if (inferredTy.hasRank()) {
         Type newType = oldType.clone(inferredTy.getDims());
@@ -90,7 +89,7 @@ void propagateShapesToTosaWhile(
   // loop body / condition for tosa.while.
   llvm::SmallVector<Type> argTypes;
   for (auto operand : op.getOperands()) {
-    auto operandTy = cast<ShapedType>(operand.getType());
+    auto operandTy = operand.getType().cast<ShapedType>();
     auto shapedTypeComponent = shapesStorage[operand];
     if (shapedTypeComponent.hasRank()) {
       auto newTy = operandTy.clone(shapedTypeComponent.getDims());
@@ -189,7 +188,7 @@ void propagateShapesToTosaWhile(
 void propagateShapesInRegion(Region &region) {
   DenseMap<Value, ShapedTypeComponents> shapesStorage;
   auto setShapes = [&](Value val, Type t) {
-    if (auto st = dyn_cast<ShapedType>(t))
+    if (auto st = t.dyn_cast<ShapedType>())
       shapesStorage[val] = st;
     else
       shapesStorage[val] = t;
@@ -200,16 +199,6 @@ void propagateShapesInRegion(Region &region) {
     if (it == shapesStorage.end())
       return nullptr;
     return it->second;
-  };
-
-  // Check whether this use case is replaceable. We define an op as
-  // being replaceable if it is used by a ReturnOp, a TosaOp, or an op with a
-  // type-inference related interface.
-  auto isReplaceableUser = [](Operation *user) -> bool {
-    return isa<func::ReturnOp>(user) ||
-           user->getDialect()->getNamespace() ==
-               TosaDialect::getDialectNamespace() ||
-           isa<InferTypeOpInterface, InferShapedTypeOpInterface>(user);
   };
 
   for (auto &block : region) {
@@ -229,17 +218,26 @@ void propagateShapesInRegion(Region &region) {
 
       ValueShapeRange range(op.getOperands(), operandShape);
       if (shapeInterface
-              .inferReturnTypeComponents(op.getContext(), op.getLoc(), range,
-                                         op.getDiscardableAttrDictionary(),
-                                         op.getPropertiesStorage(),
-                                         op.getRegions(), returnedShapes)
+              .inferReturnTypeComponents(
+                  op.getContext(), op.getLoc(), range, op.getAttrDictionary(),
+                  op.getPropertiesStorage(), op.getRegions(), returnedShapes)
               .succeeded()) {
         for (auto it : llvm::zip(op.getResults(), returnedShapes)) {
           Value result = std::get<0>(it);
           ShapedTypeComponents predictedShape = std::get<1>(it);
 
-          if (!llvm::all_of(result.getUsers(), isReplaceableUser))
-            continue;
+          // Check whether this use case is replaceable. We define an op as
+          // being replaceable if it is used by a ReturnOp or a TosaOp.
+          bool replaceable = true;
+          for (auto *user : result.getUsers()) {
+            if (isa<func::ReturnOp>(user))
+              continue;
+            if (user->getDialect()->getNamespace() ==
+                TosaDialect::getDialectNamespace())
+              continue;
+
+            replaceable = false;
+          }
 
           // Determine the knowledge based on the output type.
           // TODO: should also query WIP type probably
@@ -249,13 +247,17 @@ void propagateShapesInRegion(Region &region) {
 
           // Compute the knowledge based on the inferred type.
           auto inferredKnowledge = ValueKnowledge::getPessimisticValueState();
-          inferredKnowledge.dtype = cast<ShapedType>(resultTy).getElementType();
+          inferredKnowledge.dtype =
+              resultTy.cast<ShapedType>().getElementType();
           inferredKnowledge.hasRank = predictedShape.hasRank();
           if (predictedShape.hasRank()) {
             for (auto dim : predictedShape.getDims()) {
               inferredKnowledge.sizes.push_back(dim);
             }
           }
+
+          if (!replaceable)
+            continue;
 
           // Compute the new type based on the joined version.
           auto newKnowledge =
@@ -272,7 +274,7 @@ void propagateShapesInRegion(Region &region) {
   for (auto it : shapesStorage) {
     auto result = it.second;
     if (result.hasRank()) {
-      Type t = cast<ShapedType>(it.first.getType()).clone(result.getDims());
+      Type t = it.first.getType().cast<ShapedType>().clone(result.getDims());
       it.first.setType(t);
     }
   }

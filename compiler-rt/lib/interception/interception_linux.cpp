@@ -33,7 +33,7 @@ static int StrCmp(const char *s1, const char *s2) {
 }
 #endif
 
-static void *GetFuncAddr(const char *name, uptr trampoline) {
+static void *GetFuncAddr(const char *name, uptr wrapper_addr) {
 #if SANITIZER_NETBSD
   // FIXME: Find a better way to handle renames
   if (StrCmp(name, "sigaction"))
@@ -50,17 +50,17 @@ static void *GetFuncAddr(const char *name, uptr trampoline) {
 
     // In case `name' is not loaded, dlsym ends up finding the actual wrapper.
     // We don't want to intercept the wrapper and have it point to itself.
-    if ((uptr)addr == trampoline)
+    if ((uptr)addr == wrapper_addr)
       addr = nullptr;
   }
   return addr;
 }
 
 bool InterceptFunction(const char *name, uptr *ptr_to_real, uptr func,
-                       uptr trampoline) {
-  void *addr = GetFuncAddr(name, trampoline);
+                       uptr wrapper) {
+  void *addr = GetFuncAddr(name, wrapper);
   *ptr_to_real = (uptr)addr;
-  return addr && (func == trampoline);
+  return addr && (func == wrapper);
 }
 
 // dlvsym is a GNU extension supported by some other platforms.
@@ -70,12 +70,12 @@ static void *GetFuncAddr(const char *name, const char *ver) {
 }
 
 bool InterceptFunction(const char *name, const char *ver, uptr *ptr_to_real,
-                       uptr func, uptr trampoline) {
+                       uptr func, uptr wrapper) {
   void *addr = GetFuncAddr(name, ver);
   *ptr_to_real = (uptr)addr;
-  return addr && (func == trampoline);
+  return addr && (func == wrapper);
 }
-#  endif  // SANITIZER_GLIBC || SANITIZER_FREEBSD || SANITIZER_NETBSD
+#endif  // SANITIZER_GLIBC || SANITIZER_FREEBSD || SANITIZER_NETBSD
 
 }  // namespace __interception
 

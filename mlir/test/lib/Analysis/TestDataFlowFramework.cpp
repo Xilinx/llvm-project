@@ -115,11 +115,11 @@ LogicalResult FooAnalysis::initialize(Operation *top) {
 }
 
 LogicalResult FooAnalysis::visit(ProgramPoint point) {
-  if (auto *op = llvm::dyn_cast_if_present<Operation *>(point)) {
+  if (auto *op = point.dyn_cast<Operation *>()) {
     visitOperation(op);
     return success();
   }
-  if (auto *block = llvm::dyn_cast_if_present<Block *>(point)) {
+  if (auto *block = point.dyn_cast<Block *>()) {
     visitBlock(block);
     return success();
   }

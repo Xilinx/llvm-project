@@ -207,16 +207,15 @@ void CoverageChecker::collectModuleHeaders() {
 // FIXME: Doesn't collect files from umbrella header.
 bool CoverageChecker::collectModuleHeaders(const Module &Mod) {
 
-  if (const FileEntry *UmbrellaHeader =
-          Mod.getUmbrellaHeaderAsWritten().Entry) {
+  if (const FileEntry *UmbrellaHeader = Mod.getUmbrellaHeader().Entry) {
     // Collect umbrella header.
     ModuleMapHeadersSet.insert(ModularizeUtilities::getCanonicalPath(
       UmbrellaHeader->getName()));
     // Preprocess umbrella header and collect the headers it references.
     if (!collectUmbrellaHeaderHeaders(UmbrellaHeader->getName()))
       return false;
-  } else if (const DirectoryEntry *UmbrellaDir =
-                 Mod.getUmbrellaDirAsWritten().Entry) {
+  }
+  else if (const DirectoryEntry *UmbrellaDir = Mod.getUmbrellaDir().Entry) {
     // Collect headers in umbrella directory.
     if (!collectUmbrellaHeaders(UmbrellaDir->getName()))
       return false;

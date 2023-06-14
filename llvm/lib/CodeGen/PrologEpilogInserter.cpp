@@ -309,20 +309,19 @@ bool PEI::runOnMachineFunction(MachineFunction &MF) {
         SpillSize += MFI.getObjectSize(Idx);
     }
 
-    [[maybe_unused]] float SpillPct =
+    float SpillPct =
         static_cast<float>(SpillSize) / static_cast<float>(StackSize);
-    LLVM_DEBUG(
-        dbgs() << formatv("{0}/{1} ({3:P}) spills, {2}/{1} ({4:P}) variables",
-                          SpillSize, StackSize, StackSize - SpillSize, SpillPct,
-                          1.0f - SpillPct));
+    float VarPct = 1.0f - SpillPct;
+    int64_t VariableSize = StackSize - SpillSize;
+    dbgs() << formatv("{0}/{1} ({3:P}) spills, {2}/{1} ({4:P}) variables",
+                      SpillSize, StackSize, VariableSize, SpillPct, VarPct);
     if (UnsafeStackSize != 0) {
-      LLVM_DEBUG(dbgs() << formatv(", {0}/{2} ({1:P}) unsafe stack",
-                                   UnsafeStackSize,
-                                   static_cast<float>(UnsafeStackSize) /
-                                       static_cast<float>(StackSize),
-                                   StackSize));
+      float UnsafePct =
+          static_cast<float>(UnsafeStackSize) / static_cast<float>(StackSize);
+      dbgs() << formatv(", {0}/{2} ({1:P}) unsafe stack", UnsafeStackSize,
+                        UnsafePct, StackSize);
     }
-    LLVM_DEBUG(dbgs() << "\n");
+    dbgs() << "\n";
   }
 
   ORE->emit([&]() {

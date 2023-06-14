@@ -220,7 +220,8 @@ void SystemRuntimeMacOSX::AddThreadExtendedInfoPacketHints(
 }
 
 bool SystemRuntimeMacOSX::SafeToCallFunctionsOnThisThread(ThreadSP thread_sp) {
-  if (thread_sp && thread_sp->GetFrameWithConcreteFrameIndex(0)) {
+  if (thread_sp && thread_sp->GetStackFrameCount() > 0 &&
+      thread_sp->GetFrameWithConcreteFrameIndex(0)) {
     const SymbolContext sym_ctx(
         thread_sp->GetFrameWithConcreteFrameIndex(0)->GetSymbolContext(
             eSymbolContextSymbol));

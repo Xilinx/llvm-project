@@ -15,10 +15,10 @@ func.func @reduction_tile(%arg0: tensor<?x?xf32>, %out: tensor<?xf32>) -> tensor
 }
 
 transform.sequence failures(propagate) {
-^bb0(%arg1: !transform.any_op):
-  %0 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!transform.any_op) -> !transform.any_op
+^bb0(%arg1: !pdl.operation):
+  %0 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!pdl.operation) -> !pdl.operation
   %loop, %1, %2, %3 = transform.structured.tile_reduction_using_scf %0
-    by tile_sizes = [0, 5] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+    by tile_sizes = [0, 5]
 }
 
 // CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0, d1)>
@@ -70,10 +70,10 @@ func.func @reduction_tile_transpose(%arg0: tensor<?x?xf32>, %out: tensor<?xf32>)
 }
 
 transform.sequence failures(propagate) {
-^bb0(%arg1: !transform.any_op):
-  %0 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!transform.any_op) -> !transform.any_op
-  %loop, %1, %2, %3 = transform.structured.tile_reduction_using_scf %0
-    by tile_sizes = [5, 0] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+^bb0(%arg1: !pdl.operation):
+  %0 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!pdl.operation) -> !pdl.operation
+  %loop, %1, %2, %3 = transform.structured.tile_reduction_using_scf %0 
+    by tile_sizes = [5, 0]
 }
 
 //     CHECK: func @reduction_tile_transpose
@@ -107,10 +107,10 @@ func.func @reduction_tile_parallel(
 }
 
 transform.sequence failures(propagate) {
-^bb0(%arg1: !transform.any_op):
-  %0 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!transform.any_op) -> !transform.any_op
+^bb0(%arg1: !pdl.operation):
+  %0 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!pdl.operation) -> !pdl.operation
   %loop, %1, %2, %3 = transform.structured.tile_reduction_using_forall %0
-    by num_threads = [0, 5], tile_sizes = [] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+    by num_threads = [0, 5], tile_sizes = []
 }
 
 // CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0)[s0] -> (-(d0 * (s0 ceildiv 5)) + s0, s0 ceildiv 5)>
@@ -159,10 +159,10 @@ func.func @matmul_tile_parallel(
 }
 
 transform.sequence failures(propagate) {
-^bb0(%arg1: !transform.any_op):
-  %0 = transform.structured.match ops{["linalg.matmul"]} in %arg1 : (!transform.any_op) -> !transform.any_op
+^bb0(%arg1: !pdl.operation):
+  %0 = transform.structured.match ops{["linalg.matmul"]} in %arg1 : (!pdl.operation) -> !pdl.operation
   %loop, %1, %2, %3 = transform.structured.tile_reduction_using_forall %0
-    by num_threads = [0, 0, 5], tile_sizes = [] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+    by num_threads = [0, 0, 5], tile_sizes = []
 }
 
 // CHECK-DAG: #[[MAP0:.*]] = affine_map<(d0)[s0] -> (-(d0 * (s0 ceildiv 5)) + s0, s0 ceildiv 5)>
@@ -218,10 +218,10 @@ func.func @reduction_tile_parallel_cyclic_dist(
 }
 
 transform.sequence failures(propagate) {
-^bb0(%arg1: !transform.any_op):
-  %0 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!transform.any_op) -> !transform.any_op
-  %loop, %1, %2, %3 = transform.structured.tile_reduction_using_forall %0
-    by num_threads = [0, 5], tile_sizes = [0, 3], mapping = [#gpu.thread<x>] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+^bb0(%arg1: !pdl.operation):
+  %0 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!pdl.operation) -> !pdl.operation
+  %loop, %1, %2, %3 = transform.structured.tile_reduction_using_forall %0 
+    by num_threads = [0, 5], tile_sizes = [0, 3], mapping = [#gpu.thread<x>]
 }
 
 // CHECK-DAG: #[[MAP0:.*]] = affine_map<()[s0] -> (s0 * 3)>
@@ -283,22 +283,22 @@ func.func @reduction_tile_parallel_cyclic_dist(
 }
 
 transform.sequence failures(propagate) {
-^bb0(%arg1: !transform.any_op):
-  %0 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!transform.any_op) -> !transform.any_op
-  %loop, %1, %2, %3 = transform.structured.tile_reduction_using_forall %0
-    by num_threads = [0, 5], tile_sizes = [0, 3], mapping = [#gpu.thread<x>] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
-
+^bb0(%arg1: !pdl.operation):
+  %0 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!pdl.operation) -> !pdl.operation
+  %loop, %1, %2, %3 = transform.structured.tile_reduction_using_forall %0 
+    by num_threads = [0, 5], tile_sizes = [0, 3], mapping = [#gpu.thread<x>]
+  
   //      CHECK:     expecting fill
   // CHECK-NEXT:     linalg.fill
-  transform.print %1 {name = "expecting fill"} : !transform.any_op
+  transform.print %1 {name = "expecting fill"} : !pdl.operation
   //      CHECK:     expecting parallel reduction
   // CHECK-NEXT:     linalg.generic
   //      CHECK:     iterator_types = ["parallel", "reduction"]
-  transform.print %2 {name = "expecting parallel reduction"} : !transform.any_op
+  transform.print %2 {name = "expecting parallel reduction"} : !pdl.operation
   //      CHECK:     expecting parallel reduction
   // CHECK-NEXT:     linalg.generic
   //      CHECK:     iterator_types = ["parallel", "reduction"]
-  transform.print %3 {name = "expecting parallel reduction"} : !transform.any_op
+  transform.print %3 {name = "expecting parallel reduction"} : !pdl.operation
 }
 
 // -----
@@ -320,11 +320,11 @@ func.func @reduction_untiled_forall(
 }
 
 transform.sequence failures(propagate) {
-^bb0(%arg1: !transform.any_op):
-  %0 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!transform.any_op) -> !transform.any_op
+^bb0(%arg1: !pdl.operation):
+  %0 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!pdl.operation) -> !pdl.operation
   // expected-error @below {{could not tile reduction}}
   %loop, %1, %2, %3 = transform.structured.tile_reduction_using_forall %0
-    by num_threads = [5], tile_sizes = [3], mapping = [#gpu.thread<x>] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+    by num_threads = [5], tile_sizes = [3], mapping = [#gpu.thread<x>]
 
 }
 
@@ -346,9 +346,9 @@ module {
     return %0 : tensor<?xf32>
   }
   transform.sequence failures(propagate) {
-  ^bb0(%arg0: !transform.any_op):
-    %0 = transform.structured.match ops{["linalg.generic"]} in %arg0 : (!transform.any_op) -> !transform.any_op
+  ^bb0(%arg0: !pdl.operation):
+    %0 = transform.structured.match ops{["linalg.generic"]} in %arg0 : (!pdl.operation) -> !pdl.operation
     // expected-error @below {{transform.structured.tile_reduction_using_scf failed to apply}}
-    %for_op, %fill_op, %split_linalg_op, %combining_linalg_op = transform.structured.tile_reduction_using_scf %0 by tile_sizes = [0, 5] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
+    %for_op, %fill_op, %split_linalg_op, %combining_linalg_op = transform.structured.tile_reduction_using_scf %0 by tile_sizes = [0, 5]
   }
 }

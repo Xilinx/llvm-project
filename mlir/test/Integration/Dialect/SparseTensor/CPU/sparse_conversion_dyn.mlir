@@ -27,11 +27,11 @@
 // RUN: %{compile} | mlir-translate -mlir-to-llvmir | %{run}
 
 #DCSR  = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed", "compressed" ]
+  dimLevelType = [ "compressed", "compressed" ]
 }>
 
 #DCSC  = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed", "compressed" ],
+  dimLevelType = [ "compressed", "compressed" ],
   dimOrdering = affine_map<(i,j) -> (j,i)>
 }>
 

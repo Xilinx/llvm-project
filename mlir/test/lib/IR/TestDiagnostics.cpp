@@ -36,7 +36,7 @@ struct TestDiagnosticFilterPass
     // Build a diagnostic handler that has filtering capabilities.
     auto filterFn = [&](Location loc) {
       // Ignore non-file locations.
-      FileLineColLoc fileLoc = dyn_cast<FileLineColLoc>(loc);
+      FileLineColLoc fileLoc = loc.dyn_cast<FileLineColLoc>();
       if (!fileLoc)
         return true;
 

@@ -15,17 +15,17 @@
 #include "lldb/Interpreter/OptionGroupFormat.h"
 #include "lldb/Interpreter/OptionGroupValueObjectDisplay.h"
 #include "lldb/Target/Target.h"
-#include "llvm/Support/ExtensibleRTTI.h"
 
 namespace lldb_private {
 
-class REPL : public IOHandlerDelegate,
-             public llvm::RTTIExtends<REPL, llvm::RTTIRoot> {
+class REPL : public IOHandlerDelegate {
 public:
-  /// LLVM RTTI support
-  static char ID;
+  // See TypeSystem.h for how to add subclasses to this.
+  enum LLVMCastKind { eKindClang, eKindSwift, eKindGo, kNumKinds };
 
-  REPL(Target &target);
+  LLVMCastKind getKind() const { return m_kind; }
+
+  REPL(LLVMCastKind kind, Target &target);
 
   ~REPL() override;
 
@@ -168,6 +168,7 @@ protected:
 
   Target &m_target;
   lldb::IOHandlerSP m_io_handler_sp;
+  LLVMCastKind m_kind;
 
 private:
   std::string GetSourcePath();

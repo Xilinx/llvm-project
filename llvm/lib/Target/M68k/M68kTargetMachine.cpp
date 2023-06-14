@@ -38,9 +38,6 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeM68kTarget() {
   auto *PR = PassRegistry::getPassRegistry();
   initializeGlobalISel(*PR);
   initializeM68kDAGToDAGISelPass(*PR);
-  initializeM68kExpandPseudoPass(*PR);
-  initializeM68kGlobalBaseRegPass(*PR);
-  initializeM68kCollapseMOVEMPass(*PR);
 }
 
 namespace {

@@ -9,7 +9,6 @@
 
 from dex.command.commands.DexExpectWatchBase import DexExpectWatchBase
 
-
 class DexExpectWatchValue(DexExpectWatchBase):
     """Expect the expression `expr` to evaluate to the list of `values`
     sequentially.

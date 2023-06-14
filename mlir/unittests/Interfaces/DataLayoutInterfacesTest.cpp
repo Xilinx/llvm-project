@@ -152,16 +152,16 @@ struct OpWithLayout : public Op<OpWithLayout, DataLayoutOpInterface::Trait> {
   static unsigned getTypeSizeInBits(Type type, const DataLayout &dataLayout,
                                     DataLayoutEntryListRef params) {
     // Make a recursive query.
-    if (isa<FloatType>(type))
+    if (type.isa<FloatType>())
       return dataLayout.getTypeSizeInBits(
           IntegerType::get(type.getContext(), type.getIntOrFloatBitWidth()));
 
     // Handle built-in types that are not handled by the default process.
-    if (auto iType = dyn_cast<IntegerType>(type)) {
+    if (auto iType = type.dyn_cast<IntegerType>()) {
       for (DataLayoutEntryInterface entry : params)
-        if (llvm::dyn_cast_if_present<Type>(entry.getKey()) == type)
+        if (entry.getKey().dyn_cast<Type>() == type)
           return 8 *
-                 cast<IntegerAttr>(entry.getValue()).getValue().getZExtValue();
+                 entry.getValue().cast<IntegerAttr>().getValue().getZExtValue();
       return 8 * iType.getIntOrFloatBitWidth();
     }
 
@@ -217,7 +217,7 @@ struct DLTestDialect : Dialect {
   void printAttribute(Attribute attr,
                       DialectAsmPrinter &printer) const override {
     printer << "spec<";
-    llvm::interleaveComma(cast<CustomDataLayoutSpec>(attr).getEntries(),
+    llvm::interleaveComma(attr.cast<CustomDataLayoutSpec>().getEntries(),
                           printer);
     printer << ">";
   }
@@ -244,7 +244,7 @@ struct DLTestDialect : Dialect {
   }
 
   void printType(Type type, DialectAsmPrinter &printer) const override {
-    if (isa<SingleQueryType>(type))
+    if (type.isa<SingleQueryType>())
       printer << "single_query";
     else
       printer << "no_layout";

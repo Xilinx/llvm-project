@@ -12,7 +12,6 @@ add_mlir_library(MLIRTransforms
   OpStats.cpp
   PrintIR.cpp
   SCCP.cpp
-  SROA.cpp
   StripDebugInfo.cpp
   SymbolDCE.cpp
   SymbolPrivatize.cpp
@@ -29,7 +28,7 @@ add_mlir_library(MLIRTransforms
   MLIRAnalysis
   MLIRCopyOpInterface
   MLIRLoopLikeInterface
-  MLIRMemorySlotInterfaces
+  MLIRMem2RegInterfaces
   MLIRPass
   MLIRRuntimeVerifiableOpInterface
   MLIRSideEffectInterfaces

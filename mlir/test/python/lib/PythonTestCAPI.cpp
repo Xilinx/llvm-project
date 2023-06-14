@@ -16,7 +16,7 @@ MLIR_DEFINE_CAPI_DIALECT_REGISTRATION(PythonTest, python_test,
                                       python_test::PythonTestDialect)
 
 bool mlirAttributeIsAPythonTestTestAttribute(MlirAttribute attr) {
-  return llvm::isa<python_test::TestAttrAttr>(unwrap(attr));
+  return unwrap(attr).isa<python_test::TestAttrAttr>();
 }
 
 MlirAttribute mlirPythonTestTestAttributeGet(MlirContext context) {
@@ -24,15 +24,11 @@ MlirAttribute mlirPythonTestTestAttributeGet(MlirContext context) {
 }
 
 bool mlirTypeIsAPythonTestTestType(MlirType type) {
-  return llvm::isa<python_test::TestTypeType>(unwrap(type));
+  return unwrap(type).isa<python_test::TestTypeType>();
 }
 
 MlirType mlirPythonTestTestTypeGet(MlirContext context) {
   return wrap(python_test::TestTypeType::get(unwrap(context)));
-}
-
-MlirTypeID mlirPythonTestTestTypeGetTypeID(void) {
-  return wrap(python_test::TestTypeType::getTypeID());
 }
 
 bool mlirTypeIsAPythonTestTestTensorValue(MlirValue value) {

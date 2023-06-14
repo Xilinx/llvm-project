@@ -102,7 +102,7 @@ BreakpointResolverSP BreakpointResolver::CreateFromStructuredData(
     return result_sp;
   }
 
-  lldb::offset_t offset;
+  lldb::addr_t offset;
   success = subclass_options->GetValueForKeyAsInteger(
       GetKey(OptionNames::Offset), offset);
   if (!success) {

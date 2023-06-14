@@ -343,11 +343,11 @@ func.func @matmul_7(%arg0: vector<2x1xf32>, %arg1: vector<1x3xf32>, %arg2: vecto
 
 
 transform.sequence failures(propagate) {
-^bb1(%module_op: !transform.any_op):
+^bb1(%module_op: !pdl.operation):
   %f = transform.structured.match ops{["func.func"]} in %module_op 
-    : (!transform.any_op) -> !transform.any_op
+    : (!pdl.operation) -> !pdl.operation
 
   %f2 = transform.vector.lower_contraction %f
     lowering_strategy = "outerproduct"
-      : (!transform.any_op) -> !transform.any_op
+      : (!pdl.operation) -> !pdl.operation
 }

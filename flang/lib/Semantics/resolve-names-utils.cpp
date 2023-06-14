@@ -614,8 +614,7 @@ bool EquivalenceSets::CheckObject(const parser::Name &name) {
     msg = "Variable '%s' in common block with BIND attribute"
           " is not allowed in an equivalence set"_err_en_US;
   } else if (const auto *type{symbol.GetType()}) {
-    const auto *derived{type->AsDerived()};
-    if (derived && !derived->IsVectorType()) {
+    if (const auto *derived{type->AsDerived()}) {
       if (const auto *comp{FindUltimateComponent(
               *derived, IsAllocatableOrPointer)}) { // C8106
         msg = IsPointer(*comp)

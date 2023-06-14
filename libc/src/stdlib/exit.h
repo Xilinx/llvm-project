@@ -13,7 +13,7 @@
 
 namespace __llvm_libc {
 
-[[noreturn]] void exit(int status);
+void exit(int status);
 
 } // namespace __llvm_libc
 

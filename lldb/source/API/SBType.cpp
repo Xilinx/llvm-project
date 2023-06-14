@@ -809,15 +809,14 @@ const char *SBTypeMemberFunction::GetName() {
 const char *SBTypeMemberFunction::GetDemangledName() {
   LLDB_INSTRUMENT_VA(this);
 
-  if (!m_opaque_sp)
-    return nullptr;
-
-  ConstString mangled_str = m_opaque_sp->GetMangledName();
-  if (!mangled_str)
-    return nullptr;
-
-  Mangled mangled(mangled_str);
-  return mangled.GetDemangledName().GetCString();
+  if (m_opaque_sp) {
+    ConstString mangled_str = m_opaque_sp->GetMangledName();
+    if (mangled_str) {
+      Mangled mangled(mangled_str);
+      return mangled.GetDemangledName().GetCString();
+    }
+  }
+  return nullptr;
 }
 
 const char *SBTypeMemberFunction::GetMangledName() {

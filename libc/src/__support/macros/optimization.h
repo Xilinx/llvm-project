@@ -10,7 +10,6 @@
 #ifndef LLVM_LIBC_SRC_SUPPORT_MACROS_OPTIMIZATION_H
 #define LLVM_LIBC_SRC_SUPPORT_MACROS_OPTIMIZATION_H
 
-#include "src/__support/macros/attributes.h"          // LIBC_INLINE
 #include "src/__support/macros/config.h"              // LIBC_HAS_BUILTIN
 #include "src/__support/macros/properties/compiler.h" // LIBC_COMPILER_IS_CLANG
 
@@ -18,7 +17,7 @@
 // accidentally pass an integer.
 namespace __llvm_libc::details {
 template <typename T>
-LIBC_INLINE constexpr bool expects_bool_condition(T value, T expected) {
+constexpr LIBC_INLINE bool expects_bool_condition(T value, T expected) {
   return __builtin_expect(value, expected);
 }
 } // namespace __llvm_libc::details

@@ -354,7 +354,7 @@ public:
 
   llvm::Expected<long long> AsLongLong() const;
 
-  llvm::Expected<unsigned long long> AsUnsignedLongLong() const;
+  llvm::Expected<long long> AsUnsignedLongLong() const;
 
   // wraps on overflow, instead of raising an error.
   llvm::Expected<unsigned long long> AsModuloUnsignedLongLong() const;
@@ -480,10 +480,6 @@ public:
   void SetInteger(int64_t value);
 
   StructuredData::IntegerSP CreateStructuredInteger() const;
-
-  StructuredData::UnsignedIntegerSP CreateStructuredUnsignedInteger() const;
-
-  StructuredData::SignedIntegerSP CreateStructuredSignedInteger() const;
 };
 
 class PythonBoolean : public TypedPythonObject<PythonBoolean> {

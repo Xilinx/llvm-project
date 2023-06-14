@@ -24,8 +24,7 @@ using namespace mlir::LLVM;
 /// internal functions to avoid getting a verbose `!llvm` prefix. Otherwise
 /// prints it as usual.
 static void dispatchPrint(AsmPrinter &printer, Type type) {
-  if (isCompatibleType(type) &&
-      !llvm::isa<IntegerType, FloatType, VectorType>(type))
+  if (isCompatibleType(type) && !type.isa<IntegerType, FloatType, VectorType>())
     return mlir::LLVM::detail::printType(type, printer);
   printer.printType(type);
 }

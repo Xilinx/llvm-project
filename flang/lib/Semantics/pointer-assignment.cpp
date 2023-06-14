@@ -40,15 +40,16 @@ using parser::MessageFormattedText;
 
 class PointerAssignmentChecker {
 public:
-  PointerAssignmentChecker(SemanticsContext &context, const Scope &scope,
-      parser::CharBlock source, const std::string &description)
+  PointerAssignmentChecker(evaluate::FoldingContext &context,
+      const Scope &scope, parser::CharBlock source,
+      const std::string &description)
       : context_{context}, scope_{scope}, source_{source}, description_{
                                                                description} {}
   PointerAssignmentChecker(
-      SemanticsContext &context, const Scope &scope, const Symbol &lhs)
+      evaluate::FoldingContext &context, const Scope &scope, const Symbol &lhs)
       : context_{context}, scope_{scope}, source_{lhs.name()},
         description_{"pointer '"s + lhs.name().ToString() + '\''}, lhs_{&lhs} {
-    set_lhsType(TypeAndShape::Characterize(lhs, foldingContext_));
+    set_lhsType(TypeAndShape::Characterize(lhs, context));
     set_isContiguous(lhs.attrs().test(Attr::CONTIGUOUS));
     set_isVolatile(lhs.attrs().test(Attr::VOLATILE));
   }
@@ -76,8 +77,7 @@ private:
   bool LhsOkForUnlimitedPoly() const;
   template <typename... A> parser::Message *Say(A &&...);
 
-  SemanticsContext &context_;
-  evaluate::FoldingContext &foldingContext_{context_.foldingContext()};
+  evaluate::FoldingContext &context_;
   const Scope &scope_;
   const parser::CharBlock source_;
   const std::string description_;
@@ -125,14 +125,14 @@ bool PointerAssignmentChecker::CharacterizeProcedure() {
   if (!characterizedProcedure_) {
     characterizedProcedure_ = true;
     if (lhs_ && IsProcedure(*lhs_)) {
-      procedure_ = Procedure::Characterize(*lhs_, foldingContext_);
+      procedure_ = Procedure::Characterize(*lhs_, context_);
     }
   }
   return procedure_.has_value();
 }
 
 bool PointerAssignmentChecker::CheckLeftHandSide(const SomeExpr &lhs) {
-  if (auto whyNot{WhyNotDefinable(foldingContext_.messages().at(), scope_,
+  if (auto whyNot{WhyNotDefinable(context_.messages().at(), scope_,
           DefinabilityFlags{DefinabilityFlag::PointerDefinition}, lhs)}) {
     if (auto *msg{Say(
             "The left-hand side of a pointer assignment is not definable"_err_en_US)}) {
@@ -190,7 +190,7 @@ bool PointerAssignmentChecker::Check(const SomeExpr &rhs) {
     } else if (const Symbol * base{GetFirstSymbol(rhs)}) {
       if (const char *why{WhyBaseObjectIsSuspicious(
               base->GetUltimate(), scope_)}) { // C1594(3)
-        evaluate::SayWithDeclaration(foldingContext_.messages(), *base,
+        evaluate::SayWithDeclaration(context_.messages(), *base,
             "A pure subprogram may not use '%s' as the target of pointer assignment because it is %s"_err_en_US,
             base->name(), why);
         return false;
@@ -198,26 +198,23 @@ bool PointerAssignmentChecker::Check(const SomeExpr &rhs) {
     }
   }
   if (isContiguous_) {
-    if (auto contiguous{evaluate::IsContiguous(rhs, foldingContext_)}) {
+    if (auto contiguous{evaluate::IsContiguous(rhs, context_)}) {
       if (!*contiguous) {
         Say("CONTIGUOUS pointer may not be associated with a discontiguous target"_err_en_US);
         return false;
       }
-    } else if (context_.ShouldWarn(
-                   common::UsageWarning::PointerToPossibleNoncontiguous)) {
+    } else {
       Say("Target of CONTIGUOUS pointer association is not known to be contiguous"_warn_en_US);
     }
   }
   // Warn about undefinable data targets
-  if (context_.ShouldWarn(common::UsageWarning::PointerToUndefinable)) {
-    if (auto because{WhyNotDefinable(
-            foldingContext_.messages().at(), scope_, {}, rhs)}) {
-      if (auto *msg{
-              Say("Pointer target is not a definable variable"_warn_en_US)}) {
-        msg->Attach(std::move(*because));
-      }
-      return false;
+  if (auto because{
+          WhyNotDefinable(context_.messages().at(), scope_, {}, rhs)}) {
+    if (auto *msg{
+            Say("Pointer target is not a definable variable"_warn_en_US)}) {
+      msg->Attach(std::move(*because));
     }
+    return false;
   }
   return true;
 }
@@ -235,7 +232,7 @@ bool PointerAssignmentChecker::Check(const evaluate::FunctionRef<T> &f) {
   } else if (const auto *intrinsic{f.proc().GetSpecificIntrinsic()}) {
     funcName = intrinsic->name;
   }
-  auto proc{Procedure::Characterize(f.proc(), foldingContext_)};
+  auto proc{Procedure::Characterize(f.proc(), context_)};
   if (!proc) {
     return false;
   }
@@ -261,7 +258,7 @@ bool PointerAssignmentChecker::Check(const evaluate::FunctionRef<T> &f) {
   } else if (lhsType_) {
     const auto *frTypeAndShape{funcResult->GetTypeAndShape()};
     CHECK(frTypeAndShape);
-    if (!lhsType_->IsCompatibleWith(foldingContext_.messages(), *frTypeAndShape,
+    if (!lhsType_->IsCompatibleWith(context_.messages(), *frTypeAndShape,
             "pointer", "function result",
             isBoundsRemapping_ /*omit shape check*/,
             evaluate::CheckConformanceFlags::BothDeferredShape)) {
@@ -293,7 +290,7 @@ bool PointerAssignmentChecker::Check(const evaluate::Designator<T> &d) {
   } else if (!evaluate::GetLastTarget(GetSymbolVector(d))) { // C1025
     msg = "In assignment to object %s, the target '%s' is not an object with"
           " POINTER or TARGET attributes"_err_en_US;
-  } else if (auto rhsType{TypeAndShape::Characterize(d, foldingContext_)}) {
+  } else if (auto rhsType{TypeAndShape::Characterize(d, context_)}) {
     if (!lhsType_) {
       msg = "%s associated with object '%s' with incompatible type or"
             " shape"_err_en_US;
@@ -364,19 +361,18 @@ bool PointerAssignmentChecker::Check(const evaluate::ProcedureDesignator &d) {
     if (const auto *subp{
             symbol->GetUltimate().detailsIf<SubprogramDetails>()}) {
       if (subp->stmtFunction()) {
-        evaluate::SayWithDeclaration(foldingContext_.messages(), *symbol,
+        evaluate::SayWithDeclaration(context_.messages(), *symbol,
             "Statement function '%s' may not be the target of a pointer assignment"_err_en_US,
             symbol->name());
         return false;
       }
-    } else if (symbol->has<ProcBindingDetails>() &&
-        context_.ShouldWarn(common::UsageWarning::Portability)) {
-      evaluate::SayWithDeclaration(foldingContext_.messages(), *symbol,
+    } else if (symbol->has<ProcBindingDetails>()) {
+      evaluate::SayWithDeclaration(context_.messages(), *symbol,
           "Procedure binding '%s' used as target of a pointer assignment"_port_en_US,
           symbol->name());
     }
   }
-  if (auto chars{Procedure::Characterize(d, foldingContext_)}) {
+  if (auto chars{Procedure::Characterize(d, context_)}) {
     return Check(d.GetName(), false, &*chars, d.GetSpecificIntrinsic());
   } else {
     return Check(d.GetName(), false);
@@ -384,7 +380,7 @@ bool PointerAssignmentChecker::Check(const evaluate::ProcedureDesignator &d) {
 }
 
 bool PointerAssignmentChecker::Check(const evaluate::ProcedureRef &ref) {
-  if (auto chars{Procedure::Characterize(ref, foldingContext_)}) {
+  if (auto chars{Procedure::Characterize(ref, context_)}) {
     if (chars->functionResult) {
       if (const auto *proc{chars->functionResult->IsProcedurePointer()}) {
         return Check(ref.proc().GetName(), true, proc);
@@ -411,7 +407,7 @@ bool PointerAssignmentChecker::LhsOkForUnlimitedPoly() const {
 
 template <typename... A>
 parser::Message *PointerAssignmentChecker::Say(A &&...x) {
-  auto *msg{foldingContext_.messages().Say(std::forward<A>(x)...)};
+  auto *msg{context_.messages().Say(std::forward<A>(x)...)};
   if (msg) {
     if (lhs_) {
       return evaluate::AttachDeclaration(msg, *lhs_);
@@ -481,14 +477,15 @@ static bool CheckPointerBounds(
   return isBoundsRemapping;
 }
 
-bool CheckPointerAssignment(SemanticsContext &context,
+bool CheckPointerAssignment(evaluate::FoldingContext &context,
     const evaluate::Assignment &assignment, const Scope &scope) {
   return CheckPointerAssignment(context, assignment.lhs, assignment.rhs, scope,
-      CheckPointerBounds(context.foldingContext(), assignment));
+      CheckPointerBounds(context, assignment));
 }
 
-bool CheckPointerAssignment(SemanticsContext &context, const SomeExpr &lhs,
-    const SomeExpr &rhs, const Scope &scope, bool isBoundsRemapping) {
+bool CheckPointerAssignment(evaluate::FoldingContext &context,
+    const SomeExpr &lhs, const SomeExpr &rhs, const Scope &scope,
+    bool isBoundsRemapping) {
   const Symbol *pointer{GetLastSymbol(lhs)};
   if (!pointer) {
     return false; // error was reported
@@ -500,16 +497,16 @@ bool CheckPointerAssignment(SemanticsContext &context, const SomeExpr &lhs,
   return lhsOk && rhsOk; // don't short-circuit
 }
 
-bool CheckStructConstructorPointerComponent(SemanticsContext &context,
+bool CheckStructConstructorPointerComponent(evaluate::FoldingContext &context,
     const Symbol &lhs, const SomeExpr &rhs, const Scope &scope) {
   return PointerAssignmentChecker{context, scope, lhs}
       .set_pointerComponentLHS(&lhs)
       .Check(rhs);
 }
 
-bool CheckPointerAssignment(SemanticsContext &context, parser::CharBlock source,
-    const std::string &description, const DummyDataObject &lhs,
-    const SomeExpr &rhs, const Scope &scope) {
+bool CheckPointerAssignment(evaluate::FoldingContext &context,
+    parser::CharBlock source, const std::string &description,
+    const DummyDataObject &lhs, const SomeExpr &rhs, const Scope &scope) {
   return PointerAssignmentChecker{context, scope, source, description}
       .set_lhsType(common::Clone(lhs.type))
       .set_isContiguous(lhs.attrs.test(DummyDataObject::Attr::Contiguous))
@@ -517,10 +514,9 @@ bool CheckPointerAssignment(SemanticsContext &context, parser::CharBlock source,
       .Check(rhs);
 }
 
-bool CheckInitialTarget(SemanticsContext &context, const SomeExpr &pointer,
-    const SomeExpr &init, const Scope &scope) {
-  return evaluate::IsInitialDataTarget(
-             init, &context.foldingContext().messages()) &&
+bool CheckInitialTarget(evaluate::FoldingContext &context,
+    const SomeExpr &pointer, const SomeExpr &init, const Scope &scope) {
+  return evaluate::IsInitialDataTarget(init, &context.messages()) &&
       CheckPointerAssignment(context, pointer, init, scope);
 }
 

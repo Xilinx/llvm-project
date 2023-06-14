@@ -20,7 +20,6 @@ def Quantization_Dialect : Dialect {
   let cppNamespace = "::mlir::quant";
 
   let useDefaultTypePrinterParser = 1;
-  let usePropertiesForAttributes = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -35,7 +34,7 @@ class quant_TypedPrimitiveOrContainer<Type etype> :
 
 // An implementation of QuantizedType.
 def quant_QuantizedType :
-    Type<CPred<"::llvm::isa<mlir::quant::QuantizedType>($_self)">, "QuantizedType">;
+    Type<CPred<"$_self.isa<mlir::quant::QuantizedType>()">, "QuantizedType">;
 
 // A primitive type that can represent a real value. This is either a
 // floating point value or a quantized type.
@@ -65,7 +64,7 @@ def quant_RealOrStorageValueType :
 // An implementation of UniformQuantizedType.
 def quant_UniformQuantizedType :
     DialectType<Quantization_Dialect,
-                CPred<"::llvm::isa<UniformQuantizedType>($_self)">,
+                CPred<"$_self.isa<UniformQuantizedType>()">,
                 "UniformQuantizedType">;
 
 // Predicate for detecting a container or primitive of UniformQuantizedType.

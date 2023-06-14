@@ -18,6 +18,10 @@
 
 namespace llvm {
 
+class AssumptionCacheTracker;
+class CallGraph;
+class ProfileSummaryInfo;
+
 /// The inliner pass for the new pass manager.
 ///
 /// This pass wires together the inlining utilities and the inline cost

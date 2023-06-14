@@ -806,9 +806,6 @@ public:
   /// context.
   unsigned FunctionScopesStart = 0;
 
-  /// Track the number of currently active capturing scopes.
-  unsigned CapturingFunctionScopes = 0;
-
   ArrayRef<sema::FunctionScopeInfo*> getFunctionScopes() const {
     return llvm::ArrayRef(FunctionScopes.begin() + FunctionScopesStart,
                           FunctionScopes.end());
@@ -1787,12 +1784,6 @@ public:
                           const FunctionDecl *Fn, Sema &S);
     SemaDiagnosticBuilder(SemaDiagnosticBuilder &&D);
     SemaDiagnosticBuilder(const SemaDiagnosticBuilder &) = default;
-
-    // The copy and move assignment operator is defined as deleted pending
-    // further motivation.
-    SemaDiagnosticBuilder &operator=(const SemaDiagnosticBuilder &) = delete;
-    SemaDiagnosticBuilder &operator=(SemaDiagnosticBuilder &&) = delete;
-
     ~SemaDiagnosticBuilder();
 
     bool isImmediate() const { return ImmediateDiag.has_value(); }
@@ -2363,6 +2354,9 @@ public:
   Module *getOwningModule(const Decl *Entity) {
     return Entity->getOwningModule();
   }
+
+  // Determine whether the module M belongs to the  current TU.
+  bool isModuleUnitOfCurrentTU(const Module *M) const;
 
   /// Make a merged definition of an existing hidden definition \p ND
   /// visible at the specified location.
@@ -5720,11 +5714,6 @@ public:
 
   bool CheckTypeTraitArity(unsigned Arity, SourceLocation Loc, size_t N);
 
-  bool ActOnAlignasTypeArgument(StringRef KWName, ParsedType Ty,
-                                SourceLocation OpLoc, SourceRange R);
-  bool CheckAlignasTypeArgument(StringRef KWName, TypeSourceInfo *TInfo,
-                                SourceLocation OpLoc, SourceRange R);
-
   ExprResult CreateUnaryExprOrTypeTraitExpr(TypeSourceInfo *TInfo,
                                             SourceLocation OpLoc,
                                             UnaryExprOrTypeTrait ExprKind,
@@ -5743,8 +5732,7 @@ public:
   bool CheckUnaryExprOrTypeTraitOperand(Expr *E, UnaryExprOrTypeTrait ExprKind);
   bool CheckUnaryExprOrTypeTraitOperand(QualType ExprType, SourceLocation OpLoc,
                                         SourceRange ExprRange,
-                                        UnaryExprOrTypeTrait ExprKind,
-                                        StringRef KWName);
+                                        UnaryExprOrTypeTrait ExprKind);
   ExprResult ActOnSizeofParameterPackExpr(Scope *S,
                                           SourceLocation OpLoc,
                                           IdentifierInfo &Name,
@@ -6009,8 +5997,8 @@ public:
   ExprResult BuildVAArgExpr(SourceLocation BuiltinLoc, Expr *E,
                             TypeSourceInfo *TInfo, SourceLocation RPLoc);
 
-  // __builtin_LINE(), __builtin_FUNCTION(), __builtin_FUNCSIG(),
-  // __builtin_FILE(), __builtin_COLUMN(), __builtin_source_location()
+  // __builtin_LINE(), __builtin_FUNCTION(), __builtin_FILE(),
+  // __builtin_COLUMN(), __builtin_source_location()
   ExprResult ActOnSourceLocExpr(SourceLocExpr::IdentKind Kind,
                                 SourceLocation BuiltinLoc,
                                 SourceLocation RPLoc);
@@ -7115,6 +7103,14 @@ public:
                                          unsigned LambdaDependencyKind,
                                          LambdaCaptureDefault CaptureDefault);
 
+  /// Start the definition of a lambda expression.
+  CXXMethodDecl *
+  startLambdaDefinition(CXXRecordDecl *Class, SourceRange IntroducerRange,
+                        TypeSourceInfo *MethodType, SourceLocation EndLoc,
+                        ArrayRef<ParmVarDecl *> Params,
+                        ConstexprSpecKind ConstexprKind, StorageClass SC,
+                        Expr *TrailingRequiresClause);
+
   /// Number lambda for linkage purposes if necessary.
   void handleLambdaNumbering(CXXRecordDecl *Class, CXXMethodDecl *Method,
                              std::optional<CXXRecordDecl::LambdaNumbering>
@@ -7788,7 +7784,7 @@ public:
   void CheckConversionDeclarator(Declarator &D, QualType &R,
                                  StorageClass& SC);
   Decl *ActOnConversionDeclarator(CXXConversionDecl *Conversion);
-  bool CheckDeductionGuideDeclarator(Declarator &D, QualType &R,
+  void CheckDeductionGuideDeclarator(Declarator &D, QualType &R,
                                      StorageClass &SC);
   void CheckDeductionGuideTemplate(FunctionTemplateDecl *TD);
 
@@ -8082,7 +8078,7 @@ public:
   /// Determine whether a particular identifier might be the name in a C++1z
   /// deduction-guide declaration.
   bool isDeductionGuideName(Scope *S, const IdentifierInfo &Name,
-                            SourceLocation NameLoc, CXXScopeSpec &SS,
+                            SourceLocation NameLoc,
                             ParsedTemplateTy *Template = nullptr);
 
   bool DiagnoseUnknownTemplateName(const IdentifierInfo &II,
@@ -9261,9 +9257,6 @@ public:
       /// Entity is either a {Class|Var}TemplatePartialSpecializationDecl or
       /// a TemplateDecl.
       DeducedTemplateArgumentSubstitution,
-
-      /// We are substituting into a lambda expression.
-      LambdaExpressionSubstitution,
 
       /// We are substituting prior template arguments into a new
       /// template parameter. The template parameter itself is either a
@@ -12933,6 +12926,13 @@ public:
   /// CheckCXXBooleanCondition - Returns true if conversion to bool is invalid.
   ExprResult CheckCXXBooleanCondition(Expr *CondExpr, bool IsConstexpr = false);
 
+  /// ConvertIntegerToTypeWarnOnOverflow - Convert the specified APInt to have
+  /// the specified width and sign.  If an overflow occurs, detect it and emit
+  /// the specified diagnostic.
+  void ConvertIntegerToTypeWarnOnOverflow(llvm::APSInt &OldVal,
+                                          unsigned NewWidth, bool NewSign,
+                                          SourceLocation Loc, unsigned DiagID);
+
   /// Checks that the Objective-C declaration is declared in the global scope.
   /// Emits an error and marks the declaration as invalid if it's not declared
   /// in the global scope.
@@ -13552,8 +13552,6 @@ private:
   bool CheckWebAssemblyBuiltinFunctionCall(const TargetInfo &TI,
                                            unsigned BuiltinID,
                                            CallExpr *TheCall);
-  bool CheckNVPTXBuiltinFunctionCall(const TargetInfo &TI, unsigned BuiltinID,
-                                     CallExpr *TheCall);
 
   bool SemaBuiltinVAStart(unsigned BuiltinID, CallExpr *TheCall);
   bool SemaBuiltinVAStartARMMicrosoft(CallExpr *Call);
@@ -13956,6 +13954,20 @@ public:
   SemaDiagnosticBuilder SYCLDiagIfDeviceCode(SourceLocation Loc,
                                              unsigned DiagID);
 
+  /// Check whether we're allowed to call Callee from the current context.
+  ///
+  /// - If the call is never allowed in a semantically-correct program
+  ///   emits an error and returns false.
+  ///
+  /// - If the call is allowed in semantically-correct programs, but only if
+  ///   it's never codegen'ed, creates a deferred diagnostic to be emitted if
+  ///   and when the caller is codegen'ed, and returns true.
+  ///
+  /// - Otherwise, returns true without emitting any diagnostics.
+  ///
+  /// Adds Callee to DeviceCallGraph if we don't know if its caller will be
+  /// codegen'ed yet.
+  bool checkSYCLDeviceFunction(SourceLocation Loc, FunctionDecl *Callee);
   void deepTypeCheckForSYCLDevice(SourceLocation UsedAt,
                                   llvm::DenseSet<QualType> Visited,
                                   ValueDecl *DeclToCheck);

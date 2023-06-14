@@ -60,7 +60,7 @@ if (MLIR_ENABLE_VULKAN_RUNNER)
     MLIRBuiltinToLLVMIRTranslation
     MLIRExecutionEngine
     MLIRFuncDialect
-    MLIRGPUDialect
+    MLIRGPUOps
     MLIRIR
     MLIRJitRunner
     MLIRLLVMDialect

@@ -129,7 +129,7 @@ Type Parser::parseComplexType() {
   if (!elementType ||
       parseToken(Token::greater, "expected '>' in complex type"))
     return nullptr;
-  if (!isa<FloatType>(elementType) && !isa<IntegerType>(elementType))
+  if (!elementType.isa<FloatType>() && !elementType.isa<IntegerType>())
     return emitError(elementTypeLoc, "invalid element type for complex"),
            nullptr;
 
@@ -207,8 +207,8 @@ Type Parser::parseMemRefType() {
     if (!attr)
       return failure();
 
-    if (isa<MemRefLayoutAttrInterface>(attr)) {
-      layout = cast<MemRefLayoutAttrInterface>(attr);
+    if (attr.isa<MemRefLayoutAttrInterface>()) {
+      layout = attr.cast<MemRefLayoutAttrInterface>();
     } else if (memorySpace) {
       return emitError("multiple memory spaces specified in memref type");
     } else {
@@ -383,7 +383,7 @@ Type Parser::parseTensorType() {
   Attribute encoding;
   if (consumeIf(Token::comma)) {
     encoding = parseAttribute();
-    if (auto v = dyn_cast_or_null<VerifiableTensorEncoding>(encoding)) {
+    if (auto v = encoding.dyn_cast_or_null<VerifiableTensorEncoding>()) {
       if (failed(v.verifyEncoding(dimensions, elementType,
                                   [&] { return emitError(); })))
         return nullptr;

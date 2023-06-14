@@ -42,7 +42,6 @@
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MCA/CodeEmitter.h"
-#include "llvm/MCA/CustomBehaviour.h"
 #include "llvm/Support/raw_ostream.h"
 
 #define DEBUG_TYPE "llvm-mca"
@@ -58,10 +57,6 @@ class InstructionInfoView : public InstructionView {
   bool PrintBarriers;
   using UniqueInst = std::unique_ptr<Instruction>;
   ArrayRef<UniqueInst> LoweredInsts;
-  const InstrumentManager &IM;
-  using InstToInstrumentsT =
-      DenseMap<const MCInst *, SmallVector<mca::Instrument *>>;
-  const InstToInstrumentsT &InstToInstruments;
 
   struct InstructionInfoViewData {
     unsigned NumMicroOpcodes = 0;
@@ -82,12 +77,10 @@ public:
                       bool ShouldPrintEncodings, llvm::ArrayRef<llvm::MCInst> S,
                       llvm::MCInstPrinter &IP,
                       ArrayRef<UniqueInst> LoweredInsts,
-                      bool ShouldPrintBarriers, const InstrumentManager &IM,
-                      const InstToInstrumentsT &InstToInstruments)
+                      bool ShouldPrintBarriers)
       : InstructionView(ST, IP, S), MCII(II), CE(C),
         PrintEncodings(ShouldPrintEncodings),
-        PrintBarriers(ShouldPrintBarriers), LoweredInsts(LoweredInsts), IM(IM),
-        InstToInstruments(InstToInstruments) {}
+        PrintBarriers(ShouldPrintBarriers), LoweredInsts(LoweredInsts) {}
 
   void printView(llvm::raw_ostream &OS) const override;
   StringRef getNameAsString() const override { return "InstructionInfoView"; }

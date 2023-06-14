@@ -208,6 +208,7 @@ public:
   }
 
   bool isInternalLinkageDecl(const NamedDecl *ND);
+  const DeclContext *IgnoreLinkageSpecDecls(const DeclContext *DC);
 
   /// @}
 };
@@ -395,6 +396,7 @@ class CXXNameMangler {
   bool isStdNamespace(const DeclContext *DC);
 
   const RecordDecl *GetLocalClassDecl(const Decl *D);
+  const DeclContext *IgnoreLinkageSpecDecls(const DeclContext *DC);
   bool isSpecializedAs(QualType S, llvm::StringRef Name, QualType A);
   bool isStdCharSpecialization(const ClassTemplateSpecializationDecl *SD,
                                llvm::StringRef Name, bool HasAllocator);

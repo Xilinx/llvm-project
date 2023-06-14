@@ -106,7 +106,6 @@ class CompilerInvocation : public CompilerInvocationBase {
   Fortran::common::IntrinsicTypeDefaultKinds defaultKinds;
 
   bool enableConformanceChecks = false;
-  bool enableUsageChecks = false;
 
   /// Used in e.g. unparsing to dump the analyzed rather than the original
   /// parse-tree objects.
@@ -185,9 +184,6 @@ public:
     return enableConformanceChecks;
   }
 
-  bool &getEnableUsageChecks() { return enableUsageChecks; }
-  const bool &getEnableUsageChecks() const { return enableUsageChecks; }
-
   Fortran::parser::AnalyzedObjectsAsFortran &getAsFortran() {
     return asFortran;
   }
@@ -212,9 +208,6 @@ public:
 
   // Enables the std=f2018 conformance check
   void setEnableConformanceChecks() { enableConformanceChecks = true; }
-
-  // Enables the usage checks
-  void setEnableUsageChecks() { enableUsageChecks = true; }
 
   /// Useful setters
   void setModuleDir(std::string &dir) { moduleDir = dir; }

@@ -28,7 +28,7 @@ struct MLProgramOpAsmDialectInterface : public OpAsmDialectInterface {
   using OpAsmDialectInterface::OpAsmDialectInterface;
 
   AliasResult getAlias(Attribute attr, raw_ostream &os) const override {
-    if (llvm::isa<ExternAttr>(attr)) {
+    if (attr.isa<ExternAttr>()) {
       os << "extern";
       return AliasResult::OverridableAlias;
     }

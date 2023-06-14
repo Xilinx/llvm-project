@@ -1221,7 +1221,6 @@ ELFDumper<ELFT>::dumpNoteSection(const Elf_Shdr *Shdr) {
 
   std::vector<ELFYAML::NoteEntry> Entries;
   ArrayRef<uint8_t> Content = *ContentOrErr;
-  size_t Align = std::max<size_t>(Shdr->sh_addralign, 4);
   while (!Content.empty()) {
     if (Content.size() < sizeof(Elf_Nhdr)) {
       S->Content = yaml::BinaryRef(*ContentOrErr);
@@ -1229,16 +1228,16 @@ ELFDumper<ELFT>::dumpNoteSection(const Elf_Shdr *Shdr) {
     }
 
     const Elf_Nhdr *Header = reinterpret_cast<const Elf_Nhdr *>(Content.data());
-    if (Content.size() < Header->getSize(Align)) {
+    if (Content.size() < Header->getSize()) {
       S->Content = yaml::BinaryRef(*ContentOrErr);
       return S.release();
     }
 
     Elf_Note Note(*Header);
     Entries.push_back(
-        {Note.getName(), Note.getDesc(Align), (ELFYAML::ELF_NT)Note.getType()});
+        {Note.getName(), Note.getDesc(), (ELFYAML::ELF_NT)Note.getType()});
 
-    Content = Content.drop_front(Header->getSize(Align));
+    Content = Content.drop_front(Header->getSize());
   }
 
   S->Notes = std::move(Entries);

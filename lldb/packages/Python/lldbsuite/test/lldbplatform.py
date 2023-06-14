@@ -8,23 +8,9 @@ import itertools
 # LLDB modules
 import lldb
 
-(
-    windows,
-    linux,
-    macosx,
-    darwin,
-    ios,
-    tvos,
-    watchos,
-    bridgeos,
-    darwin_all,
-    darwin_embedded,
-    darwin_simulator,
-    freebsd,
-    netbsd,
-    bsd_all,
-    android,
-) = range(15)
+windows, linux, macosx, darwin, ios, tvos, watchos, bridgeos, darwin_all, \
+    darwin_embedded, darwin_simulator, freebsd, netbsd, bsd_all, android \
+    = range(15)
 
 __darwin_embedded = ["ios", "tvos", "watchos", "bridgeos"]
 __darwin_simulators = ["iphonesimulator", "watchsimulator", "appletvsimulator"]
@@ -44,11 +30,12 @@ __name_lookup = {
     freebsd: ["freebsd"],
     netbsd: ["netbsd"],
     bsd_all: ["freebsd", "netbsd"],
-    android: ["android"],
+    android: ["android"]
 }
 
 
 def translate(values):
+
     if isinstance(values, int):
         # This is a value from the platform enumeration, translate it.
         return __name_lookup[values]

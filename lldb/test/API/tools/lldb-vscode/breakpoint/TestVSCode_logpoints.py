@@ -13,27 +13,28 @@ import os
 
 
 class TestVSCode_logpoints(lldbvscode_testcase.VSCodeTestCaseBase):
+
     def setUp(self):
         lldbvscode_testcase.VSCodeTestCaseBase.setUp(self)
 
-        self.main_basename = "main-copy.cpp"
+        self.main_basename = 'main-copy.cpp'
         self.main_path = os.path.realpath(self.getBuildArtifact(self.main_basename))
 
     @skipIfWindows
     @skipIfRemote
     def test_logmessage_basic(self):
-        """Tests breakpoint logmessage basic functionality."""
-        before_loop_line = line_number("main.cpp", "// before loop")
-        loop_line = line_number("main.cpp", "// break loop")
-        after_loop_line = line_number("main.cpp", "// after loop")
+        '''Tests breakpoint logmessage basic functionality.'''
+        before_loop_line = line_number('main.cpp', '// before loop')
+        loop_line = line_number('main.cpp', '// break loop')
+        after_loop_line = line_number('main.cpp', '// after loop')
 
         program = self.getBuildArtifact("a.out")
         self.build_and_launch(program)
 
         # Set a breakpoint at a line before loop
         before_loop_breakpoint_ids = self.set_source_breakpoints(
-            self.main_path, [before_loop_line]
-        )
+            self.main_path,
+            [before_loop_line])
         self.assertEquals(len(before_loop_breakpoint_ids), 1, "expect one breakpoint")
 
         self.vscode.request_continue()
@@ -52,7 +53,7 @@ class TestVSCode_logpoints(lldbvscode_testcase.VSCodeTestCaseBase):
         [loop_breakpoint_id, post_loop_breakpoint_id] = self.set_source_breakpoints(
             self.main_path,
             [loop_line, after_loop_line],
-            [{"logMessage": logMessage}, {}],
+            [{'logMessage': logMessage}, {}]
         )
 
         # Continue to trigger the breakpoint with log messages
@@ -77,21 +78,22 @@ class TestVSCode_logpoints(lldbvscode_testcase.VSCodeTestCaseBase):
             result = idx + 3
             self.assertEqual(logMessage_line, logMessage_prefix + str(result))
 
+
     @skipIfWindows
     @skipIfRemote
     def test_logmessage_advanced(self):
-        """Tests breakpoint logmessage functionality for complex expression."""
-        before_loop_line = line_number("main.cpp", "// before loop")
-        loop_line = line_number("main.cpp", "// break loop")
-        after_loop_line = line_number("main.cpp", "// after loop")
+        '''Tests breakpoint logmessage functionality for complex expression.'''
+        before_loop_line = line_number('main.cpp', '// before loop')
+        loop_line = line_number('main.cpp', '// break loop')
+        after_loop_line = line_number('main.cpp', '// after loop')
 
         program = self.getBuildArtifact("a.out")
         self.build_and_launch(program)
 
         # Set a breakpoint at a line before loop
         before_loop_breakpoint_ids = self.set_source_breakpoints(
-            self.main_path, [before_loop_line]
-        )
+            self.main_path,
+            [before_loop_line])
         self.assertEquals(len(before_loop_breakpoint_ids), 1, "expect one breakpoint")
 
         self.vscode.request_continue()
@@ -106,14 +108,11 @@ class TestVSCode_logpoints(lldbvscode_testcase.VSCodeTestCaseBase):
         # 1. First at the loop line with logMessage
         # 2. Second guard breakpoint at a line after loop
         logMessage_prefix = "This is log message for { -- "
-        logMessage = (
-            logMessage_prefix
-            + "{int y = 0; if (i % 3 == 0) { y = i + 3;} else {y = i * 3;} y}"
-        )
+        logMessage = logMessage_prefix + "{int y = 0; if (i % 3 == 0) { y = i + 3;} else {y = i * 3;} y}"
         [loop_breakpoint_id, post_loop_breakpoint_id] = self.set_source_breakpoints(
             self.main_path,
             [loop_line, after_loop_line],
-            [{"logMessage": logMessage}, {}],
+            [{'logMessage': logMessage}, {}]
         )
 
         # Continue to trigger the breakpoint with log messages
@@ -141,20 +140,20 @@ class TestVSCode_logpoints(lldbvscode_testcase.VSCodeTestCaseBase):
     @skipIfWindows
     @skipIfRemote
     def test_logmessage_format(self):
-        """
-        Tests breakpoint logmessage functionality with format.
-        """
-        before_loop_line = line_number("main.cpp", "// before loop")
-        loop_line = line_number("main.cpp", "// break loop")
-        after_loop_line = line_number("main.cpp", "// after loop")
+        '''
+            Tests breakpoint logmessage functionality with format.
+        '''
+        before_loop_line = line_number('main.cpp', '// before loop')
+        loop_line = line_number('main.cpp', '// break loop')
+        after_loop_line = line_number('main.cpp', '// after loop')
 
         program = self.getBuildArtifact("a.out")
         self.build_and_launch(program)
 
         # Set a breakpoint at a line before loop
         before_loop_breakpoint_ids = self.set_source_breakpoints(
-            self.main_path, [before_loop_line]
-        )
+            self.main_path,
+            [before_loop_line])
         self.assertEquals(len(before_loop_breakpoint_ids), 1, "expect one breakpoint")
 
         self.vscode.request_continue()
@@ -175,7 +174,7 @@ class TestVSCode_logpoints(lldbvscode_testcase.VSCodeTestCaseBase):
         [loop_breakpoint_id, post_loop_breakpoint_id] = self.set_source_breakpoints(
             self.main_path,
             [loop_line, after_loop_line],
-            [{"logMessage": logMessage}, {}],
+            [{'logMessage': logMessage}, {}]
         )
 
         # Continue to trigger the breakpoint with log messages
@@ -198,28 +197,26 @@ class TestVSCode_logpoints(lldbvscode_testcase.VSCodeTestCaseBase):
         # Verify log message match
         for idx, logMessage_line in enumerate(logMessage_output):
             result = idx - 1
-            self.assertEqual(
-                logMessage_line,
-                logMessage_prefix + logMessage_with_format + str(result),
-            )
+            self.assertEqual(logMessage_line, logMessage_prefix + logMessage_with_format + str(result))
+
 
     @skipIfWindows
     @skipIfRemote
     def test_logmessage_format_failure(self):
-        """
-        Tests breakpoint logmessage format with parsing failure.
-        """
-        before_loop_line = line_number("main.cpp", "// before loop")
-        loop_line = line_number("main.cpp", "// break loop")
-        after_loop_line = line_number("main.cpp", "// after loop")
+        '''
+            Tests breakpoint logmessage format with parsing failure.
+        '''
+        before_loop_line = line_number('main.cpp', '// before loop')
+        loop_line = line_number('main.cpp', '// break loop')
+        after_loop_line = line_number('main.cpp', '// after loop')
 
         program = self.getBuildArtifact("a.out")
         self.build_and_launch(program)
 
         # Set a breakpoint at a line before loop
         before_loop_breakpoint_ids = self.set_source_breakpoints(
-            self.main_path, [before_loop_line]
-        )
+            self.main_path,
+            [before_loop_line])
         self.assertEquals(len(before_loop_breakpoint_ids), 1, "expect one breakpoint")
 
         self.vscode.request_continue()
@@ -240,7 +237,7 @@ class TestVSCode_logpoints(lldbvscode_testcase.VSCodeTestCaseBase):
         [loop_breakpoint_id, post_loop_breakpoint_id] = self.set_source_breakpoints(
             self.main_path,
             [loop_line, after_loop_line],
-            [{"logMessage": logMessage}, {}],
+            [{'logMessage': logMessage}, {}]
         )
 
         # Continue to trigger the breakpoint with log messages
@@ -265,5 +262,4 @@ class TestVSCode_logpoints(lldbvscode_testcase.VSCodeTestCaseBase):
         self.assertEqual(len(logMessage_failure_output), 1)
         self.assertEqual(
             logMessage_failure_output[0].strip(),
-            failure_prefix + " missing hex number following '\\x'",
-        )
+            failure_prefix + " missing hex number following '\\x'")

@@ -33,12 +33,12 @@ neededValuesDominateInsertionPoint(const DominanceInfo &domInfo,
                                    Operation *insertionPoint,
                                    const SmallVector<Value> &neededValues) {
   for (Value val : neededValues) {
-    if (auto bbArg = dyn_cast<BlockArgument>(val)) {
+    if (auto bbArg = val.dyn_cast<BlockArgument>()) {
       Block *owner = bbArg.getOwner();
       if (!owner->findAncestorOpInBlock(*insertionPoint))
         return false;
     } else {
-      auto opResult = cast<OpResult>(val);
+      auto opResult = val.cast<OpResult>();
       if (!domInfo.dominates(opResult.getOwner(), insertionPoint))
         return false;
     }
@@ -75,7 +75,7 @@ findValidInsertionPoint(Operation *emptyTensorOp,
     // * in case of an OpResult: There must be at least one op right after the
     //                           defining op (the anchor op or one of its
     //                           parents).
-    if (auto bbArg = dyn_cast<BlockArgument>(val)) {
+    if (auto bbArg = val.dyn_cast<BlockArgument>()) {
       insertionPointCandidates.push_back(
           &bbArg.getOwner()->getOperations().front());
     } else {
@@ -132,13 +132,10 @@ LogicalResult mlir::bufferization::eliminateEmptyTensors(
       // Find tensor.empty ops on the reverse SSA use-def chain. Only follow
       // equivalent tensors. I.e., stop when there are ops such as extract_slice
       // on the path.
-      TraversalConfig config;
-      config.followEquivalentOnly = true;
-      config.alwaysIncludeLeaves = false;
       SetVector<Value> emptyTensors = state.findValueInReverseUseDefChain(
           operand.get(), /*condition=*/
           [&](Value val) { return val.getDefiningOp<tensor::EmptyOp>(); },
-          config);
+          /*followEquivalentOnly=*/true, /*alwaysIncludeLeaves=*/false);
 
       for (Value v : emptyTensors) {
         Operation *emptyTensorOp = v.getDefiningOp();

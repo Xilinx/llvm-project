@@ -53,7 +53,7 @@ updateFuncOp(func::FuncOp func,
   SmallVector<Type, 6> erasedResultTypes;
   BitVector erasedResultIndices(functionType.getNumResults());
   for (const auto &resultType : llvm::enumerate(functionType.getResults())) {
-    if (auto memrefType = dyn_cast<MemRefType>(resultType.value())) {
+    if (auto memrefType = resultType.value().dyn_cast<MemRefType>()) {
       if (!hasStaticIdentityLayout(memrefType) &&
           !hasFullyDynamicLayoutMap(memrefType)) {
         // Only buffers with static identity layout can be allocated. These can
@@ -103,7 +103,7 @@ static void updateReturnOps(func::FuncOp func,
     SmallVector<Value, 6> copyIntoOutParams;
     SmallVector<Value, 6> keepAsReturnOperands;
     for (Value operand : op.getOperands()) {
-      if (isa<MemRefType>(operand.getType()))
+      if (operand.getType().isa<MemRefType>())
         copyIntoOutParams.push_back(operand);
       else
         keepAsReturnOperands.push_back(operand);
@@ -137,7 +137,7 @@ updateCalls(ModuleOp module,
     SmallVector<Value, 6> replaceWithNewCallResults;
     SmallVector<Value, 6> replaceWithOutParams;
     for (OpResult result : op.getResults()) {
-      if (isa<MemRefType>(result.getType()))
+      if (result.getType().isa<MemRefType>())
         replaceWithOutParams.push_back(result);
       else
         replaceWithNewCallResults.push_back(result);
@@ -145,13 +145,13 @@ updateCalls(ModuleOp module,
     SmallVector<Value, 6> outParams;
     OpBuilder builder(op);
     for (Value memref : replaceWithOutParams) {
-      if (!cast<MemRefType>(memref.getType()).hasStaticShape()) {
+      if (!memref.getType().cast<MemRefType>().hasStaticShape()) {
         op.emitError()
             << "cannot create out param for dynamically shaped result";
         didFail = true;
         return;
       }
-      auto memrefType = cast<MemRefType>(memref.getType());
+      auto memrefType = memref.getType().cast<MemRefType>();
       auto allocType =
           MemRefType::get(memrefType.getShape(), memrefType.getElementType(),
                           AffineMap(), memrefType.getMemorySpace());

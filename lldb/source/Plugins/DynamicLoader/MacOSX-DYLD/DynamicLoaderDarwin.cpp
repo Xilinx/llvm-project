@@ -372,6 +372,7 @@ bool DynamicLoaderDarwin::JSONImageInformationIntoImageInfo(
     // clang-format off
     if (!image->HasKey("load_address") ||
         !image->HasKey("pathname") ||
+        !image->HasKey("mod_date") ||
         !image->HasKey("mach_header") ||
         image->GetValueForKey("mach_header")->GetAsDictionary() == nullptr ||
         !image->HasKey("segments") ||
@@ -381,7 +382,9 @@ bool DynamicLoaderDarwin::JSONImageInformationIntoImageInfo(
     }
     // clang-format on
     image_infos[i].address =
-        image->GetValueForKey("load_address")->GetUnsignedIntegerValue();
+        image->GetValueForKey("load_address")->GetAsInteger()->GetValue();
+    image_infos[i].mod_date =
+        image->GetValueForKey("mod_date")->GetAsInteger()->GetValue();
     image_infos[i].file_spec.SetFile(
         image->GetValueForKey("pathname")->GetAsString()->GetValue(),
         FileSpec::Style::native);
@@ -389,13 +392,13 @@ bool DynamicLoaderDarwin::JSONImageInformationIntoImageInfo(
     StructuredData::Dictionary *mh =
         image->GetValueForKey("mach_header")->GetAsDictionary();
     image_infos[i].header.magic =
-        mh->GetValueForKey("magic")->GetUnsignedIntegerValue();
+        mh->GetValueForKey("magic")->GetAsInteger()->GetValue();
     image_infos[i].header.cputype =
-        mh->GetValueForKey("cputype")->GetUnsignedIntegerValue();
+        mh->GetValueForKey("cputype")->GetAsInteger()->GetValue();
     image_infos[i].header.cpusubtype =
-        mh->GetValueForKey("cpusubtype")->GetUnsignedIntegerValue();
+        mh->GetValueForKey("cpusubtype")->GetAsInteger()->GetValue();
     image_infos[i].header.filetype =
-        mh->GetValueForKey("filetype")->GetUnsignedIntegerValue();
+        mh->GetValueForKey("filetype")->GetAsInteger()->GetValue();
 
     if (image->HasKey("min_version_os_name")) {
       std::string os_name =
@@ -438,19 +441,19 @@ bool DynamicLoaderDarwin::JSONImageInformationIntoImageInfo(
 
     if (mh->HasKey("flags"))
       image_infos[i].header.flags =
-          mh->GetValueForKey("flags")->GetUnsignedIntegerValue();
+          mh->GetValueForKey("flags")->GetAsInteger()->GetValue();
     else
       image_infos[i].header.flags = 0;
 
     if (mh->HasKey("ncmds"))
       image_infos[i].header.ncmds =
-          mh->GetValueForKey("ncmds")->GetUnsignedIntegerValue();
+          mh->GetValueForKey("ncmds")->GetAsInteger()->GetValue();
     else
       image_infos[i].header.ncmds = 0;
 
     if (mh->HasKey("sizeofcmds"))
       image_infos[i].header.sizeofcmds =
-          mh->GetValueForKey("sizeofcmds")->GetUnsignedIntegerValue();
+          mh->GetValueForKey("sizeofcmds")->GetAsInteger()->GetValue();
     else
       image_infos[i].header.sizeofcmds = 0;
 
@@ -463,32 +466,35 @@ bool DynamicLoaderDarwin::JSONImageInformationIntoImageInfo(
           segments->GetItemAtIndex(j)->GetAsDictionary();
       segment.name =
           ConstString(seg->GetValueForKey("name")->GetAsString()->GetValue());
-      segment.vmaddr = seg->GetValueForKey("vmaddr")->GetUnsignedIntegerValue();
-      segment.vmsize = seg->GetValueForKey("vmsize")->GetUnsignedIntegerValue();
+      segment.vmaddr =
+          seg->GetValueForKey("vmaddr")->GetAsInteger()->GetValue();
+      segment.vmsize =
+          seg->GetValueForKey("vmsize")->GetAsInteger()->GetValue();
       segment.fileoff =
-          seg->GetValueForKey("fileoff")->GetUnsignedIntegerValue();
+          seg->GetValueForKey("fileoff")->GetAsInteger()->GetValue();
       segment.filesize =
-          seg->GetValueForKey("filesize")->GetUnsignedIntegerValue();
+          seg->GetValueForKey("filesize")->GetAsInteger()->GetValue();
       segment.maxprot =
-          seg->GetValueForKey("maxprot")->GetUnsignedIntegerValue();
+          seg->GetValueForKey("maxprot")->GetAsInteger()->GetValue();
 
       // Fields that aren't used by DynamicLoaderDarwin so debugserver doesn't
       // currently send them in the reply.
 
       if (seg->HasKey("initprot"))
         segment.initprot =
-            seg->GetValueForKey("initprot")->GetUnsignedIntegerValue();
+            seg->GetValueForKey("initprot")->GetAsInteger()->GetValue();
       else
         segment.initprot = 0;
 
       if (seg->HasKey("flags"))
-        segment.flags = seg->GetValueForKey("flags")->GetUnsignedIntegerValue();
+        segment.flags =
+            seg->GetValueForKey("flags")->GetAsInteger()->GetValue();
       else
         segment.flags = 0;
 
       if (seg->HasKey("nsects"))
         segment.nsects =
-            seg->GetValueForKey("nsects")->GetUnsignedIntegerValue();
+            seg->GetValueForKey("nsects")->GetAsInteger()->GetValue();
       else
         segment.nsects = 0;
 
@@ -805,11 +811,11 @@ void DynamicLoaderDarwin::ImageInfo::PutToLog(Log *log) const {
   if (!log)
     return;
   if (address == LLDB_INVALID_ADDRESS) {
-    LLDB_LOG(log, "uuid={1} path='{2}' (UNLOADED)", uuid.GetAsString(),
-             file_spec.GetPath());
-  } else {
-    LLDB_LOG(log, "address={0:x+16} uuid={2} path='{3}'", address,
+    LLDB_LOG(log, "modtime={0:x+8} uuid={1} path='{2}' (UNLOADED)", mod_date,
              uuid.GetAsString(), file_spec.GetPath());
+  } else {
+    LLDB_LOG(log, "address={0:x+16} modtime={1:x+8} uuid={2} path='{3}'",
+             address, mod_date, uuid.GetAsString(), file_spec.GetPath());
     for (uint32_t i = 0; i < segments.size(); ++i)
       segments[i].PutToLog(log, slide);
   }

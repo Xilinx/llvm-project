@@ -262,11 +262,10 @@ static bool skipRelocationProcessAArch64(uint64_t &Type, uint64_t Contents) {
   return false;
 }
 
-static uint64_t encodeValueX86(uint64_t Type, uint64_t Value, uint64_t PC) {
+static uint64_t adjustValueX86(uint64_t Type, uint64_t Value, uint64_t PC) {
   switch (Type) {
   default:
-    llvm_unreachable("unsupported relocation");
-  case ELF::R_X86_64_64:
+    llvm_unreachable("not supported relocation");
   case ELF::R_X86_64_32:
     break;
   case ELF::R_X86_64_PC32:
@@ -276,10 +275,10 @@ static uint64_t encodeValueX86(uint64_t Type, uint64_t Value, uint64_t PC) {
   return Value;
 }
 
-static uint64_t encodeValueAArch64(uint64_t Type, uint64_t Value, uint64_t PC) {
+static uint64_t adjustValueAArch64(uint64_t Type, uint64_t Value, uint64_t PC) {
   switch (Type) {
   default:
-    llvm_unreachable("unsupported relocation");
+    llvm_unreachable("not supported relocation");
   case ELF::R_AARCH64_ABS32:
     break;
   case ELF::R_AARCH64_PREL16:
@@ -567,10 +566,11 @@ bool Relocation::skipRelocationProcess(uint64_t &Type, uint64_t Contents) {
   return skipRelocationProcessX86(Type, Contents);
 }
 
-uint64_t Relocation::encodeValue(uint64_t Type, uint64_t Value, uint64_t PC) {
+uint64_t Relocation::adjustValue(uint64_t Type, uint64_t Value,
+                                 uint64_t PC) {
   if (Arch == Triple::aarch64)
-    return encodeValueAArch64(Type, Value, PC);
-  return encodeValueX86(Type, Value, PC);
+    return adjustValueAArch64(Type, Value, PC);
+  return adjustValueX86(Type, Value, PC);
 }
 
 uint64_t Relocation::extractValue(uint64_t Type, uint64_t Contents,

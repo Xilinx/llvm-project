@@ -160,13 +160,13 @@ public:
 
   /// Process ELF note to read AMDGPU metadata from respective information
   /// fields.
-  Error processNote(const object::ELF64LE::Note &Note, size_t Align) {
+  Error processNote(const object::ELF64LE::Note &Note) {
     if (Note.getName() != "AMDGPU")
       return Error::success(); // We are not interested in other things
 
     assert(Note.getType() == ELF::NT_AMDGPU_METADATA &&
            "Parse AMDGPU MetaData");
-    auto Desc = Note.getDesc(Align);
+    auto Desc = Note.getDesc();
     StringRef MsgPackString =
         StringRef(reinterpret_cast<const char *>(Desc.data()), Desc.size());
     msgpack::Document MsgPackDoc;
@@ -313,7 +313,7 @@ Error readAMDGPUMetaDataFromImage(MemoryBufferRef MemBuffer,
       if (Err)
         return Err;
       // Fills the KernelInfoTabel entries in the reader
-      if ((Err = Reader.processNote(N, S.sh_addralign)))
+      if ((Err = Reader.processNote(N)))
         return Err;
     }
   }

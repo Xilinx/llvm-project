@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "LoopConvertUtils.h"
-#include "../utils/ASTUtils.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/Lambda.h"
@@ -191,7 +190,13 @@ const Expr *digThroughConstructorsConversions(const Expr *E) {
 
 /// Returns true when two Exprs are equivalent.
 bool areSameExpr(ASTContext *Context, const Expr *First, const Expr *Second) {
-  return utils::areStatementsIdentical(First, Second, *Context, true);
+  if (!First || !Second)
+    return false;
+
+  llvm::FoldingSetNodeID FirstID, SecondID;
+  First->Profile(FirstID, *Context, true);
+  Second->Profile(SecondID, *Context, true);
+  return FirstID == SecondID;
 }
 
 /// Returns the DeclRefExpr represented by E, or NULL if there isn't one.

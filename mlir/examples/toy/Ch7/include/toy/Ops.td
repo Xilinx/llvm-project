@@ -48,7 +48,7 @@ class Toy_Op<string mnemonic, list<Trait> traits = []> :
 // using StructType in a similar way to Tensor or MemRef. We use `DialectType`
 // to demarcate the StructType as belonging to the Toy dialect.
 def Toy_StructType :
-    DialectType<Toy_Dialect, CPred<"::llvm::isa<StructType>($_self)">,
+    DialectType<Toy_Dialect, CPred<"$_self.isa<StructType>()">,
                 "Toy struct type">;
 
 // Provide a definition of the types that are used within the Toy dialect.

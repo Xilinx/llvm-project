@@ -508,16 +508,6 @@ namespace {
       OS << "    assert(!is" << getLowerName() << "Expr);\n";
       OS << "    return " << getLowerName() << "Type;\n";
       OS << "  }";
-
-      OS << "  std::optional<unsigned> getCached" << getUpperName()
-         << "Value() const {\n";
-      OS << "    return " << getLowerName() << "Cache;\n";
-      OS << "  }";
-
-      OS << "  void setCached" << getUpperName()
-         << "Value(unsigned AlignVal) {\n";
-      OS << "    " << getLowerName() << "Cache = AlignVal;\n";
-      OS << "  }";
     }
 
     void writeAccessorDefinitions(raw_ostream &OS) const override {
@@ -539,6 +529,21 @@ namespace {
          << "Expr->containsErrors();\n";
       OS << "  return " << getLowerName()
          << "Type->getType()->containsErrors();\n";
+      OS << "}\n";
+
+      // FIXME: Do not do the calculation here
+      // FIXME: Handle types correctly
+      // A null pointer means maximum alignment
+      OS << "unsigned " << getAttrName() << "Attr::get" << getUpperName()
+         << "(ASTContext &Ctx) const {\n";
+      OS << "  assert(!is" << getUpperName() << "Dependent());\n";
+      OS << "  if (is" << getLowerName() << "Expr)\n";
+      OS << "    return " << getLowerName() << "Expr ? " << getLowerName()
+         << "Expr->EvaluateKnownConstInt(Ctx).getZExtValue()"
+         << " * Ctx.getCharWidth() : "
+         << "Ctx.getTargetDefaultAlignForAttributeAligned();\n";
+      OS << "  else\n";
+      OS << "    return 0; // FIXME\n";
       OS << "}\n";
     }
 
@@ -596,8 +601,7 @@ namespace {
       OS << "union {\n";
       OS << "Expr *" << getLowerName() << "Expr;\n";
       OS << "TypeSourceInfo *" << getLowerName() << "Type;\n";
-      OS << "};\n";
-      OS << "std::optional<unsigned> " << getLowerName() << "Cache;\n";
+      OS << "};";
     }
 
     void writePCHReadArgs(raw_ostream &OS) const override {
@@ -624,21 +628,14 @@ namespace {
     }
 
     std::string getIsOmitted() const override {
-      return "!((is" + getLowerName().str() + "Expr && " +
-             getLowerName().str() + "Expr) || (!is" + getLowerName().str() +
-             "Expr && " + getLowerName().str() + "Type))";
+      return "!is" + getLowerName().str() + "Expr || !" + getLowerName().str()
+             + "Expr";
     }
 
     void writeValue(raw_ostream &OS) const override {
       OS << "\";\n";
-      OS << "    if (is" << getLowerName() << "Expr && " << getLowerName()
-         << "Expr)";
-      OS << "      " << getLowerName()
+      OS << "    " << getLowerName()
          << "Expr->printPretty(OS, nullptr, Policy);\n";
-      OS << "    if (!is" << getLowerName() << "Expr && " << getLowerName()
-         << "Type)";
-      OS << "      " << getLowerName()
-         << "Type->getType().print(OS, Policy);\n";
       OS << "    OS << \"";
     }
 

@@ -59,8 +59,7 @@ static func::ReturnOp getAssumedUniqueReturnOp(func::FuncOp funcOp) {
 
 /// Return the func::FuncOp called by `callOp`.
 static func::FuncOp getCalledFunction(CallOpInterface callOp) {
-  SymbolRefAttr sym =
-      llvm::dyn_cast_if_present<SymbolRefAttr>(callOp.getCallableForCallee());
+  SymbolRefAttr sym = callOp.getCallableForCallee().dyn_cast<SymbolRefAttr>();
   if (!sym)
     return nullptr;
   return dyn_cast_or_null<func::FuncOp>(

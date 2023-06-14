@@ -134,10 +134,11 @@ struct std::formatter<status, CharT> {
   }
 
 private:
-  [[noreturn]] void throw_format_error([[maybe_unused]] const char* s) const {
+  void throw_format_error(const char* s) const {
 #ifndef TEST_HAS_NO_EXCEPTIONS
     throw std::format_error(s);
 #else
+    (void)s;
     std::abort();
 #endif
   }

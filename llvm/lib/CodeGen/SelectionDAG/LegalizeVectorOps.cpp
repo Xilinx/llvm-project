@@ -302,7 +302,8 @@ SDValue VectorLegalizer::LegalizeOp(SDValue Op) {
       ISD::CondCode CCCode = cast<CondCodeSDNode>(Node->getOperand(3))->get();
       Action = TLI.getCondCodeAction(CCCode, OpVT);
       if (Action == TargetLowering::Legal)
-        Action = TLI.getOperationAction(Node->getOpcode(), OpVT);
+        Action =
+            TLI.getOperationAction(Node->getOpcode(), Node->getValueType(0));
     } else {
       Action = TLI.getOperationAction(Node->getOpcode(), ValVT);
     }
@@ -463,7 +464,7 @@ SDValue VectorLegalizer::LegalizeOp(SDValue Op) {
     ISD::CondCode CCCode = cast<CondCodeSDNode>(Node->getOperand(2))->get();
     Action = TLI.getCondCodeAction(CCCode, OpVT);
     if (Action == TargetLowering::Legal)
-      Action = TLI.getOperationAction(Node->getOpcode(), OpVT);
+      Action = TLI.getOperationAction(Node->getOpcode(), Node->getValueType(0));
     break;
   }
 

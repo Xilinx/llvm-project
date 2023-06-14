@@ -265,11 +265,11 @@ struct OperationFormat {
 
     /// Get the variable this type is resolved to, or nullptr.
     const NamedTypeConstraint *getVariable() const {
-      return llvm::dyn_cast_if_present<const NamedTypeConstraint *>(resolver);
+      return resolver.dyn_cast<const NamedTypeConstraint *>();
     }
     /// Get the attribute this type is resolved to, or nullptr.
     const NamedAttribute *getAttribute() const {
-      return llvm::dyn_cast_if_present<const NamedAttribute *>(resolver);
+      return resolver.dyn_cast<const NamedAttribute *>();
     }
     /// Get the transformer for the type of the variable, or std::nullopt.
     std::optional<StringRef> getVarTransformer() const {
@@ -2283,8 +2283,7 @@ void OperationFormat::genElementPrinter(FormatElement *element,
       body << "  {\n"
            << "    auto type = " << op.getGetterName(var->name)
            << "().getType();\n"
-           << "    if (auto validType = ::llvm::dyn_cast<" << cppClass
-           << ">(type))\n"
+           << "    if (auto validType = type.dyn_cast<" << cppClass << ">())\n"
            << "      _odsPrinter.printStrippedAttrOrType(validType);\n"
            << "   else\n"
            << "     _odsPrinter << type;\n"

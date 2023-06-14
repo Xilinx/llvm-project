@@ -429,16 +429,18 @@ bool ReadDataFromGlobal(Constant *C, uint64_t ByteOffset, unsigned char *CurPtr,
     return true;
 
   if (auto *CI = dyn_cast<ConstantInt>(C)) {
-    if ((CI->getBitWidth() & 7) != 0)
+    if (CI->getBitWidth() > 64 ||
+        (CI->getBitWidth() & 7) != 0)
       return false;
-    const APInt &Val = CI->getValue();
+
+    uint64_t Val = CI->getZExtValue();
     unsigned IntBytes = unsigned(CI->getBitWidth()/8);
 
     for (unsigned i = 0; i != BytesLeft && ByteOffset != IntBytes; ++i) {
-      unsigned n = ByteOffset;
+      int n = ByteOffset;
       if (!DL.isLittleEndian())
         n = IntBytes - n - 1;
-      CurPtr[i] = Val.extractBits(8, n * 8).getZExtValue();
+      CurPtr[i] = (unsigned char)(Val >> (n * 8));
       ++ByteOffset;
     }
     return true;
@@ -499,22 +501,16 @@ bool ReadDataFromGlobal(Constant *C, uint64_t ByteOffset, unsigned char *CurPtr,
 
   if (isa<ConstantArray>(C) || isa<ConstantVector>(C) ||
       isa<ConstantDataSequential>(C)) {
-    uint64_t NumElts, EltSize;
+    uint64_t NumElts;
     Type *EltTy;
     if (auto *AT = dyn_cast<ArrayType>(C->getType())) {
       NumElts = AT->getNumElements();
       EltTy = AT->getElementType();
-      EltSize = DL.getTypeAllocSize(EltTy);
     } else {
       NumElts = cast<FixedVectorType>(C->getType())->getNumElements();
       EltTy = cast<FixedVectorType>(C->getType())->getElementType();
-      // TODO: For non-byte-sized vectors, current implementation assumes there is
-      // padding to the next byte boundary between elements.
-      if (!DL.typeSizeEqualsStoreSize(EltTy))
-        return false;
-
-      EltSize = DL.getTypeStoreSize(EltTy);
     }
+    uint64_t EltSize = DL.getTypeAllocSize(EltTy);
     uint64_t Index = ByteOffset / EltSize;
     uint64_t Offset = ByteOffset - Index * EltSize;
 

@@ -148,8 +148,7 @@ uint32_t SBLaunchInfo::GetNumArguments() {
 const char *SBLaunchInfo::GetArgumentAtIndex(uint32_t idx) {
   LLDB_INSTRUMENT_VA(this, idx);
 
-  return ConstString(m_opaque_sp->GetArguments().GetArgumentAtIndex(idx))
-      .GetCString();
+  return m_opaque_sp->GetArguments().GetArgumentAtIndex(idx);
 }
 
 void SBLaunchInfo::SetArguments(const char **argv, bool append) {
@@ -177,7 +176,7 @@ const char *SBLaunchInfo::GetEnvironmentEntryAtIndex(uint32_t idx) {
 
   if (idx > GetNumEnvironmentEntries())
     return nullptr;
-  return ConstString(m_opaque_sp->GetEnvp()[idx]).GetCString();
+  return m_opaque_sp->GetEnvp()[idx];
 }
 
 void SBLaunchInfo::SetEnvironmentEntries(const char **envp, bool append) {
@@ -234,7 +233,7 @@ void SBLaunchInfo::SetLaunchFlags(uint32_t flags) {
 const char *SBLaunchInfo::GetProcessPluginName() {
   LLDB_INSTRUMENT_VA(this);
 
-  return ConstString(m_opaque_sp->GetProcessPluginName()).GetCString();
+  return m_opaque_sp->GetProcessPluginName();
 }
 
 void SBLaunchInfo::SetProcessPluginName(const char *plugin_name) {
@@ -316,7 +315,7 @@ void SBLaunchInfo::SetLaunchEventData(const char *data) {
 const char *SBLaunchInfo::GetLaunchEventData() const {
   LLDB_INSTRUMENT_VA(this);
 
-  return ConstString(m_opaque_sp->GetLaunchEventData()).GetCString();
+  return m_opaque_sp->GetLaunchEventData();
 }
 
 void SBLaunchInfo::SetDetachOnError(bool enable) {

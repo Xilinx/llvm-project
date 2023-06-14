@@ -3,10 +3,6 @@
 ; RUN:   -target-abi ilp32f < %s | FileCheck -check-prefix=CHECKIZFH %s
 ; RUN: llc -mtriple=riscv64 -mattr=+zfh -verify-machineinstrs \
 ; RUN:   -target-abi lp64f < %s | FileCheck -check-prefix=CHECKIZFH %s
-; RUN: llc -mtriple=riscv32 -mattr=+zhinx -verify-machineinstrs \
-; RUN:   -target-abi ilp32 < %s | FileCheck -check-prefix=CHECKIZHINX %s
-; RUN: llc -mtriple=riscv64 -mattr=+zhinx -verify-machineinstrs \
-; RUN:   -target-abi lp64 < %s | FileCheck -check-prefix=CHECKIZHINX %s
 ; RUN: llc -mtriple=riscv32 -mattr=+zfh -verify-machineinstrs \
 ; RUN:   < %s | FileCheck -check-prefix=RV32I %s
 ; RUN: llc -mtriple=riscv64 -mattr=+zfh -verify-machineinstrs \
@@ -19,21 +15,12 @@
 ; RUN:   < %s | FileCheck -check-prefix=CHECKIZFHMIN %s
 ; RUN: llc -mtriple=riscv64 -mattr=+zfhmin -verify-machineinstrs \
 ; RUN:   < %s | FileCheck -check-prefix=CHECKIZFHMIN %s
-; RUN: llc -mtriple=riscv32 -mattr=+zhinxmin -verify-machineinstrs \
-; RUN:   -target-abi ilp32 < %s | FileCheck -check-prefix=CHECKIZHINXMIN %s
-; RUN: llc -mtriple=riscv64 -mattr=+zhinxmin -verify-machineinstrs \
-; RUN:   -target-abi lp64 < %s | FileCheck -check-prefix=CHECKIZHINXMIN %s
 
 define i32 @fcmp_false(half %a, half %b) nounwind {
 ; CHECKIZFH-LABEL: fcmp_false:
 ; CHECKIZFH:       # %bb.0:
 ; CHECKIZFH-NEXT:    li a0, 0
 ; CHECKIZFH-NEXT:    ret
-;
-; CHECKIZHINX-LABEL: fcmp_false:
-; CHECKIZHINX:       # %bb.0:
-; CHECKIZHINX-NEXT:    li a0, 0
-; CHECKIZHINX-NEXT:    ret
 ;
 ; RV32I-LABEL: fcmp_false:
 ; RV32I:       # %bb.0:
@@ -54,11 +41,6 @@ define i32 @fcmp_false(half %a, half %b) nounwind {
 ; CHECKIZFHMIN:       # %bb.0:
 ; CHECKIZFHMIN-NEXT:    li a0, 0
 ; CHECKIZFHMIN-NEXT:    ret
-;
-; CHECKIZHINXMIN-LABEL: fcmp_false:
-; CHECKIZHINXMIN:       # %bb.0:
-; CHECKIZHINXMIN-NEXT:    li a0, 0
-; CHECKIZHINXMIN-NEXT:    ret
   %1 = fcmp false half %a, %b
   %2 = zext i1 %1 to i32
   ret i32 %2
@@ -69,11 +51,6 @@ define i32 @fcmp_oeq(half %a, half %b) nounwind {
 ; CHECKIZFH:       # %bb.0:
 ; CHECKIZFH-NEXT:    feq.h a0, fa0, fa1
 ; CHECKIZFH-NEXT:    ret
-;
-; CHECKIZHINX-LABEL: fcmp_oeq:
-; CHECKIZHINX:       # %bb.0:
-; CHECKIZHINX-NEXT:    feq.h a0, a0, a1
-; CHECKIZHINX-NEXT:    ret
 ;
 ; RV32I-LABEL: fcmp_oeq:
 ; RV32I:       # %bb.0:
@@ -104,13 +81,6 @@ define i32 @fcmp_oeq(half %a, half %b) nounwind {
 ; CHECKIZFHMIN-NEXT:    fcvt.s.h fa5, fa5
 ; CHECKIZFHMIN-NEXT:    feq.s a0, fa5, fa4
 ; CHECKIZFHMIN-NEXT:    ret
-;
-; CHECKIZHINXMIN-LABEL: fcmp_oeq:
-; CHECKIZHINXMIN:       # %bb.0:
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a1, a1
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a0, a0
-; CHECKIZHINXMIN-NEXT:    feq.s a0, a0, a1
-; CHECKIZHINXMIN-NEXT:    ret
   %1 = fcmp oeq half %a, %b
   %2 = zext i1 %1 to i32
   ret i32 %2
@@ -121,11 +91,6 @@ define i32 @fcmp_ogt(half %a, half %b) nounwind {
 ; CHECKIZFH:       # %bb.0:
 ; CHECKIZFH-NEXT:    flt.h a0, fa1, fa0
 ; CHECKIZFH-NEXT:    ret
-;
-; CHECKIZHINX-LABEL: fcmp_ogt:
-; CHECKIZHINX:       # %bb.0:
-; CHECKIZHINX-NEXT:    flt.h a0, a1, a0
-; CHECKIZHINX-NEXT:    ret
 ;
 ; RV32I-LABEL: fcmp_ogt:
 ; RV32I:       # %bb.0:
@@ -156,13 +121,6 @@ define i32 @fcmp_ogt(half %a, half %b) nounwind {
 ; CHECKIZFHMIN-NEXT:    fcvt.s.h fa5, fa5
 ; CHECKIZFHMIN-NEXT:    flt.s a0, fa5, fa4
 ; CHECKIZFHMIN-NEXT:    ret
-;
-; CHECKIZHINXMIN-LABEL: fcmp_ogt:
-; CHECKIZHINXMIN:       # %bb.0:
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a0, a0
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a1, a1
-; CHECKIZHINXMIN-NEXT:    flt.s a0, a1, a0
-; CHECKIZHINXMIN-NEXT:    ret
   %1 = fcmp ogt half %a, %b
   %2 = zext i1 %1 to i32
   ret i32 %2
@@ -173,11 +131,6 @@ define i32 @fcmp_oge(half %a, half %b) nounwind {
 ; CHECKIZFH:       # %bb.0:
 ; CHECKIZFH-NEXT:    fle.h a0, fa1, fa0
 ; CHECKIZFH-NEXT:    ret
-;
-; CHECKIZHINX-LABEL: fcmp_oge:
-; CHECKIZHINX:       # %bb.0:
-; CHECKIZHINX-NEXT:    fle.h a0, a1, a0
-; CHECKIZHINX-NEXT:    ret
 ;
 ; RV32I-LABEL: fcmp_oge:
 ; RV32I:       # %bb.0:
@@ -208,13 +161,6 @@ define i32 @fcmp_oge(half %a, half %b) nounwind {
 ; CHECKIZFHMIN-NEXT:    fcvt.s.h fa5, fa5
 ; CHECKIZFHMIN-NEXT:    fle.s a0, fa5, fa4
 ; CHECKIZFHMIN-NEXT:    ret
-;
-; CHECKIZHINXMIN-LABEL: fcmp_oge:
-; CHECKIZHINXMIN:       # %bb.0:
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a0, a0
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a1, a1
-; CHECKIZHINXMIN-NEXT:    fle.s a0, a1, a0
-; CHECKIZHINXMIN-NEXT:    ret
   %1 = fcmp oge half %a, %b
   %2 = zext i1 %1 to i32
   ret i32 %2
@@ -225,11 +171,6 @@ define i32 @fcmp_olt(half %a, half %b) nounwind {
 ; CHECKIZFH:       # %bb.0:
 ; CHECKIZFH-NEXT:    flt.h a0, fa0, fa1
 ; CHECKIZFH-NEXT:    ret
-;
-; CHECKIZHINX-LABEL: fcmp_olt:
-; CHECKIZHINX:       # %bb.0:
-; CHECKIZHINX-NEXT:    flt.h a0, a0, a1
-; CHECKIZHINX-NEXT:    ret
 ;
 ; RV32I-LABEL: fcmp_olt:
 ; RV32I:       # %bb.0:
@@ -260,13 +201,6 @@ define i32 @fcmp_olt(half %a, half %b) nounwind {
 ; CHECKIZFHMIN-NEXT:    fcvt.s.h fa5, fa5
 ; CHECKIZFHMIN-NEXT:    flt.s a0, fa5, fa4
 ; CHECKIZFHMIN-NEXT:    ret
-;
-; CHECKIZHINXMIN-LABEL: fcmp_olt:
-; CHECKIZHINXMIN:       # %bb.0:
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a1, a1
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a0, a0
-; CHECKIZHINXMIN-NEXT:    flt.s a0, a0, a1
-; CHECKIZHINXMIN-NEXT:    ret
   %1 = fcmp olt half %a, %b
   %2 = zext i1 %1 to i32
   ret i32 %2
@@ -277,11 +211,6 @@ define i32 @fcmp_ole(half %a, half %b) nounwind {
 ; CHECKIZFH:       # %bb.0:
 ; CHECKIZFH-NEXT:    fle.h a0, fa0, fa1
 ; CHECKIZFH-NEXT:    ret
-;
-; CHECKIZHINX-LABEL: fcmp_ole:
-; CHECKIZHINX:       # %bb.0:
-; CHECKIZHINX-NEXT:    fle.h a0, a0, a1
-; CHECKIZHINX-NEXT:    ret
 ;
 ; RV32I-LABEL: fcmp_ole:
 ; RV32I:       # %bb.0:
@@ -312,13 +241,6 @@ define i32 @fcmp_ole(half %a, half %b) nounwind {
 ; CHECKIZFHMIN-NEXT:    fcvt.s.h fa5, fa5
 ; CHECKIZFHMIN-NEXT:    fle.s a0, fa5, fa4
 ; CHECKIZFHMIN-NEXT:    ret
-;
-; CHECKIZHINXMIN-LABEL: fcmp_ole:
-; CHECKIZHINXMIN:       # %bb.0:
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a1, a1
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a0, a0
-; CHECKIZHINXMIN-NEXT:    fle.s a0, a0, a1
-; CHECKIZHINXMIN-NEXT:    ret
   %1 = fcmp ole half %a, %b
   %2 = zext i1 %1 to i32
   ret i32 %2
@@ -331,13 +253,6 @@ define i32 @fcmp_one(half %a, half %b) nounwind {
 ; CHECKIZFH-NEXT:    flt.h a1, fa1, fa0
 ; CHECKIZFH-NEXT:    or a0, a1, a0
 ; CHECKIZFH-NEXT:    ret
-;
-; CHECKIZHINX-LABEL: fcmp_one:
-; CHECKIZHINX:       # %bb.0:
-; CHECKIZHINX-NEXT:    flt.h a2, a0, a1
-; CHECKIZHINX-NEXT:    flt.h a0, a1, a0
-; CHECKIZHINX-NEXT:    or a0, a0, a2
-; CHECKIZHINX-NEXT:    ret
 ;
 ; RV32I-LABEL: fcmp_one:
 ; RV32I:       # %bb.0:
@@ -376,15 +291,6 @@ define i32 @fcmp_one(half %a, half %b) nounwind {
 ; CHECKIZFHMIN-NEXT:    flt.s a1, fa4, fa5
 ; CHECKIZFHMIN-NEXT:    or a0, a1, a0
 ; CHECKIZFHMIN-NEXT:    ret
-;
-; CHECKIZHINXMIN-LABEL: fcmp_one:
-; CHECKIZHINXMIN:       # %bb.0:
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a1, a1
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a0, a0
-; CHECKIZHINXMIN-NEXT:    flt.s a2, a0, a1
-; CHECKIZHINXMIN-NEXT:    flt.s a0, a1, a0
-; CHECKIZHINXMIN-NEXT:    or a0, a0, a2
-; CHECKIZHINXMIN-NEXT:    ret
   %1 = fcmp one half %a, %b
   %2 = zext i1 %1 to i32
   ret i32 %2
@@ -397,13 +303,6 @@ define i32 @fcmp_ord(half %a, half %b) nounwind {
 ; CHECKIZFH-NEXT:    feq.h a1, fa0, fa0
 ; CHECKIZFH-NEXT:    and a0, a1, a0
 ; CHECKIZFH-NEXT:    ret
-;
-; CHECKIZHINX-LABEL: fcmp_ord:
-; CHECKIZHINX:       # %bb.0:
-; CHECKIZHINX-NEXT:    feq.h a1, a1, a1
-; CHECKIZHINX-NEXT:    feq.h a0, a0, a0
-; CHECKIZHINX-NEXT:    and a0, a0, a1
-; CHECKIZHINX-NEXT:    ret
 ;
 ; RV32I-LABEL: fcmp_ord:
 ; RV32I:       # %bb.0:
@@ -442,15 +341,6 @@ define i32 @fcmp_ord(half %a, half %b) nounwind {
 ; CHECKIZFHMIN-NEXT:    feq.s a1, fa5, fa5
 ; CHECKIZFHMIN-NEXT:    and a0, a1, a0
 ; CHECKIZFHMIN-NEXT:    ret
-;
-; CHECKIZHINXMIN-LABEL: fcmp_ord:
-; CHECKIZHINXMIN:       # %bb.0:
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a1, a1
-; CHECKIZHINXMIN-NEXT:    feq.s a1, a1, a1
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a0, a0
-; CHECKIZHINXMIN-NEXT:    feq.s a0, a0, a0
-; CHECKIZHINXMIN-NEXT:    and a0, a0, a1
-; CHECKIZHINXMIN-NEXT:    ret
   %1 = fcmp ord half %a, %b
   %2 = zext i1 %1 to i32
   ret i32 %2
@@ -464,14 +354,6 @@ define i32 @fcmp_ueq(half %a, half %b) nounwind {
 ; CHECKIZFH-NEXT:    or a0, a1, a0
 ; CHECKIZFH-NEXT:    xori a0, a0, 1
 ; CHECKIZFH-NEXT:    ret
-;
-; CHECKIZHINX-LABEL: fcmp_ueq:
-; CHECKIZHINX:       # %bb.0:
-; CHECKIZHINX-NEXT:    flt.h a2, a0, a1
-; CHECKIZHINX-NEXT:    flt.h a0, a1, a0
-; CHECKIZHINX-NEXT:    or a0, a0, a2
-; CHECKIZHINX-NEXT:    xori a0, a0, 1
-; CHECKIZHINX-NEXT:    ret
 ;
 ; RV32I-LABEL: fcmp_ueq:
 ; RV32I:       # %bb.0:
@@ -514,16 +396,6 @@ define i32 @fcmp_ueq(half %a, half %b) nounwind {
 ; CHECKIZFHMIN-NEXT:    or a0, a1, a0
 ; CHECKIZFHMIN-NEXT:    xori a0, a0, 1
 ; CHECKIZFHMIN-NEXT:    ret
-;
-; CHECKIZHINXMIN-LABEL: fcmp_ueq:
-; CHECKIZHINXMIN:       # %bb.0:
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a1, a1
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a0, a0
-; CHECKIZHINXMIN-NEXT:    flt.s a2, a0, a1
-; CHECKIZHINXMIN-NEXT:    flt.s a0, a1, a0
-; CHECKIZHINXMIN-NEXT:    or a0, a0, a2
-; CHECKIZHINXMIN-NEXT:    xori a0, a0, 1
-; CHECKIZHINXMIN-NEXT:    ret
   %1 = fcmp ueq half %a, %b
   %2 = zext i1 %1 to i32
   ret i32 %2
@@ -535,12 +407,6 @@ define i32 @fcmp_ugt(half %a, half %b) nounwind {
 ; CHECKIZFH-NEXT:    fle.h a0, fa0, fa1
 ; CHECKIZFH-NEXT:    xori a0, a0, 1
 ; CHECKIZFH-NEXT:    ret
-;
-; CHECKIZHINX-LABEL: fcmp_ugt:
-; CHECKIZHINX:       # %bb.0:
-; CHECKIZHINX-NEXT:    fle.h a0, a0, a1
-; CHECKIZHINX-NEXT:    xori a0, a0, 1
-; CHECKIZHINX-NEXT:    ret
 ;
 ; RV32I-LABEL: fcmp_ugt:
 ; RV32I:       # %bb.0:
@@ -575,14 +441,6 @@ define i32 @fcmp_ugt(half %a, half %b) nounwind {
 ; CHECKIZFHMIN-NEXT:    fle.s a0, fa5, fa4
 ; CHECKIZFHMIN-NEXT:    xori a0, a0, 1
 ; CHECKIZFHMIN-NEXT:    ret
-;
-; CHECKIZHINXMIN-LABEL: fcmp_ugt:
-; CHECKIZHINXMIN:       # %bb.0:
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a1, a1
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a0, a0
-; CHECKIZHINXMIN-NEXT:    fle.s a0, a0, a1
-; CHECKIZHINXMIN-NEXT:    xori a0, a0, 1
-; CHECKIZHINXMIN-NEXT:    ret
   %1 = fcmp ugt half %a, %b
   %2 = zext i1 %1 to i32
   ret i32 %2
@@ -594,12 +452,6 @@ define i32 @fcmp_uge(half %a, half %b) nounwind {
 ; CHECKIZFH-NEXT:    flt.h a0, fa0, fa1
 ; CHECKIZFH-NEXT:    xori a0, a0, 1
 ; CHECKIZFH-NEXT:    ret
-;
-; CHECKIZHINX-LABEL: fcmp_uge:
-; CHECKIZHINX:       # %bb.0:
-; CHECKIZHINX-NEXT:    flt.h a0, a0, a1
-; CHECKIZHINX-NEXT:    xori a0, a0, 1
-; CHECKIZHINX-NEXT:    ret
 ;
 ; RV32I-LABEL: fcmp_uge:
 ; RV32I:       # %bb.0:
@@ -634,14 +486,6 @@ define i32 @fcmp_uge(half %a, half %b) nounwind {
 ; CHECKIZFHMIN-NEXT:    flt.s a0, fa5, fa4
 ; CHECKIZFHMIN-NEXT:    xori a0, a0, 1
 ; CHECKIZFHMIN-NEXT:    ret
-;
-; CHECKIZHINXMIN-LABEL: fcmp_uge:
-; CHECKIZHINXMIN:       # %bb.0:
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a1, a1
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a0, a0
-; CHECKIZHINXMIN-NEXT:    flt.s a0, a0, a1
-; CHECKIZHINXMIN-NEXT:    xori a0, a0, 1
-; CHECKIZHINXMIN-NEXT:    ret
   %1 = fcmp uge half %a, %b
   %2 = zext i1 %1 to i32
   ret i32 %2
@@ -653,12 +497,6 @@ define i32 @fcmp_ult(half %a, half %b) nounwind {
 ; CHECKIZFH-NEXT:    fle.h a0, fa1, fa0
 ; CHECKIZFH-NEXT:    xori a0, a0, 1
 ; CHECKIZFH-NEXT:    ret
-;
-; CHECKIZHINX-LABEL: fcmp_ult:
-; CHECKIZHINX:       # %bb.0:
-; CHECKIZHINX-NEXT:    fle.h a0, a1, a0
-; CHECKIZHINX-NEXT:    xori a0, a0, 1
-; CHECKIZHINX-NEXT:    ret
 ;
 ; RV32I-LABEL: fcmp_ult:
 ; RV32I:       # %bb.0:
@@ -693,14 +531,6 @@ define i32 @fcmp_ult(half %a, half %b) nounwind {
 ; CHECKIZFHMIN-NEXT:    fle.s a0, fa5, fa4
 ; CHECKIZFHMIN-NEXT:    xori a0, a0, 1
 ; CHECKIZFHMIN-NEXT:    ret
-;
-; CHECKIZHINXMIN-LABEL: fcmp_ult:
-; CHECKIZHINXMIN:       # %bb.0:
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a0, a0
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a1, a1
-; CHECKIZHINXMIN-NEXT:    fle.s a0, a1, a0
-; CHECKIZHINXMIN-NEXT:    xori a0, a0, 1
-; CHECKIZHINXMIN-NEXT:    ret
   %1 = fcmp ult half %a, %b
   %2 = zext i1 %1 to i32
   ret i32 %2
@@ -712,12 +542,6 @@ define i32 @fcmp_ule(half %a, half %b) nounwind {
 ; CHECKIZFH-NEXT:    flt.h a0, fa1, fa0
 ; CHECKIZFH-NEXT:    xori a0, a0, 1
 ; CHECKIZFH-NEXT:    ret
-;
-; CHECKIZHINX-LABEL: fcmp_ule:
-; CHECKIZHINX:       # %bb.0:
-; CHECKIZHINX-NEXT:    flt.h a0, a1, a0
-; CHECKIZHINX-NEXT:    xori a0, a0, 1
-; CHECKIZHINX-NEXT:    ret
 ;
 ; RV32I-LABEL: fcmp_ule:
 ; RV32I:       # %bb.0:
@@ -752,14 +576,6 @@ define i32 @fcmp_ule(half %a, half %b) nounwind {
 ; CHECKIZFHMIN-NEXT:    flt.s a0, fa5, fa4
 ; CHECKIZFHMIN-NEXT:    xori a0, a0, 1
 ; CHECKIZFHMIN-NEXT:    ret
-;
-; CHECKIZHINXMIN-LABEL: fcmp_ule:
-; CHECKIZHINXMIN:       # %bb.0:
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a0, a0
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a1, a1
-; CHECKIZHINXMIN-NEXT:    flt.s a0, a1, a0
-; CHECKIZHINXMIN-NEXT:    xori a0, a0, 1
-; CHECKIZHINXMIN-NEXT:    ret
   %1 = fcmp ule half %a, %b
   %2 = zext i1 %1 to i32
   ret i32 %2
@@ -771,12 +587,6 @@ define i32 @fcmp_une(half %a, half %b) nounwind {
 ; CHECKIZFH-NEXT:    feq.h a0, fa0, fa1
 ; CHECKIZFH-NEXT:    xori a0, a0, 1
 ; CHECKIZFH-NEXT:    ret
-;
-; CHECKIZHINX-LABEL: fcmp_une:
-; CHECKIZHINX:       # %bb.0:
-; CHECKIZHINX-NEXT:    feq.h a0, a0, a1
-; CHECKIZHINX-NEXT:    xori a0, a0, 1
-; CHECKIZHINX-NEXT:    ret
 ;
 ; RV32I-LABEL: fcmp_une:
 ; RV32I:       # %bb.0:
@@ -811,14 +621,6 @@ define i32 @fcmp_une(half %a, half %b) nounwind {
 ; CHECKIZFHMIN-NEXT:    feq.s a0, fa5, fa4
 ; CHECKIZFHMIN-NEXT:    xori a0, a0, 1
 ; CHECKIZFHMIN-NEXT:    ret
-;
-; CHECKIZHINXMIN-LABEL: fcmp_une:
-; CHECKIZHINXMIN:       # %bb.0:
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a1, a1
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a0, a0
-; CHECKIZHINXMIN-NEXT:    feq.s a0, a0, a1
-; CHECKIZHINXMIN-NEXT:    xori a0, a0, 1
-; CHECKIZHINXMIN-NEXT:    ret
   %1 = fcmp une half %a, %b
   %2 = zext i1 %1 to i32
   ret i32 %2
@@ -832,14 +634,6 @@ define i32 @fcmp_uno(half %a, half %b) nounwind {
 ; CHECKIZFH-NEXT:    and a0, a1, a0
 ; CHECKIZFH-NEXT:    xori a0, a0, 1
 ; CHECKIZFH-NEXT:    ret
-;
-; CHECKIZHINX-LABEL: fcmp_uno:
-; CHECKIZHINX:       # %bb.0:
-; CHECKIZHINX-NEXT:    feq.h a1, a1, a1
-; CHECKIZHINX-NEXT:    feq.h a0, a0, a0
-; CHECKIZHINX-NEXT:    and a0, a0, a1
-; CHECKIZHINX-NEXT:    xori a0, a0, 1
-; CHECKIZHINX-NEXT:    ret
 ;
 ; RV32I-LABEL: fcmp_uno:
 ; RV32I:       # %bb.0:
@@ -882,16 +676,6 @@ define i32 @fcmp_uno(half %a, half %b) nounwind {
 ; CHECKIZFHMIN-NEXT:    and a0, a1, a0
 ; CHECKIZFHMIN-NEXT:    xori a0, a0, 1
 ; CHECKIZFHMIN-NEXT:    ret
-;
-; CHECKIZHINXMIN-LABEL: fcmp_uno:
-; CHECKIZHINXMIN:       # %bb.0:
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a1, a1
-; CHECKIZHINXMIN-NEXT:    feq.s a1, a1, a1
-; CHECKIZHINXMIN-NEXT:    fcvt.s.h a0, a0
-; CHECKIZHINXMIN-NEXT:    feq.s a0, a0, a0
-; CHECKIZHINXMIN-NEXT:    and a0, a0, a1
-; CHECKIZHINXMIN-NEXT:    xori a0, a0, 1
-; CHECKIZHINXMIN-NEXT:    ret
   %1 = fcmp uno half %a, %b
   %2 = zext i1 %1 to i32
   ret i32 %2
@@ -902,11 +686,6 @@ define i32 @fcmp_true(half %a, half %b) nounwind {
 ; CHECKIZFH:       # %bb.0:
 ; CHECKIZFH-NEXT:    li a0, 1
 ; CHECKIZFH-NEXT:    ret
-;
-; CHECKIZHINX-LABEL: fcmp_true:
-; CHECKIZHINX:       # %bb.0:
-; CHECKIZHINX-NEXT:    li a0, 1
-; CHECKIZHINX-NEXT:    ret
 ;
 ; RV32I-LABEL: fcmp_true:
 ; RV32I:       # %bb.0:
@@ -927,11 +706,6 @@ define i32 @fcmp_true(half %a, half %b) nounwind {
 ; CHECKIZFHMIN:       # %bb.0:
 ; CHECKIZFHMIN-NEXT:    li a0, 1
 ; CHECKIZFHMIN-NEXT:    ret
-;
-; CHECKIZHINXMIN-LABEL: fcmp_true:
-; CHECKIZHINXMIN:       # %bb.0:
-; CHECKIZHINXMIN-NEXT:    li a0, 1
-; CHECKIZHINXMIN-NEXT:    ret
   %1 = fcmp true half %a, %b
   %2 = zext i1 %1 to i32
   ret i32 %2

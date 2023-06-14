@@ -1539,11 +1539,7 @@ void SIWholeQuadMode::lowerCopyInstrs() {
       assert(MI->getNumExplicitOperands() == 2);
     }
 
-    unsigned CopyOp = MI->getOperand(1).isReg()
-                          ? (unsigned)AMDGPU::COPY
-                          : TII->getMovOpcode(TRI->getRegClassForOperandReg(
-                                *MRI, MI->getOperand(0)));
-    MI->setDesc(TII->get(CopyOp));
+    MI->setDesc(TII->get(AMDGPU::COPY));
   }
 }
 

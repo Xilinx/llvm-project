@@ -48,12 +48,6 @@ extern const llvm::EnumEntry<unsigned> ElfSymbolTypes[NumElfSymbolTypes];
 
 class elf_symbol_iterator;
 
-struct ELFPltEntry {
-  StringRef Section;
-  std::optional<DataRefImpl> Symbol;
-  uint64_t Address;
-};
-
 class ELFObjectFileBase : public ObjectFile {
   friend class ELFRelocationRef;
   friend class ELFSectionRef;
@@ -103,7 +97,8 @@ public:
 
   virtual uint16_t getEMachine() const = 0;
 
-  std::vector<ELFPltEntry> getPltEntries() const;
+  std::vector<std::pair<std::optional<DataRefImpl>, uint64_t>>
+  getPltAddresses() const;
 
   /// Returns a vector containing a symbol version for each dynamic symbol.
   /// Returns an empty vector if version sections do not exist.

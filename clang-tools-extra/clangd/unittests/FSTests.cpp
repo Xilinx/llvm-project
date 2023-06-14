@@ -37,19 +37,18 @@ TEST(FSTests, PreambleStatusCache) {
                       std::chrono::system_clock::now(), 0, 0, 1024,
                       llvm::sys::fs::file_type::regular_file,
                       llvm::sys::fs::all_all);
-  StatCache.update(*FS, S, "real");
+  StatCache.update(*FS, S);
   auto ConsumeFS = StatCache.getConsumingFS(FS);
-  EXPECT_FALSE(ConsumeFS->status(testPath("fake")));
-  auto Cached = ConsumeFS->status(testPath("real"));
+  auto Cached = ConsumeFS->status(testPath("fake"));
   EXPECT_TRUE(Cached);
-  EXPECT_EQ(Cached->getName(), testPath("real"));
+  EXPECT_EQ(Cached->getName(), testPath("fake"));
   EXPECT_EQ(Cached->getUniqueID(), S.getUniqueID());
 
-  // real and temp/../real should hit the same cache entry.
+  // fake and temp/../fake should hit the same cache entry.
   // However, the Status returned reflects the actual path requested.
-  auto CachedDotDot = ConsumeFS->status(testPath("temp/../real"));
+  auto CachedDotDot = ConsumeFS->status(testPath("temp/../fake"));
   EXPECT_TRUE(CachedDotDot);
-  EXPECT_EQ(CachedDotDot->getName(), testPath("temp/../real"));
+  EXPECT_EQ(CachedDotDot->getName(), testPath("temp/../fake"));
   EXPECT_EQ(CachedDotDot->getUniqueID(), S.getUniqueID());
 }
 

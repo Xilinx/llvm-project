@@ -6,5 +6,4 @@ add_entrypoint_object(
     libc_errno.h     # Include this
   DEPENDS
     libc.include.errno
-    libc.src.__support.common
 )

@@ -68,7 +68,6 @@ public:
   bool IsNextLinePreprocessorDirective() const;
   TokenSequence TokenizePreprocessorDirective();
   Provenance GetCurrentProvenance() const { return GetProvenance(at_); }
-  const char *IsCompilerDirectiveSentinel(const char *, std::size_t) const;
 
   template <typename... A> Message &Say(A &&...a) {
     return messages_.Say(std::forward<A>(a)...);
@@ -183,6 +182,7 @@ private:
       const char *) const;
   std::optional<LineClassification> IsFreeFormCompilerDirectiveLine(
       const char *) const;
+  const char *IsCompilerDirectiveSentinel(const char *) const;
   LineClassification ClassifyLine(const char *) const;
   void SourceFormChange(std::string &&);
 

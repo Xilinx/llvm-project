@@ -41,8 +41,7 @@ public:
   /// corresponds to. The stat for the main file will not be cached.
   PreambleFileStatusCache(llvm::StringRef MainFilePath);
 
-  void update(const llvm::vfs::FileSystem &FS, llvm::vfs::Status S,
-              llvm::StringRef File);
+  void update(const llvm::vfs::FileSystem &FS, llvm::vfs::Status S);
 
   /// \p Path is a path stored in preamble.
   std::optional<llvm::vfs::Status> lookup(llvm::StringRef Path) const;

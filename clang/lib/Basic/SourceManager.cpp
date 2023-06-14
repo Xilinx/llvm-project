@@ -1312,7 +1312,7 @@ LineOffsetMapping LineOffsetMapping::get(llvm::MemoryBufferRef Buffer,
         if (*Buf == '\n') {
           ++Buf;
         }
-        [[fallthrough]];
+        LLVM_FALLTHROUGH;
       case '\n':
         LineOffsets.push_back(Buf - Start);
       };

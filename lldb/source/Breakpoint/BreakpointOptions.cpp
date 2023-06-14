@@ -230,7 +230,7 @@ std::unique_ptr<BreakpointOptions> BreakpointOptions::CreateFromStructuredData(
   bool enabled = true;
   bool one_shot = false;
   bool auto_continue = false;
-  uint32_t ignore_count = 0;
+  int32_t ignore_count = 0;
   llvm::StringRef condition_ref("");
   Flags set_options;
 

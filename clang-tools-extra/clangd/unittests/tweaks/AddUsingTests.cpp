@@ -498,30 +498,6 @@ void foo() {
   switch(one::two::ee{}) { case ee_one:break; }
 }
 )cpp"},
-      {R"cpp(
-#include "test.hpp"
-void foo() {
-  one::f^unc_temp<int>();
-})cpp",
-       R"cpp(
-#include "test.hpp"
-using one::func_temp;
-
-void foo() {
-  func_temp<int>();
-})cpp"},
-      {R"cpp(
-#include "test.hpp"
-void foo() {
-  one::va^r_temp<int>;
-})cpp",
-       R"cpp(
-#include "test.hpp"
-using one::var_temp;
-
-void foo() {
-  var_temp<int>;
-})cpp"},
   };
   llvm::StringMap<std::string> EditedFiles;
   for (const auto &Case : Cases) {
@@ -539,8 +515,6 @@ public:
 }
 using uu = two::cc;
 template<typename T> struct vec {};
-template <typename T> void func_temp();
-template <typename T> T var_temp();
 })cpp";
     // Typo correction is disabled in msvc-compatibility mode.
     ExtraArgs.push_back("-fno-ms-compatibility");

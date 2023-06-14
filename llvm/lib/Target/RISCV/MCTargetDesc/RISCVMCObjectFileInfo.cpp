@@ -17,13 +17,10 @@
 
 using namespace llvm;
 
-unsigned
-RISCVMCObjectFileInfo::getTextSectionAlignment(const MCSubtargetInfo &STI) {
-  bool RVC = STI.hasFeature(RISCV::FeatureStdExtC) ||
-             STI.hasFeature(RISCV::FeatureStdExtZca);
-  return RVC ? 2 : 4;
-}
-
 unsigned RISCVMCObjectFileInfo::getTextSectionAlignment() const {
-  return getTextSectionAlignment(*getContext().getSubtargetInfo());
+  const MCSubtargetInfo *STI = getContext().getSubtargetInfo();
+  return (STI->hasFeature(RISCV::FeatureStdExtC) ||
+          STI->hasFeature(RISCV::FeatureStdExtZca))
+             ? 2
+             : 4;
 }

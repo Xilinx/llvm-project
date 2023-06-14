@@ -305,8 +305,7 @@ TYPE_CONTEXT_PARSER(
 TYPE_CONTEXT_PARSER("IF construct"_en_US,
     construct<IfConstruct>(
         statement(construct<IfThenStmt>(maybe(name / ":"),
-            "IF" >> parenthesized(scalarLogicalExpr) /
-                    recovery("THEN"_tok, lookAhead(endOfStmt)))),
+            "IF" >> parenthesized(scalarLogicalExpr) / "THEN")),
         block,
         many(construct<IfConstruct::ElseIfBlock>(
             unambiguousStatement(construct<ElseIfStmt>(

@@ -9,7 +9,7 @@ add_mlir_library(MLIRNVGPUTestPasses
   MLIRAffineDialect
   MLIRAnalysis
   MLIRFuncDialect
-  MLIRGPUDialect
+  MLIRGPUOps
   MLIRLLVMDialect
   MLIRMemRefDialect
   MLIRNVGPUDialect

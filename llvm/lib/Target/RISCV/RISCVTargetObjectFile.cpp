@@ -7,18 +7,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "RISCVTargetObjectFile.h"
-#include "MCTargetDesc/RISCVMCObjectFileInfo.h"
 #include "RISCVTargetMachine.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCSectionELF.h"
 
 using namespace llvm;
-
-unsigned RISCVELFTargetObjectFile::getTextSectionAlignment() const {
-  return RISCVMCObjectFileInfo::getTextSectionAlignment(
-      *getContext().getSubtargetInfo());
-}
 
 void RISCVELFTargetObjectFile::Initialize(MCContext &Ctx,
                                           const TargetMachine &TM) {

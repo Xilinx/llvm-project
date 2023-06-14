@@ -172,7 +172,7 @@ public:
                                                   bool LocalAddress);
 
   /// If there is a section at the given local address, return its load
-  /// address, otherwise return std::nullopt.
+  /// address, otherwise return none.
   std::optional<uint64_t> getSectionLoadAddress(void *LocalAddress) const;
 
 private:

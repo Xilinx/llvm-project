@@ -115,7 +115,7 @@ void AnalysisRegions::endRegion(StringRef Description, SMLoc Loc) {
 InstrumentRegions::InstrumentRegions(llvm::SourceMgr &S) : CodeRegions(S) {}
 
 void InstrumentRegions::beginRegion(StringRef Description, SMLoc Loc,
-                                    UniqueInstrument I) {
+                                    SharedInstrument I) {
   if (Description.empty()) {
     SM.PrintMessage(Loc, llvm::SourceMgr::DK_Error,
                     "anonymous instrumentation regions are not permitted");
@@ -137,8 +137,7 @@ void InstrumentRegions::beginRegion(StringRef Description, SMLoc Loc,
   }
 
   ActiveRegions[Description] = Regions.size();
-  Regions.emplace_back(
-      std::make_unique<InstrumentRegion>(Description, Loc, std::move(I)));
+  Regions.emplace_back(std::make_unique<InstrumentRegion>(Description, Loc, I));
 }
 
 void InstrumentRegions::endRegion(StringRef Description, SMLoc Loc) {
@@ -159,13 +158,13 @@ void InstrumentRegions::endRegion(StringRef Description, SMLoc Loc) {
   }
 }
 
-const SmallVector<Instrument *>
+const SmallVector<SharedInstrument>
 InstrumentRegions::getActiveInstruments(SMLoc Loc) const {
-  SmallVector<Instrument *> AI;
+  SmallVector<SharedInstrument> AI;
   for (auto &R : Regions) {
     if (R->isLocInRange(Loc)) {
       InstrumentRegion *IR = static_cast<InstrumentRegion *>(R.get());
-      AI.push_back(IR->getInstrument());
+      AI.emplace_back(IR->getInstrument());
     }
   }
   return AI;

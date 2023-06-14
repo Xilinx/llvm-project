@@ -25,5 +25,4 @@ def fuzz_obj(obj):
     breakpoint = obj.GetBreakpoint()
     # Do fuzz testing on the breakpoint obj, it should not crash lldb.
     import sb_breakpoint
-
     sb_breakpoint.fuzz_obj(breakpoint)

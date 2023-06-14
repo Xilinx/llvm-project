@@ -307,11 +307,6 @@ def : DiagGroup<"c++98-c++11-c++14-c++17-compat-pedantic",
 def CXXPre23Compat : DiagGroup<"pre-c++23-compat">;
 def CXXPre23CompatPedantic :
   DiagGroup<"pre-c++23-compat-pedantic", [CXXPre23Compat]>;
-def CXXPre26Compat : DiagGroup<"pre-c++26-compat">;
-def CXXPre26CompatPedantic :
-  DiagGroup<"pre-c++26-compat-pedantic", [CXXPre26Compat]>;
-def : DiagGroup<"pre-c++2c-compat", [CXXPre26Compat]>;
-def : DiagGroup<"pre-c++2c-compat-pedantic", [CXXPre26CompatPedantic]>;
 
 def CXX98CompatBindToTemporaryCopy :
   DiagGroup<"c++98-compat-bind-to-temporary-copy">;
@@ -1060,7 +1055,7 @@ def Consumed       : DiagGroup<"consumed">;
 // warning should be active _only_ when -Wall is passed in, mark it as
 // DefaultIgnore in addition to putting it here.
 def All : DiagGroup<"all", [Most, Parentheses, Switch, SwitchBool,
-                            MisleadingIndentation, PackedNonPod]>;
+                            MisleadingIndentation]>;
 
 // Warnings that should be in clang-cl /w4.
 def : DiagGroup<"CL4", [All, Extra]>;
@@ -1117,16 +1112,10 @@ def CXX20 : DiagGroup<"c++20-extensions", [CXX20Designator, CXX20Attrs]>;
 // earlier C++ versions.
 def CXX23 : DiagGroup<"c++23-extensions">;
 
-// A warning group for warnings about using C++26 features as extensions in
-// earlier C++ versions.
-def CXX26 : DiagGroup<"c++26-extensions">;
-
 def : DiagGroup<"c++0x-extensions", [CXX11]>;
 def : DiagGroup<"c++1y-extensions", [CXX14]>;
 def : DiagGroup<"c++1z-extensions", [CXX17]>;
 def : DiagGroup<"c++2a-extensions", [CXX20]>;
-def : DiagGroup<"c++2b-extensions", [CXX23]>;
-def : DiagGroup<"c++2c-extensions", [CXX26]>;
 
 def DelegatingCtorCycles :
   DiagGroup<"delegating-ctor-cycles">;
@@ -1201,7 +1190,6 @@ def MicrosoftCommentPaste : DiagGroup<"microsoft-comment-paste">;
 def MicrosoftEndOfFile : DiagGroup<"microsoft-end-of-file">;
 def MicrosoftInaccessibleBase : DiagGroup<"microsoft-inaccessible-base">;
 def MicrosoftStaticAssert : DiagGroup<"microsoft-static-assert">;
-def MicrosoftInitFromPredefined : DiagGroup<"microsoft-init-from-predefined">;
 
 // Aliases.
 def : DiagGroup<"msvc-include", [MicrosoftInclude]>;
@@ -1219,7 +1207,7 @@ def Microsoft : DiagGroup<"microsoft",
      MicrosoftFlexibleArray, MicrosoftExtraQualification, MicrosoftCast,
      MicrosoftConstInit, MicrosoftVoidPseudoDtor, MicrosoftAnonTag,
      MicrosoftCommentPaste, MicrosoftEndOfFile, MicrosoftStaticAssert,
-     MicrosoftInitFromPredefined, MicrosoftInconsistentDllImport]>;
+     MicrosoftInconsistentDllImport]>;
 
 def ClangClPch : DiagGroup<"clang-cl-pch">;
 

@@ -84,10 +84,7 @@ SBFileSpec SBTrace::SaveToDisk(SBError &error, const SBFileSpec &bundle_dir,
 
 const char *SBTrace::GetStartConfigurationHelp() {
   LLDB_INSTRUMENT_VA(this);
-  if (!m_opaque_sp)
-    return nullptr;
-
-  return ConstString(m_opaque_sp->GetStartConfigurationHelp()).GetCString();
+  return m_opaque_sp ? m_opaque_sp->GetStartConfigurationHelp() : nullptr;
 }
 
 SBError SBTrace::Start(const SBStructuredData &configuration) {

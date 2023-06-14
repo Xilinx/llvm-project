@@ -184,7 +184,6 @@ waitpid U
 wcrtomb U
 wcslen U
 wcsnrtombs U
-wmemchr U
 wmemcpy U
 wmemmove U
 wmemset U

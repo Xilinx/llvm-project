@@ -47,8 +47,6 @@ const char *getEdgeKindName(Edge::Kind R) {
     return "MoveWide16";
   case LDRLiteral19:
     return "LDRLiteral19";
-  case TestAndBranch14PCRel:
-    return "TestAndBranch14PCRel";
   case CondBranch19PCRel:
     return "CondBranch19PCRel";
   case Page21:

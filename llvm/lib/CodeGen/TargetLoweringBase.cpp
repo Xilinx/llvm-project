@@ -1977,7 +1977,7 @@ void TargetLoweringBase::insertSSPDeclarations(Module &M) const {
                                   "__stack_chk_guard");
 
     // FreeBSD has "__stack_chk_guard" defined externally on libc.so
-    if (M.getDirectAccessExternalData() &&
+    if (TM.getRelocationModel() == Reloc::Static &&
         !TM.getTargetTriple().isWindowsGNUEnvironment() &&
         !TM.getTargetTriple().isOSFreeBSD())
       GV->setDSOLocal(true);

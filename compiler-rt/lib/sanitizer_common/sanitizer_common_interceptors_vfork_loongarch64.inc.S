@@ -51,7 +51,7 @@ ASM_WRAPPER_NAME(vfork):
         jr        $ra
 ASM_SIZE(vfork)
 
-ASM_INTERCEPTOR_TRAMPOLINE(vfork)
-ASM_TRAMPOLINE_ALIAS(vfork, vfork)
+.weak vfork
+.set vfork, ASM_WRAPPER_NAME(vfork)
 
 #endif

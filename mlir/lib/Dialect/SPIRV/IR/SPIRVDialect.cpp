@@ -164,19 +164,19 @@ static Type parseAndVerifyType(SPIRVDialect const &dialect,
     return type;
 
   // Check other allowed types
-  if (auto t = llvm::dyn_cast<FloatType>(type)) {
+  if (auto t = type.dyn_cast<FloatType>()) {
     if (type.isBF16()) {
       parser.emitError(typeLoc, "cannot use 'bf16' to compose SPIR-V types");
       return Type();
     }
-  } else if (auto t = llvm::dyn_cast<IntegerType>(type)) {
+  } else if (auto t = type.dyn_cast<IntegerType>()) {
     if (!ScalarType::isValid(t)) {
       parser.emitError(typeLoc,
                        "only 1/8/16/32/64-bit integer type allowed but found ")
           << type;
       return Type();
     }
-  } else if (auto t = llvm::dyn_cast<VectorType>(type)) {
+  } else if (auto t = type.dyn_cast<VectorType>()) {
     if (t.getRank() != 1) {
       parser.emitError(typeLoc, "only 1-D vector allowed but found ") << t;
       return Type();
@@ -203,7 +203,7 @@ static Type parseAndVerifyMatrixType(SPIRVDialect const &dialect,
   if (parser.parseType(type))
     return Type();
 
-  if (auto t = llvm::dyn_cast<VectorType>(type)) {
+  if (auto t = type.dyn_cast<VectorType>()) {
     if (t.getRank() != 1) {
       parser.emitError(typeLoc, "only 1-D vector allowed but found ") << t;
       return Type();
@@ -216,7 +216,7 @@ static Type parseAndVerifyMatrixType(SPIRVDialect const &dialect,
       return Type();
     }
 
-    if (!llvm::isa<FloatType>(t.getElementType())) {
+    if (!t.getElementType().isa<FloatType>()) {
       parser.emitError(typeLoc, "matrix columns' elements must be of "
                                 "Float type, got ")
           << t.getElementType();
@@ -239,7 +239,7 @@ static Type parseAndVerifySampledImageType(SPIRVDialect const &dialect,
   if (parser.parseType(type))
     return Type();
 
-  if (!llvm::isa<ImageType>(type)) {
+  if (!type.isa<ImageType>()) {
     parser.emitError(typeLoc,
                      "sampled image must be composed using image type, got ")
         << type;
@@ -939,12 +939,12 @@ LogicalResult SPIRVDialect::verifyOperationAttribute(Operation *op,
   Attribute attr = attribute.getValue();
 
   if (symbol == spirv::getEntryPointABIAttrName()) {
-    if (!llvm::isa<spirv::EntryPointABIAttr>(attr)) {
+    if (!attr.isa<spirv::EntryPointABIAttr>()) {
       return op->emitError("'")
              << symbol << "' attribute must be an entry point ABI attribute";
     }
   } else if (symbol == spirv::getTargetEnvAttrName()) {
-    if (!llvm::isa<spirv::TargetEnvAttr>(attr))
+    if (!attr.isa<spirv::TargetEnvAttr>())
       return op->emitError("'") << symbol << "' must be a spirv::TargetEnvAttr";
   } else {
     return op->emitError("found unsupported '")
@@ -965,7 +965,7 @@ static LogicalResult verifyRegionAttribute(Location loc, Type valueType,
     return emitError(loc, "found unsupported '")
            << symbol << "' attribute on region argument";
 
-  auto varABIAttr = llvm::dyn_cast<spirv::InterfaceVarABIAttr>(attr);
+  auto varABIAttr = attr.dyn_cast<spirv::InterfaceVarABIAttr>();
   if (!varABIAttr)
     return emitError(loc, "'")
            << symbol << "' must be a spirv::InterfaceVarABIAttr";

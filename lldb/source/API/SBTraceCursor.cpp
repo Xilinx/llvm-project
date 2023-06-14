@@ -85,7 +85,7 @@ bool SBTraceCursor::IsError() const {
 const char *SBTraceCursor::GetError() const {
   LLDB_INSTRUMENT_VA(this);
 
-  return ConstString(m_opaque_sp->GetError()).GetCString();
+  return m_opaque_sp->GetError();
 }
 
 bool SBTraceCursor::IsEvent() const {
@@ -103,7 +103,7 @@ lldb::TraceEvent SBTraceCursor::GetEventType() const {
 const char *SBTraceCursor::GetEventTypeAsString() const {
   LLDB_INSTRUMENT_VA(this);
 
-  return ConstString(m_opaque_sp->GetEventTypeAsString()).GetCString();
+  return m_opaque_sp->GetEventTypeAsString();
 }
 
 bool SBTraceCursor::IsInstruction() const {

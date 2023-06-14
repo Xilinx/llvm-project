@@ -261,9 +261,9 @@ public:
 /// Converts the given `srcAttr` into a boolean attribute if it holds an
 /// integral value. Returns null attribute if conversion fails.
 static BoolAttr convertBoolAttr(Attribute srcAttr, Builder builder) {
-  if (auto boolAttr = dyn_cast<BoolAttr>(srcAttr))
+  if (auto boolAttr = srcAttr.dyn_cast<BoolAttr>())
     return boolAttr;
-  if (auto intAttr = dyn_cast<IntegerAttr>(srcAttr))
+  if (auto intAttr = srcAttr.dyn_cast<IntegerAttr>())
     return builder.getBoolAttr(intAttr.getValue().getBoolValue());
   return {};
 }
@@ -324,7 +324,7 @@ static bool isBoolScalarOrVector(Type type) {
   if (type.isInteger(1))
     return true;
 
-  if (auto vecType = dyn_cast<VectorType>(type))
+  if (auto vecType = type.dyn_cast<VectorType>())
     return vecType.getElementType().isInteger(1);
 
   return false;
@@ -337,7 +337,7 @@ static bool hasSameBitwidth(Type a, Type b) {
     unsigned bw = 0;
     if (type.isIntOrFloat())
       bw = type.getIntOrFloatBitWidth();
-    else if (auto vecType = dyn_cast<VectorType>(type))
+    else if (auto vecType = type.dyn_cast<VectorType>())
       bw = vecType.getElementTypeBitWidth() * vecType.getNumElements();
     return bw;
   };
@@ -369,18 +369,18 @@ getTypeConversionFailure(ConversionPatternRewriter &rewriter, Operation *op) {
 LogicalResult ConstantCompositeOpPattern::matchAndRewrite(
     arith::ConstantOp constOp, OpAdaptor adaptor,
     ConversionPatternRewriter &rewriter) const {
-  auto srcType = dyn_cast<ShapedType>(constOp.getType());
+  auto srcType = constOp.getType().dyn_cast<ShapedType>();
   if (!srcType || srcType.getNumElements() == 1)
     return failure();
 
   // arith.constant should only have vector or tenor types.
-  assert((isa<VectorType, RankedTensorType>(srcType)));
+  assert((srcType.isa<VectorType, RankedTensorType>()));
 
   Type dstType = getTypeConverter()->convertType(srcType);
   if (!dstType)
     return failure();
 
-  auto dstElementsAttr = dyn_cast<DenseElementsAttr>(constOp.getValue());
+  auto dstElementsAttr = constOp.getValue().dyn_cast<DenseElementsAttr>();
   if (!dstElementsAttr)
     return failure();
 
@@ -388,7 +388,7 @@ LogicalResult ConstantCompositeOpPattern::matchAndRewrite(
 
   // If the composite type has more than one dimensions, perform linearization.
   if (srcType.getRank() > 1) {
-    if (isa<RankedTensorType>(srcType)) {
+    if (srcType.isa<RankedTensorType>()) {
       dstAttrType = RankedTensorType::get(srcType.getNumElements(),
                                           srcType.getElementType());
       dstElementsAttr = dstElementsAttr.reshape(dstAttrType);
@@ -402,19 +402,19 @@ LogicalResult ConstantCompositeOpPattern::matchAndRewrite(
   Type dstElemType;
   // Tensor types are converted to SPIR-V array types; vector types are
   // converted to SPIR-V vector/array types.
-  if (auto arrayType = dyn_cast<spirv::ArrayType>(dstType))
+  if (auto arrayType = dstType.dyn_cast<spirv::ArrayType>())
     dstElemType = arrayType.getElementType();
   else
-    dstElemType = cast<VectorType>(dstType).getElementType();
+    dstElemType = dstType.cast<VectorType>().getElementType();
 
   // If the source and destination element types are different, perform
   // attribute conversion.
   if (srcElemType != dstElemType) {
     SmallVector<Attribute, 8> elements;
-    if (isa<FloatType>(srcElemType)) {
+    if (srcElemType.isa<FloatType>()) {
       for (FloatAttr srcAttr : dstElementsAttr.getValues<FloatAttr>()) {
         FloatAttr dstAttr =
-            convertFloatAttr(srcAttr, cast<FloatType>(dstElemType), rewriter);
+            convertFloatAttr(srcAttr, dstElemType.cast<FloatType>(), rewriter);
         if (!dstAttr)
           return failure();
         elements.push_back(dstAttr);
@@ -424,7 +424,7 @@ LogicalResult ConstantCompositeOpPattern::matchAndRewrite(
     } else {
       for (IntegerAttr srcAttr : dstElementsAttr.getValues<IntegerAttr>()) {
         IntegerAttr dstAttr = convertIntegerAttr(
-            srcAttr, cast<IntegerType>(dstElemType), rewriter);
+            srcAttr, dstElemType.cast<IntegerType>(), rewriter);
         if (!dstAttr)
           return failure();
         elements.push_back(dstAttr);
@@ -435,7 +435,7 @@ LogicalResult ConstantCompositeOpPattern::matchAndRewrite(
     // attributes; element attributes only works with builtin types. So we need
     // to prepare another converted builtin types for the destination elements
     // attribute.
-    if (isa<RankedTensorType>(dstAttrType))
+    if (dstAttrType.isa<RankedTensorType>())
       dstAttrType = RankedTensorType::get(dstAttrType.getShape(), dstElemType);
     else
       dstAttrType = VectorType::get(dstAttrType.getShape(), dstElemType);
@@ -456,7 +456,7 @@ LogicalResult ConstantScalarOpPattern::matchAndRewrite(
     arith::ConstantOp constOp, OpAdaptor adaptor,
     ConversionPatternRewriter &rewriter) const {
   Type srcType = constOp.getType();
-  if (auto shapedType = dyn_cast<ShapedType>(srcType)) {
+  if (auto shapedType = srcType.dyn_cast<ShapedType>()) {
     if (shapedType.getNumElements() != 1)
       return failure();
     srcType = shapedType.getElementType();
@@ -465,7 +465,7 @@ LogicalResult ConstantScalarOpPattern::matchAndRewrite(
     return failure();
 
   Attribute cstAttr = constOp.getValue();
-  if (auto elementsAttr = dyn_cast<DenseElementsAttr>(cstAttr))
+  if (auto elementsAttr = cstAttr.dyn_cast<DenseElementsAttr>())
     cstAttr = elementsAttr.getSplatValue<Attribute>();
 
   Type dstType = getTypeConverter()->convertType(srcType);
@@ -473,14 +473,14 @@ LogicalResult ConstantScalarOpPattern::matchAndRewrite(
     return failure();
 
   // Floating-point types.
-  if (isa<FloatType>(srcType)) {
-    auto srcAttr = cast<FloatAttr>(cstAttr);
+  if (srcType.isa<FloatType>()) {
+    auto srcAttr = cstAttr.cast<FloatAttr>();
     auto dstAttr = srcAttr;
 
     // Floating-point types not supported in the target environment are all
     // converted to float type.
     if (srcType != dstType) {
-      dstAttr = convertFloatAttr(srcAttr, cast<FloatType>(dstType), rewriter);
+      dstAttr = convertFloatAttr(srcAttr, dstType.cast<FloatType>(), rewriter);
       if (!dstAttr)
         return failure();
     }
@@ -502,9 +502,9 @@ LogicalResult ConstantScalarOpPattern::matchAndRewrite(
 
   // IndexType or IntegerType. Index values are converted to 32-bit integer
   // values when converting to SPIR-V.
-  auto srcAttr = cast<IntegerAttr>(cstAttr);
+  auto srcAttr = cstAttr.cast<IntegerAttr>();
   IntegerAttr dstAttr =
-      convertIntegerAttr(srcAttr, cast<IntegerType>(dstType), rewriter);
+      convertIntegerAttr(srcAttr, dstType.cast<IntegerType>(), rewriter);
   if (!dstAttr)
     return failure();
   rewriter.replaceOpWithNewOp<spirv::ConstantOp>(constOp, dstType, dstAttr);
@@ -678,12 +678,12 @@ ExtSII1Pattern::matchAndRewrite(arith::ExtSIOp op, OpAdaptor adaptor,
     return getTypeConversionFailure(rewriter, op);
 
   Value allOnes;
-  if (auto intTy = dyn_cast<IntegerType>(dstType)) {
+  if (auto intTy = dstType.dyn_cast<IntegerType>()) {
     unsigned componentBitwidth = intTy.getWidth();
     allOnes = rewriter.create<spirv::ConstantOp>(
         loc, intTy,
         rewriter.getIntegerAttr(intTy, APInt::getAllOnes(componentBitwidth)));
-  } else if (auto vectorTy = dyn_cast<VectorType>(dstType)) {
+  } else if (auto vectorTy = dstType.dyn_cast<VectorType>()) {
     unsigned componentBitwidth = vectorTy.getElementTypeBitWidth();
     allOnes = rewriter.create<spirv::ConstantOp>(
         loc, vectorTy,
@@ -810,7 +810,7 @@ LogicalResult CmpIOpBooleanPattern::matchAndRewrite(
     // There are no direct corresponding instructions in SPIR-V for such cases.
     // Extend them to 32-bit and do comparision then.
     Type type = rewriter.getI32Type();
-    if (auto vectorType = dyn_cast<VectorType>(dstType))
+    if (auto vectorType = dstType.dyn_cast<VectorType>())
       type = VectorType::get(vectorType.getShape(), type);
     Value extLhs =
         rewriter.create<arith::ExtUIOp>(op.getLoc(), type, adaptor.getLhs());

@@ -25,13 +25,19 @@ typedef uptr AllocatorStatCounters[AllocatorStatCount];
 // Per-thread stats, live in per-thread cache.
 class AllocatorStats {
  public:
-  void Init() { internal_memset(this, 0, sizeof(*this)); }
+  void Init() {
+    internal_memset(this, 0, sizeof(*this));
+  }
+  void InitLinkerInitialized() {}
+
   void Add(AllocatorStat i, uptr v) {
-    atomic_fetch_add(&stats_[i], v, memory_order_relaxed);
+    v += atomic_load(&stats_[i], memory_order_relaxed);
+    atomic_store(&stats_[i], v, memory_order_relaxed);
   }
 
   void Sub(AllocatorStat i, uptr v) {
-    atomic_fetch_sub(&stats_[i], v, memory_order_relaxed);
+    v = atomic_load(&stats_[i], memory_order_relaxed) - v;
+    atomic_store(&stats_[i], v, memory_order_relaxed);
   }
 
   void Set(AllocatorStat i, uptr v) {
@@ -52,13 +58,17 @@ class AllocatorStats {
 // Global stats, used for aggregation and querying.
 class AllocatorGlobalStats : public AllocatorStats {
  public:
+  void InitLinkerInitialized() {
+    next_ = this;
+    prev_ = this;
+  }
   void Init() {
     internal_memset(this, 0, sizeof(*this));
+    InitLinkerInitialized();
   }
 
   void Register(AllocatorStats *s) {
     SpinMutexLock l(&mu_);
-    LazyInit();
     s->next_ = next_;
     s->prev_ = this;
     next_->prev_ = s;
@@ -77,7 +87,7 @@ class AllocatorGlobalStats : public AllocatorStats {
     internal_memset(s, 0, AllocatorStatCount * sizeof(uptr));
     SpinMutexLock l(&mu_);
     const AllocatorStats *stats = this;
-    for (; stats;) {
+    for (;;) {
       for (int i = 0; i < AllocatorStatCount; i++)
         s[i] += stats->Get(AllocatorStat(i));
       stats = stats->next_;
@@ -90,13 +100,6 @@ class AllocatorGlobalStats : public AllocatorStats {
   }
 
  private:
-  void LazyInit() {
-    if (!next_) {
-      next_ = this;
-      prev_ = this;
-    }
-  }
-
   mutable StaticSpinMutex mu_;
 };
 

@@ -554,12 +554,12 @@ Expected<uint64_t> getSlabAllocSize(StringRef SizeString) {
 
   uint64_t Units = 1024;
 
-  if (SizeString.ends_with_insensitive("kb"))
+  if (SizeString.endswith_insensitive("kb"))
     SizeString = SizeString.drop_back(2).rtrim();
-  else if (SizeString.ends_with_insensitive("mb")) {
+  else if (SizeString.endswith_insensitive("mb")) {
     Units = 1024 * 1024;
     SizeString = SizeString.drop_back(2).rtrim();
-  } else if (SizeString.ends_with_insensitive("gb")) {
+  } else if (SizeString.endswith_insensitive("gb")) {
     Units = 1024 * 1024 * 1024;
     SizeString = SizeString.drop_back(2).rtrim();
   }
@@ -893,8 +893,7 @@ public:
   }
 };
 
-Expected<std::unique_ptr<Session>> Session::Create(Triple TT,
-                                                   SubtargetFeatures Features) {
+Expected<std::unique_ptr<Session>> Session::Create(Triple TT) {
 
   std::unique_ptr<ExecutorProcessControl> EPC;
   if (OutOfProcessExecutor.getNumOccurrences()) {
@@ -924,7 +923,6 @@ Expected<std::unique_ptr<Session>> Session::Create(Triple TT,
   std::unique_ptr<Session> S(new Session(std::move(EPC), Err));
   if (Err)
     return std::move(Err);
-  S->Features = std::move(Features);
   return std::move(S);
 }
 
@@ -1010,7 +1008,7 @@ Session::Session(std::unique_ptr<ExecutorProcessControl> EPC, Error &Err)
     }
   } else if (TT.isOSBinFormatCOFF() && !OrcRuntime.empty()) {
     auto LoadDynLibrary = [&, this](JITDylib &JD, StringRef DLLName) -> Error {
-      if (!DLLName.ends_with_insensitive(".dll"))
+      if (!DLLName.endswith_insensitive(".dll"))
         return make_error<StringError>("DLLName not ending with .dll",
                                        inconvertibleErrorCode());
       return loadAndLinkDynamicLibrary(JD, DLLName);
@@ -1225,8 +1223,8 @@ Session::findSymbolInfo(StringRef SymbolName, Twine ErrorMsgStem) {
 
 } // end namespace llvm
 
-static std::pair<Triple, SubtargetFeatures> getFirstFileTripleAndFeatures() {
-  static std::pair<Triple, SubtargetFeatures> FirstTTAndFeatures = []() {
+static Triple getFirstFileTriple() {
+  static Triple FirstTT = []() {
     assert(!InputFiles.empty() && "InputFiles can not be empty");
     for (auto InputFile : InputFiles) {
       auto ObjBuffer = ExitOnErr(getFile(InputFile));
@@ -1243,19 +1241,16 @@ static std::pair<Triple, SubtargetFeatures> getFirstFileTripleAndFeatures() {
           TT.setObjectFormat(Triple::COFF);
           TT.setOS(Triple::OSType::Win32);
         }
-        SubtargetFeatures Features;
-        if (auto ObjFeatures = Obj->getFeatures())
-          Features = std::move(*ObjFeatures);
-        return std::make_pair(TT, Features);
+        return TT;
       }
       default:
         break;
       }
     }
-    return std::make_pair(Triple(), SubtargetFeatures());
+    return Triple();
   }();
 
-  return FirstTTAndFeatures;
+  return FirstTT;
 }
 
 static Error sanitizeArguments(const Triple &TT, const char *ArgV0) {
@@ -1653,7 +1648,7 @@ static Error addLibraries(Session &S,
     for (auto FileName : (*G)->getImportedDynamicLibraries()) {
       LibraryLoad NewLL;
       auto FileNameRef = StringRef(FileName);
-      if (!FileNameRef.ends_with_insensitive(".dll"))
+      if (!FileNameRef.endswith_insensitive(".dll"))
         return make_error<StringError>(
             "COFF Imported library not ending with dll extension?",
             inconvertibleErrorCode());
@@ -1813,9 +1808,7 @@ struct TargetInfo {
 };
 } // anonymous namespace
 
-static TargetInfo
-getTargetInfo(const Triple &TT,
-              const SubtargetFeatures &TF = SubtargetFeatures()) {
+static TargetInfo getTargetInfo(const Triple &TT) {
   auto TripleName = TT.str();
   std::string ErrorStr;
   const Target *TheTarget = TargetRegistry::lookupTarget(TripleName, ErrorStr);
@@ -1825,7 +1818,7 @@ getTargetInfo(const Triple &TT,
                                       inconvertibleErrorCode()));
 
   std::unique_ptr<MCSubtargetInfo> STI(
-      TheTarget->createMCSubtargetInfo(TripleName, "", TF.getString()));
+      TheTarget->createMCSubtargetInfo(TripleName, "", ""));
   if (!STI)
     ExitOnErr(
         make_error<StringError>("Unable to create subtarget for " + TripleName,
@@ -1886,7 +1879,7 @@ static Error runChecks(Session &S) {
 
   LLVM_DEBUG(dbgs() << "Running checks...\n");
 
-  auto TI = getTargetInfo(S.ES.getTargetTriple(), S.Features);
+  auto TI = getTargetInfo(S.ES.getTargetTriple());
 
   auto IsSymbolValid = [&S](StringRef Symbol) {
     return S.isSymbolRegistered(Symbol);
@@ -2033,10 +2026,9 @@ int main(int argc, char *argv[]) {
   std::unique_ptr<JITLinkTimers> Timers =
       ShowTimes ? std::make_unique<JITLinkTimers>() : nullptr;
 
-  auto [TT, Features] = getFirstFileTripleAndFeatures();
-  ExitOnErr(sanitizeArguments(TT, argv[0]));
+  ExitOnErr(sanitizeArguments(getFirstFileTriple(), argv[0]));
 
-  auto S = ExitOnErr(Session::Create(std::move(TT), std::move(Features)));
+  auto S = ExitOnErr(Session::Create(getFirstFileTriple()));
 
   {
     TimeRegion TR(Timers ? &Timers->LoadObjectsTimer : nullptr);

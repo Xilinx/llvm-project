@@ -10,11 +10,10 @@
 #include "Globals.h"
 #include "PybindUtils.h"
 
-#include <optional>
 #include <vector>
+#include <optional>
 
 #include "mlir-c/Bindings/Python/Interop.h"
-#include "mlir-c/Support.h"
 
 namespace py = pybind11;
 using namespace mlir;
@@ -73,22 +72,13 @@ void PyGlobals::registerAttributeBuilder(const std::string &attributeKind,
   found = std::move(pyFunc);
 }
 
-void PyGlobals::registerTypeCaster(MlirTypeID mlirTypeID,
-                                   pybind11::function typeCaster,
-                                   bool replace) {
-  pybind11::object &found = typeCasterMap[mlirTypeID];
-  if (found && !found.is_none() && !replace)
-    throw std::runtime_error("Type caster is already registered");
-  found = std::move(typeCaster);
-}
-
 void PyGlobals::registerDialectImpl(const std::string &dialectNamespace,
                                     py::object pyClass) {
   py::object &found = dialectClassMap[dialectNamespace];
   if (found) {
-    throw std::runtime_error((llvm::Twine("Dialect namespace '") +
-                              dialectNamespace + "' is already registered.")
-                                 .str());
+    throw SetPyError(PyExc_RuntimeError, llvm::Twine("Dialect namespace '") +
+                                             dialectNamespace +
+                                             "' is already registered.");
   }
   found = std::move(pyClass);
 }
@@ -97,9 +87,9 @@ void PyGlobals::registerOperationImpl(const std::string &operationName,
                                       py::object pyClass) {
   py::object &found = operationClassMap[operationName];
   if (found) {
-    throw std::runtime_error((llvm::Twine("Operation '") + operationName +
-                              "' is already registered.")
-                                 .str());
+    throw SetPyError(PyExc_RuntimeError, llvm::Twine("Operation '") +
+                                             operationName +
+                                             "' is already registered.");
   }
   found = std::move(pyClass);
 }
@@ -118,39 +108,6 @@ PyGlobals::lookupAttributeBuilder(const std::string &attributeKind) {
   // Not found and loading did not yield a registration. Negative cache.
   attributeBuilderMap[attributeKind] = py::none();
   return std::nullopt;
-}
-
-std::optional<py::function> PyGlobals::lookupTypeCaster(MlirTypeID mlirTypeID,
-                                                        MlirDialect dialect) {
-  {
-    // Fast match against the class map first (common case).
-    const auto foundIt = typeCasterMapCache.find(mlirTypeID);
-    if (foundIt != typeCasterMapCache.end()) {
-      if (foundIt->second.is_none())
-        return std::nullopt;
-      assert(foundIt->second && "py::function is defined");
-      return foundIt->second;
-    }
-  }
-
-  // Not found. Load the dialect namespace.
-  loadDialectModule(unwrap(mlirDialectGetNamespace(dialect)));
-
-  // Attempt to find from the canonical map and cache.
-  {
-    const auto foundIt = typeCasterMap.find(mlirTypeID);
-    if (foundIt != typeCasterMap.end()) {
-      if (foundIt->second.is_none())
-        return std::nullopt;
-      assert(foundIt->second && "py::object is defined");
-      // Positive cache.
-      typeCasterMapCache[mlirTypeID] = foundIt->second;
-      return foundIt->second;
-    }
-    // Negative cache.
-    typeCasterMap[mlirTypeID] = py::none();
-    return std::nullopt;
-  }
 }
 
 std::optional<py::object>
@@ -207,5 +164,4 @@ PyGlobals::lookupOperationClass(llvm::StringRef operationName) {
 void PyGlobals::clearImportCache() {
   loadedDialectModulesCache.clear();
   operationClassMapCache.clear();
-  typeCasterMapCache.clear();
 }

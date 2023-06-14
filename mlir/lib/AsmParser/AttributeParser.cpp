@@ -348,7 +348,7 @@ Attribute Parser::parseFloatAttr(Type type, bool isNegative) {
     else if (!(type = parseType()))
       return nullptr;
   }
-  if (!isa<FloatType>(type))
+  if (!type.isa<FloatType>())
     return (emitError("floating point value not valid for specified type"),
             nullptr);
   return FloatAttr::get(type, isNegative ? -*val : *val);
@@ -416,7 +416,7 @@ Attribute Parser::parseDecOrHexAttr(Type type, bool isNegative) {
       return nullptr;
   }
 
-  if (auto floatType = dyn_cast<FloatType>(type)) {
+  if (auto floatType = type.dyn_cast<FloatType>()) {
     std::optional<APFloat> result;
     if (failed(parseFloatFromIntegerLiteral(result, tok, isNegative,
                                             floatType.getFloatSemantics(),
@@ -425,7 +425,7 @@ Attribute Parser::parseDecOrHexAttr(Type type, bool isNegative) {
     return FloatAttr::get(floatType, *result);
   }
 
-  if (!isa<IntegerType, IndexType>(type))
+  if (!type.isa<IntegerType, IndexType>())
     return emitError(loc, "integer literal not valid for specified type"),
            nullptr;
 
@@ -543,7 +543,7 @@ DenseElementsAttr TensorLiteralParser::getAttr(SMLoc loc, ShapedType type) {
 
   // Check to see if we parse the literal from a hex string.
   if (hexStorage &&
-      (eltType.isIntOrIndexOrFloat() || isa<ComplexType>(eltType)))
+      (eltType.isIntOrIndexOrFloat() || eltType.isa<ComplexType>()))
     return getHexAttr(loc, type);
 
   // Check that the parsed storage size has the same number of elements to the
@@ -563,7 +563,7 @@ DenseElementsAttr TensorLiteralParser::getAttr(SMLoc loc, ShapedType type) {
 
   // Handle complex types in the specific element type cases below.
   bool isComplex = false;
-  if (ComplexType complexTy = dyn_cast<ComplexType>(eltType)) {
+  if (ComplexType complexTy = eltType.dyn_cast<ComplexType>()) {
     eltType = complexTy.getElementType();
     isComplex = true;
   }
@@ -583,7 +583,7 @@ DenseElementsAttr TensorLiteralParser::getAttr(SMLoc loc, ShapedType type) {
     return DenseElementsAttr::get(type, intValues);
   }
   // Handle floating point types.
-  if (FloatType floatTy = dyn_cast<FloatType>(eltType)) {
+  if (FloatType floatTy = eltType.dyn_cast<FloatType>()) {
     std::vector<APFloat> floatValues;
     if (failed(getFloatAttrElements(loc, floatTy, floatValues)))
       return nullptr;
@@ -711,7 +711,7 @@ DenseElementsAttr TensorLiteralParser::getStringAttr(SMLoc loc, ShapedType type,
 /// Build a Dense attribute with hex data for the given type.
 DenseElementsAttr TensorLiteralParser::getHexAttr(SMLoc loc, ShapedType type) {
   Type elementType = type.getElementType();
-  if (!elementType.isIntOrIndexOrFloat() && !isa<ComplexType>(elementType)) {
+  if (!elementType.isIntOrIndexOrFloat() && !elementType.isa<ComplexType>()) {
     p.emitError(loc)
         << "expected floating-point, integer, or complex element type, got "
         << elementType;
@@ -904,7 +904,7 @@ ParseResult DenseArrayElementParser::parseFloatElement(Parser &p) {
 
   Token token = p.getToken();
   std::optional<APFloat> result;
-  auto floatType = cast<FloatType>(type);
+  auto floatType = type.cast<FloatType>();
   if (p.consumeIf(Token::integer)) {
     // Parse an integer literal as a float.
     if (p.parseFloatFromIntegerLiteral(result, token, isNegative,
@@ -1025,7 +1025,7 @@ Attribute Parser::parseDenseResourceElementsAttr(Type attrType) {
       return nullptr;
   }
 
-  ShapedType shapedType = dyn_cast<ShapedType>(attrType);
+  ShapedType shapedType = attrType.dyn_cast<ShapedType>();
   if (!shapedType) {
     emitError(typeLoc, "`dense_resource` expected a shaped type");
     return nullptr;
@@ -1048,7 +1048,7 @@ ShapedType Parser::parseElementsLiteralType(Type type) {
       return nullptr;
   }
 
-  auto sType = dyn_cast<ShapedType>(type);
+  auto sType = type.dyn_cast<ShapedType>();
   if (!sType) {
     emitError("elements literal must be a shaped type");
     return nullptr;

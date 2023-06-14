@@ -48,15 +48,15 @@ struct BuiltinOpAsmDialectInterface : public OpAsmDialectInterface {
       : OpAsmDialectInterface(dialect), blobManager(mgr) {}
 
   AliasResult getAlias(Attribute attr, raw_ostream &os) const override {
-    if (llvm::isa<AffineMapAttr>(attr)) {
+    if (attr.isa<AffineMapAttr>()) {
       os << "map";
       return AliasResult::OverridableAlias;
     }
-    if (llvm::isa<IntegerSetAttr>(attr)) {
+    if (attr.isa<IntegerSetAttr>()) {
       os << "set";
       return AliasResult::OverridableAlias;
     }
-    if (llvm::isa<LocationAttr>(attr)) {
+    if (attr.isa<LocationAttr>()) {
       os << "loc";
       return AliasResult::OverridableAlias;
     }
@@ -64,7 +64,7 @@ struct BuiltinOpAsmDialectInterface : public OpAsmDialectInterface {
   }
 
   AliasResult getAlias(Type type, raw_ostream &os) const final {
-    if (auto tupleType = llvm::dyn_cast<TupleType>(type)) {
+    if (auto tupleType = type.dyn_cast<TupleType>()) {
       if (tupleType.size() > 16) {
         os << "tuple";
         return AliasResult::OverridableAlias;
@@ -145,7 +145,7 @@ DataLayoutSpecInterface ModuleOp::getDataLayoutSpec() {
   // interface. This needs a linear search, but is called only once per data
   // layout object construction that is used for repeated queries.
   for (NamedAttribute attr : getOperation()->getAttrs())
-    if (auto spec = llvm::dyn_cast<DataLayoutSpecInterface>(attr.getValue()))
+    if (auto spec = attr.getValue().dyn_cast<DataLayoutSpecInterface>())
       return spec;
   return {};
 }
@@ -168,7 +168,7 @@ LogicalResult ModuleOp::verify() {
   StringRef layoutSpecAttrName;
   DataLayoutSpecInterface layoutSpec;
   for (const NamedAttribute &na : (*this)->getAttrs()) {
-    if (auto spec = llvm::dyn_cast<DataLayoutSpecInterface>(na.getValue())) {
+    if (auto spec = na.getValue().dyn_cast<DataLayoutSpecInterface>()) {
       if (layoutSpec) {
         InFlightDiagnostic diag =
             emitOpError() << "expects at most one data layout attribute";

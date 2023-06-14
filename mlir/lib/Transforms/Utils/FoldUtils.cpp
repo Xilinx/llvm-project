@@ -272,7 +272,7 @@ OperationFolder::processFoldResults(Operation *op,
     assert(!foldResults[i].isNull() && "expected valid OpFoldResult");
 
     // Check if the result was an SSA value.
-    if (auto repl = llvm::dyn_cast_if_present<Value>(foldResults[i])) {
+    if (auto repl = foldResults[i].dyn_cast<Value>()) {
       if (repl.getType() != op->getResult(i).getType()) {
         results.clear();
         return failure();

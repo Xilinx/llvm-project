@@ -1161,11 +1161,8 @@ void FilterAndGetValueForKey(const lldb::SBStructuredData data, const char *key,
   case lldb::eStructuredDataTypeFloat:
     out.try_emplace(key_utf8, value.GetFloatValue());
     break;
-  case lldb::eStructuredDataTypeUnsignedInteger:
-    out.try_emplace(key_utf8, value.GetIntegerValue((uint64_t)0));
-    break;
-  case lldb::eStructuredDataTypeSignedInteger:
-    out.try_emplace(key_utf8, value.GetIntegerValue((int64_t)0));
+  case lldb::eStructuredDataTypeInteger:
+    out.try_emplace(key_utf8, value.GetIntegerValue());
     break;
   case lldb::eStructuredDataTypeArray: {
     lldb::SBStream contents;

@@ -133,7 +133,7 @@ void constructShapeFunc(
   for (shape::WithOp withOp : allWithOps) {
     Value value = withOp.getOperand();
     Value shape = withOp.getShape();
-    RankedTensorType rankedType = dyn_cast<RankedTensorType>(value.getType());
+    RankedTensorType rankedType = value.getType().dyn_cast<RankedTensorType>();
     if (rankedType == nullptr)
       continue;
 

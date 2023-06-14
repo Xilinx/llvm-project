@@ -240,11 +240,6 @@ private:
   static SourceRange getLocalSourceRangeImpl(TypeLoc TL);
 };
 
-inline TypeSourceInfo::TypeSourceInfo(QualType ty, size_t DataSize) : Ty(ty) {
-  // Init data attached to the object. See getTypeLoc.
-  memset(this + 1, 0, DataSize);
-}
-
 /// Return the TypeLoc for a type source info.
 inline TypeLoc TypeSourceInfo::getTypeLoc() const {
   // TODO: is this alignment already sufficient?
@@ -2107,7 +2102,7 @@ struct AutoTypeLocInfo : TypeSpecLocInfo {
   NestedNameSpecifierLoc NestedNameSpec;
   SourceLocation TemplateKWLoc;
   SourceLocation ConceptNameLoc;
-  NamedDecl *FoundDecl = nullptr;
+  NamedDecl *FoundDecl;
   SourceLocation LAngleLoc;
   SourceLocation RAngleLoc;
 

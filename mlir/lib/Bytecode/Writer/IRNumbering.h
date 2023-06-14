@@ -18,7 +18,6 @@
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringMap.h"
-#include <cstdint>
 
 namespace mlir {
 class BytecodeDialectInterface;
@@ -134,7 +133,7 @@ struct DialectNumbering {
 /// emission.
 class IRNumberingState {
 public:
-  IRNumberingState(Operation *op, const BytecodeWriterConfig &config);
+  IRNumberingState(Operation *op);
 
   /// Return the numbered dialects.
   auto getDialects() {
@@ -152,10 +151,6 @@ public:
   unsigned getNumber(Block *block) {
     assert(blockIDs.count(block) && "block not numbered");
     return blockIDs[block];
-  }
-  unsigned getNumber(Operation *op) {
-    assert(operationIDs.count(op) && "operation not numbered");
-    return operationIDs[op];
   }
   unsigned getNumber(OperationName opName) {
     assert(opNames.count(opName) && "opName not numbered");
@@ -229,8 +224,7 @@ private:
   llvm::SpecificBumpPtrAllocator<DialectResourceNumbering> resourceAllocator;
   llvm::SpecificBumpPtrAllocator<TypeNumbering> typeAllocator;
 
-  /// The value ID for each Operation, Block and Value.
-  DenseMap<Operation *, unsigned> operationIDs;
+  /// The value ID for each Block and Value.
   DenseMap<Block *, unsigned> blockIDs;
   DenseMap<Value, unsigned> valueIDs;
 
@@ -242,9 +236,6 @@ private:
 
   /// The next value ID to assign when numbering.
   unsigned nextValueID = 0;
-
-  // Configuration: useful to query the required version to emit.
-  const BytecodeWriterConfig &config;
 };
 } // namespace detail
 } // namespace bytecode

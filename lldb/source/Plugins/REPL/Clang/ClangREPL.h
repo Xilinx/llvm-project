@@ -14,11 +14,8 @@
 namespace lldb_private {
 /// Implements a Clang-based REPL for C languages on top of LLDB's REPL
 /// framework.
-class ClangREPL : public llvm::RTTIExtends<ClangREPL, REPL> {
+class ClangREPL : public REPL {
 public:
-  // LLVM RTTI support
-  static char ID;
-
   ClangREPL(lldb::LanguageType language, Target &target);
 
   ~ClangREPL() override;

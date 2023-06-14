@@ -153,32 +153,28 @@ struct UnpackOpInterface
     : public BufferizableOpInterface::ExternalModel<UnpackOpInterface,
                                                     sparse_tensor::UnpackOp> {
   bool bufferizesToAllocation(Operation *op, OpResult opResult) const {
-    // The output buffer is pre-allocated by the user.
-    return false;
+    // We allocate and return unpacked memory if this is a batched unpack.
+    // When the number of batched levels equals to zero, we reuse the
+    // coordinates/values memref (and reallocation if the requested output size
+    // is larger than the actual size). Similar to InsertOp, reallocation is
+    // not considered to allocate a new piece of memory.
+    return llvm::cast<UnpackOp>(op).getNumBatchedLvls() != 0;
   }
 
   bool bufferizesToMemoryRead(Operation *op, OpOperand &opOperand,
                               const AnalysisState &state) const {
-    // The first operand is the sparse tensor that we are unpacking.
-    return opOperand.getOperandNumber() == 0;
+    return true;
   }
 
   bool bufferizesToMemoryWrite(Operation *op, OpOperand &opOperand,
                                const AnalysisState &state) const {
-    // We write into the output operand.
-    assert(op->getNumOperands() == op->getNumResults() + 1);
-    return opOperand.getOperandNumber() > 0;
+    return false;
   }
 
   AliasingOpResultList getAliasingOpResults(Operation *op, OpOperand &opOperand,
                                             const AnalysisState &state) const {
-    assert(op->getNumOperands() == op->getNumResults() + 1);
-
-    if (opOperand.getOperandNumber() == 0)
-      return {};
-    // We write directly into the output tensors and returns them.
-    return {{op->getResult(opOperand.getOperandNumber() - 1),
-             BufferRelation::Equivalent}};
+    // Conceptually, UnpackOp equals to a list of toCoordinates/toValueOp
+    return {};
   }
 };
 

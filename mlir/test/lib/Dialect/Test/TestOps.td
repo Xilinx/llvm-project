@@ -99,7 +99,7 @@ def MultiTensorRankOf : TEST_Op<"multi_tensor_rank_of"> {
 }
 
 def TEST_TestType : DialectType<Test_Dialect,
-    CPred<"::llvm::isa<::test::TestType>($_self)">, "test">,
+    CPred<"$_self.isa<::test::TestType>()">, "test">,
     BuildableType<"$_builder.getType<::test::TestType>()">;
 
 //===----------------------------------------------------------------------===//
@@ -260,7 +260,7 @@ def DerivedTypeAttrOp : TEST_Op<"derived_type_attr", []> {
   DerivedTypeAttr element_dtype =
     DerivedTypeAttr<"return getElementTypeOrSelf(getOutput().getType());">;
   DerivedAttr num_elements = DerivedAttr<"int",
-    "return ::llvm::cast<ShapedType>(getOutput().getType()).getNumElements();",
+    "return getOutput().getType().cast<ShapedType>().getNumElements();",
     "$_builder.getI32IntegerAttr($_self)">;
 }
 
@@ -495,17 +495,10 @@ def ConversionCallOp : TEST_Op<"conversion_call_op",
   let extraClassDeclaration = [{
     /// Return the callee of this operation.
     ::mlir::CallInterfaceCallable getCallableForCallee();
-
-    /// Set the callee for this operation.
-    void setCalleeFromCallable(::mlir::CallInterfaceCallable);
   }];
   let extraClassDefinition = [{
     ::mlir::CallInterfaceCallable $cppClass::getCallableForCallee() {
       return (*this)->getAttrOfType<::mlir::SymbolRefAttr>("callee");
-    }
-
-    void $cppClass::setCalleeFromCallable(::mlir::CallInterfaceCallable callee) {
-      (*this)->setAttr("callee", callee.get<SymbolRefAttr>());
     }
   }];
 }
@@ -578,7 +571,7 @@ def FunctionalRegionOp : TEST_Op<"functional_region_op",
   let extraClassDeclaration = [{
     ::mlir::Region *getCallableRegion() { return &getBody(); }
     ::llvm::ArrayRef<::mlir::Type> getCallableResults() {
-      return ::llvm::cast<::mlir::FunctionType>(getType()).getResults();
+      return getType().cast<::mlir::FunctionType>().getResults();
     }
     ::mlir::ArrayAttr getCallableArgAttrs() {
       return nullptr;
@@ -1262,10 +1255,11 @@ def OpAllAttrConstraint2 : TEST_Op<"all_attr_constraint_of2"> {
   let results = (outs I32);
 }
 def Constraint0 : AttrConstraint<
-    CPred<"::llvm::cast<::mlir::IntegerAttr>(::llvm::cast<ArrayAttr>($_self)[0]).getInt() == 0">,
+    CPred<"$_self.cast<ArrayAttr>()[0]."
+          "cast<::mlir::IntegerAttr>().getInt() == 0">,
     "[0] == 0">;
 def Constraint1 : AttrConstraint<
-    CPred<"::llvm::cast<::mlir::IntegerAttr>(::llvm::cast<ArrayAttr>($_self)[1]).getInt() == 1">,
+    CPred<"$_self.cast<ArrayAttr>()[1].cast<::mlir::IntegerAttr>().getInt() == 1">,
     "[1] == 1">;
 def : Pat<(OpAllAttrConstraint1
             AllAttrOf<[Constraint0, Constraint1]>:$attr),
@@ -1482,7 +1476,7 @@ def OpAttrMatch2 : TEST_Op<"match_op_attribute2"> {
   let results = (outs I32);
 }
 def MoreConstraint : AttrConstraint<
-    CPred<"::llvm::cast<IntegerAttr>($_self).getInt() == 4">, "more constraint">;
+    CPred<"$_self.cast<IntegerAttr>().getInt() == 4">, "more constraint">;
 def : Pat<(OpAttrMatch1 $required, $optional, $default_valued,
                         MoreConstraint:$more),
           (OpAttrMatch2 $required, $optional, $default_valued, $more)>;
@@ -2909,34 +2903,6 @@ def OpCrashShort : TEST_Op<"op_crash_short"> {
 def : Pat<(OpCrashLong $_, $_, $_), (OpCrashShort)>;
 
 //===----------------------------------------------------------------------===//
-// Test DestinationStyleOpInterface.
-//===----------------------------------------------------------------------===//
-
-def TestDestinationStyleOp :
-    TEST_Op<"destination_style_op", [
-      DestinationStyleOpInterface,
-      AttrSizedOperandSegments]> {
-  let arguments = (ins
-    Variadic<AnyType>:$inputs,
-    Variadic<AnyType>:$outputs,
-    Variadic<AnyType>:$other_operands);
-  let results = (outs Variadic<AnyType>:$results);
-  let assemblyFormat = [{
-    attr-dict (`ins` `(` $inputs^ `:` type($inputs) `)`)?
-    (`outs` `(` $outputs^  `:` type($outputs) `)`)?
-    (`(` $other_operands^ `:` type($other_operands) `)`)?
-    (`->` type($results)^)?
-  }];
-
-  let extraClassDeclaration = [{
-    std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
-      int64_t numOperands = this->getNumOperands();
-      return {numOperands - getOutputs().size(), numOperands};
-    }
-  }];
-}
-
-//===----------------------------------------------------------------------===//
 // Test LinalgConvolutionOpInterface.
 //===----------------------------------------------------------------------===//
 
@@ -3324,7 +3290,7 @@ def TestVersionedOpB : TEST_Op<"versionedB"> {
 def TestOpWithProperties : TEST_Op<"with_properties"> {
   let assemblyFormat = "prop-dict attr-dict";
   let arguments = (ins
-    IntProperty<"int64_t">:$a,
+    Property<"int64_t">:$a,
     StrAttr:$b, // Attributes can directly be used here.
     ArrayProperty<"int64_t", 4>:$array // example of an array
   );
@@ -3369,31 +3335,8 @@ def TestOpWithNiceProperties : TEST_Op<"with_nice_properties"> {
                          const Properties &prop);
     static ::mlir::ParseResult  parseProperties(::mlir::OpAsmParser &parser,
                                      ::mlir::OperationState &result);
-    static ::mlir::LogicalResult readFromMlirBytecode(
-        ::mlir::DialectBytecodeReader &,
-        test::PropertiesWithCustomPrint &prop);
-    static void writeToMlirBytecode(
-        ::mlir::DialectBytecodeWriter &,
-        const test::PropertiesWithCustomPrint &prop);
   }];
   let extraClassDefinition = [{
-    ::mlir::LogicalResult TestOpWithNiceProperties::readFromMlirBytecode(
-        ::mlir::DialectBytecodeReader &reader,
-        test::PropertiesWithCustomPrint &prop) {
-      StringRef label;
-      uint64_t value;
-      if (failed(reader.readString(label)) || failed(reader.readVarInt(value)))
-        return failure();
-      prop.label = std::make_shared<std::string>(label.str());
-      prop.value = value;
-      return success();
-    }
-    void TestOpWithNiceProperties::writeToMlirBytecode(
-        ::mlir::DialectBytecodeWriter &writer,
-        const test::PropertiesWithCustomPrint &prop) {
-      writer.writeOwnedString(*prop.label);
-      writer.writeVarInt(prop.value);
-    }
     void TestOpWithNiceProperties::printProperties(::mlir::MLIRContext *ctx,
             ::mlir::OpAsmPrinter &p, const Properties &prop) {
       customPrintProperties(p, prop.prop);

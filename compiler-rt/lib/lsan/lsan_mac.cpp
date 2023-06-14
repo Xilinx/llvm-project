@@ -80,7 +80,7 @@ extern "C" void lsan_dispatch_call_block_and_release(void *block) {
   VReport(2,
           "lsan_dispatch_call_block_and_release(): "
           "context: %p, pthread_self: %p\n",
-          block, (void*)pthread_self());
+          block, pthread_self());
   lsan_register_worker_thread(context->parent_tid);
   // Call the original dispatcher for the block.
   context->func(context->block);

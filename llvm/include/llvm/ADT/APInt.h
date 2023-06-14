@@ -1003,9 +1003,7 @@ public:
   APInt smul_ov(const APInt &RHS, bool &Overflow) const;
   APInt umul_ov(const APInt &RHS, bool &Overflow) const;
   APInt sshl_ov(const APInt &Amt, bool &Overflow) const;
-  APInt sshl_ov(unsigned Amt, bool &Overflow) const;
   APInt ushl_ov(const APInt &Amt, bool &Overflow) const;
-  APInt ushl_ov(unsigned Amt, bool &Overflow) const;
 
   // Operations that saturate
   APInt sadd_sat(const APInt &RHS) const;
@@ -1015,9 +1013,7 @@ public:
   APInt smul_sat(const APInt &RHS) const;
   APInt umul_sat(const APInt &RHS) const;
   APInt sshl_sat(const APInt &RHS) const;
-  APInt sshl_sat(unsigned RHS) const;
   APInt ushl_sat(const APInt &RHS) const;
-  APInt ushl_sat(unsigned RHS) const;
 
   /// Array-indexing support.
   ///
@@ -1639,10 +1635,9 @@ public:
   void print(raw_ostream &OS, bool isSigned) const;
 
   /// Converts an APInt to a string and append it to Str.  Str is commonly a
-  /// SmallString. If Radix > 10, UpperCase determine the case of letter
-  /// digits.
+  /// SmallString.
   void toString(SmallVectorImpl<char> &Str, unsigned Radix, bool Signed,
-                bool formatAsCLiteral = false, bool UpperCase = true) const;
+                bool formatAsCLiteral = false) const;
 
   /// Considers the APInt to be unsigned and converts it into a string in the
   /// radix given. The radix can be 2, 8, 10 16, or 36.

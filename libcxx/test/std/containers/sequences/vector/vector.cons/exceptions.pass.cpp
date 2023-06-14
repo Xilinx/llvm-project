@@ -177,7 +177,6 @@ int main(int, char**) {
     Allocator<int> alloc(false);
     AllocVec vec(cpp17_input_iterator<int*>(a), cpp17_input_iterator<int*>(a + 2), alloc);
   } catch (int) {
-    // FIXME: never called.
   }
   check_new_delete_called();
 
@@ -186,7 +185,6 @@ int main(int, char**) {
     Allocator<int> alloc(false);
     AllocVec vec(forward_iterator<int*>(a), forward_iterator<int*>(a + 2), alloc);
   } catch (int) {
-    // FIXME: never called.
   }
   check_new_delete_called();
 

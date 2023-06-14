@@ -620,16 +620,16 @@ inline LLVMTargetDataRef wrap(const DataLayout *P) {
 
 /// Used to lazily calculate structure layout information for a target machine,
 /// based on the DataLayout structure.
-class StructLayout final : public TrailingObjects<StructLayout, TypeSize> {
-  TypeSize StructSize;
+class StructLayout final : public TrailingObjects<StructLayout, uint64_t> {
+  uint64_t StructSize;
   Align StructAlignment;
   unsigned IsPadded : 1;
   unsigned NumElements : 31;
 
 public:
-  TypeSize getSizeInBytes() const { return StructSize; }
+  uint64_t getSizeInBytes() const { return StructSize; }
 
-  TypeSize getSizeInBits() const { return 8 * StructSize; }
+  uint64_t getSizeInBits() const { return 8 * StructSize; }
 
   Align getAlignment() const { return StructAlignment; }
 
@@ -639,22 +639,23 @@ public:
 
   /// Given a valid byte offset into the structure, returns the structure
   /// index that contains it.
-  unsigned getElementContainingOffset(uint64_t FixedOffset) const;
+  unsigned getElementContainingOffset(uint64_t Offset) const;
 
-  MutableArrayRef<TypeSize> getMemberOffsets() {
-    return llvm::MutableArrayRef(getTrailingObjects<TypeSize>(), NumElements);
+  MutableArrayRef<uint64_t> getMemberOffsets() {
+    return llvm::MutableArrayRef(getTrailingObjects<uint64_t>(),
+                                     NumElements);
   }
 
-  ArrayRef<TypeSize> getMemberOffsets() const {
-    return llvm::ArrayRef(getTrailingObjects<TypeSize>(), NumElements);
+  ArrayRef<uint64_t> getMemberOffsets() const {
+    return llvm::ArrayRef(getTrailingObjects<uint64_t>(), NumElements);
   }
 
-  TypeSize getElementOffset(unsigned Idx) const {
+  uint64_t getElementOffset(unsigned Idx) const {
     assert(Idx < NumElements && "Invalid element idx!");
     return getMemberOffsets()[Idx];
   }
 
-  TypeSize getElementOffsetInBits(unsigned Idx) const {
+  uint64_t getElementOffsetInBits(unsigned Idx) const {
     return getElementOffset(Idx) * 8;
   }
 
@@ -663,7 +664,7 @@ private:
 
   StructLayout(StructType *ST, const DataLayout &DL);
 
-  size_t numTrailingObjects(OverloadToken<TypeSize>) const {
+  size_t numTrailingObjects(OverloadToken<uint64_t>) const {
     return NumElements;
   }
 };
@@ -684,7 +685,8 @@ inline TypeSize DataLayout::getTypeSizeInBits(Type *Ty) const {
   }
   case Type::StructTyID:
     // Get the layout annotation... which is lazily created on demand.
-    return getStructLayout(cast<StructType>(Ty))->getSizeInBits();
+    return TypeSize::Fixed(
+                        getStructLayout(cast<StructType>(Ty))->getSizeInBits());
   case Type::IntegerTyID:
     return TypeSize::Fixed(Ty->getIntegerBitWidth());
   case Type::HalfTyID:

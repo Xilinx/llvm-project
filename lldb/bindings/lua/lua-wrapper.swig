@@ -3,8 +3,7 @@
 template <typename T> void PushSBClass(lua_State * L, T * obj);
 
 // This function is called from Lua::CallBreakpointCallback
-llvm::Expected<bool>
-lldb_private::lua::SWIGBridge::LLDBSwigLuaBreakpointCallbackFunction(
+llvm::Expected<bool> lldb_private::LLDBSwigLuaBreakpointCallbackFunction(
     lua_State * L, lldb::StackFrameSP stop_frame_sp,
     lldb::BreakpointLocationSP bp_loc_sp,
     const StructuredDataImpl &extra_args_impl) {
@@ -42,8 +41,7 @@ lldb_private::lua::SWIGBridge::LLDBSwigLuaBreakpointCallbackFunction(
 }
 
 // This function is called from Lua::CallWatchpointCallback
-llvm::Expected<bool>
-lldb_private::lua::SWIGBridge::LLDBSwigLuaWatchpointCallbackFunction(
+llvm::Expected<bool> lldb_private::LLDBSwigLuaWatchpointCallbackFunction(
     lua_State * L, lldb::StackFrameSP stop_frame_sp, lldb::WatchpointSP wp_sp) {
   lldb::SBFrame sb_frame(stop_frame_sp);
   lldb::SBWatchpoint sb_wp(wp_sp);

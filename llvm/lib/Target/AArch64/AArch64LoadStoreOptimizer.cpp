@@ -734,11 +734,8 @@ AArch64LoadStoreOpt::mergeNarrowZeroStores(MachineBasicBlock::iterator I,
     NextI = next_nodbg(NextI, E);
 
   unsigned Opc = I->getOpcode();
-  unsigned MergeMIOpc = MergeMI->getOpcode();
   bool IsScaled = !TII->hasUnscaledLdStOffset(Opc);
-  bool IsMergedMIScaled = !TII->hasUnscaledLdStOffset(MergeMIOpc);
-  int OffsetStride = IsScaled ? TII->getMemScale(*I) : 1;
-  int MergeMIOffsetStride = IsMergedMIScaled ? TII->getMemScale(*MergeMI) : 1;
+  int OffsetStride = IsScaled ? 1 : TII->getMemScale(*I);
 
   bool MergeForward = Flags.getMergeForward();
   // Insert our new paired instruction after whichever of the paired
@@ -751,27 +748,18 @@ AArch64LoadStoreOpt::mergeNarrowZeroStores(MachineBasicBlock::iterator I,
                    : AArch64InstrInfo::getLdStBaseOp(*I);
 
   // Which register is Rt and which is Rt2 depends on the offset order.
-  int64_t IOffsetInBytes =
-      AArch64InstrInfo::getLdStOffsetOp(*I).getImm() * OffsetStride;
-  int64_t MIOffsetInBytes =
-      AArch64InstrInfo::getLdStOffsetOp(*MergeMI).getImm() *
-      MergeMIOffsetStride;
-  // Select final offset based on the offset order.
-  int64_t OffsetImm;
-  if (IOffsetInBytes > MIOffsetInBytes)
-    OffsetImm = MIOffsetInBytes;
+  MachineInstr *RtMI;
+  if (AArch64InstrInfo::getLdStOffsetOp(*I).getImm() ==
+      AArch64InstrInfo::getLdStOffsetOp(*MergeMI).getImm() + OffsetStride)
+    RtMI = &*MergeMI;
   else
-    OffsetImm = IOffsetInBytes;
+    RtMI = &*I;
 
-  int NewOpcode = getMatchingWideOpcode(Opc);
-  bool FinalIsScaled = !TII->hasUnscaledLdStOffset(NewOpcode);
-
-  // Adjust final offset if the result opcode is a scaled store.
-  if (FinalIsScaled) {
-    int NewOffsetStride = FinalIsScaled ? TII->getMemScale(NewOpcode) : 1;
-    assert(((OffsetImm % NewOffsetStride) == 0) &&
-           "Offset should be a multiple of the store memory scale");
-    OffsetImm = OffsetImm / NewOffsetStride;
+  int OffsetImm = AArch64InstrInfo::getLdStOffsetOp(*RtMI).getImm();
+  // Change the scaled offset from small to large type.
+  if (IsScaled) {
+    assert(((OffsetImm & 1) == 0) && "Unexpected offset to merge");
+    OffsetImm /= 2;
   }
 
   // Construct the new instruction.

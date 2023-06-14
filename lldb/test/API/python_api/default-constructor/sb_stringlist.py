@@ -11,7 +11,7 @@ def fuzz_obj(obj):
     obj.AppendList(None, 0)
     obj.AppendList(lldb.SBStringList())
     obj.GetSize()
-    obj.GetStringAtIndex(0xFFFFFFFF)
+    obj.GetStringAtIndex(0xffffffff)
     obj.Clear()
     for n in obj:
         s = str(n)

@@ -6,13 +6,14 @@ from lldbsuite.test.lldbgdbclient import GDBRemoteTestBase
 
 
 class TestGdbClientMemoryRegions(GDBRemoteTestBase):
+
     def test(self):
         """
         Test handling of overflowing memory regions. In particular, make sure
         they don't trigger an infinite loop.
         """
-
         class MyResponder(MockGDBServerResponder):
+
             def qHostInfo(self):
                 return "ptrsize:8;endian:little;"
 
@@ -25,7 +26,7 @@ class TestGdbClientMemoryRegions(GDBRemoteTestBase):
         self.runCmd("log enable gdb-remote packets")
         self.runCmd("log enable lldb temp")
         self.server.responder = MyResponder()
-        target = self.dbg.CreateTarget("")
+        target = self.dbg.CreateTarget('')
         process = self.connect(target)
 
         regions = process.GetMemoryRegions()
@@ -39,5 +40,5 @@ class TestGdbClientMemoryRegions(GDBRemoteTestBase):
 
         self.assertTrue(regions.GetMemoryRegionAtIndex(1, region))
         self.assertEqual(region.GetRegionBase(), 0x8000000000000000)
-        self.assertEqual(region.GetRegionEnd(), 0xFFFFFFFFFFFFFFFF)
+        self.assertEqual(region.GetRegionEnd(), 0xffffffffffffffff)
         self.assertFalse(region.IsWritable())

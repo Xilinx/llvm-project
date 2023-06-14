@@ -1495,9 +1495,6 @@ void PatternToMatch::getPredicateRecords(
   }
   // Sort so that different orders get canonicalized to the same string.
   llvm::sort(PredicateRecs, LessRecord());
-  // Remove duplicate predicates.
-  PredicateRecs.erase(std::unique(PredicateRecs.begin(), PredicateRecs.end()),
-                      PredicateRecs.end());
 }
 
 /// getPredicateCheck - Return a single string containing all of this
@@ -2900,20 +2897,16 @@ TreePatternNodePtr TreePattern::ParseTreePattern(Init *TheInit,
     Init *II = BI->convertInitializerTo(IntRecTy::get(RK));
     if (!II || !isa<IntInit>(II))
       error("Bits value must be constants!");
-    return II ? ParseTreePattern(II, OpName) : nullptr;
+    return ParseTreePattern(II, OpName);
   }
 
   DagInit *Dag = dyn_cast<DagInit>(TheInit);
   if (!Dag) {
     TheInit->print(errs());
     error("Pattern has unexpected init kind!");
-    return nullptr;
   }
   DefInit *OpDef = dyn_cast<DefInit>(Dag->getOperator());
-  if (!OpDef) {
-    error("Pattern has unexpected operator type!");
-    return nullptr;
-  }
+  if (!OpDef) error("Pattern has unexpected operator type!");
   Record *Operator = OpDef->getDef();
 
   if (Operator->isSubClassOf("ValueType")) {
@@ -3487,8 +3480,7 @@ void CodeGenDAGPatterns::FindPatternInputsAndOutputs(
       DefInit *Val = dyn_cast<DefInit>(Dest->getLeafValue());
       if (!Val || !Val->getDef()->isSubClassOf("Register"))
         I.error("implicitly defined value should be a register!");
-      if (Val)
-        InstImpResults.push_back(Val->getDef());
+      InstImpResults.push_back(Val->getDef());
     }
     return;
   }
@@ -4336,24 +4328,13 @@ void CodeGenDAGPatterns::ParseOnePattern(Record *TheDef,
   // that register class does not accept that type, the type inference
   // will lead to a contradiction, which is not an error however, but
   // a sign that this pattern will simply never match.
-  if (Temp.getOnlyTree()->hasPossibleType()) {
-    for (const auto &T : Pattern.getTrees()) {
+  if (Temp.getOnlyTree()->hasPossibleType())
+    for (const auto &T : Pattern.getTrees())
       if (T->hasPossibleType())
         AddPatternToMatch(&Pattern,
                           PatternToMatch(TheDef, Preds, T, Temp.getOnlyTree(),
                                          InstImpResults, Complexity,
                                          TheDef->getID()));
-    }
-  } else {
-    // Show a message about a dropped pattern with some info to make it
-    // easier to identify it in the .td files.
-    LLVM_DEBUG({
-      dbgs() << "Dropping: ";
-      Pattern.dump();
-      Temp.getOnlyTree()->dump();
-      dbgs() << "\n";
-    });
-  }
 }
 
 void CodeGenDAGPatterns::ParsePatterns() {

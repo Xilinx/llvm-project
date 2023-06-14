@@ -447,8 +447,9 @@ class ASTContext : public RefCountedBase<ASTContext> {
   };
   llvm::DenseMap<Module*, PerModuleInitializers*> ModuleInitializers;
 
-  /// This is the top-level (C++20) Named module we are building.
-  Module *CurrentCXXNamedModule = nullptr;
+  /// For module code-gen cases, this is the top-level (C++20) Named module
+  /// we are building.
+  Module *TopLevelCXXNamedModule = nullptr;
 
   static constexpr unsigned ConstantArrayTypesLog2InitSize = 8;
   static constexpr unsigned GeneralTypesLog2InitSize = 9;
@@ -1051,10 +1052,10 @@ public:
   ArrayRef<Decl*> getModuleInitializers(Module *M);
 
   /// Set the (C++20) module we are building.
-  void setCurrentNamedModule(Module *M);
+  void setNamedModuleForCodeGen(Module *M) { TopLevelCXXNamedModule = M; }
 
   /// Get module under construction, nullptr if this is not a C++20 module.
-  Module *getCurrentNamedModule() const { return CurrentCXXNamedModule; }
+  Module *getNamedModuleForCodeGen() const { return TopLevelCXXNamedModule; }
 
   TranslationUnitDecl *getTranslationUnitDecl() const {
     return TUDecl->getMostRecentDecl();
@@ -1472,12 +1473,9 @@ public:
 
   /// Return the unique reference to a scalable vector type of the specified
   /// element type and scalable number of elements.
-  /// For RISC-V, number of fields is also provided when it fetching for
-  /// tuple type.
   ///
   /// \pre \p EltTy must be a built-in type.
-  QualType getScalableVectorType(QualType EltTy, unsigned NumElts,
-                                 unsigned NumFields = 1) const;
+  QualType getScalableVectorType(QualType EltTy, unsigned NumElts) const;
 
   /// Return a WebAssembly externref type.
   QualType getWebAssemblyExternrefType() const;
@@ -3213,6 +3211,7 @@ private:
 
   public:
     ObjCEncOptions() : Bits(0) {}
+    ObjCEncOptions(const ObjCEncOptions &RHS) : Bits(RHS.Bits) {}
 
 #define OPT_LIST(V)                                                            \
   V(ExpandPointedToStructures, 0)                                              \

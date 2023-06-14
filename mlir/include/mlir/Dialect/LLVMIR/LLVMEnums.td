@@ -272,7 +272,7 @@ def CConvEnum : LLVM_CEnumAttr<
 
 def CConv : DialectAttr<
     LLVM_Dialect,
-    CPred<"::llvm::isa<::mlir::LLVM::CConvAttr>($_self)">,
+    CPred<"$_self.isa<::mlir::LLVM::CConvAttr>()">,
     "LLVM Calling Convention specification"> {
   let storageType = "::mlir::LLVM::CConvAttr";
   let returnType = "::mlir::LLVM::cconv::CConv";
@@ -580,7 +580,7 @@ def LinkageEnum : LLVM_EnumAttr<
 
 def Linkage : DialectAttr<
     LLVM_Dialect,
-    CPred<"::llvm::isa<::mlir::LLVM::LinkageAttr>($_self)">,
+    CPred<"$_self.isa<::mlir::LLVM::LinkageAttr>()">,
     "LLVM Linkage specification"> {
   let storageType = "::mlir::LLVM::LinkageAttr";
   let returnType = "::mlir::LLVM::Linkage";

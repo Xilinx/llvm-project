@@ -25,98 +25,62 @@ class ObjCLanguage : public Language {
 public:
   class MethodName {
   public:
-    /// The static factory method for creating a MethodName.
-    ///
-    /// \param[in] name
-    ///   The name of the method.
-    ///
-    /// \param[in] strict
-    ///   Control whether or not the name parser is strict about +/- in the
-    ///   front of the name.
-    ///
-    /// \return If the name failed to parse as a valid Objective-C method name,
-    /// returns std::nullopt. Otherwise returns a const MethodName.
-    static std::optional<const MethodName> Create(llvm::StringRef name,
-                                                  bool strict);
-
-    /// Determines if this method is a class method
-    ///
-    /// \return Returns true if the method is a class method. False otherwise.
-    bool IsClassMethod() const { return m_type == eTypeClassMethod; }
-
-    /// Determines if this method is an instance method
-    ///
-    /// \return Returns true if the method is an instance method. False
-    /// otherwise.
-    bool IsInstanceMethod() const { return m_type == eTypeInstanceMethod; }
-
-    /// Returns the full name of the method.
-    ///
-    /// This includes the class name, the category name (if applicable), and the
-    /// selector name.
-    ///
-    /// \return The name of the method in the form of a const std::string
-    /// reference.
-    const std::string &GetFullName() const { return m_full; }
-
-    /// Creates a variation of this method without the category.
-    /// If this method has no category, it returns an empty string.
-    ///
-    /// Example:
-    ///   Full name: "+[NSString(my_additions) myStringWithCString:]"
-    ///   becomes "+[NSString myStringWithCString:]"
-    ///
-    /// \return The method name without the category or an empty string if there
-    /// was no category to begin with.
-    std::string GetFullNameWithoutCategory() const;
-
-    /// Returns a reference to the class name.
-    ///
-    /// Example:
-    ///   Full name: "+[NSString(my_additions) myStringWithCString:]"
-    ///   will give you "NSString"
-    ///
-    /// \return A StringRef to the class name of this method.
-    llvm::StringRef GetClassName() const;
-
-    /// Returns a reference to the class name with the category.
-    ///
-    /// Example:
-    ///   Full name: "+[NSString(my_additions) myStringWithCString:]"
-    ///   will give you "NSString(my_additions)"
-    ///
-    /// Note: If your method has no category, this will give the same output as
-    /// `GetClassName`.
-    ///
-    /// \return A StringRef to the class name (including the category) of this
-    /// method. If there was no category, returns the same as `GetClassName`.
-    llvm::StringRef GetClassNameWithCategory() const;
-
-    /// Returns a reference to the category name.
-    ///
-    /// Example:
-    ///   Full name: "+[NSString(my_additions) myStringWithCString:]"
-    ///   will give you "my_additions"
-    /// \return A StringRef to the category name of this method. If no category
-    /// is present, the StringRef is empty.
-    llvm::StringRef GetCategory() const;
-
-    /// Returns a reference to the selector name.
-    ///
-    /// Example:
-    ///   Full name: "+[NSString(my_additions) myStringWithCString:]"
-    ///   will give you "myStringWithCString:"
-    /// \return A StringRef to the selector of this method.
-    llvm::StringRef GetSelector() const;
-
-  protected:
     enum Type { eTypeUnspecified, eTypeClassMethod, eTypeInstanceMethod };
 
-    MethodName(llvm::StringRef name, Type type)
-        : m_full(name.str()), m_type(type) {}
+    MethodName() : m_full(), m_class(), m_category(), m_selector() {}
 
-    const std::string m_full;
-    Type m_type;
+    MethodName(const char *name, bool strict)
+        : m_full(), m_class(), m_category(), m_selector(),
+          m_type(eTypeUnspecified), m_category_is_valid(false) {
+      SetName(name, strict);
+    }
+    MethodName(llvm::StringRef name, bool strict)
+        : m_full(), m_class(), m_category(), m_selector(),
+          m_type(eTypeUnspecified), m_category_is_valid(false) {
+      SetName(name, strict);
+    }
+
+    void Clear();
+
+    bool IsValid(bool strict) const {
+      // If "strict" is true, the name must have everything specified including
+      // the leading "+" or "-" on the method name
+      if (strict && m_type == eTypeUnspecified)
+        return false;
+      // Other than that, m_full will only be filled in if the objective C
+      // name is valid.
+      return (bool)m_full;
+    }
+
+    bool HasCategory() { return !GetCategory().IsEmpty(); }
+
+    Type GetType() const { return m_type; }
+
+    ConstString GetFullName() const { return m_full; }
+
+    ConstString GetFullNameWithoutCategory(bool empty_if_no_category);
+
+    bool SetName(const char *name, bool strict);
+    bool SetName(llvm::StringRef name, bool strict);
+
+    ConstString GetClassName();
+
+    ConstString GetClassNameWithCategory();
+
+    ConstString GetCategory();
+
+    ConstString GetSelector();
+
+  protected:
+    ConstString
+        m_full; // Full name:   "+[NSString(my_additions) myStringWithCString:]"
+    ConstString m_class; // Class name:  "NSString"
+    ConstString
+        m_class_category;   // Class with category: "NSString(my_additions)"
+    ConstString m_category; // Category:    "my_additions"
+    ConstString m_selector; // Selector:    "myStringWithCString:"
+    Type m_type = eTypeUnspecified;
+    bool m_category_is_valid = false;
   };
 
   ObjCLanguage() = default;
@@ -191,7 +155,7 @@ public:
       return false;
   }
 
-  llvm::StringRef GetInstanceVariableName() override { return "self"; }
+  ConstString GetInstanceVariableName() override { return ConstString("self"); }
 
   // PluginInterface protocol
   llvm::StringRef GetPluginName() override { return GetPluginNameStatic(); }

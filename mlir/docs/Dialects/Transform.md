@@ -439,10 +439,6 @@ ops rather than having the methods directly act on the payload IR.
 
 [include "Dialects/LinalgStructuredTransformOps.md"]
 
-## Tensor Transform Operations
-
-[include "Dialects/TensorTransformOps.md"]
-
 ## Vector Transform Operations
 
 [include "Dialects/VectorTransformOps.md"]

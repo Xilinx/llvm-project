@@ -106,7 +106,7 @@ public:
   /// Returns the source MemRefType for this DMA operation.
   Value getSrcMemRef() { return getOperand(getSrcMemRefOperandIndex()); }
   MemRefType getSrcMemRefType() {
-    return cast<MemRefType>(getSrcMemRef().getType());
+    return getSrcMemRef().getType().cast<MemRefType>();
   }
 
   /// Returns the rank (number of indices) of the source MemRefType.
@@ -115,7 +115,7 @@ public:
   /// Returns the affine map used to access the source memref.
   AffineMap getSrcMap() { return getSrcMapAttr().getValue(); }
   AffineMapAttr getSrcMapAttr() {
-    return cast<AffineMapAttr>((*this)->getAttr(getSrcMapAttrStrName()));
+    return (*this)->getAttr(getSrcMapAttrStrName()).cast<AffineMapAttr>();
   }
 
   /// Returns the source memref affine map indices for this DMA operation.
@@ -127,7 +127,7 @@ public:
 
   /// Returns the memory space of the source memref.
   unsigned getSrcMemorySpace() {
-    return cast<MemRefType>(getSrcMemRef().getType()).getMemorySpaceAsInt();
+    return getSrcMemRef().getType().cast<MemRefType>().getMemorySpaceAsInt();
   }
 
   /// Returns the operand index of the destination memref.
@@ -138,23 +138,23 @@ public:
   /// Returns the destination MemRefType for this DMA operation.
   Value getDstMemRef() { return getOperand(getDstMemRefOperandIndex()); }
   MemRefType getDstMemRefType() {
-    return cast<MemRefType>(getDstMemRef().getType());
+    return getDstMemRef().getType().cast<MemRefType>();
   }
 
   /// Returns the rank (number of indices) of the destination MemRefType.
   unsigned getDstMemRefRank() {
-    return cast<MemRefType>(getDstMemRef().getType()).getRank();
+    return getDstMemRef().getType().cast<MemRefType>().getRank();
   }
 
   /// Returns the memory space of the source memref.
   unsigned getDstMemorySpace() {
-    return cast<MemRefType>(getDstMemRef().getType()).getMemorySpaceAsInt();
+    return getDstMemRef().getType().cast<MemRefType>().getMemorySpaceAsInt();
   }
 
   /// Returns the affine map used to access the destination memref.
   AffineMap getDstMap() { return getDstMapAttr().getValue(); }
   AffineMapAttr getDstMapAttr() {
-    return cast<AffineMapAttr>((*this)->getAttr(getDstMapAttrStrName()));
+    return (*this)->getAttr(getDstMapAttrStrName()).cast<AffineMapAttr>();
   }
 
   /// Returns the destination memref indices for this DMA operation.
@@ -172,18 +172,18 @@ public:
   /// Returns the Tag MemRef for this DMA operation.
   Value getTagMemRef() { return getOperand(getTagMemRefOperandIndex()); }
   MemRefType getTagMemRefType() {
-    return cast<MemRefType>(getTagMemRef().getType());
+    return getTagMemRef().getType().cast<MemRefType>();
   }
 
   /// Returns the rank (number of indices) of the tag MemRefType.
   unsigned getTagMemRefRank() {
-    return cast<MemRefType>(getTagMemRef().getType()).getRank();
+    return getTagMemRef().getType().cast<MemRefType>().getRank();
   }
 
   /// Returns the affine map used to access the tag memref.
   AffineMap getTagMap() { return getTagMapAttr().getValue(); }
   AffineMapAttr getTagMapAttr() {
-    return cast<AffineMapAttr>((*this)->getAttr(getTagMapAttrStrName()));
+    return (*this)->getAttr(getTagMapAttrStrName()).cast<AffineMapAttr>();
   }
 
   /// Returns the tag memref indices for this DMA operation.
@@ -299,13 +299,13 @@ public:
   /// Returns the Tag MemRef associated with the DMA operation being waited on.
   Value getTagMemRef() { return getOperand(0); }
   MemRefType getTagMemRefType() {
-    return cast<MemRefType>(getTagMemRef().getType());
+    return getTagMemRef().getType().cast<MemRefType>();
   }
 
   /// Returns the affine map used to access the tag memref.
   AffineMap getTagMap() { return getTagMapAttr().getValue(); }
   AffineMapAttr getTagMapAttr() {
-    return cast<AffineMapAttr>((*this)->getAttr(getTagMapAttrStrName()));
+    return (*this)->getAttr(getTagMapAttrStrName()).cast<AffineMapAttr>();
   }
 
   /// Returns the tag memref index for this DMA operation.
@@ -316,7 +316,7 @@ public:
 
   /// Returns the rank (number of indices) of the tag memref.
   unsigned getTagMemRefRank() {
-    return cast<MemRefType>(getTagMemRef().getType()).getRank();
+    return getTagMemRef().getType().cast<MemRefType>().getRank();
   }
 
   /// Impelements the AffineMapAccessInterface. Returns the AffineMapAttr

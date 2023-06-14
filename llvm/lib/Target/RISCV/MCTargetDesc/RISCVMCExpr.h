@@ -80,6 +80,8 @@ public:
     return E->getKind() == MCExpr::Target;
   }
 
+  static bool classof(const RISCVMCExpr *) { return true; }
+
   static VariantKind getVariantKindForName(StringRef name);
   static StringRef getVariantKindName(VariantKind Kind);
 };

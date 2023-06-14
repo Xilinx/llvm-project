@@ -13,6 +13,7 @@
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Transforms.h"
 #include "mlir/Dialect/NVGPU/IR/NVGPUDialect.h"
+#include "mlir/Dialect/PDL/IR/PDL.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Transform/IR/TransformDialect.h"
 #include "mlir/Dialect/Transform/IR/TransformInterfaces.h"
@@ -34,8 +35,9 @@ DiagnosedSilenceableFailure transform::MemRefMultiBufferOp::apply(
     transform::TransformResults &transformResults,
     transform::TransformState &state) {
   SmallVector<Operation *> results;
+  ArrayRef<Operation *> payloadOps = state.getPayloadOps(getTarget());
   IRRewriter rewriter(getContext());
-  for (Operation *op : state.getPayloadOps(getTarget())) {
+  for (auto *op : payloadOps) {
     bool canApplyMultiBuffer = true;
     auto target = cast<memref::AllocOp>(op);
     LLVM_DEBUG(DBGS() << "Start multibuffer transform op: " << target << "\n";);
@@ -67,7 +69,7 @@ DiagnosedSilenceableFailure transform::MemRefMultiBufferOp::apply(
 
     results.push_back(*newBuffer);
   }
-  transformResults.set(cast<OpResult>(getResult()), results);
+  transformResults.set(getResult().cast<OpResult>(), results);
   return DiagnosedSilenceableFailure::success();
 }
 
@@ -151,6 +153,7 @@ public:
   using Base::Base;
 
   void init() {
+    declareDependentDialect<pdl::PDLDialect>();
     declareGeneratedDialect<affine::AffineDialect>();
     declareGeneratedDialect<arith::ArithDialect>();
     declareGeneratedDialect<memref::MemRefDialect>();

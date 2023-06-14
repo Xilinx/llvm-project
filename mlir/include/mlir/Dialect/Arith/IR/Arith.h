@@ -9,7 +9,6 @@
 #ifndef MLIR_DIALECT_ARITH_IR_ARITH_H_
 #define MLIR_DIALECT_ARITH_IR_ARITH_H_
 
-#include "mlir/Bytecode/BytecodeOpInterface.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
@@ -64,7 +63,7 @@ public:
                     Type type);
 
   inline int64_t value() {
-    return cast<IntegerAttr>(arith::ConstantOp::getValue()).getInt();
+    return arith::ConstantOp::getValue().cast<IntegerAttr>().getInt();
   }
 
   static bool classof(Operation *op);
@@ -80,7 +79,7 @@ public:
                     const APFloat &value, FloatType type);
 
   inline APFloat value() {
-    return cast<FloatAttr>(arith::ConstantOp::getValue()).getValue();
+    return arith::ConstantOp::getValue().cast<FloatAttr>().getValue();
   }
 
   static bool classof(Operation *op);
@@ -95,7 +94,7 @@ public:
   static void build(OpBuilder &builder, OperationState &result, int64_t value);
 
   inline int64_t value() {
-    return cast<IntegerAttr>(arith::ConstantOp::getValue()).getInt();
+    return arith::ConstantOp::getValue().cast<IntegerAttr>().getInt();
   }
 
   static bool classof(Operation *op);

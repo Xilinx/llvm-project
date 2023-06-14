@@ -53,7 +53,7 @@ transform::TransformState::TransformState(
 Operation *transform::TransformState::getTopLevel() const { return topLevel; }
 
 ArrayRef<Operation *>
-transform::TransformState::getPayloadOpsView(Value value) const {
+transform::TransformState::getPayloadOps(Value value) const {
   const TransformOpMapping &operationMapping = getMapping(value).direct;
   auto iter = operationMapping.find(value);
   assert(
@@ -114,11 +114,11 @@ static DiagnosedSilenceableFailure dispatchMappedValues(
     function_ref<LogicalResult(ArrayRef<Operation *>)> operationsFn,
     function_ref<LogicalResult(ArrayRef<transform::Param>)> paramsFn,
     function_ref<LogicalResult(ValueRange)> valuesFn) {
-  if (llvm::isa<transform::TransformHandleTypeInterface>(handle.getType())) {
+  if (handle.getType().isa<transform::TransformHandleTypeInterface>()) {
     SmallVector<Operation *> operations;
     operations.reserve(values.size());
     for (transform::MappedValue value : values) {
-      if (auto *op = llvm::dyn_cast_if_present<Operation *>(value)) {
+      if (auto *op = value.dyn_cast<Operation *>()) {
         operations.push_back(op);
         continue;
       }
@@ -130,12 +130,11 @@ static DiagnosedSilenceableFailure dispatchMappedValues(
     return DiagnosedSilenceableFailure::success();
   }
 
-  if (llvm::isa<transform::TransformValueHandleTypeInterface>(
-          handle.getType())) {
+  if (handle.getType().isa<transform::TransformValueHandleTypeInterface>()) {
     SmallVector<Value> payloadValues;
     payloadValues.reserve(values.size());
     for (transform::MappedValue value : values) {
-      if (auto v = llvm::dyn_cast_if_present<Value>(value)) {
+      if (auto v = value.dyn_cast<Value>()) {
         payloadValues.push_back(v);
         continue;
       }
@@ -147,12 +146,12 @@ static DiagnosedSilenceableFailure dispatchMappedValues(
     return DiagnosedSilenceableFailure::success();
   }
 
-  assert(llvm::isa<transform::TransformParamTypeInterface>(handle.getType()) &&
+  assert(handle.getType().isa<transform::TransformParamTypeInterface>() &&
          "unsupported kind of block argument");
   SmallVector<transform::Param> parameters;
   parameters.reserve(values.size());
   for (transform::MappedValue value : values) {
-    if (auto attr = llvm::dyn_cast_if_present<Attribute>(value)) {
+    if (auto attr = value.dyn_cast<Attribute>()) {
       parameters.push_back(attr);
       continue;
     }
@@ -186,7 +185,7 @@ transform::TransformState::setPayloadOps(Value value,
                                          ArrayRef<Operation *> targets) {
   assert(value != kTopLevelValue &&
          "attempting to reset the transformation root");
-  assert(llvm::isa<TransformHandleTypeInterface>(value.getType()) &&
+  assert(value.getType().isa<TransformHandleTypeInterface>() &&
          "wrong handle type");
 
   for (Operation *target : targets) {
@@ -196,7 +195,7 @@ transform::TransformState::setPayloadOps(Value value,
            << "attempting to assign a null payload op to this transform value";
   }
 
-  auto iface = llvm::cast<TransformHandleTypeInterface>(value.getType());
+  auto iface = value.getType().cast<TransformHandleTypeInterface>();
   DiagnosedSilenceableFailure result =
       iface.checkPayload(value.getLoc(), targets);
   if (failed(result.checkAndReport()))
@@ -221,7 +220,7 @@ LogicalResult
 transform::TransformState::setPayloadValues(Value handle,
                                             ValueRange payloadValues) {
   assert(handle != nullptr && "attempting to set params for a null value");
-  assert(llvm::isa<TransformValueHandleTypeInterface>(handle.getType()) &&
+  assert(handle.getType().isa<TransformValueHandleTypeInterface>() &&
          "wrong handle type");
 
   for (Value payload : payloadValues) {
@@ -231,7 +230,7 @@ transform::TransformState::setPayloadValues(Value handle,
                                          "value to this transform handle";
   }
 
-  auto iface = llvm::cast<TransformValueHandleTypeInterface>(handle.getType());
+  auto iface = handle.getType().cast<TransformValueHandleTypeInterface>();
   SmallVector<Value> payloadValueVector = llvm::to_vector(payloadValues);
   DiagnosedSilenceableFailure result =
       iface.checkPayload(handle.getLoc(), payloadValueVector);
@@ -263,7 +262,7 @@ LogicalResult transform::TransformState::setParams(Value value,
            << "attempting to assign a null parameter to this transform value";
   }
 
-  auto valueType = llvm::dyn_cast<TransformParamTypeInterface>(value.getType());
+  auto valueType = value.getType().dyn_cast<TransformParamTypeInterface>();
   assert(value &&
          "cannot associate parameter with a value of non-parameter type");
   DiagnosedSilenceableFailure result =
@@ -357,8 +356,18 @@ transform::TransformState::replacePayloadOp(Operation *op,
 
   // TODO: consider invalidating the handles to nested objects here.
 
+  // If replacing with null, that is erasing the mapping, drop the mapping
+  // between the handles and the IR objects and return.
+  if (!replacement) {
+    for (Value handle : opHandles) {
+      Mappings &mappings = getMapping(handle);
+      dropMappingEntry(mappings.direct, handle, op);
+    }
+    return success();
+  }
+
 #if LLVM_ENABLE_ABI_BREAKING_CHECKS
-  if (replacement && options.getExpensiveChecksEnabled()) {
+  if (options.getExpensiveChecksEnabled()) {
     auto insertion = cachedNames.insert({replacement, replacement->getName()});
     if (!insertion.second) {
       assert(insertion.first->second == replacement->getName() &&
@@ -367,15 +376,8 @@ transform::TransformState::replacePayloadOp(Operation *op,
   }
 #endif // LLVM_ENABLE_ABI_BREAKING_CHECKS
 
-  // Replace the pointed-to object of all handles with the replacement object.
-  // In case a payload op was erased (replacement object is nullptr), a nullptr
-  // is stored in the mapping. These nullptrs are removed after each transform.
-  // Furthermore, nullptrs are not enumerated by payload op iterators. The
-  // relative order of ops is preserved.
-  //
-  // Removing an op from the mapping would be problematic because removing an
-  // element from an array invalidates iterators; merely changing the value of
-  // elements does not.
+  // Otherwise, replace the pointed-to object of all handles while preserving
+  // their relative order. First, replace the mapped operation if present.
   for (Value handle : opHandles) {
     Mappings &mappings = getMapping(handle);
     auto it = mappings.direct.find(handle);
@@ -388,12 +390,7 @@ transform::TransformState::replacePayloadOp(Operation *op,
       if (mapped == op)
         mapped = replacement;
     }
-
-    if (replacement) {
-      mappings.reverse[replacement].push_back(handle);
-    } else {
-      opHandlesToCompact.insert(handle);
-    }
+    mappings.reverse[replacement].push_back(handle);
   }
 
   return success();
@@ -443,9 +440,6 @@ void transform::TransformState::recordOpHandleInvalidationOne(
       llvm::interleaveComma(potentialAncestors, DBGS() << "--ancestors: ",
                             [](Operation *op) { llvm::dbgs() << *op; });
       llvm::dbgs() << "\n");
-
-  Operation *owner = consumingHandle.getOwner();
-  unsigned operandNo = consumingHandle.getOperandNumber();
   for (Operation *ancestor : potentialAncestors) {
     // clang-format off
     DEBUG_WITH_TYPE(DEBUG_TYPE_FULL, 
@@ -465,6 +459,8 @@ void transform::TransformState::recordOpHandleInvalidationOne(
     // deleted before the lambda gets called.
     Location ancestorLoc = ancestor->getLoc();
     Location opLoc = payloadOp->getLoc();
+    Operation *owner = consumingHandle.getOwner();
+    unsigned operandNo = consumingHandle.getOperandNumber();
     std::optional<Location> throughValueLoc =
         throughValue ? std::make_optional(throughValue.getLoc()) : std::nullopt;
     invalidatedHandles[otherHandle] = [ancestorLoc, opLoc, owner, operandNo,
@@ -501,11 +497,11 @@ void transform::TransformState::recordValueHandleInvalidationByOpHandleOne(
     Operation *definingOp;
     std::optional<unsigned> resultNo;
     unsigned argumentNo, blockNo, regionNo;
-    if (auto opResult = llvm::dyn_cast<OpResult>(payloadValue)) {
+    if (auto opResult = payloadValue.dyn_cast<OpResult>()) {
       definingOp = opResult.getOwner();
       resultNo = opResult.getResultNumber();
     } else {
-      auto arg = llvm::cast<BlockArgument>(payloadValue);
+      auto arg = payloadValue.cast<BlockArgument>();
       definingOp = arg.getParentBlock()->getParentOp();
       argumentNo = arg.getArgNumber();
       blockNo = std::distance(arg.getOwner()->getParent()->begin(),
@@ -552,27 +548,6 @@ void transform::TransformState::recordValueHandleInvalidationByOpHandleOne(
 void transform::TransformState::recordOpHandleInvalidation(
     OpOperand &handle, ArrayRef<Operation *> potentialAncestors,
     Value throughValue) {
-
-  if (potentialAncestors.empty()) {
-    DEBUG_WITH_TYPE(DEBUG_TYPE_FULL, {
-      (DBGS() << "----recording invalidation for empty handle: " << handle.get()
-              << "\n");
-    });
-
-    Operation *owner = handle.getOwner();
-    unsigned operandNo = handle.getOperandNumber();
-    invalidatedHandles[handle.get()] = [owner, operandNo](Location currentLoc) {
-      InFlightDiagnostic diag = emitError(currentLoc)
-                                << "op uses a handle associated with empty "
-                                   "payload and invalidated by a "
-                                   "previously executed transform op";
-      diag.attachNote(owner->getLoc())
-          << "invalidated by this transform op that consumes its operand #"
-          << operandNo;
-    };
-    return;
-  }
-
   // Iterate over the mapping and invalidate aliasing handles. This is quite
   // expensive and only necessary for error reporting in case of transform
   // dialect misuse with dangling handles. Iteration over the handles is based
@@ -627,11 +602,11 @@ void transform::TransformState::recordValueHandleInvalidation(
       };
     }
 
-    if (auto opResult = llvm::dyn_cast<OpResult>(payloadValue)) {
+    if (auto opResult = payloadValue.dyn_cast<OpResult>()) {
       Operation *payloadOp = opResult.getOwner();
       recordOpHandleInvalidation(valueHandle, payloadOp, payloadValue);
     } else {
-      auto arg = llvm::dyn_cast<BlockArgument>(payloadValue);
+      auto arg = payloadValue.dyn_cast<BlockArgument>();
       for (Operation &payloadOp : *arg.getOwner())
         recordOpHandleInvalidation(valueHandle, &payloadOp, payloadValue);
     }
@@ -667,12 +642,13 @@ LogicalResult transform::TransformState::checkAndRecordHandleInvalidation(
     };
     if (llvm::any_of(effects, consumesTarget)) {
       FULL_LDBG("----found consume effect -> SKIP\n");
-      if (llvm::isa<TransformHandleTypeInterface>(target.get().getType())) {
+      if (target.get().getType().isa<TransformHandleTypeInterface>()) {
         FULL_LDBG("----recordOpHandleInvalidation\n");
-        ArrayRef<Operation *> payloadOps = getPayloadOpsView(target.get());
+        ArrayRef<Operation *> payloadOps = getPayloadOps(target.get());
         recordOpHandleInvalidation(target, payloadOps);
-      } else if (llvm::isa<TransformValueHandleTypeInterface>(
-                     target.get().getType())) {
+      } else if (target.get()
+                     .getType()
+                     .isa<TransformValueHandleTypeInterface>()) {
         FULL_LDBG("----recordValueHandleInvalidation\n");
         recordValueHandleInvalidation(target);
       } else {
@@ -710,14 +686,6 @@ checkRepeatedConsumptionInOperand(ArrayRef<T> payload,
   return DiagnosedSilenceableFailure::success();
 }
 
-void transform::TransformState::compactOpHandles() {
-  for (Value handle : opHandlesToCompact) {
-    Mappings &mappings = getMapping(handle);
-    llvm::erase_value(mappings.direct[handle], nullptr);
-  }
-  opHandlesToCompact.clear();
-}
-
 DiagnosedSilenceableFailure
 transform::TransformState::applyTransform(TransformOpInterface transform) {
   LLVM_DEBUG({
@@ -746,24 +714,20 @@ transform::TransformState::applyTransform(TransformOpInterface transform) {
         FULL_LDBG("--handle not consumed -> SKIP\n");
         continue;
       }
-      if (transform.allowsRepeatedHandleOperands()) {
-        FULL_LDBG("--op allows repeated handles -> SKIP\n");
-        continue;
-      }
       FULL_LDBG("--handle is consumed\n");
 
       Type operandType = operand.get().getType();
-      if (llvm::isa<TransformHandleTypeInterface>(operandType)) {
+      if (operandType.isa<TransformHandleTypeInterface>()) {
         FULL_LDBG("--checkRepeatedConsumptionInOperand for Operation*\n");
         DiagnosedSilenceableFailure check =
             checkRepeatedConsumptionInOperand<Operation *>(
-                getPayloadOpsView(operand.get()), transform,
+                getPayloadOps(operand.get()), transform,
                 operand.getOperandNumber());
         if (!check.succeeded()) {
           FULL_LDBG("----FAILED\n");
           return check;
         }
-      } else if (llvm::isa<TransformValueHandleTypeInterface>(operandType)) {
+      } else if (operandType.isa<TransformValueHandleTypeInterface>()) {
         FULL_LDBG("--checkRepeatedConsumptionInOperand For Value\n");
         DiagnosedSilenceableFailure check =
             checkRepeatedConsumptionInOperand<Value>(
@@ -830,7 +794,7 @@ transform::TransformState::applyTransform(TransformOpInterface transform) {
 #endif // LLVM_ENABLE_ABI_BREAKING_CHECKS
   for (unsigned index : consumedOperands) {
     Value operand = transform->getOperand(index);
-    if (llvm::isa<TransformHandleTypeInterface>(operand.getType())) {
+    if (operand.getType().isa<TransformHandleTypeInterface>()) {
       for (Operation *payloadOp : getPayloadOps(operand)) {
         llvm::append_range(origOpFlatResults, payloadOp->getResults());
 #if LLVM_ENABLE_ABI_BREAKING_CHECKS
@@ -844,15 +808,15 @@ transform::TransformState::applyTransform(TransformOpInterface transform) {
       }
       continue;
     }
-    if (llvm::isa<TransformValueHandleTypeInterface>(operand.getType())) {
+    if (operand.getType().isa<TransformValueHandleTypeInterface>()) {
       for (Value payloadValue : getPayloadValues(operand)) {
-        if (llvm::isa<OpResult>(payloadValue)) {
+        if (payloadValue.isa<OpResult>()) {
           origAssociatedOps.push_back(payloadValue.getDefiningOp());
           continue;
         }
         llvm::append_range(
             origAssociatedOps,
-            llvm::map_range(*llvm::cast<BlockArgument>(payloadValue).getOwner(),
+            llvm::map_range(*payloadValue.cast<BlockArgument>().getOwner(),
                             [](Operation &op) { return &op; }));
       }
       continue;
@@ -871,7 +835,6 @@ transform::TransformState::applyTransform(TransformOpInterface transform) {
   // proceed on a best effort basis.
   transform::TransformResults results(transform->getNumResults());
   DiagnosedSilenceableFailure result(transform.apply(results, *this));
-  compactOpHandles();
   if (result.isDefiniteFailure())
     return result;
 
@@ -884,10 +847,9 @@ transform::TransformState::applyTransform(TransformOpInterface transform) {
   // allows us to catch use-after-free with assertions later on.
   for (unsigned index : consumedOperands) {
     Value operand = transform->getOperand(index);
-    if (llvm::isa<TransformHandleTypeInterface>(operand.getType())) {
+    if (operand.getType().isa<TransformHandleTypeInterface>()) {
       forgetMapping(operand, origOpFlatResults);
-    } else if (llvm::isa<TransformValueHandleTypeInterface>(
-                   operand.getType())) {
+    } else if (operand.getType().isa<TransformValueHandleTypeInterface>()) {
       forgetValueMapping(operand, origAssociatedOps);
     }
   }
@@ -961,14 +923,14 @@ transform::TransformState::applyTransform(TransformOpInterface transform) {
 LogicalResult transform::TransformState::updateStateFromResults(
     const TransformResults &results, ResultRange opResults) {
   for (OpResult result : opResults) {
-    if (llvm::isa<TransformParamTypeInterface>(result.getType())) {
+    if (result.getType().isa<TransformParamTypeInterface>()) {
       assert(results.isParam(result.getResultNumber()) &&
              "expected parameters for the parameter-typed result");
       if (failed(
               setParams(result, results.getParams(result.getResultNumber())))) {
         return failure();
       }
-    } else if (llvm::isa<TransformValueHandleTypeInterface>(result.getType())) {
+    } else if (result.getType().isa<TransformValueHandleTypeInterface>()) {
       assert(results.isValue(result.getResultNumber()) &&
              "expected values for value-type-result");
       if (failed(setPayloadValues(
@@ -1023,6 +985,19 @@ transform::TransformResults::TransformResults(unsigned numSegments) {
   operations.appendEmptyRows(numSegments);
   params.appendEmptyRows(numSegments);
   values.appendEmptyRows(numSegments);
+}
+
+void transform::TransformResults::set(OpResult value,
+                                      ArrayRef<Operation *> ops) {
+  int64_t position = value.getResultNumber();
+  assert(position < static_cast<int64_t>(operations.size()) &&
+         "setting results for a non-existent handle");
+  assert(operations[position].data() == nullptr && "results already set");
+  assert(params[position].data() == nullptr &&
+         "another kind of results already set");
+  assert(values[position].data() == nullptr &&
+         "another kind of results already set");
+  operations.replace(position, ops);
 }
 
 void transform::TransformResults::setParams(
@@ -1162,19 +1137,19 @@ transform::detail::checkApplyToOne(Operation *transformOp,
        llvm::zip(partialResult, transformOp->getResults())) {
     if (ptr.isNull())
       continue;
-    if (llvm::isa<TransformHandleTypeInterface>(res.getType()) &&
+    if (res.getType().template isa<TransformHandleTypeInterface>() &&
         !ptr.is<Operation *>()) {
       return emitDiag() << "application of " << transformOpName
                         << " expected to produce an Operation * for result #"
                         << res.getResultNumber();
     }
-    if (llvm::isa<TransformParamTypeInterface>(res.getType()) &&
+    if (res.getType().template isa<TransformParamTypeInterface>() &&
         !ptr.is<Attribute>()) {
       return emitDiag() << "application of " << transformOpName
                         << " expected to produce an Attribute for result #"
                         << res.getResultNumber();
     }
-    if (llvm::isa<TransformValueHandleTypeInterface>(res.getType()) &&
+    if (res.getType().template isa<TransformValueHandleTypeInterface>() &&
         !ptr.is<Value>()) {
       return emitDiag() << "application of " << transformOpName
                         << " expected to produce a Value for result #"
@@ -1207,10 +1182,10 @@ void transform::detail::setApplyToOneResults(
 
   for (OpResult r : transformOp->getResults()) {
     unsigned position = r.getResultNumber();
-    if (llvm::isa<TransformParamTypeInterface>(r.getType())) {
+    if (r.getType().isa<TransformParamTypeInterface>()) {
       transformResults.setParams(r,
                                  castVector<Attribute>(transposed[position]));
-    } else if (llvm::isa<TransformValueHandleTypeInterface>(r.getType())) {
+    } else if (r.getType().isa<TransformValueHandleTypeInterface>()) {
       transformResults.setValues(r, castVector<Value>(transposed[position]));
     } else {
       transformResults.set(r, castVector<Operation *>(transposed[position]));
@@ -1227,13 +1202,12 @@ void transform::detail::prepareValueMappings(
     ValueRange values, const transform::TransformState &state) {
   for (Value operand : values) {
     SmallVector<MappedValue> &mapped = mappings.emplace_back();
-    if (llvm::isa<TransformHandleTypeInterface>(operand.getType())) {
+    if (operand.getType().isa<TransformHandleTypeInterface>()) {
       llvm::append_range(mapped, state.getPayloadOps(operand));
-    } else if (llvm::isa<TransformValueHandleTypeInterface>(
-                   operand.getType())) {
+    } else if (operand.getType().isa<TransformValueHandleTypeInterface>()) {
       llvm::append_range(mapped, state.getPayloadValues(operand));
     } else {
-      assert(llvm::isa<TransformParamTypeInterface>(operand.getType()) &&
+      assert(operand.getType().isa<TransformParamTypeInterface>() &&
              "unsupported kind of transform dialect value");
       llvm::append_range(mapped, state.getParams(operand));
     }
@@ -1246,84 +1220,22 @@ void transform::detail::forwardTerminatorOperands(
   for (auto &&[terminatorOperand, result] :
        llvm::zip(block->getTerminator()->getOperands(),
                  block->getParentOp()->getOpResults())) {
-    if (llvm::isa<transform::TransformHandleTypeInterface>(result.getType())) {
+    if (result.getType().isa<transform::TransformHandleTypeInterface>()) {
       results.set(result, state.getPayloadOps(terminatorOperand));
-    } else if (llvm::isa<transform::TransformValueHandleTypeInterface>(
-                   result.getType())) {
+    } else if (result.getType()
+                   .isa<transform::TransformValueHandleTypeInterface>()) {
       results.setValues(result, state.getPayloadValues(terminatorOperand));
     } else {
-      assert(
-          llvm::isa<transform::TransformParamTypeInterface>(result.getType()) &&
-          "unhandled transform type interface");
+      assert(result.getType().isa<transform::TransformParamTypeInterface>() &&
+             "unhandled transform type interface");
       results.setParams(result, state.getParams(terminatorOperand));
     }
   }
 }
 
-transform::TransformState
-transform::detail::makeTransformStateForTesting(Region *region,
-                                                Operation *payloadRoot) {
-  return TransformState(region, payloadRoot);
-}
-
 //===----------------------------------------------------------------------===//
 // Utilities for PossibleTopLevelTransformOpTrait.
 //===----------------------------------------------------------------------===//
-
-/// Appends to `effects` the memory effect instances on `target` with the same
-/// resource and effect as the ones the operation `iface` having on `source`.
-static void
-remapEffects(MemoryEffectOpInterface iface, BlockArgument source, Value target,
-             SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
-  SmallVector<MemoryEffects::EffectInstance> nestedEffects;
-  iface.getEffectsOnValue(source, nestedEffects);
-  for (const auto &effect : nestedEffects)
-    effects.emplace_back(effect.getEffect(), target, effect.getResource());
-}
-
-/// Appends to `effects` the same effects as the operations of `block` have on
-/// block arguments but associated with `operands.`
-static void
-remapArgumentEffects(Block &block, ValueRange operands,
-                     SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
-  for (Operation &op : block) {
-    auto iface = dyn_cast<MemoryEffectOpInterface>(&op);
-    if (!iface)
-      continue;
-
-    for (auto &&[source, target] : llvm::zip(block.getArguments(), operands)) {
-      remapEffects(iface, source, target, effects);
-    }
-
-    SmallVector<MemoryEffects::EffectInstance> nestedEffects;
-    iface.getEffectsOnResource(transform::PayloadIRResource::get(),
-                               nestedEffects);
-    llvm::append_range(effects, nestedEffects);
-  }
-}
-
-void transform::detail::getPotentialTopLevelEffects(
-    Operation *operation, Value root, Block &body,
-    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
-  transform::onlyReadsHandle(operation->getOperands(), effects);
-  transform::producesHandle(operation->getResults(), effects);
-
-  if (!root) {
-    for (Operation &op : body) {
-      auto iface = dyn_cast<MemoryEffectOpInterface>(&op);
-      if (!iface)
-        continue;
-
-      SmallVector<MemoryEffects::EffectInstance, 2> nestedEffects;
-      iface.getEffects(effects);
-    }
-    return;
-  }
-
-  // Carry over all effects on arguments of the entry block as those on the
-  // operands, this is the same value just remapped.
-  remapArgumentEffects(body, operation->getOperands(), effects);
-}
 
 LogicalResult transform::detail::mapPossibleTopLevelTransformOpBlockArguments(
     TransformState &state, Operation *op, Region &region) {
@@ -1379,8 +1291,7 @@ transform::detail::verifyPossibleTopLevelTransformOpTrait(Operation *op) {
     return op->emitOpError()
            << "expects the entry block to have at least one argument";
   }
-  if (!llvm::isa<TransformHandleTypeInterface>(
-          body->getArgument(0).getType())) {
+  if (!body->getArgument(0).getType().isa<TransformHandleTypeInterface>()) {
     return op->emitOpError()
            << "expects the first entry block argument to be of type "
               "implementing TransformHandleTypeInterface";
@@ -1394,8 +1305,9 @@ transform::detail::verifyPossibleTopLevelTransformOpTrait(Operation *op) {
     }
   }
   for (BlockArgument arg : body->getArguments().drop_front()) {
-    if (llvm::isa<TransformHandleTypeInterface, TransformParamTypeInterface,
-                  TransformValueHandleTypeInterface>(arg.getType()))
+    if (arg.getType()
+            .isa<TransformHandleTypeInterface, TransformParamTypeInterface,
+                 TransformValueHandleTypeInterface>())
       continue;
 
     InFlightDiagnostic diag =
@@ -1432,8 +1344,9 @@ void transform::detail::getParamProducerTransformOpTraitEffects(
   bool hasPayloadOperands = false;
   for (Value operand : op->getOperands()) {
     onlyReadsHandle(operand, effects);
-    if (llvm::isa<TransformHandleTypeInterface,
-                  TransformValueHandleTypeInterface>(operand.getType()))
+    if (operand.getType()
+            .isa<TransformHandleTypeInterface,
+                 TransformValueHandleTypeInterface>())
       hasPayloadOperands = true;
   }
   if (hasPayloadOperands)
@@ -1451,7 +1364,7 @@ transform::detail::verifyParamProducerTransformOpTrait(Operation *op) {
         op->getName().getStringRef());
   }
   for (Value result : op->getResults()) {
-    if (llvm::isa<TransformParamTypeInterface>(result.getType()))
+    if (result.getType().isa<TransformParamTypeInterface>())
       continue;
     return op->emitOpError()
            << "ParamProducerTransformOpTrait attached to this op expects "

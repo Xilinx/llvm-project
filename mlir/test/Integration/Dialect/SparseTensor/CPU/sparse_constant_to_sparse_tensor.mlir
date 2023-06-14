@@ -27,7 +27,7 @@
 // RUN: %{compile} | mlir-translate -mlir-to-llvmir | %{run}
 
 #Tensor1  = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed", "compressed"]
+  dimLevelType = [ "compressed", "compressed"]
 }>
 
 //

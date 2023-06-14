@@ -78,37 +78,21 @@
 #   error "__cpp_lib_chrono_udls should have the value 201304L in c++20"
 # endif
 
-#elif TEST_STD_VER == 23
+#elif TEST_STD_VER > 20
 
 # ifndef __cpp_lib_chrono
-#   error "__cpp_lib_chrono should be defined in c++23"
+#   error "__cpp_lib_chrono should be defined in c++2b"
 # endif
 # if __cpp_lib_chrono != 201611L
-#   error "__cpp_lib_chrono should have the value 201611L in c++23"
+#   error "__cpp_lib_chrono should have the value 201611L in c++2b"
 # endif
 
 # ifndef __cpp_lib_chrono_udls
-#   error "__cpp_lib_chrono_udls should be defined in c++23"
+#   error "__cpp_lib_chrono_udls should be defined in c++2b"
 # endif
 # if __cpp_lib_chrono_udls != 201304L
-#   error "__cpp_lib_chrono_udls should have the value 201304L in c++23"
+#   error "__cpp_lib_chrono_udls should have the value 201304L in c++2b"
 # endif
 
-#elif TEST_STD_VER > 23
-
-# ifndef __cpp_lib_chrono
-#   error "__cpp_lib_chrono should be defined in c++26"
-# endif
-# if __cpp_lib_chrono != 201611L
-#   error "__cpp_lib_chrono should have the value 201611L in c++26"
-# endif
-
-# ifndef __cpp_lib_chrono_udls
-#   error "__cpp_lib_chrono_udls should be defined in c++26"
-# endif
-# if __cpp_lib_chrono_udls != 201304L
-#   error "__cpp_lib_chrono_udls should have the value 201304L in c++26"
-# endif
-
-#endif // TEST_STD_VER > 23
+#endif // TEST_STD_VER > 20
 

@@ -935,13 +935,12 @@ void StackColoring::remapInstructions(DenseMap<int, int> &SlotRemap) {
 
   // Remap debug information that refers to stack slots.
   for (auto &VI : MF->getVariableDbgInfo()) {
-    if (!VI.Var || !VI.inStackSlot())
+    if (!VI.Var)
       continue;
-    int Slot = VI.getStackSlot();
-    if (SlotRemap.count(Slot)) {
+    if (SlotRemap.count(VI.Slot)) {
       LLVM_DEBUG(dbgs() << "Remapping debug info for ["
                         << cast<DILocalVariable>(VI.Var)->getName() << "].\n");
-      VI.updateStackSlot(SlotRemap[Slot]);
+      VI.Slot = SlotRemap[VI.Slot];
       FixedDbg++;
     }
   }

@@ -4,7 +4,8 @@
 ; Check that the LoadStoreVectorizer does not crash due to not differentiating <1 x T> and T.
 
 ; CHECK-LABEL: @vector_scalar(
-; CHECK: store <2 x double>
+; CHECK: store double
+; CHECK: store <1 x double>
 define void @vector_scalar(ptr %ptr, double %a, <1 x double> %b) {
   %1 = getelementptr <1 x double>, ptr %ptr, i32 1
   store double %a, ptr %ptr, align 8

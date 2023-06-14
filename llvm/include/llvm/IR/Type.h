@@ -211,7 +211,9 @@ public:
 
   /// Return true if this is a scalable vector type or a target extension type
   /// with a scalable layout.
-  bool isScalableTy() const;
+  bool isScalableTy() const {
+    return getTypeID() == ScalableVectorTyID || isScalableTargetExtTy();
+  }
 
   /// Return true if this is a FP type or a vector of FP.
   bool isFPOrFPVectorTy() const { return getScalarType()->isFloatingPointTy(); }

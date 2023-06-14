@@ -58,7 +58,6 @@ enum class VectorTypeModifier : uint8_t {
   SFixedLog2LMUL1,
   SFixedLog2LMUL2,
   SFixedLog2LMUL3,
-  Tuple2,
 };
 
 // Similar to basic type but used to describe what's kind of type related to
@@ -244,8 +243,6 @@ class RVVType {
   unsigned ElementBitwidth = 0;
   VScaleVal Scale = 0;
   bool Valid;
-  bool IsTuple = false;
-  unsigned NF = 0;
 
   std::string BuiltinStr;
   std::string ClangBuiltinStr;
@@ -296,15 +293,10 @@ public:
   }
   bool isConstant() const { return IsConstant; }
   bool isPointer() const { return IsPointer; }
-  bool isTuple() const { return IsTuple; }
   unsigned getElementBitwidth() const { return ElementBitwidth; }
 
   ScalarTypeKind getScalarType() const { return ScalarType; }
   VScaleVal getScale() const { return Scale; }
-  unsigned getNF() const {
-    assert(NF > 1 && NF < 8 && "Only legal NF should be fetched");
-    return NF;
-  }
 
 private:
   // Verify RVV vector type and set Valid.
@@ -452,7 +444,7 @@ public:
   computeBuiltinTypes(llvm::ArrayRef<PrototypeDescriptor> Prototype,
                       bool IsMasked, bool HasMaskedOffOperand, bool HasVL,
                       unsigned NF, PolicyScheme DefaultScheme,
-                      Policy PolicyAttrs, bool IsTuple);
+                      Policy PolicyAttrs);
 
   static llvm::SmallVector<Policy> getSupportedUnMaskedPolicies();
   static llvm::SmallVector<Policy>
@@ -520,7 +512,6 @@ struct RVVIntrinsicRecord {
   bool HasMaskedOffOperand : 1;
   bool HasTailPolicy : 1;
   bool HasMaskPolicy : 1;
-  bool IsTuple : 1;
   uint8_t UnMaskedPolicyScheme : 2;
   uint8_t MaskedPolicyScheme : 2;
 };

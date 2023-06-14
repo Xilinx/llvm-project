@@ -69,7 +69,7 @@ std::vector<const char*> get_standard_attributes(const clang::LangOptions& lang_
 }
 
 AST_MATCHER(clang::Attr, isPretty) {
-  if (Node.isKeywordAttribute() || !Node.getAttrName())
+  if (Node.isKeywordAttribute())
     return false;
   if (Node.isCXX11Attribute() && !Node.hasScope()) {
     if (isUgly(Node.getAttrName()->getName()))
@@ -80,7 +80,8 @@ AST_MATCHER(clang::Attr, isPretty) {
   if (Node.hasScope())
     if (!isUgly(Node.getScopeName()->getName()))
       return true;
-  return !isUgly(Node.getAttrName()->getName());
+  if (Node.getAttrName())
+    return !isUgly(Node.getAttrName()->getName());
 
   return false;
 }

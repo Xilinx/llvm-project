@@ -61,9 +61,9 @@ void ReportShapeFnPass::runOnOperation() {
   if (attr) {
     auto lookup = [&](Attribute attr) {
       return cast<shape::FunctionLibraryOp>(
-          SymbolTable::lookupSymbolIn(module, cast<SymbolRefAttr>(attr)));
+          SymbolTable::lookupSymbolIn(module, attr.cast<SymbolRefAttr>()));
     };
-    if (auto arrayAttr = dyn_cast<ArrayAttr>(attr)) {
+    if (auto arrayAttr = attr.dyn_cast<ArrayAttr>()) {
       libraries.reserve(arrayAttr.size());
       for (auto attr : arrayAttr)
         libraries.push_back(lookup(attr));

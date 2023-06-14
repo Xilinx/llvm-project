@@ -52,23 +52,14 @@
 #   error "__cpp_lib_variant should have the value 202102L in c++20"
 # endif
 
-#elif TEST_STD_VER == 23
+#elif TEST_STD_VER > 20
 
 # ifndef __cpp_lib_variant
-#   error "__cpp_lib_variant should be defined in c++23"
+#   error "__cpp_lib_variant should be defined in c++2b"
 # endif
 # if __cpp_lib_variant != 202102L
-#   error "__cpp_lib_variant should have the value 202102L in c++23"
+#   error "__cpp_lib_variant should have the value 202102L in c++2b"
 # endif
 
-#elif TEST_STD_VER > 23
-
-# ifndef __cpp_lib_variant
-#   error "__cpp_lib_variant should be defined in c++26"
-# endif
-# if __cpp_lib_variant != 202102L
-#   error "__cpp_lib_variant should have the value 202102L in c++26"
-# endif
-
-#endif // TEST_STD_VER > 23
+#endif // TEST_STD_VER > 20
 

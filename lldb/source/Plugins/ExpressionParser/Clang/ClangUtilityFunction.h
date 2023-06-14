@@ -72,12 +72,11 @@ public:
                ExecutionContext &exe_ctx) override;
 
 private:
-  class ClangUtilityFunctionHelper
-      : public llvm::RTTIExtends<ClangUtilityFunctionHelper,
-                                 ClangExpressionHelper> {
+  class ClangUtilityFunctionHelper : public ClangExpressionHelper {
   public:
-    // LLVM RTTI support
-    static char ID;
+    ClangUtilityFunctionHelper() = default;
+
+    ~ClangUtilityFunctionHelper() override = default;
 
     /// Return the object that the parser should use when resolving external
     /// values.  May be NULL if everything should be self-contained.

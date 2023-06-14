@@ -203,16 +203,16 @@ consteval size_t __buffer_size() noexcept
        + 1;                          // Reserve space for the sign.
 }
 
-template <unsigned_integral _Tp, class _CharT, class _FormatContext>
-_LIBCPP_HIDE_FROM_ABI typename _FormatContext::iterator __format_integer(
+template <unsigned_integral _Tp, class _CharT>
+_LIBCPP_HIDE_FROM_ABI auto __format_integer(
     _Tp __value,
-    _FormatContext& __ctx,
+    auto& __ctx,
     __format_spec::__parsed_specifications<_CharT> __specs,
     bool __negative,
     char* __begin,
     char* __end,
     const char* __prefix,
-    int __base) {
+    int __base) -> decltype(__ctx.out()) {
   char* __first = __formatter::__insert_sign(__begin, __negative, __specs.__std_.__sign_);
   if (__specs.__std_.__alternate_form_ && __prefix)
     while (*__prefix)
@@ -251,7 +251,7 @@ _LIBCPP_HIDE_FROM_ABI typename _FormatContext::iterator __format_integer(
     // - Write data right aligned with '0' as fill character.
     __out_it             = __formatter::__copy(__begin, __first, _VSTD::move(__out_it));
     __specs.__alignment_ = __format_spec::__alignment::__right;
-    __specs.__fill_.__data[0] = _CharT('0');
+    __specs.__fill_      = _CharT('0');
     int32_t __size       = __first - __begin;
 
     __specs.__width_ -= _VSTD::min(__size, __specs.__width_);
@@ -263,12 +263,10 @@ _LIBCPP_HIDE_FROM_ABI typename _FormatContext::iterator __format_integer(
   return __formatter::__write_transformed(__first, __last, __ctx.out(), __specs, __formatter::__hex_to_upper);
 }
 
-template <unsigned_integral _Tp, class _CharT, class _FormatContext>
-_LIBCPP_HIDE_FROM_ABI typename _FormatContext::iterator
-__format_integer(_Tp __value,
-                 _FormatContext& __ctx,
-                 __format_spec::__parsed_specifications<_CharT> __specs,
-                 bool __negative = false) {
+template <unsigned_integral _Tp, class _CharT>
+_LIBCPP_HIDE_FROM_ABI auto __format_integer(
+    _Tp __value, auto& __ctx, __format_spec::__parsed_specifications<_CharT> __specs, bool __negative = false)
+    -> decltype(__ctx.out()) {
   switch (__specs.__std_.__type_) {
   case __format_spec::__type::__binary_lower_case: {
     array<char, __formatter::__buffer_size<decltype(__value), 2>()> __array;
@@ -304,9 +302,10 @@ __format_integer(_Tp __value,
   }
 }
 
-template <signed_integral _Tp, class _CharT, class _FormatContext>
-_LIBCPP_HIDE_FROM_ABI typename _FormatContext::iterator
-__format_integer(_Tp __value, _FormatContext& __ctx, __format_spec::__parsed_specifications<_CharT> __specs) {
+template <signed_integral _Tp, class _CharT>
+_LIBCPP_HIDE_FROM_ABI auto
+__format_integer(_Tp __value, auto& __ctx, __format_spec::__parsed_specifications<_CharT> __specs)
+    -> decltype(__ctx.out()) {
   // Depending on the std-format-spec string the sign and the value
   // might not be outputted together:
   // - alternate form may insert a prefix string.
@@ -342,9 +341,10 @@ struct _LIBCPP_TEMPLATE_VIS __bool_strings<wchar_t> {
 };
 #  endif
 
-template <class _CharT, class _FormatContext>
-_LIBCPP_HIDE_FROM_ABI typename _FormatContext::iterator
-__format_bool(bool __value, _FormatContext& __ctx, __format_spec::__parsed_specifications<_CharT> __specs) {
+template <class _CharT>
+_LIBCPP_HIDE_FROM_ABI auto
+__format_bool(bool __value, auto& __ctx, __format_spec::__parsed_specifications<_CharT> __specs)
+    -> decltype(__ctx.out()) {
 #  ifndef _LIBCPP_HAS_NO_LOCALIZATION
   if (__specs.__std_.__locale_specific_form_) {
     const auto& __np           = std::use_facet<numpunct<_CharT>>(__ctx.locale());

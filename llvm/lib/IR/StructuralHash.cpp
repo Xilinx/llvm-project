@@ -8,7 +8,6 @@
 
 #include "llvm/IR/StructuralHash.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Module.h"
 
 using namespace llvm;
@@ -28,11 +27,8 @@ public:
   StructuralHashImpl() : Hash(4) {}
 
   void update(const Function &F) {
-    // Declarations don't affect analyses.
-    if (F.isDeclaration())
+    if (F.empty())
       return;
-
-    hash(12345); // Function header
 
     hash(F.isVarArg());
     hash(F.arg_size());
@@ -57,17 +53,7 @@ public:
     }
   }
 
-  void update(const GlobalVariable &GV) {
-    // used/compiler.used don't affect analyses.
-    if (GV.getName() == "llvm.compiler.used" || GV.getName() == "llvm.used")
-      return;
-    hash(23456); // Global header
-    hash(GV.getValueType()->getTypeID());
-  }
-
   void update(const Module &M) {
-    for (const GlobalVariable &GV : M.globals())
-      update(GV);
     for (const Function &F : M)
       update(F);
   }

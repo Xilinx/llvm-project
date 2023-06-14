@@ -181,10 +181,8 @@ private:
   }
 
 public:
-  COFFLinkGraphBuilder_x86_64(const object::COFFObjectFile &Obj, const Triple T,
-                              const LinkGraph::FeatureVector Features)
-      : COFFLinkGraphBuilder(Obj, std::move(T), std::move(Features),
-                             getCOFFX86RelocationKindName) {}
+  COFFLinkGraphBuilder_x86_64(const object::COFFObjectFile &Obj, const Triple T)
+      : COFFLinkGraphBuilder(Obj, std::move(T), getCOFFX86RelocationKindName) {}
 };
 
 class COFFLinkGraphLowering_x86_64 {
@@ -316,12 +314,7 @@ createLinkGraphFromCOFFObject_x86_64(MemoryBufferRef ObjectBuffer) {
   if (!COFFObj)
     return COFFObj.takeError();
 
-  auto Features = (*COFFObj)->getFeatures();
-  if (!Features)
-    return Features.takeError();
-
-  return COFFLinkGraphBuilder_x86_64(**COFFObj, (*COFFObj)->makeTriple(),
-                                     Features->getFeatures())
+  return COFFLinkGraphBuilder_x86_64(**COFFObj, (*COFFObj)->makeTriple())
       .buildGraph();
 }
 

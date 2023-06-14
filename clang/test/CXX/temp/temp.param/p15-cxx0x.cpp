@@ -141,7 +141,6 @@ template<typename...Ts> struct A {
     B() {
       consume([]{
         int arr[Vs]; // expected-error {{negative size}}
-                     // expected-note@-2 {{while substituting into a lambda expression here}}
       }...);
     }
   };

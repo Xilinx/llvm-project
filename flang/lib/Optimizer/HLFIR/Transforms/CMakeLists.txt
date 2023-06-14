@@ -3,10 +3,8 @@ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 add_flang_library(HLFIRTransforms
   BufferizeHLFIR.cpp
   ConvertToFIR.cpp
-  InlineElementals.cpp
   LowerHLFIRIntrinsics.cpp
   LowerHLFIROrderedAssignments.cpp
-  ScheduleOrderedAssignments.cpp
   SimplifyHLFIRIntrinsics.cpp
 
   DEPENDS
@@ -15,7 +13,6 @@ add_flang_library(HLFIRTransforms
   ${dialect_libs}
 
   LINK_LIBS
-  FIRAnalysis
   FIRDialect
   FIRBuilder
   FIRDialectSupport

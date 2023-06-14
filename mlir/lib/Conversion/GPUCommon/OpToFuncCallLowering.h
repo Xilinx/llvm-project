@@ -54,8 +54,8 @@ public:
 
     Type resultType = castedOperands.front().getType();
     Type funcType = getFunctionType(resultType, castedOperands);
-    StringRef funcName =
-        getFunctionName(cast<LLVM::LLVMFunctionType>(funcType).getReturnType());
+    StringRef funcName = getFunctionName(
+        funcType.cast<LLVM::LLVMFunctionType>().getReturnType());
     if (funcName.empty())
       return failure();
 
@@ -78,7 +78,7 @@ public:
 private:
   Value maybeCast(Value operand, PatternRewriter &rewriter) const {
     Type type = operand.getType();
-    if (!isa<Float16Type>(type))
+    if (!type.isa<Float16Type>())
       return operand;
 
     return rewriter.create<LLVM::FPExtOp>(
@@ -91,9 +91,9 @@ private:
   }
 
   StringRef getFunctionName(Type type) const {
-    if (isa<Float32Type>(type))
+    if (type.isa<Float32Type>())
       return f32Func;
-    if (isa<Float64Type>(type))
+    if (type.isa<Float64Type>())
       return f64Func;
     return "";
   }

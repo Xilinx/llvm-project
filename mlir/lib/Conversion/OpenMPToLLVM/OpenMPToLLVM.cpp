@@ -70,7 +70,7 @@ struct RegionLessOpWithVarOperandsConversion
       Value originalVariableOperand = curOp.getVariableOperand(idx);
       if (!originalVariableOperand)
         return failure();
-      if (isa<MemRefType>(originalVariableOperand.getType())) {
+      if (originalVariableOperand.getType().isa<MemRefType>()) {
         // TODO: Support memref type in variable operands
         return rewriter.notifyMatchFailure(curOp,
                                            "memref is not supported yet");
@@ -101,7 +101,7 @@ struct RegionOpWithVarOperandsConversion : public ConvertOpToLLVMPattern<T> {
       Value originalVariableOperand = curOp.getVariableOperand(idx);
       if (!originalVariableOperand)
         return failure();
-      if (isa<MemRefType>(originalVariableOperand.getType())) {
+      if (originalVariableOperand.getType().isa<MemRefType>()) {
         // TODO: Support memref type in variable operands
         return rewriter.notifyMatchFailure(curOp,
                                            "memref is not supported yet");
@@ -143,7 +143,7 @@ struct ReductionOpConversion : public ConvertOpToLLVMPattern<omp::ReductionOp> {
   LogicalResult
   matchAndRewrite(omp::ReductionOp curOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    if (isa<MemRefType>(curOp.getAccumulator().getType())) {
+    if (curOp.getAccumulator().getType().isa<MemRefType>()) {
       // TODO: Support memref type in variable operands
       return rewriter.notifyMatchFailure(curOp, "memref is not supported yet");
     }
@@ -183,12 +183,12 @@ void mlir::configureOpenMPToLLVMConversionLegality(
       mlir::omp::AtomicUpdateOp, mlir::omp::CriticalOp, mlir::omp::TargetOp,
       mlir::omp::DataOp, mlir::omp::ParallelOp, mlir::omp::WsLoopOp,
       mlir::omp::SimdLoopOp, mlir::omp::MasterOp, mlir::omp::SectionOp,
-      mlir::omp::SectionsOp, mlir::omp::SingleOp, mlir::omp::TaskGroupOp,
-      mlir::omp::TaskOp>([&](Operation *op) {
-    return typeConverter.isLegal(&op->getRegion(0)) &&
-           typeConverter.isLegal(op->getOperandTypes()) &&
-           typeConverter.isLegal(op->getResultTypes());
-  });
+      mlir::omp::SectionsOp, mlir::omp::SingleOp, mlir::omp::TaskOp>(
+      [&](Operation *op) {
+        return typeConverter.isLegal(&op->getRegion(0)) &&
+               typeConverter.isLegal(op->getOperandTypes()) &&
+               typeConverter.isLegal(op->getResultTypes());
+      });
   target.addDynamicallyLegalOp<mlir::omp::AtomicReadOp,
                                mlir::omp::AtomicWriteOp, mlir::omp::FlushOp,
                                mlir::omp::ThreadprivateOp, mlir::omp::YieldOp,
@@ -218,9 +218,8 @@ void mlir::populateOpenMPToLLVMConversionPatterns(LLVMTypeConverter &converter,
       ReductionOpConversion, RegionOpConversion<omp::ParallelOp>,
       RegionOpConversion<omp::WsLoopOp>, RegionOpConversion<omp::SectionsOp>,
       RegionOpConversion<omp::SectionOp>, RegionOpConversion<omp::SimdLoopOp>,
-      RegionOpConversion<omp::SingleOp>, RegionOpConversion<omp::TaskGroupOp>,
-      RegionOpConversion<omp::TaskOp>, RegionOpConversion<omp::DataOp>,
-      RegionOpConversion<omp::TargetOp>,
+      RegionOpConversion<omp::SingleOp>, RegionOpConversion<omp::TaskOp>,
+      RegionOpConversion<omp::DataOp>, RegionOpConversion<omp::TargetOp>,
       RegionLessOpWithVarOperandsConversion<omp::AtomicReadOp>,
       RegionLessOpWithVarOperandsConversion<omp::AtomicWriteOp>,
       RegionOpWithVarOperandsConversion<omp::AtomicUpdateOp>,

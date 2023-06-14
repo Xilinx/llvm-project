@@ -199,7 +199,7 @@ const char *SBBreakpointName::GetName() const {
 
   if (!m_impl_up)
     return "<Invalid Breakpoint Name Object>";
-  return ConstString(m_impl_up->GetName()).GetCString();
+  return m_impl_up->GetName();
 }
 
 void SBBreakpointName::SetEnabled(bool enable) {
@@ -315,9 +315,9 @@ const char *SBBreakpointName::GetCondition() {
     return nullptr;
 
   std::lock_guard<std::recursive_mutex> guard(
-      m_impl_up->GetTarget()->GetAPIMutex());
+        m_impl_up->GetTarget()->GetAPIMutex());
 
-  return ConstString(bp_name->GetOptions().GetConditionText()).GetCString();
+  return bp_name->GetOptions().GetConditionText();
 }
 
 void SBBreakpointName::SetAutoContinue(bool auto_continue) {
@@ -423,10 +423,9 @@ const char *SBBreakpointName::GetThreadName() const {
     return nullptr;
 
   std::lock_guard<std::recursive_mutex> guard(
-      m_impl_up->GetTarget()->GetAPIMutex());
+        m_impl_up->GetTarget()->GetAPIMutex());
 
-  return ConstString(bp_name->GetOptions().GetThreadSpec()->GetName())
-      .GetCString();
+  return bp_name->GetOptions().GetThreadSpec()->GetName();
 }
 
 void SBBreakpointName::SetQueueName(const char *queue_name) {
@@ -451,10 +450,9 @@ const char *SBBreakpointName::GetQueueName() const {
     return nullptr;
 
   std::lock_guard<std::recursive_mutex> guard(
-      m_impl_up->GetTarget()->GetAPIMutex());
+        m_impl_up->GetTarget()->GetAPIMutex());
 
-  return ConstString(bp_name->GetOptions().GetThreadSpec()->GetQueueName())
-      .GetCString();
+  return bp_name->GetOptions().GetThreadSpec()->GetQueueName();
 }
 
 void SBBreakpointName::SetCommandLineCommands(SBStringList &commands) {
@@ -498,7 +496,7 @@ const char *SBBreakpointName::GetHelpString() const {
   if (!bp_name)
     return "";
 
-  return ConstString(bp_name->GetHelp()).GetCString();
+  return bp_name->GetHelp();
 }
 
 void SBBreakpointName::SetHelpString(const char *help_string) {

@@ -1291,7 +1291,7 @@ static void annotateFunctionWithHashMismatch(Function &F, LLVMContext &ctx) {
   if (Existing) {
     MDTuple *Tuple = cast<MDTuple>(Existing);
     for (const auto &N : Tuple->operands()) {
-      if (N.equalsStr(MetadataName))
+      if (cast<MDString>(N.get())->getString() == MetadataName)
         return;
       Names.push_back(N.get());
     }

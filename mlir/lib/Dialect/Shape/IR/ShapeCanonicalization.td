@@ -11,7 +11,7 @@ def HasSingleElement : Constraint<CPred< [{
 }]>>;
 
 def HasStaticShape : Constraint<CPred< [{
-  ::llvm::dyn_cast<ShapedType>($0.getType()).hasStaticShape()
+  $0.getType().dyn_cast<ShapedType>().hasStaticShape()
 }]>>;
 
 // Helper that takes the first element of a range.

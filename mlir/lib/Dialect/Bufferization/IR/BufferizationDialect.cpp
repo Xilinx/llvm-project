@@ -62,7 +62,7 @@ LogicalResult BufferizationDialect::verifyRegionArgAttribute(
     Operation *op, unsigned /*regionIndex*/, unsigned argIndex,
     NamedAttribute attr) {
   if (attr.getName() == kWritableAttrName) {
-    if (!llvm::isa<BoolAttr>(attr.getValue())) {
+    if (!attr.getValue().isa<BoolAttr>()) {
       return op->emitError() << "'" << kWritableAttrName
                              << "' is expected to be a boolean attribute";
     }
@@ -75,11 +75,11 @@ LogicalResult BufferizationDialect::verifyRegionArgAttribute(
     return success();
   }
   if (attr.getName() == kBufferAccessAttrName) {
-    if (!llvm::isa<StringAttr>(attr.getValue())) {
+    if (!attr.getValue().isa<StringAttr>()) {
       return op->emitError() << "'" << kBufferAccessAttrName
                              << "' is expected to be a string attribute";
     }
-    StringRef str = llvm::cast<StringAttr>(attr.getValue()).getValue();
+    StringRef str = attr.getValue().cast<StringAttr>().getValue();
     if (str != "none" && str != "read" && str != "write" && str != "read-write")
       return op->emitError()
              << "invalid value for '" << kBufferAccessAttrName << "'";
@@ -89,7 +89,7 @@ LogicalResult BufferizationDialect::verifyRegionArgAttribute(
     return success();
   }
   if (attr.getName() == kBufferLayoutAttrName) {
-    if (!llvm::isa<AffineMapAttr>(attr.getValue())) {
+    if (!attr.getValue().isa<AffineMapAttr>()) {
       return op->emitError() << "'" << kBufferLayoutAttrName
                              << "' is expected to be a affine map attribute";
     }
@@ -109,7 +109,7 @@ BufferizationDialect::verifyOperationAttribute(Operation *op,
   using bufferization::BufferizableOpInterface;
 
   if (attr.getName() == kEscapeAttrName) {
-    auto arrayAttr = llvm::dyn_cast<ArrayAttr>(attr.getValue());
+    auto arrayAttr = attr.getValue().dyn_cast<ArrayAttr>();
     if (!arrayAttr)
       return op->emitError() << "'" << kEscapeAttrName
                              << "' is expected to be a bool array attribute";
@@ -124,13 +124,13 @@ BufferizationDialect::verifyOperationAttribute(Operation *op,
              << "'" << kEscapeAttrName << "' only valid on bufferizable ops";
     for (const auto &it : llvm::enumerate(arrayAttr)) {
       auto attr = it.value();
-      auto boolAttr = llvm::dyn_cast<BoolAttr>(attr);
+      auto boolAttr = attr.dyn_cast<BoolAttr>();
       if (!boolAttr)
         return op->emitError() << "'" << kEscapeAttrName
                                << "' is expected to be a bool array attribute";
       if (!boolAttr.getValue())
         continue;
-      if (!llvm::isa<TensorType>(op->getResult(it.index()).getType()))
+      if (!op->getResult(it.index()).getType().isa<TensorType>())
         return op->emitError()
                << "'" << kEscapeAttrName << "' only valid for tensor results";
       if (!bufferizableOp.bufferizesToAllocation(op->getOpResult(it.index())))

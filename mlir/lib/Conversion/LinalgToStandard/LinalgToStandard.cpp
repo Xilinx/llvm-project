@@ -42,7 +42,7 @@ static SmallVector<Type, 4> extractOperandTypes(Operation *op) {
     // The underlying descriptor type (e.g. LLVM) does not have layout
     // information. Canonicalizing the type at the level of std when going into
     // a library call avoids needing to introduce DialectCastOp.
-    if (auto memrefType = dyn_cast<MemRefType>(type))
+    if (auto memrefType = type.dyn_cast<MemRefType>())
       result.push_back(makeStridedLayoutDynamic(memrefType));
     else
       result.push_back(type);
@@ -96,7 +96,7 @@ createTypeCanonicalizedMemRefOperands(OpBuilder &b, Location loc,
   SmallVector<Value, 4> res;
   res.reserve(operands.size());
   for (auto op : operands) {
-    auto memrefType = dyn_cast<MemRefType>(op.getType());
+    auto memrefType = op.getType().dyn_cast<MemRefType>();
     if (!memrefType) {
       res.push_back(op);
       continue;

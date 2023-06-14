@@ -42,7 +42,7 @@ LogicalResult YieldOp::verify() {
   auto executeOp = (*this)->getParentOfType<ExecuteOp>();
   auto types =
       llvm::map_range(executeOp.getBodyResults(), [](const OpResult &result) {
-        return llvm::cast<ValueType>(result.getType()).getValueType();
+        return result.getType().cast<ValueType>().getValueType();
       });
 
   if (getOperandTypes() != types)
@@ -71,7 +71,7 @@ ExecuteOp::getSuccessorEntryOperands(std::optional<unsigned> index) {
 
 bool ExecuteOp::areTypesCompatible(Type lhs, Type rhs) {
   const auto getValueOrTokenType = [](Type type) {
-    if (auto value = llvm::dyn_cast<ValueType>(type))
+    if (auto value = type.dyn_cast<ValueType>())
       return value.getValueType();
     return type;
   };
@@ -118,7 +118,7 @@ void ExecuteOp::build(OpBuilder &builder, OperationState &result,
   bodyRegion->push_back(new Block);
   Block &bodyBlock = bodyRegion->front();
   for (Value operand : operands) {
-    auto valueType = llvm::dyn_cast<ValueType>(operand.getType());
+    auto valueType = operand.getType().dyn_cast<ValueType>();
     bodyBlock.addArgument(valueType ? valueType.getValueType()
                                     : operand.getType(),
                           operand.getLoc());
@@ -195,7 +195,7 @@ ParseResult ExecuteOp::parse(OpAsmParser &parser, OperationState &result) {
         parser.parseColonType(valueTypes.emplace_back()))
       return failure();
 
-    auto valueTy = llvm::dyn_cast<ValueType>(valueTypes.back());
+    auto valueTy = valueTypes.back().dyn_cast<ValueType>();
     unwrappedArgs.back().type = valueTy ? valueTy.getValueType() : Type();
     return success();
   };
@@ -234,7 +234,7 @@ ParseResult ExecuteOp::parse(OpAsmParser &parser, OperationState &result) {
 LogicalResult ExecuteOp::verifyRegions() {
   // Unwrap async.execute value operands types.
   auto unwrappedTypes = llvm::map_range(getBodyOperands(), [](Value operand) {
-    return llvm::cast<ValueType>(operand.getType()).getValueType();
+    return operand.getType().cast<ValueType>().getValueType();
   });
 
   // Verify that unwrapped argument types matches the body region arguments.
@@ -285,7 +285,7 @@ void AwaitOp::build(OpBuilder &builder, OperationState &result, Value operand,
   result.attributes.append(attrs.begin(), attrs.end());
 
   // Add unwrapped async.value type to the returned values types.
-  if (auto valueType = llvm::dyn_cast<ValueType>(operand.getType()))
+  if (auto valueType = operand.getType().dyn_cast<ValueType>())
     result.addTypes(valueType.getValueType());
 }
 
@@ -295,7 +295,7 @@ static ParseResult parseAwaitResultType(OpAsmParser &parser, Type &operandType,
     return failure();
 
   // Add unwrapped async.value type to the returned values types.
-  if (auto valueType = llvm::dyn_cast<ValueType>(operandType))
+  if (auto valueType = operandType.dyn_cast<ValueType>())
     resultType = valueType.getValueType();
 
   return success();
@@ -310,11 +310,11 @@ LogicalResult AwaitOp::verify() {
   Type argType = getOperand().getType();
 
   // Awaiting on a token does not have any results.
-  if (llvm::isa<TokenType>(argType) && !getResultTypes().empty())
+  if (argType.isa<TokenType>() && !getResultTypes().empty())
     return emitOpError("awaiting on a token must have empty result");
 
   // Awaiting on a value unwraps the async value type.
-  if (auto value = llvm::dyn_cast<ValueType>(argType)) {
+  if (auto value = argType.dyn_cast<ValueType>()) {
     if (*getResultType() != value.getValueType())
       return emitOpError() << "result type " << *getResultType()
                            << " does not match async value type "
@@ -375,12 +375,12 @@ LogicalResult FuncOp::verify() {
 
   for (unsigned i = 0, e = resultTypes.size(); i != e; ++i) {
     auto type = resultTypes[i];
-    if (!llvm::isa<TokenType>(type) && !llvm::isa<ValueType>(type))
+    if (!type.isa<TokenType>() && !type.isa<ValueType>())
       return emitOpError() << "result type must be async value type or async "
                               "token type, but got "
                            << type;
     // We only allow AsyncToken appear as the first return value
-    if (llvm::isa<TokenType>(type) && i != 0) {
+    if (type.isa<TokenType>() && i != 0) {
       return emitOpError()
              << " results' (optional) async token type is expected "
                 "to appear as the 1st return value, but got "
@@ -446,7 +446,7 @@ LogicalResult ReturnOp::verify() {
   // Get the underlying value types from async types returned from the
   // parent `async.func` operation.
   auto types = llvm::map_range(resultTypes, [](const Type &result) {
-    return llvm::cast<ValueType>(result).getValueType();
+    return result.cast<ValueType>().getValueType();
   });
 
   if (getOperandTypes() != types)

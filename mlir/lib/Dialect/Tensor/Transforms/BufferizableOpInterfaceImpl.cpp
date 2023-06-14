@@ -60,23 +60,23 @@ struct CastOpInterface
     // type in case the input is an unranked tensor type.
 
     // Case 1: Casting an unranked tensor
-    if (isa<UnrankedTensorType>(castOp.getSource().getType())) {
+    if (castOp.getSource().getType().isa<UnrankedTensorType>()) {
       // When casting to a ranked tensor, we cannot infer any static offset or
       // strides from the source. Assume fully dynamic.
       return getMemRefTypeWithFullyDynamicLayout(castOp.getType(), memorySpace);
     }
 
     // Case 2: Casting to an unranked tensor type
-    if (isa<UnrankedTensorType>(castOp.getType())) {
+    if (castOp.getType().isa<UnrankedTensorType>()) {
       return getMemRefTypeWithFullyDynamicLayout(castOp.getType(), memorySpace);
     }
 
     // Case 3: Ranked tensor -> ranked tensor. The offsets and strides do not
     // change.
-    auto rankedResultType = cast<RankedTensorType>(castOp.getType());
+    auto rankedResultType = castOp.getType().cast<RankedTensorType>();
     return MemRefType::get(
         rankedResultType.getShape(), rankedResultType.getElementType(),
-        llvm::cast<MemRefType>(*maybeSrcBufferType).getLayout(), memorySpace);
+        maybeSrcBufferType->cast<MemRefType>().getLayout(), memorySpace);
   }
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
@@ -94,11 +94,6 @@ struct CastOpInterface
         bufferization::getBufferType(castOp.getResult(), options);
     if (failed(resultMemRefType))
       return failure();
-    if (resultBuffer->getType() == *resultMemRefType) {
-      // This cast is a no-op.
-      replaceOpWithBufferizedValues(rewriter, op, *resultBuffer);
-      return success();
-    }
 
     // Replace the op with a memref.cast.
     assert(memref::CastOp::areCastCompatible(resultBuffer->getType(),
@@ -139,7 +134,7 @@ struct CollapseShapeOpInterface
         collapseShapeOp.getSrc(), options, fixedTypes);
     if (failed(maybeSrcBufferType))
       return failure();
-    auto srcBufferType = llvm::cast<MemRefType>(*maybeSrcBufferType);
+    auto srcBufferType = maybeSrcBufferType->cast<MemRefType>();
     bool canBeCollapsed = memref::CollapseShapeOp::isGuaranteedCollapsible(
         srcBufferType, collapseShapeOp.getReassociationIndices());
 
@@ -163,7 +158,7 @@ struct CollapseShapeOpInterface
     if (failed(maybeBuffer))
       return failure();
     Value buffer = *maybeBuffer;
-    auto bufferType = cast<MemRefType>(buffer.getType());
+    auto bufferType = buffer.getType().cast<MemRefType>();
 
     if (tensorResultType.getRank() == 0) {
       // 0-d collapses must go through a different op builder.
@@ -303,7 +298,7 @@ struct ExpandShapeOpInterface
         expandShapeOp.getSrc(), options, fixedTypes);
     if (failed(maybeSrcBufferType))
       return failure();
-    auto srcBufferType = llvm::cast<MemRefType>(*maybeSrcBufferType);
+    auto srcBufferType = maybeSrcBufferType->cast<MemRefType>();
     auto maybeResultType = memref::ExpandShapeOp::computeExpandedType(
         srcBufferType, expandShapeOp.getResultType().getShape(),
         expandShapeOp.getReassociationIndices());
@@ -369,7 +364,7 @@ struct ExtractSliceOpInterface
     if (failed(resultMemrefType))
       return failure();
     Value subView = rewriter.create<memref::SubViewOp>(
-        loc, llvm::cast<MemRefType>(*resultMemrefType), *srcMemref, mixedOffsets,
+        loc, resultMemrefType->cast<MemRefType>(), *srcMemref, mixedOffsets,
         mixedSizes, mixedStrides);
 
     replaceOpWithBufferizedValues(rewriter, op, subView);
@@ -388,9 +383,11 @@ struct ExtractSliceOpInterface
     SmallVector<OpFoldResult> mixedOffsets = extractSliceOp.getMixedOffsets();
     SmallVector<OpFoldResult> mixedSizes = extractSliceOp.getMixedSizes();
     SmallVector<OpFoldResult> mixedStrides = extractSliceOp.getMixedStrides();
-    return cast<BaseMemRefType>(memref::SubViewOp::inferRankReducedResultType(
-        extractSliceOp.getType().getShape(), llvm::cast<MemRefType>(*srcMemrefType),
-        mixedOffsets, mixedSizes, mixedStrides));
+    return memref::SubViewOp::inferRankReducedResultType(
+               extractSliceOp.getType().getShape(),
+               srcMemrefType->cast<MemRefType>(), mixedOffsets, mixedSizes,
+               mixedStrides)
+        .cast<BaseMemRefType>();
   }
 };
 
@@ -462,7 +459,7 @@ struct FromElementsOpInterface
     auto fromElementsOp = cast<tensor::FromElementsOp>(op);
     // Should the buffer be deallocated?
     bool dealloc = shouldDeallocateOpResult(
-        cast<OpResult>(fromElementsOp.getResult()), options);
+        fromElementsOp.getResult().cast<OpResult>(), options);
 
     // TODO: Implement memory space for this op.
     if (options.defaultMemorySpace != Attribute())
@@ -470,7 +467,7 @@ struct FromElementsOpInterface
 
     // Allocate a buffer for the result.
     Location loc = op->getLoc();
-    auto tensorType = cast<RankedTensorType>(fromElementsOp.getType());
+    auto tensorType = fromElementsOp.getType().cast<RankedTensorType>();
     auto shape = tensorType.getShape();
     // TODO: Create alloc_tensor ops during TensorCopyInsertion.
     FailureOr<Value> tensorAlloc =
@@ -543,7 +540,7 @@ static Value lowerGenerateLikeOpBody(RewriterBase &rewriter, Location loc,
                                      ValueRange dynamicSizes,
                                      Region &generateBody) {
   assert(generateBody.hasOneBlock() && "expected body with single block");
-  auto tensorType = cast<RankedTensorType>(tensorDestination.getType());
+  auto tensorType = tensorDestination.getType().cast<RankedTensorType>();
   assert(generateBody.getNumArguments() == tensorType.getRank() &&
          "rank mismatch");
 
@@ -582,7 +579,7 @@ struct GenerateOpInterface
     auto generateOp = cast<tensor::GenerateOp>(op);
     // Should the buffer be deallocated?
     bool dealloc = shouldDeallocateOpResult(
-        cast<OpResult>(generateOp.getResult()), options);
+        generateOp.getResult().cast<OpResult>(), options);
 
     // TODO: Implement memory space for this op.
     if (options.defaultMemorySpace != Attribute())
@@ -803,11 +800,12 @@ struct InsertSliceOpInterface
       return failure();
 
     // Take a subview of the destination buffer.
-    auto dstMemrefType = cast<MemRefType>(dstMemref->getType());
+    auto dstMemrefType = dstMemref->getType().cast<MemRefType>();
     auto subviewMemRefType =
-        cast<MemRefType>(memref::SubViewOp::inferRankReducedResultType(
+        memref::SubViewOp::inferRankReducedResultType(
             insertSliceOp.getSourceType().getShape(), dstMemrefType,
-            mixedOffsets, mixedSizes, mixedStrides));
+            mixedOffsets, mixedSizes, mixedStrides)
+            .cast<MemRefType>();
     Value subView = rewriter.create<memref::SubViewOp>(
         loc, subviewMemRefType, *dstMemref, mixedOffsets, mixedSizes,
         mixedStrides);
@@ -902,7 +900,7 @@ struct PadOpInterface
 
     // Should the buffer be deallocated?
     bool dealloc =
-        shouldDeallocateOpResult(cast<OpResult>(padOp.getResult()), options);
+        shouldDeallocateOpResult(padOp.getResult().cast<OpResult>(), options);
     // Allocate a buffer for the padded result.
     FailureOr<Value> tensorAlloc =
         allocateTensorForShapedValue(rewriter, loc, padOp.getResult(),
@@ -992,9 +990,9 @@ struct ReshapeOpInterface
         getBuffer(rewriter, reshapeOp.getShape(), options);
     if (failed(srcBuffer) || failed(shapeBuffer))
       return failure();
-    auto resultMemRefType = getMemRefTypeWithStaticIdentityLayout(
-        reshapeOp.getResult().getType(),
-        cast<BaseMemRefType>(srcBuffer->getType()).getMemorySpace());
+    auto resultMemRefType = getMemRefType(
+        reshapeOp.getResult(), options, /*layout=*/{},
+        srcBuffer->getType().cast<BaseMemRefType>().getMemorySpace());
     replaceOpWithNewBufferizedOp<memref::ReshapeOp>(
         rewriter, op, resultMemRefType, *srcBuffer, *shapeBuffer);
     return success();
@@ -1041,13 +1039,14 @@ struct ParallelInsertSliceOpInterface
       return failure();
 
     // Take a subview of the destination buffer.
-    auto destBufferType = cast<MemRefType>(destBuffer->getType());
+    auto destBufferType = destBuffer->getType().cast<MemRefType>();
     auto subviewMemRefType =
-        cast<MemRefType>(memref::SubViewOp::inferRankReducedResultType(
+        memref::SubViewOp::inferRankReducedResultType(
             parallelInsertSliceOp.getSourceType().getShape(), destBufferType,
             parallelInsertSliceOp.getMixedOffsets(),
             parallelInsertSliceOp.getMixedSizes(),
-            parallelInsertSliceOp.getMixedStrides()));
+            parallelInsertSliceOp.getMixedStrides())
+            .cast<MemRefType>();
     Value subview = rewriter.create<memref::SubViewOp>(
         parallelInsertSliceOp.getLoc(), subviewMemRefType, *destBuffer,
         parallelInsertSliceOp.getMixedOffsets(),
@@ -1087,54 +1086,6 @@ struct ParallelInsertSliceOpInterface
   }
 };
 
-/// Bufferization of tensor.splat. Bufferizes to a new allocation that is filled
-/// with a linalg.map. Similar to tensor.generate.
-struct SplatOpInterface
-    : public BufferizableOpInterface::ExternalModel<SplatOpInterface,
-                                                    tensor::SplatOp> {
-
-  bool bufferizesToAllocation(Operation *op, OpResult opResult) const {
-    return true;
-  }
-
-  LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationOptions &options) const {
-    OpBuilder::InsertionGuard g(rewriter);
-    auto splatOp = cast<tensor::SplatOp>(op);
-
-    // Should the buffer be deallocated?
-    bool dealloc =
-        shouldDeallocateOpResult(cast<OpResult>(splatOp.getResult()), options);
-
-    // TODO: Implement memory space for this op.
-    if (options.defaultMemorySpace != Attribute())
-      return op->emitError("memory space not implemented yet");
-
-    // Allocate memory.
-    Location loc = op->getLoc();
-    FailureOr<Value> tensorAlloc =
-        allocateTensorForShapedValue(rewriter, loc, splatOp.getResult(),
-                                     /*escape=*/!dealloc, options,
-                                     /*copy=*/false);
-    if (failed(tensorAlloc))
-      return failure();
-
-    // Create linalg::MapOp.
-    auto tensorType = cast<RankedTensorType>(tensorAlloc->getType());
-    auto linalgOp =
-        rewriter.create<linalg::MapOp>(loc, tensorType, /*inputs=*/ValueRange(),
-                                       /*init=*/*tensorAlloc);
-    Block &linalgBody = linalgOp.getMapper().emplaceBlock();
-
-    // Create linalg::IndexOps.
-    rewriter.setInsertionPointToStart(&linalgBody);
-    rewriter.create<linalg::YieldOp>(loc, splatOp.getInput());
-    rewriter.replaceOp(splatOp, linalgOp.getResult()[0]);
-
-    return success();
-  }
-};
-
 } // namespace
 } // namespace tensor
 } // namespace mlir
@@ -1158,7 +1109,6 @@ void mlir::tensor::registerBufferizableOpInterfaceExternalModels(
         *ctx);
     RankOp::attachInterface<RankOpInterface>(*ctx);
     ReshapeOp::attachInterface<ReshapeOpInterface>(*ctx);
-    SplatOp::attachInterface<SplatOpInterface>(*ctx);
 
     // Load additional dialects of which ops may get created.
     ctx->loadDialect<arith::ArithDialect, linalg::LinalgDialect>();

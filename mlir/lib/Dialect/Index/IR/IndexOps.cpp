@@ -39,8 +39,7 @@ Operation *IndexDialect::materializeConstant(OpBuilder &b, Attribute value,
 
   // Materialize integer attributes as `index`.
   if (auto indexValue = dyn_cast<IntegerAttr>(value)) {
-    if (!llvm::isa<IndexType>(indexValue.getType()) ||
-        !llvm::isa<IndexType>(type))
+    if (!indexValue.getType().isa<IndexType>() || !type.isa<IndexType>())
       return nullptr;
     assert(indexValue.getValue().getBitWidth() ==
            IndexType::kInternalStorageBitWidth);
@@ -400,8 +399,7 @@ OpFoldResult XOrOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 bool CastSOp::areCastCompatible(TypeRange lhsTypes, TypeRange rhsTypes) {
-  return llvm::isa<IndexType>(lhsTypes.front()) !=
-         llvm::isa<IndexType>(rhsTypes.front());
+  return lhsTypes.front().isa<IndexType>() != rhsTypes.front().isa<IndexType>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -409,8 +407,7 @@ bool CastSOp::areCastCompatible(TypeRange lhsTypes, TypeRange rhsTypes) {
 //===----------------------------------------------------------------------===//
 
 bool CastUOp::areCastCompatible(TypeRange lhsTypes, TypeRange rhsTypes) {
-  return llvm::isa<IndexType>(lhsTypes.front()) !=
-         llvm::isa<IndexType>(rhsTypes.front());
+  return lhsTypes.front().isa<IndexType>() != rhsTypes.front().isa<IndexType>();
 }
 
 //===----------------------------------------------------------------------===//

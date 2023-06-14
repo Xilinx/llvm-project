@@ -61,7 +61,7 @@ public:
   LogicalResult
   matchAndRewrite(Operation *op, ArrayRef<Value> operands,
                   ConversionPatternRewriter &rewriter) const override {
-    auto memRefType = llvm::cast<MemRefType>((*op->operand_type_begin()));
+    auto memRefType = (*op->operand_type_begin()).cast<MemRefType>();
     auto memRefShape = memRefType.getShape();
     auto loc = op->getLoc();
 

@@ -5,6 +5,7 @@ add_llvm_exegesis_unittest_includes(
   )
 
 add_llvm_exegesis_unittest_sources(
+  AssemblerTest.cpp
   BenchmarkResultTest.cpp
   RegisterAliasingTest.cpp
   SchedClassResolutionTest.cpp

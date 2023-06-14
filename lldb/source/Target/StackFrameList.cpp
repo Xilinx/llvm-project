@@ -85,8 +85,8 @@ void StackFrameList::ResetCurrentInlinedDepth() {
     return;
 
   std::lock_guard<std::recursive_mutex> guard(m_mutex);
-  
-  GetFramesUpTo(0, DoNotAllowInterruption);
+
+  GetFramesUpTo(0);
   if (m_frames.empty())
     return;
   if (!m_frames[0]->IsInlined()) {
@@ -436,23 +436,21 @@ void StackFrameList::SynthesizeTailCallFrames(StackFrame &next_frame) {
     next_frame.SetFrameIndex(m_frames.size());
 }
 
-bool StackFrameList::GetFramesUpTo(uint32_t end_idx,
-                                   InterruptionControl allow_interrupt) {
+void StackFrameList::GetFramesUpTo(uint32_t end_idx) {
   // Do not fetch frames for an invalid thread.
-  bool was_interrupted = false;
   if (!m_thread.IsValid())
-    return false;
+    return;
 
   // We've already gotten more frames than asked for, or we've already finished
   // unwinding, return.
   if (m_frames.size() > end_idx || GetAllFramesFetched())
-    return false;
+    return;
 
   Unwind &unwinder = m_thread.GetUnwinder();
 
   if (!m_show_inlined_frames) {
     GetOnlyConcreteFramesUpTo(end_idx, unwinder);
-    return false;
+    return;
   }
 
 #if defined(DEBUG_STACK_FRAMES)
@@ -476,6 +474,13 @@ bool StackFrameList::GetFramesUpTo(uint32_t end_idx,
   StackFrameSP unwind_frame_sp;
   Debugger &dbg = m_thread.GetProcess()->GetTarget().GetDebugger();
   do {
+    // Check for interruption here when building the frames - this is the
+    // expensive part, Dump later on is cheap.
+    if (dbg.InterruptRequested()) {
+      Log *log = GetLog(LLDBLog::Host);
+      LLDB_LOG(log, "Interrupted %s", __FUNCTION__);
+      break;
+    }
     uint32_t idx = m_concrete_frames_fetched++;
     lldb::addr_t pc = LLDB_INVALID_ADDRESS;
     lldb::addr_t cfa = LLDB_INVALID_ADDRESS;
@@ -507,15 +512,6 @@ bool StackFrameList::GetFramesUpTo(uint32_t end_idx,
         cfa = unwind_frame_sp->m_id.GetCallFrameAddress();
       }
     } else {
-      // Check for interruption when building the frames.
-      // Do the check in idx > 0 so that we'll always create a 0th frame.
-      if (allow_interrupt && dbg.InterruptRequested()) {
-        Log *log = GetLog(LLDBLog::Host);
-        LLDB_LOG(log, "Interrupted %s", __FUNCTION__);
-        was_interrupted = true;
-        break;
-      }
-
       const bool success =
           unwinder.GetFrameInfoAtIndex(idx, cfa, pc, behaves_like_zeroth_frame);
       if (!success) {
@@ -628,19 +624,14 @@ bool StackFrameList::GetFramesUpTo(uint32_t end_idx,
   Dump(&s);
   s.EOL();
 #endif
-  // Don't report interrupted if we happen to have gotten all the frames:
-  if (!GetAllFramesFetched())
-    return was_interrupted;
-  return false;
 }
 
 uint32_t StackFrameList::GetNumFrames(bool can_create) {
   std::lock_guard<std::recursive_mutex> guard(m_mutex);
 
-  if (can_create) {
-    // Don't allow interrupt or we might not return the correct count
-    GetFramesUpTo(UINT32_MAX, DoNotAllowInterruption); 
-  }
+  if (can_create)
+    GetFramesUpTo(UINT32_MAX);
+
   return GetVisibleStackFrameIndex(m_frames.size());
 }
 
@@ -681,13 +672,7 @@ StackFrameSP StackFrameList::GetFrameAtIndex(uint32_t idx) {
 
   // GetFramesUpTo will fill m_frames with as many frames as you asked for, if
   // there are that many.  If there weren't then you asked for too many frames.
-  // GetFramesUpTo returns true if interrupted:
-  if (GetFramesUpTo(idx)) {
-    Log *log = GetLog(LLDBLog::Thread);
-    LLDB_LOG(log, "GetFrameAtIndex was interrupted");
-    return {};
-  }
-
+  GetFramesUpTo(idx);
   if (idx < m_frames.size()) {
     if (m_show_inlined_frames) {
       // When inline frames are enabled we actually create all the frames in
@@ -961,14 +946,6 @@ size_t StackFrameList::GetStatus(Stream &strm, uint32_t first_frame,
         marker = selected_frame_marker;
       else
         marker = unselected_marker;
-    }
-    // Check for interruption here.  If we're fetching arguments, this loop
-    // can go slowly:
-    Debugger &dbg = m_thread.GetProcess()->GetTarget().GetDebugger();
-    if (dbg.InterruptRequested()) {
-      Log *log = GetLog(LLDBLog::Host);
-      LLDB_LOG(log, "Interrupted %s", __FUNCTION__);
-      break;
     }
 
     if (!frame_sp->GetStatus(strm, show_frame_info,

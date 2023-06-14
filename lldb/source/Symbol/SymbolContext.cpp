@@ -541,7 +541,7 @@ Block *SymbolContext::GetFunctionBlock() {
   return nullptr;
 }
 
-llvm::StringRef SymbolContext::GetInstanceVariableName() {
+ConstString SymbolContext::GetInstanceVariableName() {
   LanguageType lang_type = eLanguageTypeUnknown;
 
   if (Block *function_block = GetFunctionBlock())

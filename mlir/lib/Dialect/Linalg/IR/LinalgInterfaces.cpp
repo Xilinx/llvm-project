@@ -506,15 +506,15 @@ LogicalResult mlir::linalg::detail::verifyFillInterface(Operation *op) {
 /// the type of `source`.
 static Value createOrFoldDimOp(OpBuilder &b, Location loc, Value source,
                                int64_t dim) {
-  if (llvm::isa<UnrankedMemRefType, MemRefType>(source.getType()))
+  if (source.getType().isa<UnrankedMemRefType, MemRefType>())
     return b.createOrFold<memref::DimOp>(loc, source, dim);
-  if (llvm::isa<UnrankedTensorType, RankedTensorType>(source.getType()))
+  if (source.getType().isa<UnrankedTensorType, RankedTensorType>())
     return b.createOrFold<tensor::DimOp>(loc, source, dim);
   llvm_unreachable("Expected MemRefType or TensorType");
 }
 static OpFoldResult createFoldedDimOp(OpBuilder &b, Location loc, Value source,
                                       int64_t dim) {
-  auto shapedType = llvm::cast<ShapedType>(source.getType());
+  auto shapedType = source.getType().cast<ShapedType>();
   if (!shapedType.hasRank() || shapedType.isDynamicDim(dim))
     return createOrFoldDimOp(b, loc, source, dim);
   return b.getIndexAttr(shapedType.getDimSize(dim));
@@ -644,7 +644,7 @@ LinalgOp::reifyResultShapes(OpBuilder &b,
   for (OpOperand *opOperand : getDpsInitOperands()) {
     SmallVector<OpFoldResult> shapes;
     for (int64_t dim : llvm::seq<int64_t>(0, getRank(opOperand))) {
-      auto shapedType = llvm::cast<ShapedType>(opOperand->get().getType());
+      auto shapedType = opOperand->get().getType().cast<ShapedType>();
       if (!shapedType.isDynamicDim(dim)) {
         // Static dim: Return IntegerAttr.
         shapes.push_back(b.getIndexAttr(shapedType.getDimSize(dim)));

@@ -262,48 +262,17 @@ void Preprocessor::Handle_Pragma(Token &Tok) {
 
   SourceLocation RParenLoc = Tok.getLocation();
   bool Invalid = false;
-  SmallString<64> StrVal;
-  StrVal.resize(StrTok.getLength());
-  StringRef StrValRef = getSpelling(StrTok, StrVal, &Invalid);
+  std::string StrVal = getSpelling(StrTok, &Invalid);
   if (Invalid) {
     Diag(PragmaLoc, diag::err__Pragma_malformed);
     return;
   }
 
-  assert(StrValRef.size() <= StrVal.size());
-
-  // If the token was spelled somewhere else, copy it.
-  if (StrValRef.begin() != StrVal.begin())
-    StrVal.assign(StrValRef);
-  // Truncate if necessary.
-  else if (StrValRef.size() != StrVal.size())
-    StrVal.resize(StrValRef.size());
-
-  // The _Pragma is lexically sound.  Destringize according to C11 6.10.9.1.
-  prepare_PragmaString(StrVal);
-
-  // Plop the string (including the newline and trailing null) into a buffer
-  // where we can lex it.
-  Token TmpTok;
-  TmpTok.startToken();
-  CreateString(StrVal, TmpTok);
-  SourceLocation TokLoc = TmpTok.getLocation();
-
-  // Make and enter a lexer object so that we lex and expand the tokens just
-  // like any others.
-  Lexer *TL = Lexer::Create_PragmaLexer(TokLoc, PragmaLoc, RParenLoc,
-                                        StrVal.size(), *this);
-
-  EnterSourceFileWithLexer(TL, nullptr);
-
-  // With everything set up, lex this as a #pragma directive.
-  HandlePragmaDirective({PIK__Pragma, PragmaLoc});
-
-  // Finally, return whatever came after the pragma directive.
-  return Lex(Tok);
-}
-
-void clang::prepare_PragmaString(SmallVectorImpl<char> &StrVal) {
+  // The _Pragma is lexically sound.  Destringize according to C11 6.10.9.1:
+  // "The string literal is destringized by deleting any encoding prefix,
+  // deleting the leading and trailing double-quotes, replacing each escape
+  // sequence \" by a double-quote, and replacing each escape sequence \\ by a
+  // single backslash."
   if (StrVal[0] == 'L' || StrVal[0] == 'U' ||
       (StrVal[0] == 'u' && StrVal[1] != '8'))
     StrVal.erase(StrVal.begin());
@@ -327,8 +296,8 @@ void clang::prepare_PragmaString(SmallVectorImpl<char> &StrVal) {
 
     // Remove 'R " d-char-sequence' and 'd-char-sequence "'. We'll replace the
     // parens below.
-    StrVal.erase(StrVal.begin(), StrVal.begin() + 2 + NumDChars);
-    StrVal.erase(StrVal.end() - 1 - NumDChars, StrVal.end());
+    StrVal.erase(0, 2 + NumDChars);
+    StrVal.erase(StrVal.size() - 1 - NumDChars);
   } else {
     assert(StrVal[0] == '"' && StrVal[StrVal.size()-1] == '"' &&
            "Invalid string token!");
@@ -350,7 +319,27 @@ void clang::prepare_PragmaString(SmallVectorImpl<char> &StrVal) {
   StrVal[0] = ' ';
 
   // Replace the terminating quote with a \n.
-  StrVal[StrVal.size() - 1] = '\n';
+  StrVal[StrVal.size()-1] = '\n';
+
+  // Plop the string (including the newline and trailing null) into a buffer
+  // where we can lex it.
+  Token TmpTok;
+  TmpTok.startToken();
+  CreateString(StrVal, TmpTok);
+  SourceLocation TokLoc = TmpTok.getLocation();
+
+  // Make and enter a lexer object so that we lex and expand the tokens just
+  // like any others.
+  Lexer *TL = Lexer::Create_PragmaLexer(TokLoc, PragmaLoc, RParenLoc,
+                                        StrVal.size(), *this);
+
+  EnterSourceFileWithLexer(TL, nullptr);
+
+  // With everything set up, lex this as a #pragma directive.
+  HandlePragmaDirective({PIK__Pragma, PragmaLoc});
+
+  // Finally, return whatever came after the pragma directive.
+  return Lex(Tok);
 }
 
 /// HandleMicrosoft__pragma - Like Handle_Pragma except the pragma text

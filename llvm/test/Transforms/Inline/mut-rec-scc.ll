@@ -32,28 +32,6 @@ define void @test1() {
 
 define void @test2() {
 ; CHECK-LABEL: define void @test2(
-; CHECK-NEXT:    call void @test3()
-; CHECK-NEXT:    call void @test3()
-; CHECK-NEXT:    ret void
-;
-  call void @test3() noinline
-  call void @test3() noinline
-  call void @dummy()
-  call void @dummy()
-  call void @dummy()
-  call void @dummy()
-  call void @dummy()
-  call void @dummy()
-  call void @dummy()
-  call void @dummy()
-  call void @dummy()
-  call void @dummy()
-  call void @dummy()
-  ret void
-}
-
-define void @test3() {
-; CHECK-LABEL: define void @test3(
 ; CHECK-NEXT:    call void @test1()
 ; CHECK-NEXT:    call void @test1()
 ; CHECK-NEXT:    ret void
@@ -75,22 +53,23 @@ define void @test3() {
 }
 
 ; The inlined call sites should have the "function-inline-cost-multiplier" call site attribute.
-define void @f() {
-; CHECK-LABEL: define void @f(
-; CHECK-NEXT:    call void @test3() #[[COSTMULT:[0-9]+]]
-; CHECK-NEXT:    call void @test3() #[[COSTMULT]]
-; CHECK-NEXT:    call void @test3() #[[COSTMULT]]
-; CHECK-NEXT:    call void @test3() #[[COSTMULT]]
-; CHECK-NEXT:    call void @test3() #[[COSTMULT]]
-; CHECK-NEXT:    call void @test3() #[[COSTMULT]]
-; CHECK-NEXT:    call void @test3() #[[COSTMULT]]
-; CHECK-NEXT:    call void @test3() #[[COSTMULT]]
+; This test is a bit fragile in the exact number of inlining that happens based on thresholds.
+define void @test3() {
+; CHECK-LABEL: define void @test3(
+; CHECK-NEXT:    call void @test2() #[[COSTMULT:[0-9]+]]
+; CHECK-NEXT:    call void @test2() #[[COSTMULT]]
+; CHECK-NEXT:    call void @test2() #[[COSTMULT]]
+; CHECK-NEXT:    call void @test2() #[[COSTMULT]]
+; CHECK-NEXT:    call void @test2() #[[COSTMULT]]
+; CHECK-NEXT:    call void @test2() #[[COSTMULT]]
+; CHECK-NEXT:    call void @test2() #[[COSTMULT]]
+; CHECK-NEXT:    call void @test2() #[[COSTMULT]]
 ; CHECK-NEXT:    ret void
 ;
-  call void @test1()
-  call void @test1()
+  call void @test2()
+  call void @test2()
   ret void
 }
 
-; CHECK: [[COSTMULT]] = { noinline "function-inline-cost-multiplier"="4" }
+; CHECK: [[COSTMULT]] = { "function-inline-cost-multiplier"="4" }
 ; THREE: "function-inline-cost-multiplier"="9"

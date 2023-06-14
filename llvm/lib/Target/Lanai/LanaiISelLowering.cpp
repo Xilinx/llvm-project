@@ -519,7 +519,7 @@ SDValue LanaiTargetLowering::LowerCCCArguments(
   if (IsVarArg) {
     // Record the frame index of the first variable argument
     // which is a value necessary to VASTART.
-    int FI = MFI.CreateFixedObject(4, CCInfo.getStackSize(), true);
+    int FI = MFI.CreateFixedObject(4, CCInfo.getNextStackOffset(), true);
     LanaiMFI->setVarArgsFrameIndex(FI);
   }
 
@@ -627,7 +627,7 @@ SDValue LanaiTargetLowering::LowerCCCCallTo(
   }
 
   // Get a count of how many bytes are to be pushed on the stack.
-  unsigned NumBytes = CCInfo.getStackSize();
+  unsigned NumBytes = CCInfo.getNextStackOffset();
 
   // Create local copies for byval args.
   SmallVector<SDValue, 8> ByValArgs;
@@ -1499,7 +1499,7 @@ void LanaiTargetLowering::computeKnownBitsForTargetNode(
     KnownBits Known2;
     Known = DAG.computeKnownBits(Op->getOperand(0), Depth + 1);
     Known2 = DAG.computeKnownBits(Op->getOperand(1), Depth + 1);
-    Known = Known.intersectWith(Known2);
+    Known = KnownBits::commonBits(Known, Known2);
     break;
   }
 }

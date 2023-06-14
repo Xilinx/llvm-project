@@ -23,22 +23,12 @@ class DeclContext;
 /// linked address.
 using RangesTy = AddressRangesMap;
 
-// This structure keeps patch for the attribute and, optionally,
-// the value of relocation which should be applied. Currently,
-// only location attribute needs to have relocation: either to the
-// function ranges if location attribute is of type 'loclist',
-// either to the operand of DW_OP_addr/DW_OP_addrx if location attribute
-// is of type 'exprloc'.
-// ASSUMPTION: Location attributes of 'loclist' type containing 'exprloc'
-//             with address expression operands are not supported yet.
+// FIXME: Delete this structure.
 struct PatchLocation {
   DIE::value_iterator I;
-  int64_t RelocAdjustment = 0;
 
   PatchLocation() = default;
   PatchLocation(DIE::value_iterator I) : I(I) {}
-  PatchLocation(DIE::value_iterator I, int64_t Reloc)
-      : I(I), RelocAdjustment(Reloc) {}
 
   void set(uint64_t New) const {
     assert(I);
@@ -54,7 +44,7 @@ struct PatchLocation {
 };
 
 using RngListAttributesTy = SmallVector<PatchLocation>;
-using LocListAttributesTy = SmallVector<PatchLocation>;
+using LocListAttributesTy = SmallVector<std::pair<PatchLocation, int64_t>>;
 
 /// Stores all information relating to a compile unit, be it in its original
 /// instance in the object file to its brand new cloned and generated DIE tree.
@@ -201,7 +191,7 @@ public:
 
   /// Keep track of a location attribute pointing to a location list in the
   /// debug_loc section.
-  void noteLocationAttribute(PatchLocation Attr);
+  void noteLocationAttribute(PatchLocation Attr, int64_t PcOffset);
 
   /// Add a name accelerator entry for \a Die with \a Name.
   void addNamespaceAccelerator(const DIE *Die, DwarfStringPoolEntryRef Name);
@@ -296,10 +286,9 @@ private:
   /// @}
 
   /// Location attributes that need to be transferred from the
-  /// original debug_loc section to the linked one. They are stored
+  /// original debug_loc section to the liked one. They are stored
   /// along with the PC offset that is to be applied to their
-  /// function's address or to be applied to address operands of
-  /// location expression.
+  /// function's address.
   LocListAttributesTy LocationAttributes;
 
   /// Accelerator entries for the unit, both for the pub*

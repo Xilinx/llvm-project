@@ -36,18 +36,18 @@ TEST_F(LLVMIRTest, MutualReferencedSubElementTypes) {
   ASSERT_EQ(subElementTypes.size(), 4U);
 
   // !llvm.ptr<struct<"foo",...>>
-  ASSERT_TRUE(isa<LLVMPointerType>(subElementTypes[0]));
+  ASSERT_TRUE(subElementTypes[0].isa<LLVMPointerType>());
 
   // !llvm.struct<"bar",...>
-  auto structType = dyn_cast<LLVMStructType>(subElementTypes[1]);
+  auto structType = subElementTypes[1].dyn_cast<LLVMStructType>();
   ASSERT_TRUE(bool(structType));
   ASSERT_TRUE(structType.getName().equals("bar"));
 
   // !llvm.ptr<struct<"bar",...>>
-  ASSERT_TRUE(isa<LLVMPointerType>(subElementTypes[2]));
+  ASSERT_TRUE(subElementTypes[2].isa<LLVMPointerType>());
 
   // !llvm.struct<"foo",...>
-  structType = dyn_cast<LLVMStructType>(subElementTypes[3]);
+  structType = subElementTypes[3].dyn_cast<LLVMStructType>();
   ASSERT_TRUE(bool(structType));
   ASSERT_TRUE(structType.getName().equals("foo"));
 }

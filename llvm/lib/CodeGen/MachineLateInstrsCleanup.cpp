@@ -236,8 +236,8 @@ bool MachineLateInstrsCleanup::processBlock(MachineBasicBlock *MBB) {
       if (MI.modifiesRegister(Reg, TRI)) {
         MBBDefs.erase(Reg);
         MBBKills.erase(Reg);
-      } else if (MI.findRegisterUseOperandIdx(Reg, true /*isKill*/, TRI) != -1)
-        // Keep track of register kills.
+      } else if (MI.findRegisterUseOperandIdx(Reg, false /*isKill*/, TRI) != -1)
+        // Keep track of the last use seen so far.
         MBBKills[Reg] = &MI;
     }
 

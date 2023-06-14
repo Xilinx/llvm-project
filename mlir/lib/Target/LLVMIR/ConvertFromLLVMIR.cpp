@@ -26,7 +26,7 @@ using namespace mlir;
 namespace mlir {
 void registerFromLLVMIRTranslation() {
   TranslateToMLIRRegistration registration(
-      "import-llvm", "Translate LLVMIR to MLIR",
+      "import-llvm", "translate llvmir to mlir",
       [](llvm::SourceMgr &sourceMgr,
          MLIRContext *context) -> OwningOpRef<Operation *> {
         llvm::SMDiagnostic err;

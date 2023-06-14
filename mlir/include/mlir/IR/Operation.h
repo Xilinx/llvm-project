@@ -509,11 +509,11 @@ public:
 
   template <typename AttrClass>
   AttrClass getAttrOfType(StringAttr name) {
-    return llvm::dyn_cast_or_null<AttrClass>(getAttr(name));
+    return getAttr(name).dyn_cast_or_null<AttrClass>();
   }
   template <typename AttrClass>
   AttrClass getAttrOfType(StringRef name) {
-    return llvm::dyn_cast_or_null<AttrClass>(getAttr(name));
+    return getAttr(name).dyn_cast_or_null<AttrClass>();
   }
 
   /// Return true if the operation has an attribute with the provided name,

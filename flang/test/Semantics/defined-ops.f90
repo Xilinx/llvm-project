@@ -13,7 +13,7 @@ module m1
 contains
   subroutine s1(x, y)
     class(t), intent(out) :: x
-    integer, intent(in), value :: y
+    integer, intent(in) :: y
   end
   subroutine s2(x, y)
     real, intent(out) :: x
@@ -22,13 +22,9 @@ contains
   subroutine test1(x)
     type(t) :: x
     real :: a
-    integer :: j
     !CHECK: CALL s1(x,1_4)
     x = 1
-    j = 1
-    !CHECK: CALL s1(x,j)
-    x = j ! no parentheses due to VALUE
-    !CHECK: CALL s2(a,(x))
+    !CHECK: CALL s2(a,x)
     a = x
   end
   subroutine test2(x)
@@ -36,7 +32,7 @@ contains
     real :: a
     !CHECK: CALL x%b1(1_4)
     x = 1
-    !CHECK: CALL (x)%b2(a)
+    !CHECK: CALL x%b2(a)
     a = x
   end
 end
@@ -77,10 +73,6 @@ module m3
       real, intent(out) :: x
       class(*), intent(in) :: y
     end
-    subroutine s3(x, y)
-      integer, intent(out) :: x
-      class(*), intent(in), value :: y
-    end
   end interface
   interface operator(+)
     integer function f(x, y)
@@ -97,9 +89,7 @@ contains
     x = 2
     !CHECK: i=f(x,y)
     i = x + y
-    !CHECK: CALL s2(a,(z))
+    !CHECK: CALL s2(a,z)
     a = z
-    !CHECK: CALL s3(i,z)
-    i = z
   end
 end

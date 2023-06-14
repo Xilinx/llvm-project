@@ -81,9 +81,9 @@ struct WmmaLoadOpToSPIRVLowering
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = subgroupMmaLoadMatrixOp->getLoc();
     gpu::MMAMatrixType retType =
-        cast<gpu::MMAMatrixType>(subgroupMmaLoadMatrixOp.getRes().getType());
+        subgroupMmaLoadMatrixOp.getRes().getType().cast<gpu::MMAMatrixType>();
     auto memrefType =
-        cast<MemRefType>(subgroupMmaLoadMatrixOp.getSrcMemref().getType());
+        subgroupMmaLoadMatrixOp.getSrcMemref().getType().cast<MemRefType>();
     Value bufferPtr = spirv::getElementPtr(
         *getTypeConverter<SPIRVTypeConverter>(), memrefType,
         adaptor.getSrcMemref(), adaptor.getIndices(), loc, rewriter);
@@ -114,7 +114,7 @@ struct WmmaStoreOpToSPIRVLowering
                   ConversionPatternRewriter &rewriter) const override {
     Location loc = subgroupMmaStoreMatrixOp->getLoc();
     auto memrefType =
-        cast<MemRefType>(subgroupMmaStoreMatrixOp.getDstMemref().getType());
+        subgroupMmaStoreMatrixOp.getDstMemref().getType().cast<MemRefType>();
     Value bufferPtr = spirv::getElementPtr(
         *getTypeConverter<SPIRVTypeConverter>(), memrefType,
         adaptor.getDstMemref(), adaptor.getIndices(), loc, rewriter);
@@ -161,7 +161,7 @@ struct WmmaConstantOpToSPIRVLowering
                   ConversionPatternRewriter &rewriter) const override {
     Value cst = adaptor.getOperands()[0];
     auto coopType = convertMMAToSPIRVType(
-        cast<gpu::MMAMatrixType>(subgroupMmaConstantMatrixOp.getType()));
+        subgroupMmaConstantMatrixOp.getType().cast<gpu::MMAMatrixType>());
     rewriter.replaceOpWithNewOp<spirv::CompositeConstructOp>(
         subgroupMmaConstantMatrixOp, coopType, cst);
     return success();
@@ -180,11 +180,11 @@ struct WmmaElementwiseOpToSPIRVDefaultLowering
                   ConversionPatternRewriter &rewriter) const override {
     // All operands should be of cooperative matrix types.
     for (Value operand : adaptor.getOperands()) {
-      if (!isa<spirv::CooperativeMatrixNVType>(operand.getType()))
+      if (!operand.getType().isa<spirv::CooperativeMatrixNVType>())
         return failure();
     }
     auto coopType = convertMMAToSPIRVType(
-        cast<gpu::MMAMatrixType>(elementwiseOp.getType()));
+        elementwiseOp.getType().cast<gpu::MMAMatrixType>());
     return success(createElementwiseOp(rewriter, elementwiseOp, coopType,
                                        adaptor.getOperands()));
   }
@@ -204,7 +204,7 @@ struct WmmaElementwiseOpToSPIRVScalarMulLowering
       return failure();
     // All operands should be of cooperative matrix types.
     for (Value operand : adaptor.getOperands()) {
-      if (!isa<spirv::CooperativeMatrixNVType>(operand.getType()))
+      if (!operand.getType().isa<spirv::CooperativeMatrixNVType>())
         return failure();
     }
 
@@ -236,7 +236,7 @@ struct WmmaElementwiseOpToSPIRVScalarMulLowering
     scalar = cc.getConstituents().front();
 
     auto coopType = convertMMAToSPIRVType(
-        cast<gpu::MMAMatrixType>(elementwiseOp.getType()));
+        elementwiseOp.getType().cast<gpu::MMAMatrixType>());
     rewriter.replaceOpWithNewOp<spirv::MatrixTimesScalarOp>(
         elementwiseOp, coopType, ValueRange{matrix, scalar});
     return success();

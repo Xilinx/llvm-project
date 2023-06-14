@@ -28,10 +28,10 @@
 
 // Reduction in this file _are_ supported by the AArch64 SVE backend
 
-#SparseVector = #sparse_tensor.encoding<{lvlTypes = ["compressed"]}>
-#CSR = #sparse_tensor.encoding<{lvlTypes = ["dense", "compressed"]}>
+#SparseVector = #sparse_tensor.encoding<{dimLevelType = ["compressed"]}>
+#CSR = #sparse_tensor.encoding<{dimLevelType = ["dense", "compressed"]}>
 #CSC = #sparse_tensor.encoding<{
-  lvlTypes = [ "dense", "compressed" ],
+  dimLevelType = [ "dense", "compressed" ],
   dimOrdering = affine_map<(i,j) -> (j,i)>
 }>
 

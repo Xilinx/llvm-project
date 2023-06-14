@@ -42,45 +42,47 @@ static_assert(
     "MlirSparseTensorDimLevelType (C-API) and DimLevelType (C++) mismatch");
 
 bool mlirAttributeIsASparseTensorEncodingAttr(MlirAttribute attr) {
-  return isa<SparseTensorEncodingAttr>(unwrap(attr));
+  return unwrap(attr).isa<SparseTensorEncodingAttr>();
 }
 
 MlirAttribute mlirSparseTensorEncodingAttrGet(
     MlirContext ctx, intptr_t lvlRank,
-    MlirSparseTensorDimLevelType const *lvlTypes, MlirAffineMap dimOrdering,
-    MlirAffineMap higherOrdering, int posWidth, int crdWidth) {
-  SmallVector<DimLevelType> cppLvlTypes;
-  cppLvlTypes.reserve(lvlRank);
+    MlirSparseTensorDimLevelType const *dimLevelTypes,
+    MlirAffineMap dimOrdering, MlirAffineMap higherOrdering, int posWidth,
+    int crdWidth) {
+  SmallVector<DimLevelType> cppDimLevelTypes;
+  cppDimLevelTypes.reserve(lvlRank);
   for (intptr_t l = 0; l < lvlRank; ++l)
-    cppLvlTypes.push_back(static_cast<DimLevelType>(lvlTypes[l]));
+    cppDimLevelTypes.push_back(static_cast<DimLevelType>(dimLevelTypes[l]));
   return wrap(SparseTensorEncodingAttr::get(
-      unwrap(ctx), cppLvlTypes, unwrap(dimOrdering), unwrap(higherOrdering),
-      posWidth, crdWidth));
+      unwrap(ctx), cppDimLevelTypes, unwrap(dimOrdering),
+      unwrap(higherOrdering), posWidth, crdWidth));
 }
 
 MlirAffineMap mlirSparseTensorEncodingAttrGetDimOrdering(MlirAttribute attr) {
-  return wrap(cast<SparseTensorEncodingAttr>(unwrap(attr)).getDimOrdering());
+  return wrap(unwrap(attr).cast<SparseTensorEncodingAttr>().getDimOrdering());
 }
 
 MlirAffineMap
 mlirSparseTensorEncodingAttrGetHigherOrdering(MlirAttribute attr) {
-  return wrap(cast<SparseTensorEncodingAttr>(unwrap(attr)).getHigherOrdering());
+  return wrap(
+      unwrap(attr).cast<SparseTensorEncodingAttr>().getHigherOrdering());
 }
 
 intptr_t mlirSparseTensorEncodingGetLvlRank(MlirAttribute attr) {
-  return cast<SparseTensorEncodingAttr>(unwrap(attr)).getLvlRank();
+  return unwrap(attr).cast<SparseTensorEncodingAttr>().getLvlRank();
 }
 
 MlirSparseTensorDimLevelType
-mlirSparseTensorEncodingAttrGetLvlType(MlirAttribute attr, intptr_t lvl) {
+mlirSparseTensorEncodingAttrGetDimLevelType(MlirAttribute attr, intptr_t lvl) {
   return static_cast<MlirSparseTensorDimLevelType>(
-      cast<SparseTensorEncodingAttr>(unwrap(attr)).getLvlType(lvl));
+      unwrap(attr).cast<SparseTensorEncodingAttr>().getLvlType(lvl));
 }
 
 int mlirSparseTensorEncodingAttrGetPosWidth(MlirAttribute attr) {
-  return cast<SparseTensorEncodingAttr>(unwrap(attr)).getPosWidth();
+  return unwrap(attr).cast<SparseTensorEncodingAttr>().getPosWidth();
 }
 
 int mlirSparseTensorEncodingAttrGetCrdWidth(MlirAttribute attr) {
-  return cast<SparseTensorEncodingAttr>(unwrap(attr)).getCrdWidth();
+  return unwrap(attr).cast<SparseTensorEncodingAttr>().getCrdWidth();
 }

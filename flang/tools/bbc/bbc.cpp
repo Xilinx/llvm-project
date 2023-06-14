@@ -132,11 +132,6 @@ static llvm::cl::opt<bool>
 // A simplified subset of the OpenMP RTL Flags from Flang, only the primary
 // positive options are available, no negative options e.g. fopen_assume* vs
 // fno_open_assume*
-static llvm::cl::opt<uint32_t>
-    setOpenMPVersion("fopenmp-version",
-                     llvm::cl::desc("OpenMP standard version"),
-                     llvm::cl::init(11));
-
 static llvm::cl::opt<uint32_t> setOpenMPTargetDebug(
     "fopenmp-target-debug",
     llvm::cl::desc("Enable debugging in the OpenMP offloading device RTL"),
@@ -282,12 +277,11 @@ static mlir::LogicalResult convertFortranSourceToMLIR(
   burnside.lower(parseTree, semanticsContext);
   mlir::ModuleOp mlirModule = burnside.getModule();
   if (enableOpenMP) {
-    auto offloadModuleOpts = OffloadModuleOpts(
-        setOpenMPTargetDebug, setOpenMPTeamSubscription,
-        setOpenMPThreadSubscription, setOpenMPNoThreadState,
-        setOpenMPNoNestedParallelism, enableOpenMPDevice, setOpenMPVersion);
+    auto offloadModuleOpts =
+        OffloadModuleOpts(setOpenMPTargetDebug, setOpenMPTeamSubscription,
+                          setOpenMPThreadSubscription, setOpenMPNoThreadState,
+                          setOpenMPNoNestedParallelism, enableOpenMPDevice);
     setOffloadModuleInterfaceAttributes(mlirModule, offloadModuleOpts);
-    setOpenMPVersionAttribute(mlirModule, setOpenMPVersion);
   }
   std::error_code ec;
   std::string outputName = outputFilename;
@@ -306,7 +300,6 @@ static mlir::LogicalResult convertFortranSourceToMLIR(
   (void)mlir::applyPassManagerCLOptions(pm);
   if (passPipeline.hasAnyOccurrences()) {
     // run the command-line specified pipeline
-    hlfir::registerHLFIRPasses();
     (void)passPipeline.addToPipeline(pm, [&](const llvm::Twine &msg) {
       mlir::emitError(mlir::UnknownLoc::get(&ctx)) << msg;
       return mlir::failure();
@@ -382,7 +375,7 @@ int main(int argc, char **argv) {
   // enable parsing of OpenACC
   if (enableOpenACC) {
     options.features.Enable(Fortran::common::LanguageFeature::OpenACC);
-    options.predefinitions.emplace_back("_OPENACC", "202011");
+    options.predefinitions.emplace_back("_OPENACC", "201911");
   }
 
   Fortran::common::IntrinsicTypeDefaultKinds defaultKinds;

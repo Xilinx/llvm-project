@@ -461,34 +461,28 @@ void GVNPass::ValueTable::add(Value *V, uint32_t num) {
 }
 
 uint32_t GVNPass::ValueTable::lookupOrAddCall(CallInst *C) {
-  // FIXME: Currently the calls which may access the thread id may
-  // be considered as not accessing the memory. But this is
-  // problematic for coroutines, since coroutines may resume in a
-  // different thread. So we disable the optimization here for the
-  // correctness. However, it may block many other correct
-  // optimizations. Revert this one when we detect the memory
-  // accessing kind more precisely.
-  if (C->getFunction()->isPresplitCoroutine()) {
-    valueNumbering[C] = nextValueNumber;
-    return nextValueNumber++;
-  }
-
-  // Do not combine convergent calls since they implicitly depend on the set of
-  // threads that is currently executing, and they might be in different basic
-  // blocks.
-  if (C->isConvergent()) {
-    valueNumbering[C] = nextValueNumber;
-    return nextValueNumber++;
-  }
-
-  if (AA->doesNotAccessMemory(C)) {
+  if (AA->doesNotAccessMemory(C) &&
+      // FIXME: Currently the calls which may access the thread id may
+      // be considered as not accessing the memory. But this is
+      // problematic for coroutines, since coroutines may resume in a
+      // different thread. So we disable the optimization here for the
+      // correctness. However, it may block many other correct
+      // optimizations. Revert this one when we detect the memory
+      // accessing kind more precisely.
+      !C->getFunction()->isPresplitCoroutine()) {
     Expression exp = createExpr(C);
     uint32_t e = assignExpNewValueNum(exp).first;
     valueNumbering[C] = e;
     return e;
-  }
-
-  if (MD && AA->onlyReadsMemory(C)) {
+  } else if (MD && AA->onlyReadsMemory(C) &&
+             // FIXME: Currently the calls which may access the thread id may
+             // be considered as not accessing the memory. But this is
+             // problematic for coroutines, since coroutines may resume in a
+             // different thread. So we disable the optimization here for the
+             // correctness. However, it may block many other correct
+             // optimizations. Revert this one when we detect the memory
+             // accessing kind more precisely.
+             !C->getFunction()->isPresplitCoroutine()) {
     Expression exp = createExpr(C);
     auto ValNum = assignExpNewValueNum(exp);
     if (ValNum.second) {
@@ -578,10 +572,10 @@ uint32_t GVNPass::ValueTable::lookupOrAddCall(CallInst *C) {
     uint32_t v = lookupOrAdd(cdep);
     valueNumbering[C] = v;
     return v;
+  } else {
+    valueNumbering[C] = nextValueNumber;
+    return nextValueNumber++;
   }
-
-  valueNumbering[C] = nextValueNumber;
-  return nextValueNumber++;
 }
 
 /// Returns true if a value number exists for the specified value.
@@ -1930,9 +1924,7 @@ bool GVNPass::processAssumeIntrinsic(AssumeInst *IntrinsicI) {
       return true;
     }
     return false;
-  }
-
-  if (isa<Constant>(V)) {
+  } else if (isa<Constant>(V)) {
     // If it's not false, and constant, it must evaluate to true. This means our
     // assume is assume(true), and thus, pointless, and we don't want to do
     // anything more here.
@@ -2565,9 +2557,7 @@ bool GVNPass::processInstruction(Instruction *I) {
     // Failure, just remember this instance for future use.
     addToLeaderTable(Num, I, I->getParent());
     return false;
-  }
-
-  if (Repl == I) {
+  } else if (Repl == I) {
     // If I was the result of a shortcut PRE, it might already be in the table
     // and the best replacement for itself. Nothing to do.
     return false;
@@ -2788,6 +2778,9 @@ bool GVNPass::performScalarPRE(Instruction *CurInst) {
   if (auto *CallB = dyn_cast<CallBase>(CurInst)) {
     // We don't currently value number ANY inline asm calls.
     if (CallB->isInlineAsm())
+      return false;
+    // Don't do PRE on convergent calls.
+    if (CallB->isConvergent())
       return false;
   }
 

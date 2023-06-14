@@ -239,12 +239,12 @@ func.func @transfer_broadcasting_complex(%mem : memref<10x20x30x8x8xf32>, %i : i
 
 
 transform.sequence failures(propagate) {
-^bb1(%module_op: !transform.any_op):
+^bb1(%module_op: !pdl.operation):
   %m2 = transform.vector.lower_transfer %module_op
     max_transfer_rank = 99
-      : (!transform.any_op) -> !transform.any_op
+      : (!pdl.operation) -> !pdl.operation
   transform.vector.apply_transfer_permutation_patterns %m2
-      : (!transform.any_op) -> !transform.any_op
+      : (!pdl.operation) -> !pdl.operation
 }
 
 // -----
@@ -362,10 +362,10 @@ func.func @transfer_write_broadcast_unit_dim(
 }
 
 transform.sequence failures(propagate) {
-^bb1(%module_op: !transform.any_op):
+^bb1(%module_op: !pdl.operation):
   %m2 = transform.vector.lower_transfer %module_op
     max_transfer_rank = 99
-      : (!transform.any_op) -> !transform.any_op
+      : (!pdl.operation) -> !pdl.operation
   transform.vector.apply_transfer_permutation_patterns %m2
-      : (!transform.any_op) -> !transform.any_op
+      : (!pdl.operation) -> !pdl.operation
 }

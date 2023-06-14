@@ -58,7 +58,6 @@
 
 # DYLIBSEARCH:      searched {{.*}}/MacOSX.sdk/usr/lib{{[/\\]}}libhello.tbd, not found
 # DYLIBSEARCH-NEXT: searched {{.*}}/MacOSX.sdk/usr/lib{{[/\\]}}libhello.dylib, not found
-# DYLIBSEARCH-NEXT: searched {{.*}}/MacOSX.sdk/usr/lib{{[/\\]}}libhello.so, not found
 # DYLIBSEARCH-NEXT: searched [[PATH]]A{{[/\\]}}libhello.tbd, not found
 # DYLIBSEARCH-NEXT: searched [[PATH]]A{{[/\\]}}libhello.dylib, not found
 # DYLIBSEARCH:      searched [[PATH]]{{[/\\]}}libhello.dylib, found
@@ -70,11 +69,9 @@
 
 # ARCHIVESEARCH:      searched {{.*}}/MacOSX.sdk/usr/lib{{[/\\]}}libhello.tbd, not found
 # ARCHIVESEARCH-NEXT: searched {{.*}}/MacOSX.sdk/usr/lib{{[/\\]}}libhello.dylib, not found
-# ARCHIVESEARCH-NEXT: searched {{.*}}/MacOSX.sdk/usr/lib{{[/\\]}}libhello.so, not found
 # ARCHIVESEARCH-NEXT: searched {{.*}}/MacOSX.sdk/usr/lib{{[/\\]}}libhello.a, not found
 # ARCHIVESEARCH-NEXT: searched [[PATH]]A{{[/\\]}}libhello.tbd, not found
 # ARCHIVESEARCH-NEXT: searched [[PATH]]A{{[/\\]}}libhello.dylib, not found
-# ARCHIVESEARCH-NEXT: searched [[PATH]]A{{[/\\]}}libhello.so, not found
 # ARCHIVESEARCH-NEXT: searched [[PATH]]A{{[/\\]}}libhello.a, not found
 # ARCHIVESEARCH:      searched [[PATH]]{{[/\\]}}libhello.dylib, found
 # ARCHIVESEARCH:      searched [[PATH]]A{{[/\\]}}libgoodbye.a, found

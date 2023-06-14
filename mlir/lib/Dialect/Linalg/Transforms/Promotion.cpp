@@ -229,7 +229,7 @@ FailureOr<PromotionInfo> mlir::linalg::promoteSubviewAsNewBuffer(
     // to look for the bound.
     LLVM_DEBUG(llvm::dbgs() << "Extract tightest: " << rangeValue.size << "\n");
     Value size;
-    if (auto attr = llvm::dyn_cast_if_present<Attribute>(rangeValue.size)) {
+    if (auto attr = rangeValue.size.dyn_cast<Attribute>()) {
       size = getValueOrCreateConstantIndexOp(b, loc, rangeValue.size);
     } else {
       Value materializedSize =
@@ -292,9 +292,9 @@ promoteSubViews(ImplicitLocOpBuilder &b,
             })
             .Case([&](ComplexType t) {
               Value tmp;
-              if (auto et = dyn_cast<FloatType>(t.getElementType()))
+              if (auto et = t.getElementType().dyn_cast<FloatType>())
                 tmp = b.create<arith::ConstantOp>(FloatAttr::get(et, 0.0));
-              else if (auto et = cast<IntegerType>(t.getElementType()))
+              else if (auto et = t.getElementType().cast<IntegerType>())
                 tmp = b.create<arith::ConstantOp>(IntegerAttr::get(et, 0));
               return b.create<complex::CreateOp>(t, tmp, tmp);
             })

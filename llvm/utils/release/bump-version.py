@@ -68,9 +68,7 @@ class CMakeProcessor(Processor):
                     line,
                 )
             else:
-                nline = re.sub(
-                    r"set\(LLVM_VERSION_SUFFIX(.*)\)", f"set(LLVM_VERSION_SUFFIX)", line
-                )
+                nline = re.sub(r"set\(LLVM_VERSION_SUFFIX(.*)\)", f"set(LLVM_VERSION_SUFFIX)", line)
 
         # Check the rest of the LLVM_VERSION_ lines.
         elif "set(LLVM_VERSION_" in line:
@@ -80,8 +78,8 @@ class CMakeProcessor(Processor):
                 ("PATCH", self.patch),
             ):
                 nline = re.sub(
-                    rf"set\(LLVM_VERSION_{c} (\d+)",
-                    rf"set(LLVM_VERSION_{c} {cver}",
+                    fr"set\(LLVM_VERSION_{c} (\d+)",
+                    fr"set(LLVM_VERSION_{c} {cver}",
                     line,
                 )
                 if nline != line:
@@ -99,9 +97,7 @@ class GNIProcessor(Processor):
                 ("minor", self.minor),
                 ("patch", self.patch),
             ):
-                nline = re.sub(
-                    rf"llvm_version_{c} = \d+", f"llvm_version_{c} = {cver}", line
-                )
+                nline = re.sub(fr"llvm_version_{c} = \d+", f"llvm_version_{c} = {cver}", line)
                 if nline != line:
                     return nline
 
@@ -113,7 +109,7 @@ class LitProcessor(Processor):
     def process_line(self, line: str) -> str:
         if "__versioninfo__" in line:
             nline = re.sub(
-                rf"__versioninfo__(.*)\((\d+), (\d+), (\d+)\)",
+                fr"__versioninfo__(.*)\((\d+), (\d+), (\d+)\)",
                 f"__versioninfo__\\1({self.major}, {self.minor}, {self.patch})",
                 line,
             )
@@ -130,7 +126,7 @@ class LibCXXProcessor(Processor):
             verstr = f"{str(self.major).zfill(2)}{str(self.minor).zfill(2)}{str(self.patch).zfill(2)}"
 
             nline = re.sub(
-                rf"_LIBCPP_VERSION (\d+)",
+                fr"_LIBCPP_VERSION (\d+)",
                 f"_LIBCPP_VERSION {verstr}",
                 line,
             )

@@ -8,6 +8,7 @@ import lldbsuite.test.lldbutil as lldbutil
 
 
 class SharedLibTestCase(TestBase):
+
     def setUp(self):
         # Call super's setUp().
         TestBase.setUp(self)

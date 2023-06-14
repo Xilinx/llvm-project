@@ -27,10 +27,10 @@
 // RUN: %{compile} | mlir-translate -mlir-to-llvmir | %{run}
 
 #CCC = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed", "compressed", "compressed" ] }>
+  dimLevelType = [ "compressed", "compressed", "compressed" ] }>
 
 #CDC = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed", "dense", "compressed" ]
+  dimLevelType = [ "compressed", "dense", "compressed" ]
   // FIXME: Still inadmissible might need investigation
   // dimOrdering = affine_map<(i,j,k) -> (j,k,i)>
 }>

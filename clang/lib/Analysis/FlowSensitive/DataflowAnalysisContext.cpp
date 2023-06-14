@@ -210,8 +210,8 @@ DataflowAnalysisContext::getControlFlowContext(const FunctionDecl *F) {
   if (It != FunctionContexts.end())
     return &It->second;
 
-  if (F->hasBody()) {
-    auto CFCtx = ControlFlowContext::build(*F, F->getASTContext());
+  if (Stmt *Body = F->getBody()) {
+    auto CFCtx = ControlFlowContext::build(F, *Body, F->getASTContext());
     // FIXME: Handle errors.
     assert(CFCtx);
     auto Result = FunctionContexts.insert({F, std::move(*CFCtx)});

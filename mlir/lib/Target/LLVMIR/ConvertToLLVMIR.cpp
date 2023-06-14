@@ -24,7 +24,7 @@ using namespace mlir;
 namespace mlir {
 void registerToLLVMIRTranslation() {
   TranslateFromMLIRRegistration registration(
-      "mlir-to-llvmir", "Translate MLIR to LLVMIR",
+      "mlir-to-llvmir", "translate mlir to llvmir",
       [](Operation *op, raw_ostream &output) {
         llvm::LLVMContext llvmContext;
         auto llvmModule = translateModuleToLLVMIR(op, llvmContext);

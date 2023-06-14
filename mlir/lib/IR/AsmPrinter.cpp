@@ -44,8 +44,8 @@
 #include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/Threading.h"
 
-#include <optional>
 #include <tuple>
+#include <optional>
 
 using namespace mlir;
 using namespace mlir::detail;
@@ -91,7 +91,7 @@ void OpAsmPrinter::printFunctionalType(Operation *op) {
   // it is a function (avoiding a grammar ambiguity).
   bool wrapped = op->getNumResults() != 1;
   if (!wrapped && op->getResult(0).getType() &&
-      llvm::isa<FunctionType>(op->getResult(0).getType()))
+      op->getResult(0).getType().isa<FunctionType>())
     wrapped = true;
 
   if (wrapped)
@@ -219,8 +219,8 @@ OpPrintingFlags &OpPrintingFlags::enableDebugInfo(bool enable,
 }
 
 /// Always print operations in the generic form.
-OpPrintingFlags &OpPrintingFlags::printGenericOpForm(bool enable) {
-  printGenericOpFormFlag = enable;
+OpPrintingFlags &OpPrintingFlags::printGenericOpForm() {
+  printGenericOpFormFlag = true;
   return *this;
 }
 
@@ -254,7 +254,7 @@ OpPrintingFlags &OpPrintingFlags::printValueUsers() {
 bool OpPrintingFlags::shouldElideElementsAttr(ElementsAttr attr) const {
   return elementsAttrElementLimit &&
          *elementsAttrElementLimit < int64_t(attr.getNumElements()) &&
-         !llvm::isa<SplatElementsAttr>(attr);
+         !attr.isa<SplatElementsAttr>();
 }
 
 /// Return the size limit for printing large ElementsAttr.
@@ -803,8 +803,8 @@ private:
       attr.getDialect().printAttribute(attr, *this);
 
       // Process the builtin attributes.
-    } else if (llvm::isa<AffineMapAttr, DenseArrayAttr, FloatAttr, IntegerAttr,
-                         IntegerSetAttr, UnitAttr>(attr)) {
+    } else if (attr.isa<AffineMapAttr, DenseArrayAttr, FloatAttr, IntegerAttr,
+                        IntegerSetAttr, UnitAttr>()) {
       return;
     } else if (auto dictAttr = dyn_cast<DictionaryAttr>(attr)) {
       for (const NamedAttribute &nestedAttr : dictAttr.getValue()) {
@@ -833,9 +833,9 @@ private:
 
     // Don't print the type if we must elide it, or if it is a None type.
     if (!elideType) {
-      if (auto typedAttr = llvm::dyn_cast<TypedAttr>(attr)) {
+      if (auto typedAttr = attr.dyn_cast<TypedAttr>()) {
         Type attrType = typedAttr.getType();
-        if (!llvm::isa<NoneType>(attrType))
+        if (!attrType.isa<NoneType>())
           printType(attrType);
       }
     }
@@ -845,10 +845,10 @@ private:
       return type.getDialect().printType(type, *this);
 
     // Only visit the layout of memref if it isn't the identity.
-    if (auto memrefTy = llvm::dyn_cast<MemRefType>(type)) {
+    if (auto memrefTy = type.dyn_cast<MemRefType>()) {
       printType(memrefTy.getElementType());
       MemRefLayoutAttrInterface layout = memrefTy.getLayout();
-      if (!llvm::isa<AffineMapAttr>(layout) || !layout.isIdentity())
+      if (!layout.isa<AffineMapAttr>() || !layout.isIdentity())
         printAttribute(memrefTy.getLayout());
       if (memrefTy.getMemorySpace())
         printAttribute(memrefTy.getMemorySpace());
@@ -1418,7 +1418,7 @@ void SSANameState::shadowRegionArgs(Region &region, ValueRange namesToUse) {
 void SSANameState::numberValuesInRegion(Region &region) {
   auto setBlockArgNameFn = [&](Value arg, StringRef name) {
     assert(!valueIDs.count(arg) && "arg numbered multiple times");
-    assert(llvm::cast<BlockArgument>(arg).getOwner()->getParent() == &region &&
+    assert(arg.cast<BlockArgument>().getOwner()->getParent() == &region &&
            "arg not defined in current region");
     setValueName(arg, name);
   };
@@ -1479,7 +1479,7 @@ void SSANameState::numberValuesInOp(Operation &op) {
     setValueName(result, name);
 
     // Record the result number for groups not anchored at 0.
-    if (int resultNo = llvm::cast<OpResult>(result).getResultNumber())
+    if (int resultNo = result.cast<OpResult>().getResultNumber())
       resultGroups.push_back(resultNo);
   };
   // Operations can customize the printing of block names in OpAsmOpInterface.
@@ -1878,7 +1878,7 @@ void AsmPrinter::Impl::printLocationInternal(LocationAttr loc, bool pretty,
 
         // Print the child if it isn't unknown.
         auto childLoc = loc.getChildLoc();
-        if (!llvm::isa<UnknownLoc>(childLoc)) {
+        if (!childLoc.isa<UnknownLoc>()) {
           os << '(';
           printLocationInternal(childLoc, pretty);
           os << ')';
@@ -1891,8 +1891,8 @@ void AsmPrinter::Impl::printLocationInternal(LocationAttr loc, bool pretty,
           os << "callsite(";
         printLocationInternal(callee, pretty);
         if (pretty) {
-          if (llvm::isa<NameLoc>(callee)) {
-            if (llvm::isa<FileLineColLoc>(caller)) {
+          if (callee.isa<NameLoc>()) {
+            if (caller.isa<FileLineColLoc>()) {
               os << " at ";
             } else {
               os << newLine << " at ";
@@ -2100,19 +2100,19 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
                                           AttrTypeElision typeElision) {
   if (!isa<BuiltinDialect>(attr.getDialect())) {
     printDialectAttribute(attr);
-  } else if (auto opaqueAttr = llvm::dyn_cast<OpaqueAttr>(attr)) {
+  } else if (auto opaqueAttr = attr.dyn_cast<OpaqueAttr>()) {
     printDialectSymbol(os, "#", opaqueAttr.getDialectNamespace(),
                        opaqueAttr.getAttrData());
-  } else if (llvm::isa<UnitAttr>(attr)) {
+  } else if (attr.isa<UnitAttr>()) {
     os << "unit";
     return;
-  } else if (auto dictAttr = llvm::dyn_cast<DictionaryAttr>(attr)) {
+  } else if (auto dictAttr = attr.dyn_cast<DictionaryAttr>()) {
     os << '{';
     interleaveComma(dictAttr.getValue(),
                     [&](NamedAttribute attr) { printNamedAttribute(attr); });
     os << '}';
 
-  } else if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attr)) {
+  } else if (auto intAttr = attr.dyn_cast<IntegerAttr>()) {
     Type intType = intAttr.getType();
     if (intType.isSignlessInteger(1)) {
       os << (intAttr.getValue().getBoolValue() ? "true" : "false");
@@ -2132,24 +2132,24 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
     if (typeElision == AttrTypeElision::May && intType.isSignlessInteger(64))
       return;
 
-  } else if (auto floatAttr = llvm::dyn_cast<FloatAttr>(attr)) {
+  } else if (auto floatAttr = attr.dyn_cast<FloatAttr>()) {
     printFloatValue(floatAttr.getValue(), os);
 
     // FloatAttr elides the type if F64.
     if (typeElision == AttrTypeElision::May && floatAttr.getType().isF64())
       return;
 
-  } else if (auto strAttr = llvm::dyn_cast<StringAttr>(attr)) {
+  } else if (auto strAttr = attr.dyn_cast<StringAttr>()) {
     printEscapedString(strAttr.getValue());
 
-  } else if (auto arrayAttr = llvm::dyn_cast<ArrayAttr>(attr)) {
+  } else if (auto arrayAttr = attr.dyn_cast<ArrayAttr>()) {
     os << '[';
     interleaveComma(arrayAttr.getValue(), [&](Attribute attr) {
       printAttribute(attr, AttrTypeElision::May);
     });
     os << ']';
 
-  } else if (auto affineMapAttr = llvm::dyn_cast<AffineMapAttr>(attr)) {
+  } else if (auto affineMapAttr = attr.dyn_cast<AffineMapAttr>()) {
     os << "affine_map<";
     affineMapAttr.getValue().print(os);
     os << '>';
@@ -2157,7 +2157,7 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
     // AffineMap always elides the type.
     return;
 
-  } else if (auto integerSetAttr = llvm::dyn_cast<IntegerSetAttr>(attr)) {
+  } else if (auto integerSetAttr = attr.dyn_cast<IntegerSetAttr>()) {
     os << "affine_set<";
     integerSetAttr.getValue().print(os);
     os << '>';
@@ -2165,18 +2165,17 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
     // IntegerSet always elides the type.
     return;
 
-  } else if (auto typeAttr = llvm::dyn_cast<TypeAttr>(attr)) {
+  } else if (auto typeAttr = attr.dyn_cast<TypeAttr>()) {
     printType(typeAttr.getValue());
 
-  } else if (auto refAttr = llvm::dyn_cast<SymbolRefAttr>(attr)) {
+  } else if (auto refAttr = attr.dyn_cast<SymbolRefAttr>()) {
     printSymbolReference(refAttr.getRootReference().getValue(), os);
     for (FlatSymbolRefAttr nestedRef : refAttr.getNestedReferences()) {
       os << "::";
       printSymbolReference(nestedRef.getValue(), os);
     }
 
-  } else if (auto intOrFpEltAttr =
-                 llvm::dyn_cast<DenseIntOrFPElementsAttr>(attr)) {
+  } else if (auto intOrFpEltAttr = attr.dyn_cast<DenseIntOrFPElementsAttr>()) {
     if (printerFlags.shouldElideElementsAttr(intOrFpEltAttr)) {
       printElidedElementsAttr(os);
     } else {
@@ -2185,7 +2184,7 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
       os << '>';
     }
 
-  } else if (auto strEltAttr = llvm::dyn_cast<DenseStringElementsAttr>(attr)) {
+  } else if (auto strEltAttr = attr.dyn_cast<DenseStringElementsAttr>()) {
     if (printerFlags.shouldElideElementsAttr(strEltAttr)) {
       printElidedElementsAttr(os);
     } else {
@@ -2194,7 +2193,7 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
       os << '>';
     }
 
-  } else if (auto sparseEltAttr = llvm::dyn_cast<SparseElementsAttr>(attr)) {
+  } else if (auto sparseEltAttr = attr.dyn_cast<SparseElementsAttr>()) {
     if (printerFlags.shouldElideElementsAttr(sparseEltAttr.getIndices()) ||
         printerFlags.shouldElideElementsAttr(sparseEltAttr.getValues())) {
       printElidedElementsAttr(os);
@@ -2208,9 +2207,9 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
       }
       os << '>';
     }
-  } else if (auto stridedLayoutAttr = llvm::dyn_cast<StridedLayoutAttr>(attr)) {
+  } else if (auto stridedLayoutAttr = attr.dyn_cast<StridedLayoutAttr>()) {
     stridedLayoutAttr.print(os);
-  } else if (auto denseArrayAttr = llvm::dyn_cast<DenseArrayAttr>(attr)) {
+  } else if (auto denseArrayAttr = attr.dyn_cast<DenseArrayAttr>()) {
     os << "array<";
     printType(denseArrayAttr.getElementType());
     if (!denseArrayAttr.empty()) {
@@ -2219,21 +2218,20 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
     }
     os << ">";
     return;
-  } else if (auto resourceAttr =
-                 llvm::dyn_cast<DenseResourceElementsAttr>(attr)) {
+  } else if (auto resourceAttr = attr.dyn_cast<DenseResourceElementsAttr>()) {
     os << "dense_resource<";
     printResourceHandle(resourceAttr.getRawHandle());
     os << ">";
-  } else if (auto locAttr = llvm::dyn_cast<LocationAttr>(attr)) {
+  } else if (auto locAttr = attr.dyn_cast<LocationAttr>()) {
     printLocation(locAttr);
   } else {
     llvm::report_fatal_error("Unknown builtin attribute");
   }
   // Don't print the type if we must elide it, or if it is a None type.
   if (typeElision != AttrTypeElision::Must) {
-    if (auto typedAttr = llvm::dyn_cast<TypedAttr>(attr)) {
+    if (auto typedAttr = attr.dyn_cast<TypedAttr>()) {
       Type attrType = typedAttr.getType();
-      if (!llvm::isa<NoneType>(attrType)) {
+      if (!attrType.isa<NoneType>()) {
         os << " : ";
         printType(attrType);
       }
@@ -2302,10 +2300,10 @@ printDenseElementsAttrImpl(bool isSplat, ShapedType type, raw_ostream &os,
 
 void AsmPrinter::Impl::printDenseElementsAttr(DenseElementsAttr attr,
                                               bool allowHex) {
-  if (auto stringAttr = llvm::dyn_cast<DenseStringElementsAttr>(attr))
+  if (auto stringAttr = attr.dyn_cast<DenseStringElementsAttr>())
     return printDenseStringElementsAttr(stringAttr);
 
-  printDenseIntOrFPElementsAttr(llvm::cast<DenseIntOrFPElementsAttr>(attr),
+  printDenseIntOrFPElementsAttr(attr.cast<DenseIntOrFPElementsAttr>(),
                                 allowHex);
 }
 
@@ -2335,12 +2333,12 @@ void AsmPrinter::Impl::printDenseIntOrFPElementsAttr(
     return;
   }
 
-  if (ComplexType complexTy = llvm::dyn_cast<ComplexType>(elementType)) {
+  if (ComplexType complexTy = elementType.dyn_cast<ComplexType>()) {
     Type complexElementType = complexTy.getElementType();
     // Note: The if and else below had a common lambda function which invoked
     // printDenseElementsAttrImpl. This lambda was hitting a bug in gcc 9.1,9.2
     // and hence was replaced.
-    if (llvm::isa<IntegerType>(complexElementType)) {
+    if (complexElementType.isa<IntegerType>()) {
       auto valueIt = attr.value_begin<std::complex<APInt>>();
       printDenseElementsAttrImpl(attr.isSplat(), type, os, [&](unsigned index) {
         auto complexValue = *(valueIt + index);
@@ -2367,7 +2365,7 @@ void AsmPrinter::Impl::printDenseIntOrFPElementsAttr(
       printDenseIntElement(*(valueIt + index), os, elementType);
     });
   } else {
-    assert(llvm::isa<FloatType>(elementType) && "unexpected element type");
+    assert(elementType.isa<FloatType>() && "unexpected element type");
     auto valueIt = attr.value_begin<APFloat>();
     printDenseElementsAttrImpl(attr.isSplat(), type, os, [&](unsigned index) {
       printFloatValue(*(valueIt + index), os);
@@ -2399,7 +2397,7 @@ void AsmPrinter::Impl::printDenseArrayAttr(DenseArrayAttr attr) {
     if (type.isIntOrIndex()) {
       printDenseIntElement(value, getStream(), type);
     } else {
-      APFloat fltVal(llvm::cast<FloatType>(type).getFloatSemantics(), value);
+      APFloat fltVal(type.cast<FloatType>().getFloatSemantics(), value);
       printFloatValue(fltVal, getStream());
     }
   };
@@ -2449,7 +2447,7 @@ void AsmPrinter::Impl::printTypeImpl(Type type) {
         interleaveComma(funcTy.getInputs(), [&](Type ty) { printType(ty); });
         os << ") -> ";
         ArrayRef<Type> results = funcTy.getResults();
-        if (results.size() == 1 && !llvm::isa<FunctionType>(results[0])) {
+        if (results.size() == 1 && !results[0].isa<FunctionType>()) {
           printType(results[0]);
         } else {
           os << '(';
@@ -2508,7 +2506,7 @@ void AsmPrinter::Impl::printTypeImpl(Type type) {
         }
         printType(memrefTy.getElementType());
         MemRefLayoutAttrInterface layout = memrefTy.getLayout();
-        if (!llvm::isa<AffineMapAttr>(layout) || !layout.isIdentity()) {
+        if (!layout.isa<AffineMapAttr>() || !layout.isIdentity()) {
           os << ", ";
           printAttribute(memrefTy.getLayout(), AttrTypeElision::May);
         }
@@ -2582,7 +2580,7 @@ void AsmPrinter::Impl::printNamedAttribute(NamedAttribute attr) {
   ::printKeywordOrString(attr.getName().strref(), os);
 
   // Pretty printing elides the attribute value for unit attributes.
-  if (llvm::isa<UnitAttr>(attr.getValue()))
+  if (attr.getValue().isa<UnitAttr>())
     return;
 
   os << " = ";
@@ -3642,7 +3640,7 @@ void Value::print(raw_ostream &os, const OpPrintingFlags &flags) {
   if (auto *op = getDefiningOp())
     return op->print(os, flags);
   // TODO: Improve BlockArgument print'ing.
-  BlockArgument arg = llvm::cast<BlockArgument>(*this);
+  BlockArgument arg = this->cast<BlockArgument>();
   os << "<block argument> of type '" << arg.getType()
      << "' at index: " << arg.getArgNumber();
 }
@@ -3656,7 +3654,7 @@ void Value::print(raw_ostream &os, AsmState &state) {
     return op->print(os, state);
 
   // TODO: Improve BlockArgument print'ing.
-  BlockArgument arg = llvm::cast<BlockArgument>(*this);
+  BlockArgument arg = this->cast<BlockArgument>();
   os << "<block argument> of type '" << arg.getType()
      << "' at index: " << arg.getArgNumber();
 }
@@ -3675,7 +3673,10 @@ void Value::printAsOperand(raw_ostream &os, AsmState &state) {
                                                  os);
 }
 
-static Operation *findParent(Operation *op, bool shouldUseLocalScope) {
+void Operation::print(raw_ostream &os, const OpPrintingFlags &printerFlags) {
+  // Find the operation to number from based upon the provided flags.
+  Operation *op = this;
+  bool shouldUseLocalScope = printerFlags.shouldUseLocalScope();
   do {
     // If we are printing local scope, stop at the first operation that is
     // isolated from above.
@@ -3688,28 +3689,7 @@ static Operation *findParent(Operation *op, bool shouldUseLocalScope) {
       break;
     op = parentOp;
   } while (true);
-  return op;
-}
 
-void Value::printAsOperand(raw_ostream &os, const OpPrintingFlags &flags) {
-  Operation *op;
-  if (auto result = llvm::dyn_cast<OpResult>(*this)) {
-    op = result.getOwner();
-  } else {
-    op = llvm::cast<BlockArgument>(*this).getOwner()->getParentOp();
-    if (!op) {
-      os << "<<UNKNOWN SSA VALUE>>";
-      return;
-    }
-  }
-  op = findParent(op, flags.shouldUseLocalScope());
-  AsmState state(op, flags);
-  printAsOperand(os, state);
-}
-
-void Operation::print(raw_ostream &os, const OpPrintingFlags &printerFlags) {
-  // Find the operation to number from based upon the provided flags.
-  Operation *op = findParent(this, printerFlags.shouldUseLocalScope());
   AsmState state(op, printerFlags);
   print(os, state);
 }

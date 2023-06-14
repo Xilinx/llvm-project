@@ -11,6 +11,7 @@
 
 include "mlir/Dialect/Transform/IR/TransformDialect.td"
 include "mlir/Dialect/Transform/IR/TransformInterfaces.td"
+include "mlir/Dialect/PDL/IR/PDLTypes.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/IR/OpBase.td"
 
@@ -40,7 +41,7 @@ def MapNestedForallToThreads :
           to constrain the number of warps in each dimension. When present, this
           attribute must be specified in a way that is compatible with the 
           block_dims attribute. If an `scf.forall` op is mapped to fewer warps,
-          predication occurs.
+          predicaiton occurs.
 
       Dynamic `scf.forall` trip counts are currently not supported.
       Dynamic block dim sizes are currently not supported.
@@ -110,11 +111,11 @@ def MapNestedForallToThreads :
       ```
     }];
 
-  let arguments = (ins TransformHandleTypeInterface:$target,
+  let arguments = (ins PDL_Operation:$target,
                    DefaultValuedAttr<DenseI64ArrayAttr, "{}">:$block_dims,
                    DefaultValuedOptionalAttr<DenseI64ArrayAttr, "{}">:$warp_dims,
                    DefaultValuedAttr<BoolAttr, "true">:$sync_after_distribute);
-  let results = (outs TransformHandleTypeInterface:$result);
+  let results = (outs PDL_Operation:$result);
 
   let assemblyFormat = [{
     $target
@@ -122,7 +123,6 @@ def MapNestedForallToThreads :
     (`warp_dims` `=` $warp_dims^)?
     (`sync_after_distribute` `=` $sync_after_distribute^)?
     attr-dict
-    `:` functional-type($target, $result)
   }];
   let extraClassDeclaration = [{
     ::mlir::DiagnosedSilenceableFailure applyToOne(
@@ -175,17 +175,16 @@ def MapForallToBlocks :
     properties.
   }];
 
-  let arguments = (ins TransformHandleTypeInterface:$target,
+  let arguments = (ins PDL_Operation:$target,
                    DefaultValuedOptionalAttr<DenseI64ArrayAttr, "{}">:$grid_dims,
                    UnitAttr:$generate_gpu_launch);
-  let results = (outs TransformHandleTypeInterface:$result);
+  let results = (outs PDL_Operation:$result);
 
   let assemblyFormat = [{
     $target
     (`generate_gpu_launch` $generate_gpu_launch^)?
     (`grid_dims` `=` $grid_dims^)?
     attr-dict
-    `:` functional-type($target, $result)
   }];
   let extraClassDeclaration = [{
     ::mlir::DiagnosedSilenceableFailure applyToOne(

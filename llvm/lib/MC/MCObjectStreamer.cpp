@@ -541,6 +541,12 @@ void MCObjectStreamer::emitDwarfAdvanceLineAddr(int64_t LineDelta,
     return;
   }
   const MCExpr *AddrDelta = buildSymbolDiff(*this, Label, LastLabel);
+  int64_t Res;
+  if (AddrDelta->evaluateAsAbsolute(Res, getAssemblerPtr())) {
+    MCDwarfLineAddr::Emit(this, Assembler->getDWARFLinetableParams(), LineDelta,
+                          Res);
+    return;
+  }
   insert(new MCDwarfLineAddrFragment(LineDelta, *AddrDelta));
 }
 
@@ -565,7 +571,14 @@ void MCObjectStreamer::emitDwarfLineEndEntry(MCSection *Section,
 void MCObjectStreamer::emitDwarfAdvanceFrameAddr(const MCSymbol *LastLabel,
                                                  const MCSymbol *Label) {
   const MCExpr *AddrDelta = buildSymbolDiff(*this, Label, LastLabel);
-  insert(new MCDwarfCallFrameFragment(*AddrDelta));
+  int64_t Res;
+  if (AddrDelta->evaluateAsAbsolute(Res, getAssemblerPtr())) {
+    SmallString<8> Tmp;
+    MCDwarfFrameEmitter::encodeAdvanceLoc(getContext(), Res, Tmp);
+    emitBytes(Tmp);
+  } else {
+    insert(new MCDwarfCallFrameFragment(*AddrDelta));
+  }
 }
 
 void MCObjectStreamer::emitCVLocDirective(unsigned FunctionId, unsigned FileNo,

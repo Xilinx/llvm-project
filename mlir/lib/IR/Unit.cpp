@@ -48,11 +48,11 @@ static void printBlock(llvm::raw_ostream &os, Block *block,
 }
 
 void mlir::IRUnit::print(llvm::raw_ostream &os, OpPrintingFlags flags) const {
-  if (auto *op = llvm::dyn_cast_if_present<Operation *>(*this))
+  if (auto *op = this->dyn_cast<Operation *>())
     return printOp(os, op, flags);
-  if (auto *region = llvm::dyn_cast_if_present<Region *>(*this))
+  if (auto *region = this->dyn_cast<Region *>())
     return printRegion(os, region, flags);
-  if (auto *block = llvm::dyn_cast_if_present<Block *>(*this))
+  if (auto *block = this->dyn_cast<Block *>())
     return printBlock(os, block, flags);
   llvm_unreachable("unknown IRUnit");
 }

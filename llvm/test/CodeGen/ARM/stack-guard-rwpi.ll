@@ -26,6 +26,3 @@ entry:
 }
 
 declare dso_local i32 @baz(ptr)
-
-!llvm.module.flags = !{!0}
-!0 = !{i32 7, !"PIC Level", i32 2}

@@ -663,14 +663,13 @@ std::string SYCLUniqueStableNameExpr::ComputeName(ASTContext &Context,
 }
 
 PredefinedExpr::PredefinedExpr(SourceLocation L, QualType FNTy, IdentKind IK,
-                               bool IsTransparent, StringLiteral *SL)
+                               StringLiteral *SL)
     : Expr(PredefinedExprClass, FNTy, VK_LValue, OK_Ordinary) {
   PredefinedExprBits.Kind = IK;
   assert((getIdentKind() == IK) &&
          "IdentKind do not fit in PredefinedExprBitfields!");
   bool HasFunctionName = SL != nullptr;
   PredefinedExprBits.HasFunctionName = HasFunctionName;
-  PredefinedExprBits.IsTransparent = IsTransparent;
   PredefinedExprBits.Loc = L;
   if (HasFunctionName)
     setFunctionName(SL);
@@ -684,11 +683,11 @@ PredefinedExpr::PredefinedExpr(EmptyShell Empty, bool HasFunctionName)
 
 PredefinedExpr *PredefinedExpr::Create(const ASTContext &Ctx, SourceLocation L,
                                        QualType FNTy, IdentKind IK,
-                                       bool IsTransparent, StringLiteral *SL) {
+                                       StringLiteral *SL) {
   bool HasFunctionName = SL != nullptr;
   void *Mem = Ctx.Allocate(totalSizeToAlloc<Stmt *>(HasFunctionName),
                            alignof(PredefinedExpr));
-  return new (Mem) PredefinedExpr(L, FNTy, IK, IsTransparent, SL);
+  return new (Mem) PredefinedExpr(L, FNTy, IK, SL);
 }
 
 PredefinedExpr *PredefinedExpr::CreateEmpty(const ASTContext &Ctx,
@@ -2247,8 +2246,6 @@ StringRef SourceLocExpr::getBuiltinStr() const {
     return "__builtin_FILE_NAME";
   case Function:
     return "__builtin_FUNCTION";
-  case FuncSig:
-    return "__builtin_FUNCSIG";
   case Line:
     return "__builtin_LINE";
   case Column:
@@ -2299,14 +2296,11 @@ APValue SourceLocExpr::EvaluateInContext(const ASTContext &Ctx,
                                                  Ctx.getTargetInfo());
     return MakeStringLiteral(Path);
   }
-  case SourceLocExpr::Function:
-  case SourceLocExpr::FuncSig: {
+  case SourceLocExpr::Function: {
     const auto *CurDecl = dyn_cast<Decl>(Context);
-    const auto Kind = getIdentKind() == SourceLocExpr::Function
-                          ? PredefinedExpr::Function
-                          : PredefinedExpr::FuncSig;
     return MakeStringLiteral(
-        CurDecl ? PredefinedExpr::ComputeName(Kind, CurDecl) : std::string(""));
+        CurDecl ? PredefinedExpr::ComputeName(PredefinedExpr::Function, CurDecl)
+                : std::string(""));
   }
   case SourceLocExpr::Line:
   case SourceLocExpr::Column: {

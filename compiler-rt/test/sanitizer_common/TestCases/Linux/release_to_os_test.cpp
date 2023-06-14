@@ -1,15 +1,11 @@
 // RUN: %clangxx %s -o %t
 // RUN: env %tool_options=allocator_release_to_os_interval_ms=-1 %run %t
 
-// Temporarily disable test
-// UNSUPPORTED: tsan
-// UNSUPPORTED: target=powerpc64{{.*}}
-
 // Not needed, no allocator.
-// UNSUPPORTED: ubsan
+// XFAIL: ubsan
 
-// FIXME: This mode uses 32bit allocator without purge.
-// UNSUPPORTED: hwasan-aliasing
+// FIXME: Implement
+// XFAIL: lsan, msan, tsan, hwasan-aliasing
 
 #include <algorithm>
 #include <assert.h>
@@ -54,7 +50,7 @@ size_t current_rss() {
   return rss;
 }
 
-size_t MallocReleaseStress() {
+void MallocReleaseStress() {
   const size_t kNumChunks = 10000;
   const size_t kAllocSize = 100;
   const size_t kNumIter = 100;
@@ -77,19 +73,18 @@ size_t MallocReleaseStress() {
   fprintf(stderr, "before delete: %zu\n", current_rss());
   for (auto p : chunks)
     delete[] p;
-  return kNumChunks * kAllocSize * sizeof(uintptr_t);
 }
 
 int main(int argc, char **argv) {
   // 32bit asan allocator is unsupported.
-  if (sizeof(void *) < 8)
+  if (sizeof(void *) < 8 && __has_feature(address_sanitizer))
     return 0;
   auto a = current_rss();
-  auto total = MallocReleaseStress() >> 10;
+  MallocReleaseStress();
   auto b = current_rss();
   __sanitizer_purge_allocator();
   auto c = current_rss();
-  fprintf(stderr, "a:%zu b:%zu c:%zu total:%zu\n", a, b, c, total);
-  assert(a + total / 8 < b);
-  assert(c + total / 8 < b);
+  fprintf(stderr, "a:%zu b:%zu c:%zu\n", a, b, c);
+  assert(a * 2 < b);
+  assert(c * 2 < b);
 }

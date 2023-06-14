@@ -846,6 +846,9 @@ MCSectionSPIRV *MCContext::getSPIRVSection() {
   Result->getFragmentList().insert(Result->begin(), F);
   F->setParent(Result);
 
+  if (Begin)
+    Begin->setFragment(F);
+
   return Result;
 }
 

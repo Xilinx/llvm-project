@@ -27,29 +27,29 @@
 // RUN: %{compile} | mlir-translate -mlir-to-llvmir | %{run}
 
 #Row = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed", "dense" ]
+  dimLevelType = [ "compressed", "dense" ]
 }>
 
 #CSR = #sparse_tensor.encoding<{
-  lvlTypes = [ "dense", "compressed" ]
+  dimLevelType = [ "dense", "compressed" ]
 }>
 
 #DCSC = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed", "compressed" ],
+  dimLevelType = [ "compressed", "compressed" ],
   dimOrdering = affine_map<(i,j) -> (j,i)>
 }>
 
 #SortedCOO = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed-nu", "singleton" ]
+  dimLevelType = [ "compressed-nu", "singleton" ]
 }>
 
 #SortedCOOPerm = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed-nu", "singleton" ],
+  dimLevelType = [ "compressed-nu", "singleton" ],
   dimOrdering = affine_map<(i,j) -> (j,i)>
 }>
 
 #CCCPerm = #sparse_tensor.encoding<{
-  lvlTypes = [ "compressed", "compressed", "compressed"],
+  dimLevelType = [ "compressed", "compressed", "compressed"],
   dimOrdering = affine_map<(d0, d1, d2) -> (d1, d2, d0)>
 }>
 

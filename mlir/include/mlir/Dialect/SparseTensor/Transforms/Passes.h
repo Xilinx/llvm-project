@@ -49,17 +49,12 @@ enum class SparseParallelizationStrategy {
 
 /// Options for the Sparsification pass.
 struct SparsificationOptions {
-  SparsificationOptions(SparseParallelizationStrategy p, bool idxReduc,
-                        bool gpuLibgen, bool enableRT)
-      : parallelizationStrategy(p), enableIndexReduction(idxReduc),
-        enableGPULibgen(gpuLibgen), enableRuntimeLibrary(enableRT) {}
+  SparsificationOptions(SparseParallelizationStrategy p, bool idxReduc)
+      : parallelizationStrategy(p), enableIndexReduction(idxReduc) {}
   SparsificationOptions()
-      : SparsificationOptions(SparseParallelizationStrategy::kNone, false,
-                              false, true) {}
+      : SparsificationOptions(SparseParallelizationStrategy::kNone, false) {}
   SparseParallelizationStrategy parallelizationStrategy;
   bool enableIndexReduction;
-  bool enableGPULibgen;
-  bool enableRuntimeLibrary;
 };
 
 /// Sets up sparsification rewriting rules with the given options.
@@ -210,9 +205,6 @@ std::unique_ptr<Pass> createSparseVectorizationPass(unsigned vectorLength,
 
 void populateSparseGPUCodegenPatterns(RewritePatternSet &patterns,
                                       unsigned numThreads);
-
-void populateSparseGPULibgenPatterns(RewritePatternSet &patterns,
-                                     bool enableRT);
 
 std::unique_ptr<Pass> createSparseGPUCodegenPass();
 std::unique_ptr<Pass> createSparseGPUCodegenPass(unsigned numThreads);

@@ -16,21 +16,17 @@ This document describes the available MLIR passes and their contracts.
 
 [include "ConversionPasses.md"]
 
+## 'async' Dialect Passes
+
+[include "AsyncPasses.md"]
+
 ## 'affine' Dialect Passes
 
 [include "AffinePasses.md"]
 
-## 'amdgpu' Dialect Passes
-
-[include "AMDGPUPasses.md"]
-
 ## 'arith' Dialect Passes
 
 [include "ArithPasses.md"]
-
-## 'async' Dialect Passes
-
-[include "AsyncPasses.md"]
 
 ## 'func' Dialect Passes
 

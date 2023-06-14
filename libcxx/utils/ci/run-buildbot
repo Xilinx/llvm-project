@@ -229,7 +229,6 @@ check-generated-output)
     ! grep -rn '[^ -~]' libcxx/include libcxx/src libcxx/test libcxx/benchmarks \
            --exclude '*.dat' \
            --exclude 'escaped_output.*.pass.cpp' \
-           --exclude 'fill.unicode.pass.cpp' \
            --exclude 'format_tests.h' \
            --exclude 'format.functions.tests.h' \
            --exclude 'formatter.*.pass.cpp' \
@@ -276,15 +275,9 @@ generic-cxx20)
     check-runtimes
     check-abi-list
 ;;
-generic-cxx23)
+generic-cxx2b)
     clean
-    generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/Generic-cxx23.cmake"
-    check-runtimes
-    check-abi-list
-;;
-generic-cxx26)
-    clean
-    generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/Generic-cxx26.cmake"
+    generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/Generic-cxx2b.cmake"
     check-runtimes
     check-abi-list
 ;;
@@ -441,9 +434,9 @@ generic-no-experimental)
     check-runtimes
     check-abi-list
 ;;
-generic-no-exceptions)
+generic-noexceptions)
     clean
-    generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/Generic-no-exceptions.cmake"
+    generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/Generic-noexceptions.cmake"
     check-runtimes
     check-abi-list
 ;;
@@ -563,7 +556,7 @@ aarch64)
     generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/AArch64.cmake"
     check-runtimes
 ;;
-aarch64-no-exceptions)
+aarch64-noexceptions)
     clean
     generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/AArch64.cmake" \
                    -DLIBCXX_ENABLE_EXCEPTIONS=OFF \
@@ -576,9 +569,9 @@ armv8)
     generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/Armv8Arm.cmake"
     check-runtimes
 ;;
-armv8-no-exceptions)
+armv8-noexceptions)
     clean
-    generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/Armv8Thumb-no-exceptions.cmake"
+    generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/Armv8Thumb-noexceptions.cmake"
     check-runtimes
 ;;
 # Armv7 32 bit. One building Arm only one Thumb only code.
@@ -587,9 +580,9 @@ armv7)
     generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/Armv7Arm.cmake"
     check-runtimes
 ;;
-armv7-no-exceptions)
+armv7-noexceptions)
     clean
-    generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/Armv7Thumb-no-exceptions.cmake"
+    generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/Armv7Thumb-noexceptions.cmake"
     check-runtimes
 ;;
 clang-cl-dll)

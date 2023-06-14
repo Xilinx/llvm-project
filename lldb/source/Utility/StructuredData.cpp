@@ -68,10 +68,10 @@ static StructuredData::ObjectSP ParseJSONValue(json::Value &value) {
     return std::make_shared<StructuredData::Boolean>(*b);
 
   if (auto u = value.getAsUINT64())
-    return std::make_shared<StructuredData::UnsignedInteger>(*u);
+    return std::make_shared<StructuredData::Integer>(*u);
 
   if (auto i = value.getAsInteger())
-    return std::make_shared<StructuredData::SignedInteger>(*i);
+    return std::make_shared<StructuredData::Integer>(*i);
 
   if (auto d = value.getAsNumber())
     return std::make_shared<StructuredData::Float>(*d);
@@ -149,6 +149,10 @@ void StructuredData::Array::Serialize(json::OStream &s) const {
   s.arrayEnd();
 }
 
+void StructuredData::Integer::Serialize(json::OStream &s) const {
+  s.value(static_cast<int64_t>(m_value));
+}
+
 void StructuredData::Float::Serialize(json::OStream &s) const {
   s.value(m_value);
 }
@@ -177,6 +181,10 @@ void StructuredData::Null::Serialize(json::OStream &s) const {
 
 void StructuredData::Generic::Serialize(json::OStream &s) const {
   s.value(llvm::formatv("{0:X}", m_object));
+}
+
+void StructuredData::Integer::GetDescription(lldb_private::Stream &s) const {
+  s.Printf("%" PRId64, static_cast<int64_t>(m_value));
 }
 
 void StructuredData::Float::GetDescription(lldb_private::Stream &s) const {

@@ -22,7 +22,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "bolt/Passes/RetpolineInsertion.h"
-#include "llvm/MC/MCInstPrinter.h"
 #include "llvm/Support/raw_ostream.h"
 
 #define DEBUG_TYPE "bolt-retpoline"
@@ -174,45 +173,39 @@ BinaryFunction *createNewRetpoline(BinaryContext &BC,
 std::string createRetpolineFunctionTag(BinaryContext &BC,
                                        const IndirectBranchInfo &BrInfo,
                                        bool R11Available) {
-  std::string Tag;
-  llvm::raw_string_ostream TagOS(Tag);
-  TagOS << "__retpoline_";
-
-  if (BrInfo.isReg()) {
-    BC.InstPrinter->printRegName(TagOS, BrInfo.BranchReg);
-    TagOS << "_";
-    TagOS.flush();
-    return Tag;
-  }
+  if (BrInfo.isReg())
+    return "__retpoline_r" + to_string(BrInfo.BranchReg) + "_";
 
   // Memory Branch
   if (R11Available)
     return "__retpoline_r11";
 
+  std::string Tag = "__retpoline_mem_";
+
   const IndirectBranchInfo::MemOpInfo &MemRef = BrInfo.Memory;
 
-  TagOS << "mem_";
-
-  if (MemRef.BaseRegNum != BC.MIB->getNoRegister())
-    BC.InstPrinter->printRegName(TagOS, MemRef.BaseRegNum);
-
-  TagOS << "+";
-  if (MemRef.DispExpr)
-    MemRef.DispExpr->print(TagOS, BC.AsmInfo.get());
-  else
-    TagOS << MemRef.DispImm;
-
-  if (MemRef.IndexRegNum != BC.MIB->getNoRegister()) {
-    TagOS << "+" << MemRef.ScaleImm << "*";
-    BC.InstPrinter->printRegName(TagOS, MemRef.IndexRegNum);
+  std::string DispExprStr;
+  if (MemRef.DispExpr) {
+    llvm::raw_string_ostream Ostream(DispExprStr);
+    MemRef.DispExpr->print(Ostream, BC.AsmInfo.get());
+    Ostream.flush();
   }
 
-  if (MemRef.SegRegNum != BC.MIB->getNoRegister()) {
-    TagOS << "_seg_";
-    BC.InstPrinter->printRegName(TagOS, MemRef.SegRegNum);
-  }
+  Tag += MemRef.BaseRegNum != BC.MIB->getNoRegister()
+             ? "r" + to_string(MemRef.BaseRegNum)
+             : "";
 
-  TagOS.flush();
+  Tag += MemRef.DispExpr ? "+" + DispExprStr : "+" + to_string(MemRef.DispImm);
+
+  Tag += MemRef.IndexRegNum != BC.MIB->getNoRegister()
+             ? "+" + to_string(MemRef.ScaleImm) + "*" +
+                   to_string(MemRef.IndexRegNum)
+             : "";
+
+  Tag += MemRef.SegRegNum != BC.MIB->getNoRegister()
+             ? "_seg_" + to_string(MemRef.SegRegNum)
+             : "";
+
   return Tag;
 }
 

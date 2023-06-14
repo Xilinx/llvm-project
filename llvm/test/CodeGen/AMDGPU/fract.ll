@@ -1,15 +1,17 @@
-; RUN:  llc -amdgpu-scalarize-global-loads=false  -march=amdgcn -verify-machineinstrs < %s | FileCheck --check-prefix=GCN %s
-; RUN:  llc -amdgpu-scalarize-global-loads=false  -march=amdgcn -mcpu=bonaire -verify-machineinstrs < %s | FileCheck --check-prefix=GCN %s
-; RUN:  llc -amdgpu-scalarize-global-loads=false  -march=amdgcn -mcpu=tonga -mattr=-flat-for-global -verify-machineinstrs < %s | FileCheck --check-prefix=GCN %s
-; RUN:  llc -amdgpu-scalarize-global-loads=false  -march=amdgcn -verify-machineinstrs -enable-unsafe-fp-math < %s | FileCheck --check-prefix=GCN %s
-; RUN:  llc -amdgpu-scalarize-global-loads=false  -march=amdgcn -mcpu=tonga -mattr=-flat-for-global -verify-machineinstrs -enable-unsafe-fp-math < %s | FileCheck --check-prefix=GCN %s
+; RUN:  llc -amdgpu-scalarize-global-loads=false  -march=amdgcn -verify-machineinstrs < %s | FileCheck --check-prefixes=GCN-SAFE,GCN %s
+; RUN:  llc -amdgpu-scalarize-global-loads=false  -march=amdgcn -mcpu=bonaire -verify-machineinstrs < %s | FileCheck --check-prefixes=GCN-SAFE,GCN %s
+; RUN:  llc -amdgpu-scalarize-global-loads=false  -march=amdgcn -mcpu=tonga -mattr=-flat-for-global -verify-machineinstrs < %s | FileCheck --check-prefixes=GCN-SAFE,GCN %s
+; RUN:  llc -amdgpu-scalarize-global-loads=false  -march=amdgcn -verify-machineinstrs -enable-unsafe-fp-math < %s | FileCheck --check-prefixes=GCN-UNSAFE,GCN %s
+; RUN:  llc -amdgpu-scalarize-global-loads=false  -march=amdgcn -mcpu=tonga -mattr=-flat-for-global -verify-machineinstrs -enable-unsafe-fp-math < %s | FileCheck --check-prefixes=GCN-UNSAFE,GCN %s
 
 declare float @llvm.fabs.f32(float) #0
 declare float @llvm.floor.f32(float) #0
 
 ; GCN-LABEL: {{^}}fract_f32:
-; GCN: v_floor_f32_e32 [[FLR:v[0-9]+]], [[INPUT:v[0-9]+]]
-; GCN: v_sub_f32_e32 [[RESULT:v[0-9]+]], [[INPUT]], [[FLR]]
+; GCN-SAFE: v_floor_f32_e32 [[FLR:v[0-9]+]], [[INPUT:v[0-9]+]]
+; GCN-SAFE: v_sub_f32_e32 [[RESULT:v[0-9]+]], [[INPUT]], [[FLR]]
+
+; GCN-UNSAFE: v_fract_f32_e32 [[RESULT:v[0-9]+]], [[INPUT:v[0-9]+]]
 
 ; GCN: buffer_store_dword [[RESULT]]
 define amdgpu_kernel void @fract_f32(ptr addrspace(1) %out, ptr addrspace(1) %src) #1 {
@@ -21,8 +23,11 @@ define amdgpu_kernel void @fract_f32(ptr addrspace(1) %out, ptr addrspace(1) %sr
 }
 
 ; GCN-LABEL: {{^}}fract_f32_neg:
-; GCN: v_floor_f32_e64 [[FLR:v[0-9]+]], -[[INPUT:v[0-9]+]]
-; GCN: v_sub_f32_e64 [[RESULT:v[0-9]+]], -[[INPUT]], [[FLR]]
+; GCN-SAFE: v_floor_f32_e64 [[FLR:v[0-9]+]], -[[INPUT:v[0-9]+]]
+; GCN-SAFE: v_sub_f32_e64 [[RESULT:v[0-9]+]], -[[INPUT]], [[FLR]]
+
+; GCN-UNSAFE: v_fract_f32_e64 [[RESULT:v[0-9]+]], -[[INPUT:v[0-9]+]]
+
 ; GCN: buffer_store_dword [[RESULT]]
 define amdgpu_kernel void @fract_f32_neg(ptr addrspace(1) %out, ptr addrspace(1) %src) #1 {
   %x = load float, ptr addrspace(1) %src
@@ -34,8 +39,11 @@ define amdgpu_kernel void @fract_f32_neg(ptr addrspace(1) %out, ptr addrspace(1)
 }
 
 ; GCN-LABEL: {{^}}fract_f32_neg_abs:
-; GCN: v_floor_f32_e64 [[FLR:v[0-9]+]], -|[[INPUT:v[0-9]+]]|
-; GCN: v_sub_f32_e64 [[RESULT:v[0-9]+]], -|[[INPUT]]|, [[FLR]]
+; GCN-SAFE: v_floor_f32_e64 [[FLR:v[0-9]+]], -|[[INPUT:v[0-9]+]]|
+; GCN-SAFE: v_sub_f32_e64 [[RESULT:v[0-9]+]], -|[[INPUT]]|, [[FLR]]
+
+; GCN-UNSAFE: v_fract_f32_e64 [[RESULT:v[0-9]+]], -|[[INPUT:v[0-9]+]]|
+
 ; GCN: buffer_store_dword [[RESULT]]
 define amdgpu_kernel void @fract_f32_neg_abs(ptr addrspace(1) %out, ptr addrspace(1) %src) #1 {
   %x = load float, ptr addrspace(1) %src
@@ -48,11 +56,11 @@ define amdgpu_kernel void @fract_f32_neg_abs(ptr addrspace(1) %out, ptr addrspac
 }
 
 ; GCN-LABEL: {{^}}multi_use_floor_fract_f32:
-; GCN-DAG: v_floor_f32_e32 [[FLOOR:v[0-9]+]], [[INPUT:v[0-9]+]]
-; GCN-DAG: v_sub_f32_e32 [[FRACT:v[0-9]+]], [[INPUT:v[0-9]+]]
+; GCN-UNSAFE-DAG: v_floor_f32_e32 [[FLOOR:v[0-9]+]], [[INPUT:v[0-9]+]]
+; GCN-UNSAFE-DAG: v_fract_f32_e32 [[FRACT:v[0-9]+]], [[INPUT:v[0-9]+]]
 
-; GCN: buffer_store_dword [[FLOOR]]
-; GCN: buffer_store_dword [[FRACT]]
+; GCN-UNSAFE: buffer_store_dword [[FLOOR]]
+; GCN-UNSAFE: buffer_store_dword [[FRACT]]
 define amdgpu_kernel void @multi_use_floor_fract_f32(ptr addrspace(1) %out, ptr addrspace(1) %src) #1 {
   %x = load float, ptr addrspace(1) %src
   %floor.x = call float @llvm.floor.f32(float %x)

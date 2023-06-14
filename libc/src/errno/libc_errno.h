@@ -9,7 +9,6 @@
 #ifndef LLVM_LIBC_SRC_ERRNO_LLVMLIBC_ERRNO_H
 #define LLVM_LIBC_SRC_ERRNO_LLVMLIBC_ERRNO_H
 
-#include "src/__support/macros/attributes.h"
 #include "src/__support/macros/properties/architectures.h"
 
 #include <errno.h>
@@ -43,7 +42,7 @@ namespace __llvm_libc {
 extern "C" ErrnoConsumer __llvmlibc_internal_errno;
 #else // LIBC_TARGET_ARCH_IS_GPU
 extern "C" {
-extern LIBC_THREAD_LOCAL int __llvmlibc_internal_errno;
+extern thread_local int __llvmlibc_internal_errno;
 } // extern "C"
 #endif
 

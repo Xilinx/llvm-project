@@ -154,7 +154,7 @@ StructuredData::ObjectSP InstrumentationRuntimeUBSan::RetrieveReportData(
       continue;
 
     lldb::addr_t PC = FCA.GetLoadAddress(&target);
-    trace->AddIntegerItem(PC);
+    trace->AddItem(StructuredData::ObjectSP(new StructuredData::Integer(PC)));
   }
 
   std::string IssueKind = RetrieveString(main_value, process_sp, ".issue_kind");
@@ -312,7 +312,7 @@ InstrumentationRuntimeUBSan::GetBacktracesFromExtendedStopInfo(
   std::vector<lldb::addr_t> PCs;
   auto trace = info->GetObjectForDotSeparatedPath("trace")->GetAsArray();
   trace->ForEach([&PCs](StructuredData::Object *PC) -> bool {
-    PCs.push_back(PC->GetUnsignedIntegerValue());
+    PCs.push_back(PC->GetAsInteger()->GetValue());
     return true;
   });
 
@@ -321,7 +321,7 @@ InstrumentationRuntimeUBSan::GetBacktracesFromExtendedStopInfo(
 
   StructuredData::ObjectSP thread_id_obj =
       info->GetObjectForDotSeparatedPath("tid");
-  tid_t tid = thread_id_obj ? thread_id_obj->GetUnsignedIntegerValue() : 0;
+  tid_t tid = thread_id_obj ? thread_id_obj->GetIntegerValue() : 0;
 
   // We gather symbolication addresses above, so no need for HistoryThread to
   // try to infer the call addresses.

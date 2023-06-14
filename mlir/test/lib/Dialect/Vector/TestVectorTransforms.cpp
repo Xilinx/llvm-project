@@ -89,7 +89,7 @@ private:
         auto extract = dyn_cast<ExtractStridedSliceOp>(users);
         if (!extract)
           return std::nullopt;
-        auto vecType = cast<VectorType>(extract.getResult().getType());
+        auto vecType = extract.getResult().getType().cast<VectorType>();
         if (dstVec && dstVec != vecType)
           return std::nullopt;
         dstVec = vecType;
@@ -298,33 +298,23 @@ struct TestScalarVectorTransferLoweringPatterns
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       TestScalarVectorTransferLoweringPatterns)
 
-  TestScalarVectorTransferLoweringPatterns() = default;
-  TestScalarVectorTransferLoweringPatterns(
-      const TestScalarVectorTransferLoweringPatterns &pass)
-      : PassWrapper(pass) {}
-
   StringRef getArgument() const final {
     return "test-scalar-vector-transfer-lowering";
   }
   StringRef getDescription() const final {
     return "Test lowering of scalar vector transfers to memref loads/stores.";
   }
+  TestScalarVectorTransferLoweringPatterns() = default;
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<affine::AffineDialect, memref::MemRefDialect,
                     tensor::TensorDialect, vector::VectorDialect>();
   }
 
-  Option<bool> allowMultipleUses{
-      *this, "allow-multiple-uses",
-      llvm::cl::desc("Fold transfer operations with multiple uses"),
-      llvm::cl::init(false)};
-
   void runOnOperation() override {
     MLIRContext *ctx = &getContext();
     RewritePatternSet patterns(ctx);
-    vector::populateScalarVectorTransferLoweringPatterns(
-        patterns, /*benefit=*/1, allowMultipleUses.getValue());
+    vector::populateScalarVectorTransferLoweringPatterns(patterns);
     (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
@@ -440,7 +430,7 @@ static Value allocateGlobalSharedMemory(Location loc, OpBuilder &builder,
   static constexpr int64_t kSharedMemorySpace = 3;
   // Compute type of shared memory buffer.
   MemRefType memrefType;
-  if (auto vectorType = dyn_cast<VectorType>(type)) {
+  if (auto vectorType = type.dyn_cast<VectorType>()) {
     memrefType =
         MemRefType::get(vectorType.getShape(), vectorType.getElementType(), {},
                         kSharedMemorySpace);
@@ -545,7 +535,7 @@ struct TestVectorDistribution
       // Create a map (d0, d1) -> (d1) to distribute along the inner
       // dimension. Once we support n-d distribution we can add more
       // complex cases.
-      VectorType vecType = dyn_cast<VectorType>(val.getType());
+      VectorType vecType = val.getType().dyn_cast<VectorType>();
       int64_t vecRank = vecType ? vecType.getRank() : 0;
       OpBuilder builder(val.getContext());
       if (vecRank == 0)
@@ -652,9 +642,9 @@ struct TestCreateVectorBroadcast
       if (op->getName().getStringRef() != "test_create_broadcast")
         return;
       auto targetShape =
-          cast<VectorType>(op->getResult(0).getType()).getShape();
+          op->getResult(0).getType().cast<VectorType>().getShape();
       auto arrayAttr =
-          cast<DenseI64ArrayAttr>(op->getAttr("broadcast_dims")).asArrayRef();
+          op->getAttr("broadcast_dims").cast<DenseI64ArrayAttr>().asArrayRef();
       llvm::SetVector<int64_t> broadcastedDims;
       broadcastedDims.insert(arrayAttr.begin(), arrayAttr.end());
       OpBuilder b(op);
@@ -685,26 +675,6 @@ struct TestVectorGatherLowering
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     populateVectorGatherLoweringPatterns(patterns);
-    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
-  }
-};
-
-struct TestVectorTransferTensorSlicePatterns
-    : public PassWrapper<TestVectorTransferTensorSlicePatterns,
-                         OperationPass<func::FuncOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
-      TestVectorTransferTensorSlicePatterns)
-
-  StringRef getArgument() const final {
-    return "test-vector-transfer-tensor-slice-patterns";
-  }
-  StringRef getDescription() const final {
-    return "Test patterns that fold vector transfer and tensor slice ops";
-  }
-
-  void runOnOperation() override {
-    RewritePatternSet patterns(&getContext());
-    populateVectorTransferTensorSliceTransforms(patterns);
     (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
@@ -743,8 +713,6 @@ void registerTestVectorLowerings() {
   PassRegistration<TestCreateVectorBroadcast>();
 
   PassRegistration<TestVectorGatherLowering>();
-
-  PassRegistration<TestVectorTransferTensorSlicePatterns>();
 }
 } // namespace test
 } // namespace mlir

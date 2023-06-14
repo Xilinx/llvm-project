@@ -656,7 +656,7 @@ public:
 
   // If we discover a new machine location, assign it an mphi with this
   // block number.
-  unsigned CurBB = -1;
+  unsigned CurBB;
 
   /// Cached local copy of the number of registers the target has.
   unsigned NumRegs;
@@ -1094,7 +1094,7 @@ private:
   MLocTracker *MTracker = nullptr;
 
   /// Number of the current block LiveDebugValues is stepping through.
-  unsigned CurBB = -1;
+  unsigned CurBB;
 
   /// Number of the current instruction LiveDebugValues is evaluating.
   unsigned CurInst;

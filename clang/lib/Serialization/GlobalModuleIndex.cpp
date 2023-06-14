@@ -634,9 +634,6 @@ llvm::Error GlobalModuleIndexBuilder::loadModuleFile(const FileEntry *File) {
         // Skip the imported kind
         ++Idx;
 
-        // Skip if it is standard C++ module
-        ++Idx;
-
         // Skip the import location
         ++Idx;
 

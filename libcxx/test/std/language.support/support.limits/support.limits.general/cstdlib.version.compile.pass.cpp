@@ -16,7 +16,7 @@
 // Test the feature test macros defined by <cstdlib>
 
 /*  Constant                     Value
-    __cpp_lib_constexpr_cmath    202202L [C++23]
+    __cpp_lib_constexpr_cmath    202202L [C++2b]
 */
 
 #include <cstdlib>
@@ -25,35 +25,35 @@
 #if TEST_STD_VER < 14
 
 # ifdef __cpp_lib_constexpr_cmath
-#   error "__cpp_lib_constexpr_cmath should not be defined before c++23"
+#   error "__cpp_lib_constexpr_cmath should not be defined before c++2b"
 # endif
 
 #elif TEST_STD_VER == 14
 
 # ifdef __cpp_lib_constexpr_cmath
-#   error "__cpp_lib_constexpr_cmath should not be defined before c++23"
+#   error "__cpp_lib_constexpr_cmath should not be defined before c++2b"
 # endif
 
 #elif TEST_STD_VER == 17
 
 # ifdef __cpp_lib_constexpr_cmath
-#   error "__cpp_lib_constexpr_cmath should not be defined before c++23"
+#   error "__cpp_lib_constexpr_cmath should not be defined before c++2b"
 # endif
 
 #elif TEST_STD_VER == 20
 
 # ifdef __cpp_lib_constexpr_cmath
-#   error "__cpp_lib_constexpr_cmath should not be defined before c++23"
+#   error "__cpp_lib_constexpr_cmath should not be defined before c++2b"
 # endif
 
-#elif TEST_STD_VER == 23
+#elif TEST_STD_VER > 20
 
 # if !defined(_LIBCPP_VERSION)
 #   ifndef __cpp_lib_constexpr_cmath
-#     error "__cpp_lib_constexpr_cmath should be defined in c++23"
+#     error "__cpp_lib_constexpr_cmath should be defined in c++2b"
 #   endif
 #   if __cpp_lib_constexpr_cmath != 202202L
-#     error "__cpp_lib_constexpr_cmath should have the value 202202L in c++23"
+#     error "__cpp_lib_constexpr_cmath should have the value 202202L in c++2b"
 #   endif
 # else // _LIBCPP_VERSION
 #   ifdef __cpp_lib_constexpr_cmath
@@ -61,20 +61,5 @@
 #   endif
 # endif
 
-#elif TEST_STD_VER > 23
-
-# if !defined(_LIBCPP_VERSION)
-#   ifndef __cpp_lib_constexpr_cmath
-#     error "__cpp_lib_constexpr_cmath should be defined in c++26"
-#   endif
-#   if __cpp_lib_constexpr_cmath != 202202L
-#     error "__cpp_lib_constexpr_cmath should have the value 202202L in c++26"
-#   endif
-# else // _LIBCPP_VERSION
-#   ifdef __cpp_lib_constexpr_cmath
-#     error "__cpp_lib_constexpr_cmath should not be defined because it is unimplemented in libc++!"
-#   endif
-# endif
-
-#endif // TEST_STD_VER > 23
+#endif // TEST_STD_VER > 20
 
