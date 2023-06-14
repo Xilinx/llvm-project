@@ -59,11 +59,6 @@ void AddStaticDeviceLibsLinking(Compilation &C, const Tool &T,
                                 llvm::opt::ArgStringList &CmdArgs,
                                 StringRef Arch, StringRef Target,
                                 bool isBitCodeSDL, bool postClangLink);
-void AddStaticDeviceLibsPostLinking(const Driver &D,
-                                    const llvm::opt::ArgList &DriverArgs,
-                                    llvm::opt::ArgStringList &CmdArgs,
-                                    StringRef Arch, StringRef Target,
-                                    bool isBitCodeSDL, bool postClangLink);
 void AddStaticDeviceLibs(Compilation *C, const Tool *T, const JobAction *JA,
                          const InputInfoList *Inputs, const Driver &D,
                          const llvm::opt::ArgList &DriverArgs,
@@ -188,7 +183,8 @@ void getTargetFeatures(const Driver &D, const llvm::Triple &Triple,
 /// Note: Since \p Features may contain default values before calling
 /// this function, or may be appended with entries to override arguments,
 /// entries in \p Features are not unique.
-void handleTargetFeaturesGroup(const llvm::opt::ArgList &Args,
+void handleTargetFeaturesGroup(const Driver &D, const llvm::Triple &Triple,
+                               const llvm::opt::ArgList &Args,
                                std::vector<StringRef> &Features,
                                llvm::opt::OptSpecifier Group);
 
