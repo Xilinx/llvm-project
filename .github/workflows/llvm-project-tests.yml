@@ -10,6 +10,11 @@ on:
         required: false
       projects:
         required: false
+      extra_cmake_args:
+        required: false
+        default: ""
+        type: string
+
   workflow_call:
     inputs:
       build_target:
@@ -18,6 +23,11 @@ on:
 
       projects:
         required: true
+        type: string
+
+      extra_cmake_args:
+        required: false
+        default: ""
         type: string
 
 concurrency:
@@ -57,6 +67,7 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
+
       - name: Install Ninja
         uses: llvm/actions/install-ninja@main
       # actions/checkout deletes any existing files in the new git directory,
@@ -65,6 +76,9 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 250
+      - name: Install requirements.txt
+        if: inputs.projects == 'mlir'
+        run: pip install -r mlir/python/requirements.txt
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1
         with:
@@ -85,7 +99,17 @@ jobs:
           # This should be a no-op for non-mac OSes
           PKG_CONFIG_PATH: /usr/local/Homebrew/Library/Homebrew/os/mac/pkgconfig//12
         with:
-          cmake_args: '-GNinja -DLLVM_ENABLE_PROJECTS="${{ inputs.projects }}" -DLLVM_TARGETS_TO_BUILD=host -DCMAKE_BUILD_TYPE=Release -DLLDB_INCLUDE_TESTS=OFF -DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache'
+          cmake_args: >-
+            -GNinja
+            -DLLVM_ENABLE_PROJECTS="${{ inputs.projects }}"
+            -DLLVM_TARGETS_TO_BUILD=host
+            -DCMAKE_BUILD_TYPE=Release
+            -DLLDB_INCLUDE_TESTS=OFF
+            -DCMAKE_C_COMPILER_LAUNCHER=sccache
+            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+            -DLLVM_ENABLE_ASSERTIONS=ON
+            ${{ inputs.extra_cmake_args }}
+
           build_target: '${{ inputs.build_target }}'
 
       - name: Build and Test libclc
