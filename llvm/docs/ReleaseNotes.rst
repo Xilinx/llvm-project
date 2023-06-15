@@ -75,6 +75,9 @@ Changes to LLVM infrastructure
   legacy inliner pass. Backend stack coloring should handle cases alloca
   merging initially set out to handle.
 
+* InstructionSimplify APIs now require instructions be inserted into a
+  parent function.
+
 Changes to building LLVM
 ------------------------
 
@@ -106,6 +109,9 @@ Changes to the ARM Backend
 - The hard-float ABI is now available in Armv8.1-M configurations that
   have integer MVE instructions (and therefore have FP registers) but
   no scalar or vector floating point computation.
+
+- The ``.arm`` directive now aligns code to the next 4-byte boundary, and
+  the ``.thumb`` directive aligns code to the next 2-byte boundary.
 
 Changes to the AVR Backend
 --------------------------
