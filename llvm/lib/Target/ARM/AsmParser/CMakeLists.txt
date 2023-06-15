@@ -4,10 +4,11 @@ add_llvm_component_library(LLVMARMAsmParser
   LINK_COMPONENTS
   ARMDesc
   ARMInfo
+  ARMUtils
   MC
   MCParser
   Support
-  ARMUtils
+  TargetParser
 
   ADD_TO_COMPONENT
   ARM

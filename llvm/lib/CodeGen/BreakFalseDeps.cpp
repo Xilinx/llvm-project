@@ -34,9 +34,9 @@ namespace llvm {
 
 class BreakFalseDeps : public MachineFunctionPass {
 private:
-  MachineFunction *MF;
-  const TargetInstrInfo *TII;
-  const TargetRegisterInfo *TRI;
+  MachineFunction *MF = nullptr;
+  const TargetInstrInfo *TII = nullptr;
+  const TargetRegisterInfo *TRI = nullptr;
   RegisterClassInfo RegClassInfo;
 
   /// List of undefined register reads in this block in forward order.
@@ -45,7 +45,7 @@ private:
   /// Storage for register unit liveness.
   LivePhysRegs LiveRegSet;
 
-  ReachingDefAnalysis *RDA;
+  ReachingDefAnalysis *RDA = nullptr;
 
 public:
   static char ID; // Pass identification, replacement for typeid
@@ -135,6 +135,7 @@ bool BreakFalseDeps::pickBestRegisterForUndef(MachineInstr *MI, unsigned OpIdx,
   // Get the undef operand's register class
   const TargetRegisterClass *OpRC =
     TII->getRegClass(MI->getDesc(), OpIdx, TRI, *MF);
+  assert(OpRC && "Not a valid register class");
 
   // If the instruction has a true dependency, we can hide the false depdency
   // behind it.

@@ -70,6 +70,7 @@
 #include <cstdint>
 #include <cstring>
 #include <map>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
@@ -364,13 +365,13 @@ void Module::SetUUID(const lldb_private::UUID &uuid) {
   }
 }
 
-llvm::Expected<TypeSystem &>
+llvm::Expected<TypeSystemSP>
 Module::GetTypeSystemForLanguage(LanguageType language) {
   return m_type_system_map.GetTypeSystemForLanguage(language, this, true);
 }
 
 void Module::ForEachTypeSystem(
-    llvm::function_ref<bool(TypeSystem *)> callback) {
+    llvm::function_ref<bool(lldb::TypeSystemSP)> callback) {
   m_type_system_map.ForEach(callback);
 }
 
@@ -419,8 +420,6 @@ void Module::DumpSymbolContext(Stream *s) {
 
 size_t Module::GetNumCompileUnits() {
   std::lock_guard<std::recursive_mutex> guard(m_mutex);
-  LLDB_SCOPED_TIMERF("Module::GetNumCompileUnits (module = %p)",
-                     static_cast<void *>(this));
   if (SymbolFile *symbols = GetSymbolFile())
     return symbols->GetNumCompileUnits();
   return 0;
@@ -598,7 +597,7 @@ uint32_t Module::ResolveSymbolContextsForFileSpec(
 
   if (SymbolFile *symbols = GetSymbolFile()) {
     // TODO: Handle SourceLocationSpec column information
-    SourceLocationSpec location_spec(file_spec, line, /*column=*/llvm::None,
+    SourceLocationSpec location_spec(file_spec, line, /*column=*/std::nullopt,
                                      check_inlines, /*exact_match=*/false);
 
     symbols->ResolveSymbolContext(location_spec, resolve_scope, sc_list);
@@ -749,8 +748,7 @@ bool Module::LookupInfo::NameMatchesLookupInfo(
   // relatively inexpensive since no demangling is actually occuring. See
   // Mangled::SetValue for more context.
   const bool function_name_may_be_mangled =
-      Mangled::GetManglingScheme(function_name.GetStringRef()) !=
-      Mangled::eManglingSchemeNone;
+      Mangled::GetManglingScheme(function_name) != Mangled::eManglingSchemeNone;
   ConstString demangled_function_name = function_name;
   if (function_name_may_be_mangled) {
     Mangled mangled_function_name(function_name);
@@ -761,11 +759,10 @@ bool Module::LookupInfo::NameMatchesLookupInfo(
   // Otherwise just check that the demangled function name contains the
   // demangled user-provided name.
   if (Language *language = Language::FindPlugin(language_type))
-    return language->DemangledNameContainsPath(m_name.GetStringRef(),
-                                               demangled_function_name);
+    return language->DemangledNameContainsPath(m_name, demangled_function_name);
 
-  llvm::StringRef function_name_ref = demangled_function_name.GetStringRef();
-  return function_name_ref.contains(m_name.GetStringRef());
+  llvm::StringRef function_name_ref = demangled_function_name;
+  return function_name_ref.contains(m_name);
 }
 
 void Module::LookupInfo::Prune(SymbolContextList &sc_list,
@@ -804,7 +801,7 @@ void Module::LookupInfo::Prune(SymbolContextList &sc_list,
         CPlusPlusLanguage::MethodName cpp_method(full_name);
         if (cpp_method.IsValid()) {
           if (cpp_method.GetContext().empty()) {
-            if (cpp_method.GetBasename().compare(m_name.GetStringRef()) != 0) {
+            if (cpp_method.GetBasename().compare(m_name) != 0) {
               sc_list.RemoveContextAtIndex(i);
               continue;
             }
@@ -939,7 +936,7 @@ void Module::FindAddressesForLine(const lldb::TargetSP target_sp,
   SearchFilterByModule filter(target_sp, m_file);
 
   // TODO: Handle SourceLocationSpec column information
-  SourceLocationSpec location_spec(file, line, /*column=*/llvm::None,
+  SourceLocationSpec location_spec(file, line, /*column=*/std::nullopt,
                                    /*check_inlines=*/true,
                                    /*exact_match=*/false);
   AddressResolverFileLine resolver(location_spec);
@@ -1027,8 +1024,8 @@ void Module::FindTypes(
       FindTypes_Impl(name, CompilerDeclContext(), UINT_MAX,
                      searched_symbol_files, typesmap);
       if (exact_match) {
-        typesmap.RemoveMismatchedTypes(type_scope, name.GetStringRef(),
-                                       type_class, exact_match);
+        typesmap.RemoveMismatchedTypes(type_scope, name, type_class,
+                                       exact_match);
       }
     }
   }
@@ -1127,13 +1124,13 @@ bool Module::FileHasChanged() const {
 }
 
 void Module::ReportWarningOptimization(
-    llvm::Optional<lldb::user_id_t> debugger_id) {
+    std::optional<lldb::user_id_t> debugger_id) {
   ConstString file_name = GetFileSpec().GetFilename();
   if (file_name.IsEmpty())
     return;
 
   StreamString ss;
-  ss << file_name.GetStringRef()
+  ss << file_name
      << " was compiled with optimization - stepping may behave "
         "oddly; variables may not be available.";
   Debugger::ReportWarning(std::string(ss.GetString()), debugger_id,
@@ -1141,7 +1138,7 @@ void Module::ReportWarningOptimization(
 }
 
 void Module::ReportWarningUnsupportedLanguage(
-    LanguageType language, llvm::Optional<lldb::user_id_t> debugger_id) {
+    LanguageType language, std::optional<lldb::user_id_t> debugger_id) {
   StreamString ss;
   ss << "This version of LLDB has no plugin for the language \""
      << Language::GetNameForLanguageType(language)
@@ -1151,95 +1148,60 @@ void Module::ReportWarningUnsupportedLanguage(
                           &m_language_warning);
 }
 
-void Module::ReportErrorIfModifyDetected(const char *format, ...) {
+void Module::ReportErrorIfModifyDetected(
+    const llvm::formatv_object_base &payload) {
   if (!m_first_file_changed_log) {
     if (FileHasChanged()) {
       m_first_file_changed_log = true;
-      if (format) {
-        StreamString strm;
-        strm.PutCString("the object file ");
-        GetDescription(strm.AsRawOstream(), lldb::eDescriptionLevelFull);
-        strm.PutCString(" has been modified\n");
-
-        va_list args;
-        va_start(args, format);
-        strm.PrintfVarArg(format, args);
-        va_end(args);
-
-        const int format_len = strlen(format);
-        if (format_len > 0) {
-          const char last_char = format[format_len - 1];
-          if (last_char != '\n' && last_char != '\r')
-            strm.EOL();
-        }
-        strm.PutCString("The debug session should be aborted as the original "
-                        "debug information has been overwritten.");
-        Debugger::ReportError(std::string(strm.GetString()));
-      }
+      StreamString strm;
+      strm.PutCString("the object file ");
+      GetDescription(strm.AsRawOstream(), lldb::eDescriptionLevelFull);
+      strm.PutCString(" has been modified\n");
+      strm.PutCString(payload.str());
+      strm.PutCString("The debug session should be aborted as the original "
+                      "debug information has been overwritten.");
+      Debugger::ReportError(std::string(strm.GetString()));
     }
   }
 }
 
-void Module::ReportError(const char *format, ...) {
-  if (format && format[0]) {
-    StreamString strm;
-    GetDescription(strm.AsRawOstream(), lldb::eDescriptionLevelBrief);
-    strm.PutChar(' ');
-
-    va_list args;
-    va_start(args, format);
-    strm.PrintfVarArg(format, args);
-    va_end(args);
-
-    Debugger::ReportError(std::string(strm.GetString()));
-  }
+void Module::ReportError(const llvm::formatv_object_base &payload) {
+  StreamString strm;
+  GetDescription(strm.AsRawOstream(), lldb::eDescriptionLevelBrief);
+  strm.PutChar(' ');
+  strm.PutCString(payload.str());
+  Debugger::ReportError(strm.GetString().str());
 }
 
-void Module::ReportWarning(const char *format, ...) {
-  if (format && format[0]) {
-    StreamString strm;
-    GetDescription(strm.AsRawOstream(), lldb::eDescriptionLevelFull);
-    strm.PutChar(' ');
-
-    va_list args;
-    va_start(args, format);
-    strm.PrintfVarArg(format, args);
-    va_end(args);
-
-    Debugger::ReportWarning(std::string(strm.GetString()));
-  }
+void Module::ReportWarning(const llvm::formatv_object_base &payload) {
+  StreamString strm;
+  GetDescription(strm.AsRawOstream(), lldb::eDescriptionLevelFull);
+  strm.PutChar(' ');
+  strm.PutCString(payload.str());
+  Debugger::ReportWarning(std::string(strm.GetString()));
 }
 
-void Module::LogMessage(Log *log, const char *format, ...) {
-  if (log != nullptr) {
-    StreamString log_message;
-    GetDescription(log_message.AsRawOstream(), lldb::eDescriptionLevelFull);
-    log_message.PutCString(": ");
-    va_list args;
-    va_start(args, format);
-    log_message.PrintfVarArg(format, args);
-    va_end(args);
-    log->PutCString(log_message.GetData());
-  }
+void Module::LogMessage(Log *log, const llvm::formatv_object_base &payload) {
+  StreamString log_message;
+  GetDescription(log_message.AsRawOstream(), lldb::eDescriptionLevelFull);
+  log_message.PutCString(": ");
+  log_message.PutCString(payload.str());
+  log->PutCString(log_message.GetData());
 }
 
-void Module::LogMessageVerboseBacktrace(Log *log, const char *format, ...) {
-  if (log != nullptr) {
-    StreamString log_message;
-    GetDescription(log_message.AsRawOstream(), lldb::eDescriptionLevelFull);
-    log_message.PutCString(": ");
-    va_list args;
-    va_start(args, format);
-    log_message.PrintfVarArg(format, args);
-    va_end(args);
-    if (log->GetVerbose()) {
-      std::string back_trace;
-      llvm::raw_string_ostream stream(back_trace);
-      llvm::sys::PrintStackTrace(stream);
-      log_message.PutCString(back_trace);
-    }
-    log->PutCString(log_message.GetData());
+void Module::LogMessageVerboseBacktrace(
+    Log *log, const llvm::formatv_object_base &payload) {
+  StreamString log_message;
+  GetDescription(log_message.AsRawOstream(), lldb::eDescriptionLevelFull);
+  log_message.PutCString(": ");
+  log_message.PutCString(payload.str());
+  if (log->GetVerbose()) {
+    std::string back_trace;
+    llvm::raw_string_ostream stream(back_trace);
+    llvm::sys::PrintStackTrace(stream);
+    log_message.PutCString(back_trace);
   }
+  log->PutCString(log_message.GetData());
 }
 
 void Module::Dump(Stream *s) {
@@ -1295,7 +1257,7 @@ ObjectFile *Module::GetObjectFile() {
           // those values that overwrite unspecified unknown values.
           m_arch.MergeFrom(m_objfile_sp->GetArchitecture());
         } else {
-          ReportError("failed to load objfile for %s",
+          ReportError("failed to load objfile for {0}",
                       GetFileSpec().GetPath().c_str());
         }
       }
@@ -1636,8 +1598,7 @@ bool Module::FindSourceFile(const FileSpec &orig_spec,
   return false;
 }
 
-llvm::Optional<std::string>
-Module::RemapSourceFile(llvm::StringRef path) const {
+std::optional<std::string> Module::RemapSourceFile(llvm::StringRef path) const {
   std::lock_guard<std::recursive_mutex> guard(m_mutex);
   if (auto remapped = m_source_mappings.RemapPath(path))
     return remapped->GetPath();
@@ -1647,7 +1608,15 @@ Module::RemapSourceFile(llvm::StringRef path) const {
 void Module::RegisterXcodeSDK(llvm::StringRef sdk_name,
                               llvm::StringRef sysroot) {
   XcodeSDK sdk(sdk_name.str());
-  llvm::StringRef sdk_path(HostInfo::GetXcodeSDKPath(sdk));
+  auto sdk_path_or_err = HostInfo::GetXcodeSDKPath(sdk);
+
+  if (!sdk_path_or_err) {
+    Debugger::ReportError("Error while searching for Xcode SDK: " +
+                          toString(sdk_path_or_err.takeError()));
+    return;
+  }
+
+  auto sdk_path = *sdk_path_or_err;
   if (sdk_path.empty())
     return;
   // If the SDK changed for a previously registered source path, update it.
@@ -1697,7 +1666,7 @@ uint32_t Module::Hash() {
   llvm::raw_string_ostream id_strm(identifier);
   id_strm << m_arch.GetTriple().str() << '-' << m_file.GetPath();
   if (m_object_name)
-    id_strm << '(' << m_object_name.GetStringRef() << ')';
+    id_strm << '(' << m_object_name << ')';
   if (m_object_offset > 0)
     id_strm << m_object_offset;
   const auto mtime = llvm::sys::toTimeT(m_object_mod_time);
@@ -1711,7 +1680,7 @@ std::string Module::GetCacheKey() {
   llvm::raw_string_ostream strm(key);
   strm << m_arch.GetTriple().str() << '-' << m_file.GetFilename();
   if (m_object_name)
-    strm << '(' << m_object_name.GetStringRef() << ')';
+    strm << '(' << m_object_name << ')';
   strm << '-' << llvm::format_hex(Hash(), 10);
   return strm.str();
 }

@@ -12,7 +12,6 @@
 #include "llvm-c/Orc.h"
 #include "gtest/gtest.h"
 
-#include "llvm/ADT/Triple.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -20,6 +19,7 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/TargetParser/Triple.h"
 #include "llvm/Testing/Support/Error.h"
 #include <string>
 
@@ -631,7 +631,6 @@ void Materialize(void *Ctx, LLVMOrcMaterializationResponsibilityRef MR) {
 
   LLVMOrcMaterializationResponsibilityNotifyEmitted(MR);
   LLVMOrcDisposeMaterializationResponsibility(MR);
-  return;
 }
 
 TEST_F(OrcCAPITestBase, MaterializationResponsibility) {

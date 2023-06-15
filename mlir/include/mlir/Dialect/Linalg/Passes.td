@@ -31,7 +31,10 @@ def LinalgFoldUnitExtentDims : Pass<"linalg-fold-unit-extent-dims", ""> {
     Option<"foldOneTripLoopsOnly", "fold-one-trip-loops-only", "bool",
             /*default=*/"false",
            "Only folds the one-trip loops from Linalg ops on tensors "
-           "(for testing purposes only)">
+           "(for testing purposes only)">,
+    Option<"useRankReducingSlices", "use-rank-reducing-slices", "bool",
+           /*default=*/"false",
+           "Generate rank-reducing slices instead of reassociative reshapes">
   ];
   let dependentDialects = [
     "linalg::LinalgDialect", "AffineDialect", "memref::MemRefDialect"
@@ -139,7 +142,7 @@ def LinalgStructuralFusion : Pass<"linalg-structural-fusion", "func::FuncOp"> {
   ];
 }
 
-def LinalgDetensorize : Pass<"linalg-detensorize", ""> {
+def LinalgDetensorize : InterfacePass<"linalg-detensorize", "FunctionOpInterface"> {
   let summary = "Detensorize linalg ops";
   let constructor = "mlir::createLinalgDetensorizePass()";
   let dependentDialects = [];

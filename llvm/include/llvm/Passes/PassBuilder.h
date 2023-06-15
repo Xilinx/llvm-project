@@ -15,7 +15,6 @@
 #ifndef LLVM_PASSES_PASSBUILDER_H
 #define LLVM_PASSES_PASSBUILDER_H
 
-#include "llvm/ADT/Optional.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Passes/OptimizationLevel.h"
@@ -33,6 +32,10 @@ class StringRef;
 class AAManager;
 class TargetMachine;
 class ModuleSummaryIndex;
+template <typename T> class IntrusiveRefCntPtr;
+namespace vfs {
+class FileSystem;
+} // namespace vfs
 
 /// Tunable parameters for passes in the default pipelines.
 class PipelineTuningOptions {
@@ -97,7 +100,7 @@ public:
 class PassBuilder {
   TargetMachine *TM;
   PipelineTuningOptions PTO;
-  Optional<PGOOptions> PGOOpt;
+  std::optional<PGOOptions> PGOOpt;
   PassInstrumentationCallbacks *PIC;
 
 public:
@@ -116,7 +119,7 @@ public:
 
   explicit PassBuilder(TargetMachine *TM = nullptr,
                        PipelineTuningOptions PTO = PipelineTuningOptions(),
-                       Optional<PGOOptions> PGOOpt = None,
+                       std::optional<PGOOptions> PGOOpt = std::nullopt,
                        PassInstrumentationCallbacks *PIC = nullptr);
 
   /// Cross register the analysis managers through their proxies.
@@ -228,11 +231,6 @@ public:
   /// optimization and code generation without any link-time optimization. It
   /// typically correspond to frontend "-O[123]" options for optimization
   /// levels \c O1, \c O2 and \c O3 resp.
-  ///
-  /// Note that \p Level cannot be `O0` here. The pipelines produced are
-  /// only intended for use when attempting to optimize code. If frontends
-  /// require some transformations for semantic reasons, they should explicitly
-  /// build them.
   ModulePassManager buildPerModuleDefaultPipeline(OptimizationLevel Level,
                                                   bool LTOPreLink = false);
 
@@ -243,11 +241,6 @@ public:
   /// a ThinLTO run. It works to minimize the IR which needs to be analyzed
   /// without making irreversible decisions which could be made better during
   /// the LTO run.
-  ///
-  /// Note that \p Level cannot be `O0` here. The pipelines produced are
-  /// only intended for use when attempting to optimize code. If frontends
-  /// require some transformations for semantic reasons, they should explicitly
-  /// build them.
   ModulePassManager buildThinLTOPreLinkDefaultPipeline(OptimizationLevel Level);
 
   /// Build an ThinLTO default optimization pipeline to a pass manager.
@@ -256,11 +249,6 @@ public:
   /// optimization and code generation. It is particularly tuned to fit well
   /// when IR coming into the LTO phase was first run through \c
   /// addPreLinkLTODefaultPipeline, and the two coordinate closely.
-  ///
-  /// Note that \p Level cannot be `O0` here. The pipelines produced are
-  /// only intended for use when attempting to optimize code. If frontends
-  /// require some transformations for semantic reasons, they should explicitly
-  /// build them.
   ModulePassManager
   buildThinLTODefaultPipeline(OptimizationLevel Level,
                               const ModuleSummaryIndex *ImportSummary);
@@ -272,11 +260,6 @@ public:
   /// run. It works to minimize the IR which needs to be analyzed without
   /// making irreversible decisions which could be made better during the LTO
   /// run.
-  ///
-  /// Note that \p Level cannot be `O0` here. The pipelines produced are
-  /// only intended for use when attempting to optimize code. If frontends
-  /// require some transformations for semantic reasons, they should explicitly
-  /// build them.
   ModulePassManager buildLTOPreLinkDefaultPipeline(OptimizationLevel Level);
 
   /// Build an LTO default optimization pipeline to a pass manager.
@@ -285,11 +268,6 @@ public:
   /// optimization and code generation. It is particularly tuned to fit well
   /// when IR coming into the LTO phase was first run through \c
   /// addPreLinkLTODefaultPipeline, and the two coordinate closely.
-  ///
-  /// Note that \p Level cannot be `O0` here. The pipelines produced are
-  /// only intended for use when attempting to optimize code. If frontends
-  /// require some transformations for semantic reasons, they should explicitly
-  /// build them.
   ModulePassManager buildLTODefaultPipeline(OptimizationLevel Level,
                                             ModuleSummaryIndex *ExportSummary);
 
@@ -568,7 +546,8 @@ public:
   /// Add PGOInstrumenation passes for O0 only.
   void addPGOInstrPassesForO0(ModulePassManager &MPM, bool RunProfileGen,
                               bool IsCS, std::string ProfileFile,
-                              std::string ProfileRemappingFile);
+                              std::string ProfileRemappingFile,
+                              IntrusiveRefCntPtr<vfs::FileSystem> FS);
 
   /// Returns PIC. External libraries can use this to register pass
   /// instrumentation callbacks.
@@ -587,7 +566,7 @@ private:
   void addVectorPasses(OptimizationLevel Level, FunctionPassManager &FPM,
                        bool IsFullLTO);
 
-  static Optional<std::vector<PipelineElement>>
+  static std::optional<std::vector<PipelineElement>>
   parsePipelineText(StringRef Text);
 
   Error parseModulePass(ModulePassManager &MPM, const PipelineElement &E);
@@ -608,7 +587,8 @@ private:
   void addPGOInstrPasses(ModulePassManager &MPM, OptimizationLevel Level,
                          bool RunProfileGen, bool IsCS, std::string ProfileFile,
                          std::string ProfileRemappingFile,
-                         ThinOrFullLTOPhase LTOPhase);
+                         ThinOrFullLTOPhase LTOPhase,
+                         IntrusiveRefCntPtr<vfs::FileSystem> FS);
   void invokePeepholeEPCallbacks(FunctionPassManager &, OptimizationLevel);
 
   // Extension Point callbacks

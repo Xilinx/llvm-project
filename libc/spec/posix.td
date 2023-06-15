@@ -45,9 +45,6 @@ def ConstStructDirentPtrPtr : ConstType<StructDirentPtrPtr>;
 def StructTimeSpec : NamedType<"struct timespec">;
 def StructTimeSpecPtr : PtrType<StructTimeSpec>;
 
-def StructTimeVal : NamedType<"struct timeval">;
-def StructTimeValPtr : PtrType<StructTimeVal>;
-
 def ExecArgvT : NamedType<"__exec_argv_t">;
 def ExecEnvpT : NamedType<"__exec_envp_t">;
 
@@ -548,6 +545,11 @@ def POSIX : StandardSpec<"POSIX"> {
           [ArgSpec<ConstCharPtr>]
         >,
         FunctionSpec<
+          "swab",
+          RetValSpec<VoidType>,
+          [ArgSpec<ConstVoidRestrictedPtr>, ArgSpec<VoidPtr>, ArgSpec<SSizeTType>]
+        >,
+        FunctionSpec<
           "symlink",
           RetValSpec<IntType>,
           [ArgSpec<ConstCharPtr>, ArgSpec<ConstCharPtr>]
@@ -626,6 +628,20 @@ def POSIX : StandardSpec<"POSIX"> {
           [ArgSpec<ConstCharPtr>]
         >,
     ]
+  >;
+
+  HeaderSpec Sched = HeaderSpec<
+      "sched.h",
+      [], // Macros
+      [PidT, SizeTType, CpuSetT], // Types
+      [], // Enumerations
+      [
+        FunctionSpec<
+            "sched_yield",
+            RetValSpec<IntType>,
+            []
+        >,
+      ]
   >;
 
   HeaderSpec String = HeaderSpec<
@@ -733,7 +749,7 @@ def POSIX : StandardSpec<"POSIX"> {
         UidT,
         GidT,
         StructTimeSpec,
-        StructTimeVal,
+        StructTimevalType,
         BlkSizeT,
         BlkCntT,
         OffTType,
@@ -799,6 +815,35 @@ def POSIX : StandardSpec<"POSIX"> {
             [ArgSpec<StructUtsNamePtr>]
         >,
     ]
+  >;
+
+  HeaderSpec ArpaInet = HeaderSpec<
+      "arpa/inet.h",
+      [], // Macros
+      [], // Types
+      [], // Enumerations
+      [
+          FunctionSpec<
+              "htonl",
+              RetValSpec<UInt32Type>,
+              [ArgSpec<UInt32Type>]
+          >,
+          FunctionSpec<
+              "htons",
+              RetValSpec<UInt16Type>,
+              [ArgSpec<UInt16Type>]
+          >,
+          FunctionSpec<
+              "ntohl",
+              RetValSpec<UInt32Type>,
+              [ArgSpec<UInt32Type>]
+          >,
+          FunctionSpec<
+              "ntohs",
+              RetValSpec<UInt16Type>,
+              [ArgSpec<UInt16Type>]
+          >,
+      ]
   >;
 
   HeaderSpec PThread = HeaderSpec<
@@ -1032,6 +1077,11 @@ def POSIX : StandardSpec<"POSIX"> {
               RetValSpec<IntType>,
               [ArgSpec<FILEPtr>]
           >,
+          FunctionSpec<
+              "getchar_unlocked",
+              RetValSpec<IntType>,
+              [ArgSpec<VoidType>]
+          >,
       ]
   >;
 
@@ -1077,7 +1127,7 @@ def POSIX : StandardSpec<"POSIX"> {
   HeaderSpec Time = HeaderSpec<
       "time.h",
       [], // Macros
-      [ClockIdT, StructTimeSpec, StructTimeVal], // Types
+      [ClockIdT, StructTimeSpec, StructTimevalType], // Types
       [], // Enumerations
       [
           FunctionSpec<
@@ -1088,7 +1138,7 @@ def POSIX : StandardSpec<"POSIX"> {
           FunctionSpec<
               "gettimeofday",
               RetValSpec<IntType>,
-              [ArgSpec<StructTimeValPtr>, ArgSpec<VoidPtr>]
+              [ArgSpec<StructTimevalPtr>, ArgSpec<VoidPtr>]
           >,
           FunctionSpec<
               "nanosleep",
@@ -1263,11 +1313,13 @@ def POSIX : StandardSpec<"POSIX"> {
   >;
 
   let Headers = [
+    ArpaInet,
     CType,
     Dirent,
     Errno,
     FCntl,
     PThread,
+    Sched,
     Signal,
     Spawn,
     StdIO,

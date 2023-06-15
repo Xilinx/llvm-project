@@ -9,10 +9,10 @@
 """
 extract - A set of function that extract symbol lists from shared libraries.
 """
-import distutils.spawn
 import os.path
 from os import environ
 import re
+import shutil
 import subprocess
 import sys
 
@@ -30,7 +30,7 @@ class NMExtractor(object):
         """
         Search for the nm executable and return the path.
         """
-        return distutils.spawn.find_executable('nm')
+        return shutil.which('nm')
 
     def __init__(self, static_lib):
         """
@@ -119,7 +119,7 @@ class ReadElfExtractor(object):
         """
         Search for the readelf executable and return the path.
         """
-        return distutils.spawn.find_executable('readelf')
+        return shutil.which('readelf')
 
     def __init__(self, static_lib):
         """
@@ -175,10 +175,16 @@ class ReadElfExtractor(object):
         start = -1
         end = -1
         for i in range(len(lines)):
-            if lines[i].startswith("Symbol table '.dynsym'"):
+            # Accept both GNU and ELF Tool Chain readelf format.  Some versions
+            # of ELF Tool Chain readelf use ( ) around the symbol table name
+            # instead of ' ', and omit the blank line before the heading.
+            if re.match(r"Symbol table ['(].dynsym[')]", lines[i]):
                 start = i + 2
-            if start != -1 and end == -1 and not lines[i].strip():
-                end = i + 1
+            elif start != -1 and end == -1:
+                if not lines[i].strip():
+                    end = i + 1
+                if lines[i].startswith("Symbol table ("):
+                    end = i
         assert start != -1
         if end == -1:
             end = len(lines)
@@ -194,7 +200,7 @@ class AIXDumpExtractor(object):
          """
          Search for the dump executable and return the path.
          """
-         return distutils.spawn.find_executable('dump')
+         return shutil.which('dump')
 
      def __init__(self, static_lib):
          """

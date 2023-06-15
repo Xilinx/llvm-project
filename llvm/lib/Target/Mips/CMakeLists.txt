@@ -70,13 +70,14 @@ add_llvm_target(MipsCodeGen
   AsmPrinter
   CodeGen
   Core
+  GlobalISel
   MC
   MipsDesc
   MipsInfo
   SelectionDAG
   Support
   Target
-  GlobalISel
+  TargetParser
 
   ADD_TO_COMPONENT
   Mips

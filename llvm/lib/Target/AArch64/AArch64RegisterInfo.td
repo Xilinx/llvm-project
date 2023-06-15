@@ -146,6 +146,9 @@ def FFR : AArch64Reg<0, "ffr">, DwarfRegNum<[47]>;
 // Purely virtual Vector Granule (VG) Dwarf register
 def VG : AArch64Reg<0, "vg">, DwarfRegNum<[46]>;
 
+// Floating-point control register
+def FPCR : AArch64Reg<0, "fpcr">;
+
 // GPR register classes with the intersections of GPR32/GPR32sp and
 // GPR64/GPR64sp for use by the coalescer.
 def GPR32common : RegisterClass<"AArch64", [i32], 32, (sequence "W%u", 0, 30)> {
@@ -432,7 +435,7 @@ def Q30   : AArch64Reg<30, "q30", [D30], ["v30", ""]>, DwarfRegAlias<B30>;
 def Q31   : AArch64Reg<31, "q31", [D31], ["v31", ""]>, DwarfRegAlias<B31>;
 }
 
-def FPR8  : RegisterClass<"AArch64", [untyped], 8, (sequence "B%u", 0, 31)> {
+def FPR8  : RegisterClass<"AArch64", [i8], 8, (sequence "B%u", 0, 31)> {
   let Size = 8;
 }
 def FPR16 : RegisterClass<"AArch64", [f16, bf16], 16, (sequence "H%u", 0, 31)> {
@@ -717,6 +720,21 @@ def XSeqPairClassOperand :
     RegisterOperand<XSeqPairsClass, "printGPRSeqPairsClassOperand<64>"> {
   let ParserMatchClass = XSeqPairsAsmOperandClass;
 }
+// Reuse the parsing and register numbers from XSeqPairs, but encoding is different.
+def MrrsMssrPairClassOperand :
+    RegisterOperand<XSeqPairsClass, "printGPRSeqPairsClassOperand<64>"> {
+  let ParserMatchClass = XSeqPairsAsmOperandClass;
+}
+def SyspXzrPairOperandMatcherClass : AsmOperandClass {
+  let Name = "SyspXzrPair";
+  let RenderMethod = "addSyspXzrPairOperand";
+  let ParserMethod = "tryParseSyspXzrPair";
+}
+def SyspXzrPairOperand :
+    RegisterOperand<GPR64, "printSyspXzrPair"> { // needed to allow alias with XZR operand
+  let ParserMatchClass = SyspXzrPairOperandMatcherClass;
+}
+
 
 
 //===----- END: v8.1a atomic CASP register operands -----------------------===//
@@ -873,7 +891,7 @@ class ZPRRegOp <string Suffix, AsmOperandClass C, ElementSizeEnum Size,
 // SVE predicate register classes.
 class PPRClass<int firstreg, int lastreg> : RegisterClass<
                                   "AArch64",
-                                  [ nxv16i1, nxv8i1, nxv4i1, nxv2i1, nxv1i1 ], 16,
+                                  [ nxv16i1, nxv8i1, nxv4i1, nxv2i1, nxv1i1, aarch64svcount ], 16,
                                   (sequence "P%u", firstreg, lastreg)> {
   let Size = 16;
 }
@@ -923,11 +941,13 @@ class PNRRegOp<string Suffix, AsmOperandClass C, int EltSize, RegisterClass RC>
   let PrintMethod = "printPredicateAsCounter<" # EltSize # ">";
 }
 
+def PNRAsmOpAny: PNRAsmOperand<"PNPredicateAny", "PPR", 0>;
 def PNRAsmOp8  : PNRAsmOperand<"PNPredicateB", "PPR", 8>;
 def PNRAsmOp16 : PNRAsmOperand<"PNPredicateH", "PPR", 16>;
 def PNRAsmOp32 : PNRAsmOperand<"PNPredicateS", "PPR", 32>;
 def PNRAsmOp64 : PNRAsmOperand<"PNPredicateD", "PPR", 64>;
 
+def PNRAny : PNRRegOp<"", PNRAsmOpAny, 0,  PPR>;
 def PNR8   : PNRRegOp<"b", PNRAsmOp8,  8,  PPR>;
 def PNR16  : PNRRegOp<"h", PNRAsmOp16, 16, PPR>;
 def PNR32  : PNRRegOp<"s", PNRAsmOp32, 32, PPR>;
@@ -1595,6 +1615,7 @@ class MatrixTileOperand<int EltSize, int NumBitsForTile, RegisterClass RC>
   let PrintMethod = "printMatrixTile";
 }
 
+def TileOp16  : MatrixTileOperand<16, 1, MPR16>;
 def TileOp32  : MatrixTileOperand<32, 2, MPR32>;
 def TileOp64  : MatrixTileOperand<64, 3, MPR64>;
 

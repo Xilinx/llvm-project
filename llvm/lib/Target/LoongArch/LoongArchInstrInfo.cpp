@@ -17,6 +17,7 @@
 #include "MCTargetDesc/LoongArchMCTargetDesc.h"
 #include "MCTargetDesc/LoongArchMatInt.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
+#include "llvm/MC/MCInstBuilder.h"
 
 using namespace llvm;
 
@@ -27,6 +28,13 @@ LoongArchInstrInfo::LoongArchInstrInfo(LoongArchSubtarget &STI)
     : LoongArchGenInstrInfo(LoongArch::ADJCALLSTACKDOWN,
                             LoongArch::ADJCALLSTACKUP),
       STI(STI) {}
+
+MCInst LoongArchInstrInfo::getNop() const {
+  return MCInstBuilder(LoongArch::ANDI)
+      .addReg(LoongArch::R0)
+      .addReg(LoongArch::R0)
+      .addImm(0);
+}
 
 void LoongArchInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
                                      MachineBasicBlock::iterator MBBI,
@@ -72,10 +80,7 @@ void LoongArchInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
 void LoongArchInstrInfo::storeRegToStackSlot(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator I, Register SrcReg,
     bool IsKill, int FI, const TargetRegisterClass *RC,
-    const TargetRegisterInfo *TRI) const {
-  DebugLoc DL;
-  if (I != MBB.end())
-    DL = I->getDebugLoc();
+    const TargetRegisterInfo *TRI, Register VReg) const {
   MachineFunction *MF = MBB.getParent();
   MachineFrameInfo &MFI = MF->getFrameInfo();
 
@@ -97,20 +102,19 @@ void LoongArchInstrInfo::storeRegToStackSlot(
       MachinePointerInfo::getFixedStack(*MF, FI), MachineMemOperand::MOStore,
       MFI.getObjectSize(FI), MFI.getObjectAlign(FI));
 
-  BuildMI(MBB, I, DL, get(Opcode))
+  BuildMI(MBB, I, DebugLoc(), get(Opcode))
       .addReg(SrcReg, getKillRegState(IsKill))
       .addFrameIndex(FI)
       .addImm(0)
       .addMemOperand(MMO);
 }
 
-void LoongArchInstrInfo::loadRegFromStackSlot(
-    MachineBasicBlock &MBB, MachineBasicBlock::iterator I, Register DstReg,
-    int FI, const TargetRegisterClass *RC,
-    const TargetRegisterInfo *TRI) const {
-  DebugLoc DL;
-  if (I != MBB.end())
-    DL = I->getDebugLoc();
+void LoongArchInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
+                                              MachineBasicBlock::iterator I,
+                                              Register DstReg, int FI,
+                                              const TargetRegisterClass *RC,
+                                              const TargetRegisterInfo *TRI,
+                                              Register VReg) const {
   MachineFunction *MF = MBB.getParent();
   MachineFrameInfo &MFI = MF->getFrameInfo();
 
@@ -132,7 +136,7 @@ void LoongArchInstrInfo::loadRegFromStackSlot(
       MachinePointerInfo::getFixedStack(*MF, FI), MachineMemOperand::MOLoad,
       MFI.getObjectSize(FI), MFI.getObjectAlign(FI));
 
-  BuildMI(MBB, I, DL, get(Opcode), DstReg)
+  BuildMI(MBB, I, DebugLoc(), get(Opcode), DstReg)
       .addFrameIndex(FI)
       .addImm(0)
       .addMemOperand(MMO);
@@ -176,7 +180,10 @@ void LoongArchInstrInfo::movImm(MachineBasicBlock &MBB,
 }
 
 unsigned LoongArchInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
-  if (MI.getOpcode() == TargetOpcode::INLINEASM) {
+  unsigned Opcode = MI.getOpcode();
+
+  if (Opcode == TargetOpcode::INLINEASM ||
+      Opcode == TargetOpcode::INLINEASM_BR) {
     const MachineFunction *MF = MI.getParent()->getParent();
     const MCAsmInfo *MAI = MF->getTarget().getMCAsmInfo();
     return getInlineAsmLength(MI.getOperand(0).getSymbolName(), *MAI);
@@ -371,6 +378,9 @@ void LoongArchInstrInfo::insertIndirectBranch(MachineBasicBlock &MBB,
 
   MachineFunction *MF = MBB.getParent();
   MachineRegisterInfo &MRI = MF->getRegInfo();
+  const TargetRegisterInfo *TRI = MF->getSubtarget().getRegisterInfo();
+  LoongArchMachineFunctionInfo *LAFI =
+      MF->getInfo<LoongArchMachineFunctionInfo>();
 
   if (!isInt<32>(BrOffset))
     report_fatal_error(
@@ -379,26 +389,45 @@ void LoongArchInstrInfo::insertIndirectBranch(MachineBasicBlock &MBB,
   Register ScratchReg = MRI.createVirtualRegister(&LoongArch::GPRRegClass);
   auto II = MBB.end();
 
-  MachineInstr &MI =
+  MachineInstr &PCALAU12I =
       *BuildMI(MBB, II, DL, get(LoongArch::PCALAU12I), ScratchReg)
            .addMBB(&DestBB, LoongArchII::MO_PCREL_HI);
-  BuildMI(MBB, II, DL,
-          get(STI.is64Bit() ? LoongArch::ADDI_D : LoongArch::ADDI_W),
-          ScratchReg)
-      .addReg(ScratchReg)
-      .addMBB(&DestBB, LoongArchII::MO_PCREL_LO);
+  MachineInstr &ADDI =
+      *BuildMI(MBB, II, DL,
+               get(STI.is64Bit() ? LoongArch::ADDI_D : LoongArch::ADDI_W),
+               ScratchReg)
+           .addReg(ScratchReg)
+           .addMBB(&DestBB, LoongArchII::MO_PCREL_LO);
   BuildMI(MBB, II, DL, get(LoongArch::PseudoBRIND))
       .addReg(ScratchReg, RegState::Kill)
       .addImm(0);
 
   RS->enterBasicBlockEnd(MBB);
-  Register Scav = RS->scavengeRegisterBackwards(LoongArch::GPRRegClass,
-                                                MI.getIterator(), false, 0);
-  // TODO: When there is no scavenged register, it needs to specify a register.
-  assert(Scav != LoongArch::NoRegister && "No register is scavenged!");
+  Register Scav = RS->scavengeRegisterBackwards(
+      LoongArch::GPRRegClass, PCALAU12I.getIterator(), /*RestoreAfter=*/false,
+      /*SPAdj=*/0, /*AllowSpill=*/false);
+  if (Scav != LoongArch::NoRegister)
+    RS->setRegUsed(Scav);
+  else {
+    // When there is no scavenged register, it needs to specify a register.
+    // Specify t8 register because it won't be used too often.
+    Scav = LoongArch::R20;
+    int FrameIndex = LAFI->getBranchRelaxationSpillFrameIndex();
+    if (FrameIndex == -1)
+      report_fatal_error("The function size is incorrectly estimated.");
+    storeRegToStackSlot(MBB, PCALAU12I, Scav, /*IsKill=*/true, FrameIndex,
+                        &LoongArch::GPRRegClass, TRI, Register());
+    TRI->eliminateFrameIndex(std::prev(PCALAU12I.getIterator()),
+                             /*SpAdj=*/0, /*FIOperandNum=*/1);
+    PCALAU12I.getOperand(1).setMBB(&RestoreBB);
+    ADDI.getOperand(2).setMBB(&RestoreBB);
+    loadRegFromStackSlot(RestoreBB, RestoreBB.end(), Scav, FrameIndex,
+                         &LoongArch::GPRRegClass, TRI, Register());
+    TRI->eliminateFrameIndex(RestoreBB.back(),
+                             /*SpAdj=*/0, /*FIOperandNum=*/1);
+  }
   MRI.replaceRegWith(ScratchReg, Scav);
   MRI.clearVirtRegs();
-  RS->setRegUsed(Scav);
 }
 
 static unsigned getOppositeBranchOpc(unsigned Opc) {
@@ -457,5 +486,5 @@ LoongArchInstrInfo::getSerializableDirectMachineOperandTargetFlags() const {
       {MO_IE_PC_LO, "loongarch-ie-pc-lo"},
       {MO_LD_PC_HI, "loongarch-ld-pc-hi"},
       {MO_GD_PC_HI, "loongarch-gd-pc-hi"}};
-  return makeArrayRef(TargetFlags);
+  return ArrayRef(TargetFlags);
 }

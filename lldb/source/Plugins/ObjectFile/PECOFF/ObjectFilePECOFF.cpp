@@ -36,8 +36,9 @@
 #include "llvm/Support/CRC.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatAdapters.h"
-#include "llvm/Support/Host.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/TargetParser/Host.h"
+#include <optional>
 
 #define IMAGE_DOS_SIGNATURE 0x5A4D    // MZ
 #define IMAGE_NT_SIGNATURE 0x00004550 // PE00
@@ -862,10 +863,14 @@ ObjectFilePECOFF::AppendFromExportTable(SectionList *sect_list,
   for (const auto &entry : m_binary->export_directories()) {
     llvm::StringRef sym_name;
     if (auto err = entry.getSymbolName(sym_name)) {
-      LLDB_LOG(log,
-               "ObjectFilePECOFF::AppendFromExportTable - failed to get export "
-               "table entry name: {0}",
-               llvm::fmt_consume(std::move(err)));
+      if (log)
+        log->Format(
+            __FILE__, __func__,
+            "ObjectFilePECOFF::AppendFromExportTable - failed to get export "
+            "table entry name: {0}",
+            llvm::fmt_consume(std::move(err)));
+      else
+        llvm::consumeError(std::move(err));
       continue;
     }
     Symbol symbol;
@@ -883,10 +888,13 @@ ObjectFilePECOFF::AppendFromExportTable(SectionList *sect_list,
       // it in symtab and make a note using the symbol name.
       llvm::StringRef forwarder_name;
       if (auto err = entry.getForwardTo(forwarder_name)) {
-        LLDB_LOG(log,
-                 "ObjectFilePECOFF::AppendFromExportTable - failed to get "
-                 "forwarder name of forwarder export '{0}': {1}",
-                 sym_name, llvm::fmt_consume(std::move(err)));
+        if (log)
+          log->Format(__FILE__, __func__,
+                      "ObjectFilePECOFF::AppendFromExportTable - failed to get "
+                      "forwarder name of forwarder export '{0}': {1}",
+                      sym_name, llvm::fmt_consume(std::move(err)));
+        else
+          llvm::consumeError(std::move(err));
         continue;
       }
       llvm::SmallString<256> new_name = {symbol.GetDisplayName().GetStringRef(),
@@ -898,10 +906,13 @@ ObjectFilePECOFF::AppendFromExportTable(SectionList *sect_list,
 
     uint32_t function_rva;
     if (auto err = entry.getExportRVA(function_rva)) {
-      LLDB_LOG(log,
-               "ObjectFilePECOFF::AppendFromExportTable - failed to get "
-               "address of export entry '{0}': {1}",
-               sym_name, llvm::fmt_consume(std::move(err)));
+      if (log)
+        log->Format(__FILE__, __func__,
+                    "ObjectFilePECOFF::AppendFromExportTable - failed to get "
+                    "address of export entry '{0}': {1}",
+                    sym_name, llvm::fmt_consume(std::move(err)));
+      else
+        llvm::consumeError(std::move(err));
       continue;
     }
     // Skip the symbol if it doesn't look valid.
@@ -1087,12 +1098,12 @@ UUID ObjectFilePECOFF::GetUUID() {
   return m_uuid;
 }
 
-llvm::Optional<FileSpec> ObjectFilePECOFF::GetDebugLink() {
+std::optional<FileSpec> ObjectFilePECOFF::GetDebugLink() {
   std::string gnu_debuglink_file;
   uint32_t gnu_debuglink_crc;
   if (GetDebugLinkContents(*m_binary, gnu_debuglink_file, gnu_debuglink_crc))
     return FileSpec(gnu_debuglink_file);
-  return llvm::None;
+  return std::nullopt;
 }
 
 uint32_t ObjectFilePECOFF::ParseDependentModules() {

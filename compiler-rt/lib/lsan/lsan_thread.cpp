@@ -39,9 +39,12 @@ void InitializeThreadRegistry() {
 ThreadContextLsanBase::ThreadContextLsanBase(int tid)
     : ThreadContextBase(tid) {}
 
+void ThreadContextLsanBase::OnStarted(void *arg) { SetCurrentThread(tid); }
+
 void ThreadContextLsanBase::OnFinished() {
   AllocatorThreadFinish();
   DTLS_Destroy();
+  SetCurrentThread(kInvalidTid);
 }
 
 u32 ThreadCreate(u32 parent_tid, bool detached, void *arg) {
@@ -51,40 +54,49 @@ u32 ThreadCreate(u32 parent_tid, bool detached, void *arg) {
 void ThreadContextLsanBase::ThreadStart(u32 tid, tid_t os_id,
                                         ThreadType thread_type, void *arg) {
   thread_registry->StartThread(tid, os_id, thread_type, arg);
-  SetCurrentThread(tid);
 }
 
-void ThreadFinish() {
-  thread_registry->FinishThread(GetCurrentThread());
-  SetCurrentThread(kInvalidTid);
-}
+void ThreadFinish() { thread_registry->FinishThread(GetCurrentThreadId()); }
 
 ThreadContext *CurrentThreadContext() {
   if (!thread_registry)
     return nullptr;
-  if (GetCurrentThread() == kInvalidTid)
+  if (GetCurrentThreadId() == kInvalidTid)
     return nullptr;
   // No lock needed when getting current thread.
-  return (ThreadContext *)thread_registry->GetThreadLocked(GetCurrentThread());
+  return (ThreadContext *)thread_registry->GetThreadLocked(
+      GetCurrentThreadId());
 }
 
 void EnsureMainThreadIDIsCorrect() {
-  if (GetCurrentThread() == kMainTid)
+  if (GetCurrentThreadId() == kMainTid)
     CurrentThreadContext()->os_id = GetTid();
 }
 
 ///// Interface to the common LSan module. /////
 
-void ForEachExtraStackRange(tid_t os_id, RangeIteratorCallback callback,
-                            void *arg) {}
+void GetThreadExtraStackRangesLocked(tid_t os_id,
+                                     InternalMmapVector<Range> *ranges) {}
+void GetThreadExtraStackRangesLocked(InternalMmapVector<Range> *ranges) {}
 
 void LockThreadRegistry() { thread_registry->Lock(); }
 
 void UnlockThreadRegistry() { thread_registry->Unlock(); }
 
-ThreadRegistry *GetThreadRegistryLocked() {
+ThreadRegistry *GetLsanThreadRegistryLocked() {
   thread_registry->CheckLocked();
   return thread_registry;
+}
+
+void GetRunningThreadsLocked(InternalMmapVector<tid_t> *threads) {
+  GetLsanThreadRegistryLocked()->RunCallbackForEachThreadLocked(
+      [](ThreadContextBase *tctx, void *threads) {
+        if (tctx->status == ThreadStatusRunning) {
+          reinterpret_cast<InternalMmapVector<tid_t> *>(threads)->push_back(
+              tctx->os_id);
+        }
+      },
+      threads);
 }
 
 }  // namespace __lsan

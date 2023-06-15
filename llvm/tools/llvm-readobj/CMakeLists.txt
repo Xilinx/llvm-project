@@ -1,14 +1,12 @@
 set(LLVM_LINK_COMPONENTS
+  BinaryFormat
   DebugInfoCodeView
   DebugInfoDWARF
   Demangle
   Object
-  BinaryFormat
   Option
   Support
-  DebugInfoCodeView
-  DebugInfoMSF
-  DebugInfoPDB
+  TargetParser
   )
 
 set(LLVM_TARGET_DEFINITIONS Opts.td)
@@ -27,6 +25,8 @@ add_llvm_tool(llvm-readobj
   Win64EHDumper.cpp
   WindowsResourceDumper.cpp
   XCOFFDumper.cpp
+  DEPENDS
+  ReadobjOptsTableGen
   GENERATE_DRIVER
   )
 

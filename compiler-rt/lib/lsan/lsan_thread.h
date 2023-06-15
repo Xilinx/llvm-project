@@ -21,6 +21,7 @@ namespace __lsan {
 class ThreadContextLsanBase : public ThreadContextBase {
  public:
   explicit ThreadContextLsanBase(int tid);
+  void OnStarted(void *arg) override;
   void OnFinished() override;
   uptr stack_begin() { return stack_begin_; }
   uptr stack_end() { return stack_end_; }
@@ -45,10 +46,13 @@ class ThreadContext;
 void InitializeThreadRegistry();
 void InitializeMainThread();
 
+ThreadRegistry *GetLsanThreadRegistryLocked();
+
 u32 ThreadCreate(u32 tid, bool detached, void *arg = nullptr);
 void ThreadFinish();
 
 u32 GetCurrentThread();
+inline u32 GetCurrentThreadId() { return GetCurrentThread(); }
 void SetCurrentThread(u32 tid);
 ThreadContext *CurrentThreadContext();
 void EnsureMainThreadIDIsCorrect();

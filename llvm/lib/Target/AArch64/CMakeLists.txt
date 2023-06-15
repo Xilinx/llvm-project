@@ -56,6 +56,7 @@ add_llvm_target(AArch64CodeGen
   AArch64FastISel.cpp
   AArch64A53Fix835769.cpp
   AArch64FrameLowering.cpp
+  AArch64GlobalsTagging.cpp
   AArch64CompressJumpTables.cpp
   AArch64ConditionOptimizer.cpp
   AArch64RedundantCopyElimination.cpp
@@ -96,20 +97,21 @@ add_llvm_target(AArch64CodeGen
   AArch64Utils
   Analysis
   AsmPrinter
+  CFGuard
   CodeGen
   Core
+  GlobalISel
   MC
   Scalar
   SelectionDAG
   Support
   Target
+  TargetParser
   TransformUtils
-  GlobalISel
-  CFGuard
 
   ADD_TO_COMPONENT
   AArch64
-)
+  )
 
 add_subdirectory(AsmParser)
 add_subdirectory(Disassembler)
