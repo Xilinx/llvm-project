@@ -58,13 +58,15 @@ class ApplyNativeConstraintOp:
 
   def __init__(self,
                name: Union[str, StringAttr],
+               results: Sequence[Type] = [],
                args: Sequence[Union[OpView, Operation, Value]] = [],
                *,
                loc=None,
                ip=None):
     name = _get_str_attr(name)
     args = _get_values(args)
-    super().__init__(name, args, loc=loc, ip=ip)
+    results = _get_values(results)
+    super().__init__(results, name, args, loc=loc, ip=ip)
 
 
 class ApplyNativeRewriteOp:
