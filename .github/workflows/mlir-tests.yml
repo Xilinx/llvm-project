@@ -11,6 +11,9 @@ on:
       - 'mlir/**'
       - '.github/workflows/mlir-tests.yml'
       - '.github/workflows/llvm-project-tests.yml'
+  # Only builds on push populate the ccache that can be used by PRs
+  push:
+    branches: [ main, feature/fused-ops ]
 
 concurrency:
   # Skip intermediate builds: always.
