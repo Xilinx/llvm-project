@@ -25,3 +25,4 @@ jobs:
     with:
       build_target: check-mlir
       projects: mlir
+      extra_cmake_args: -DMLIR_ENABLE_BINDINGS_PYTHON=ON
