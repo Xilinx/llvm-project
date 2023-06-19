@@ -1098,8 +1098,8 @@ For example:
     declare i32 @atoi(i8 zeroext)
     declare signext i8 @returns_signed_char()
 
-Note that any attributes for the function result (``nounwind``,
-``readonly``) come immediately after the argument list.
+Note that any attributes for the function result (``nonnull``,
+``signext``) come before the result type.
 
 Currently, only the following parameter attributes are defined:
 
@@ -25247,6 +25247,81 @@ The '``llvm.set.rounding``' intrinsic sets the current rounding mode. It is
 similar to C library function 'fesetround', however this intrinsic does not
 return any value and uses platform-independent representation of IEEE rounding
 modes.
+
+
+'``llvm.get.fpenv``' Intrinsic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Syntax:
+"""""""
+
+::
+
+      declare <integer_type> @llvm.get.fpenv()
+
+Overview:
+"""""""""
+
+The '``llvm.get.fpenv``' intrinsic returns bits of the current floating-point
+environment. The return value type is platform-specific.
+
+Semantics:
+""""""""""
+
+The '``llvm.get.fpenv``' intrinsic reads the current floating-point environment
+and returns it as an integer value.
+
+
+'``llvm.set.fpenv``' Intrinsic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Syntax:
+"""""""
+
+::
+
+      declare void @llvm.set.fpenv(<integer_type> <val>)
+
+Overview:
+"""""""""
+
+The '``llvm.set.fpenv``' intrinsic sets the current floating-point environment.
+
+Arguments:
+""""""""""
+
+The argument is an integer representing the new floating-point environment. The
+integer type is platform-specific.
+
+Semantics:
+""""""""""
+
+The '``llvm.set.fpenv``' intrinsic sets the current floating-point environment
+to the state specified by the argument. The state may be previously obtained by a
+call to '``llvm.get.fpenv``' or synthesised in a platform-dependent way.
+
+
+'``llvm.reset.fpenv``' Intrinsic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Syntax:
+"""""""
+
+::
+
+      declare void @llvm.reset.fpenv()
+
+Overview:
+"""""""""
+
+The '``llvm.reset.fpenv``' intrinsic sets the default floating-point environment.
+
+Semantics:
+""""""""""
+
+The '``llvm.reset.fpenv``' intrinsic sets the current floating-point environment
+to default state. It is similar to the call 'fesetenv(FE_DFL_ENV)', except it
+does not return any value.
 
 
 Floating-Point Test Intrinsics

@@ -759,20 +759,29 @@ mlir::LogicalResult tosa::ReshapeOp::verify() {
   ShapedType outputType = llvm::cast<ShapedType>(getType());
 
   if (inputType.hasStaticShape() && outputType.hasStaticShape()) {
-    if (getNewShape() != outputType.getShape()) {
-      return emitOpError() << "newShape attribute " << getNewShape()
-                           << " does not match output type "
-                           << outputType.getShape();
-    }
-
     int64_t inputElementsNum = inputType.getNumElements();
     int64_t outputElementsNum = outputType.getNumElements();
     if (inputElementsNum != outputElementsNum) {
       return emitOpError() << "Cannot reshape " << inputElementsNum
                            << " elements into " << outputElementsNum;
     }
-  }
 
+    if ((int64_t)getNewShape().size() != outputType.getRank()) {
+        return emitOpError() << "rank of newShape (" << getNewShape().size()
+                           << ") and output ("
+                           << outputType.getRank()
+                           << ") must match";
+    }
+
+    for (int64_t dim=0; dim < outputType.getRank(); ++dim) {
+      if (getNewShape()[dim] != -1 && getNewShape()[dim] != outputType.getShape()[dim]) {
+        return emitOpError() << "newShape attribute (" << getNewShape()[dim]
+                            << ") does not match output type ("
+                            << outputType.getShape()[dim]
+                            << ") in dimension " << dim;
+      }
+    }
+  }
   return mlir::success();
 }
 
@@ -788,10 +797,20 @@ mlir::LogicalResult tosa::SliceOp::verify() {
                            << ") must match";
   }
 
-  if (getSize() != outputType.getShape()) {
-      return emitOpError() << "size attribute " << getSize()
-                           << " does not match output type "
-                           << outputType.getShape();
+  if ((int64_t)getSize().size() != outputType.getRank()) {
+        return emitOpError() << "rank of size (" << getSize().size()
+                           << ") and output ("
+                           << outputType.getRank()
+                           << ") must match";
+  }
+  for (int64_t dim=0; dim < outputType.getRank(); ++dim) {
+        if (getSize()[dim] != -1 && !outputType.isDynamicDim(dim) &&
+            getSize()[dim] != outputType.getShape()[dim]) {
+      return emitOpError() << "size attribute (" << getSize()[dim]
+                           << ") does not match output type ("
+                           << outputType.getShape()[dim] << ") in dimension "
+                           << dim;
+        }
   }
 
   if ((int64_t)getStart().size() != inputType.getRank()) {
@@ -809,13 +828,12 @@ mlir::LogicalResult tosa::SliceOp::verify() {
 
   for (int i = 0; i < outputType.getRank(); ++i) {
     auto dimSize = inputType.getShape()[i];
-    if (dimSize != ShapedType::kDynamic && getStart()[i] + getSize()[i] > inputType.getShape()[i]) {
-        return emitOpError() << "start (" << getStart()[i]
-                           << ") plus size ("
+    if (getSize()[i] != -1 && dimSize != ShapedType::kDynamic &&
+        getStart()[i] + getSize()[i] > inputType.getShape()[i]) {
+      return emitOpError() << "start (" << getStart()[i] << ") plus size ("
                            << getSize()[i]
                            << ") goes out of bounds of input size ("
-                           << inputType.getShape()[i]
-                           << ") in dimension " << i;
+                           << inputType.getShape()[i] << ") in dimension " << i;
     }
   }
   return mlir::success();

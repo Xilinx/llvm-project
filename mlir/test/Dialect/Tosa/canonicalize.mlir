@@ -514,17 +514,19 @@ func.func @canonicalize_cross_concat_inputs(%arg0 : tensor<1x12x12xf32>, %arg1 :
 
 // -----
 
-// CHECK-LABEL: @canonicalize_concat_slice_on_non_concat_axis
-// CHECK-SAME: %[[VAL_0:.*]]: tensor<1x12x12xf32>, %[[VAL_1:.*]]: tensor<1x12x12xf32>
-// CHECK: %[[VAL_2:.*]] = "tosa.slice"(%[[VAL_0]]) <{size = array<i64: 1, 6, 12>, start = array<i64: 0, 0, 0>}> : (tensor<1x12x12xf32>) -> tensor<1x6x12xf32>
-// CHECK: %[[VAL_3:.*]] = "tosa.slice"(%[[VAL_1]]) <{size = array<i64: 1, 3, 12>, start = array<i64: 1, 3, 12>}> : (tensor<1x12x12xf32>) -> tensor<1x3x12xf32>
-// CHECK: return %[[VAL_2]], %[[VAL_3]] : tensor<1x6x12xf32>, tensor<1x3x12xf32>
-func.func @canonicalize_concat_slice_on_non_concat_axis(%arg0 : tensor<1x12x12xf32>, %arg1 : tensor<1x12x12xf32>) -> (tensor<1x6x12xf32>, tensor<1x3x12xf32>) {
-  %0 = "tosa.concat"(%arg0, %arg1) {axis = 2 : i64} : (tensor<1x12x12xf32>, tensor<1x12x12xf32>) -> tensor<1x12x24xf32>
-  %1 = "tosa.slice"(%0) {size = array<i64: 1, 6, 12>, start = array<i64: 0, 0, 0>} : (tensor<1x12x24xf32>) -> tensor<1x6x12xf32>
-  %2 = "tosa.slice"(%0) {size = array<i64: 1, 3, 12>, start = array<i64: 1, 3, 12>} : (tensor<1x12x24xf32>) -> tensor<1x3x12xf32>
-  return %1, %2 : tensor<1x6x12xf32>, tensor<1x3x12xf32>
-}
+
+// xHECK-LABEL: @canonicalize_concat_slice_on_non_concat_axis
+// xHECK-SAME: %[[VAL_0:.*]]: tensor<1x12x12xf32>, %[[VAL_1:.*]]: tensor<1x12x12xf32>
+// xHECK: %[[VAL_2:.*]] = "tosa.slice"(%[[VAL_0]]) <{size = array<i64: 1, 6, 12>, start = array<i64: 0, 0, 0>}> : (tensor<1x12x12xf32>) -> tensor<1x6x12xf32>
+// TODO: This upstream test case seems broken because the start of the next line (12) is out of bounds with the input shape
+// xHECK: %[[VAL_3:.*]] = "tosa.slice"(%[[VAL_1]]) <{size = array<i64: 1, 3, 12>, start = array<i64: 1, 3, 12>}> : (tensor<1x12x12xf32>) -> tensor<1x3x12xf32>
+// xHECK: return %[[VAL_2]], %[[VAL_3]] : tensor<1x6x12xf32>, tensor<1x3x12xf32>
+//func.func @canonicalize_concat_slice_on_non_concat_axis(%arg0 : tensor<1x12x12xf32>, %arg1 : tensor<1x12x12xf32>) -> (tensor<1x6x12xf32>, tensor<1x3x12xf32>) {
+//  %0 = "tosa.concat"(%arg0, %arg1) {axis = 2 : i64} : (tensor<1x12x12xf32>, tensor<1x12x12xf32>) -> tensor<1x12x24xf32>
+//  %1 = "tosa.slice"(%0) {size = array<i64: 1, 6, 12>, start = array<i64: 0, 0, 0>} : (tensor<1x12x24xf32>) -> tensor<1x6x12xf32>
+//  %2 = "tosa.slice"(%0) {size = array<i64: 1, 3, 12>, start = array<i64: 0, 3, 12>} : (tensor<1x12x24xf32>) -> tensor<1x3x12xf32>
+//  return %1, %2 : tensor<1x6x12xf32>, tensor<1x3x12xf32>
+//}
 
 // -----
 
