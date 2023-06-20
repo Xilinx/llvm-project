@@ -274,7 +274,8 @@ static void getConstraintPredicates(pdl::ApplyNativeConstraintOp op,
                                     comparePosDepth);
   ResultRange results = op.getResults();
   PredicateBuilder::Predicate pred = builder.getConstraint(
-      op.getName(), allPositions, SmallVector<Type>(results.getTypes()));
+      op.getName(), allPositions, SmallVector<Type>(results.getTypes()),
+      op.getIsNegated());
 
   // for each result register a position so it can be used later
   for (auto result : llvm::enumerate(results)) {
