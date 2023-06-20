@@ -829,7 +829,7 @@ LogicalResult mlir::linalg::detail::verifyStructuredOpInterface(Operation *op) {
 
 FailureOr<OperatorClass> mlir::linalg::parseOperatorClass(StringRef str) {
   const auto symbolize = [](StringRef item) {
-    return llvm::StringSwitch<Optional<OperatorClass>>(item)
+    return llvm::StringSwitch<std::optional<OperatorClass>>(item)
         .Case("const", OperatorClass::Constant)
         .Case("generic", OperatorClass::Generic)
         .Case("el", OperatorClass::Elementwise)
@@ -838,7 +838,7 @@ FailureOr<OperatorClass> mlir::linalg::parseOperatorClass(StringRef str) {
         .Case("pool", OperatorClass::Pooling)
         .Case("pad", OperatorClass::Padding)
         .Case("bcast", OperatorClass::Broadcast)
-        .Default(llvm::None);
+        .Default(std::nullopt);
   };
 
   if (!str.startswith("[")) {

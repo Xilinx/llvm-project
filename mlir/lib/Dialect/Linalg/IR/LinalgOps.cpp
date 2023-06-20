@@ -967,7 +967,7 @@ void SubgraphOp::getEffects(SmallVectorImpl<MemoryEffect> &effects) {
   }
 }
 
-OperandRange SubgraphOp::getSuccessorEntryOperands(Optional<unsigned> index) {
+OperandRange SubgraphOp::getSuccessorEntryOperands(std::optional<unsigned> index) {
   assert(index.value() == 0 && "invalid region index");
 
   // The body takes the captured values.
@@ -975,7 +975,7 @@ OperandRange SubgraphOp::getSuccessorEntryOperands(Optional<unsigned> index) {
 }
 
 void SubgraphOp::getSuccessorRegions(
-    Optional<unsigned> index, ArrayRef<Attribute> operands,
+    std::optional<unsigned> index, ArrayRef<Attribute> operands,
     SmallVectorImpl<RegionSuccessor> &regions) {
   if (index.has_value()) {
     assert(index.value() == 0 && "invalid region index");
