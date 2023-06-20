@@ -3174,7 +3174,7 @@ Parser::createNativeCall(SMRange loc, StringRef nativeFuncName,
   if (failed(nativeFuncExpr))
     return emitError(nativeFuncName + " not found.");
 
-  if (isa<mlir::pdll::ast::RewriteStmt>(*nativeFuncExpr))
+  if (!(*nativeFuncExpr)->getType().isa<ast::RewriteType>())
     return emitError(nativeFuncName + " should be defined as a rewriter.");
 
   FailureOr<ast::CallExpr *> nativeCall =
