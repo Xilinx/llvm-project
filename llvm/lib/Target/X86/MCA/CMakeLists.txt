@@ -3,11 +3,12 @@ add_llvm_component_library(LLVMX86TargetMCA
 
   LINK_COMPONENTS
   MC
+  MCA
   MCParser
+  Support
+  TargetParser
   X86Desc
   X86Info
-  Support
-  MCA
 
   ADD_TO_COMPONENT
   X86

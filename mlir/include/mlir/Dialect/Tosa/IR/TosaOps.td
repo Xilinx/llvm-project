@@ -184,6 +184,36 @@ def Tosa_DepthwiseConv2DOp : Tosa_Op<"depthwise_conv2d", [
 }
 
 //===----------------------------------------------------------------------===//
+// Operator: fft2d
+//===----------------------------------------------------------------------===//
+def Tosa_FFT2dOp : Tosa_Op<"fft2d", [
+    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
+                              ["inferReturnTypeComponents"]>,
+    Pure]> {
+  let summary = "Performs FFT2D operation on the input.";
+
+  let description = [{
+    Performs a batched complex 2D Fast Fourier Transform over the input. The
+    complex input values are constructed from the corresponding values in the
+    input_real and input_imag tensors. The resulting values in the output are
+    split into the output_real and output_imag tensors. No normalization is
+    applied on either the forward or inverse versions of the operation.
+  }];
+
+  let arguments = (ins
+    Tosa_Tensor3D:$input_real,
+    Tosa_Tensor3D:$input_imag,
+
+    BoolAttr:$inverse
+  );
+
+  let results = (outs
+    Tosa_Tensor3D:$output_real,
+    Tosa_Tensor3D:$output_imag
+  );
+}
+
+//===----------------------------------------------------------------------===//
 // Operator: fully_connected
 //===----------------------------------------------------------------------===//
 def Tosa_FullyConnectedOp : Tosa_Op<"fully_connected", [
@@ -268,6 +298,34 @@ def Tosa_MaxPool2dOp : Tosa_Op<"max_pool2d", [
   );
 
   let hasCanonicalizer = 1;
+}
+
+//===----------------------------------------------------------------------===//
+// Operator: rfft2d
+//===----------------------------------------------------------------------===//
+def Tosa_RFFT2dOp : Tosa_Op<"rfft2d", [
+    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
+                              ["inferReturnTypeComponents"]>,
+    Pure]> {
+  let summary = "Performs RFFT2D operation on the input.";
+
+  let description = [{
+    Performs a batched 2D real-valued Fast Fourier Transform over the input where
+    the input tensor consists of real values producing complex valued output. The
+    complex output values will be split into the output_real and output_imag
+    tensor arguments. RFFT2D takes advantage of Hermitian symmetry to only
+    calculate the first half of the final output axis. Imaginary values with
+    locations (0,0), (0,W/2), (H/2,0) and (H/2,W/2) are zero.
+  }];
+
+  let arguments = (ins
+    Tosa_Tensor3D:$input
+  );
+
+  let results = (outs
+    Tosa_Tensor3D:$output_real,
+    Tosa_Tensor3D:$output_imag
+  );
 }
 
 //===----------------------------------------------------------------------===//
@@ -419,7 +477,6 @@ def Tosa_AddOp : Tosa_Op<"add", [
     Tosa_Tensor:$output
   );
 
-  let hasCanonicalizer = 1;
   let hasFolder = 1;
 }
 
@@ -738,7 +795,6 @@ def Tosa_MulOp : Tosa_Op<"mul", [
     Tosa_Tensor:$output
   );
 
-  let hasCanonicalizer = 1;
   let hasFolder = 1;
 }
 
@@ -1208,9 +1264,7 @@ def Tosa_GreaterEqualOp : Tosa_Op<"greater_equal", [
 // Operator: reduce_all
 //===----------------------------------------------------------------------===//
 def Tosa_ReduceAllOp : Tosa_Op<"reduce_all", [
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-                              ["inferReturnTypeComponents"]>,
-    Pure]> {
+    InferTensorType, Pure]> {
   let summary = "Reduce All operator";
 
   let description = [{
@@ -1227,15 +1281,19 @@ def Tosa_ReduceAllOp : Tosa_Op<"reduce_all", [
   );
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns true when two result types are compatible for this op;
+    /// Method used by InferTypeOpInterface.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
 }
 
 //===----------------------------------------------------------------------===//
 // Operator: reduce_any
 //===----------------------------------------------------------------------===//
 def Tosa_ReduceAnyOp : Tosa_Op<"reduce_any", [
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-                              ["inferReturnTypeComponents"]>,
-    Pure]> {
+    InferTensorType, Pure]> {
   let summary = "Reduce Any operator";
 
   let description = [{
@@ -1252,15 +1310,19 @@ def Tosa_ReduceAnyOp : Tosa_Op<"reduce_any", [
   );
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns true when two result types are compatible for this op;
+    /// Method used by InferTypeOpInterface.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
 }
 
 //===----------------------------------------------------------------------===//
 // Operator: reduce_max
 //===----------------------------------------------------------------------===//
 def Tosa_ReduceMaxOp : Tosa_Op<"reduce_max", [
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-                              ["inferReturnTypeComponents"]>,
-    Pure]> {
+    InferTensorType, Pure]> {
   let summary = "Reduce Max operator";
 
   let description = [{
@@ -1277,15 +1339,19 @@ def Tosa_ReduceMaxOp : Tosa_Op<"reduce_max", [
   );
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns true when two result types are compatible for this op;
+    /// Method used by InferTypeOpInterface.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
 }
 
 //===----------------------------------------------------------------------===//
 // Operator: reduce_min
 //===----------------------------------------------------------------------===//
 def Tosa_ReduceMinOp : Tosa_Op<"reduce_min", [
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-                              ["inferReturnTypeComponents"]>,
-    Pure]> {
+    InferTensorType, Pure]> {
   let summary = "Reduce Min operator";
 
   let description = [{
@@ -1302,15 +1368,19 @@ def Tosa_ReduceMinOp : Tosa_Op<"reduce_min", [
   );
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns true when two result types are compatible for this op;
+    /// Method used by InferTypeOpInterface.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
 }
 
 //===----------------------------------------------------------------------===//
 // Operator: reduce_prod
 //===----------------------------------------------------------------------===//
 def Tosa_ReduceProdOp : Tosa_Op<"reduce_prod", [
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-                              ["inferReturnTypeComponents"]>,
-    Pure]> {
+    InferTensorType, Pure]> {
   let summary = "Reduce Prod operator";
 
   let description = [{
@@ -1327,15 +1397,19 @@ def Tosa_ReduceProdOp : Tosa_Op<"reduce_prod", [
   );
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns true when two result types are compatible for this op;
+    /// Method used by InferTypeOpInterface.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
 }
 
 //===----------------------------------------------------------------------===//
 // Operator: reduce_sum
 //===----------------------------------------------------------------------===//
 def Tosa_ReduceSumOp : Tosa_Op<"reduce_sum", [
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-                              ["inferReturnTypeComponents"]>,
-    Pure]> {
+    InferTensorType, Pure]> {
   let summary = "Reduce Sum operator";
 
   let description = [{
@@ -1352,6 +1426,12 @@ def Tosa_ReduceSumOp : Tosa_Op<"reduce_sum", [
   );
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns true when two result types are compatible for this op;
+    /// Method used by InferTypeOpInterface.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
 }
 
 //===----------------------------------------------------------------------===//
@@ -1363,8 +1443,7 @@ def Tosa_ReduceSumOp : Tosa_Op<"reduce_sum", [
 // Operator: concat
 //===----------------------------------------------------------------------===//
 def Tosa_ConcatOp : Tosa_Op<"concat", [
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-                              ["inferReturnTypeComponents"]>,
+                              InferTensorType,
     Pure]> {
   let summary = "Concatenates tensors along one dimension.";
 
@@ -1383,6 +1462,12 @@ def Tosa_ConcatOp : Tosa_Op<"concat", [
   );
 
   let hasCanonicalizer = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns true when two result types are compatible for this op;
+    /// Method used by InferTypeOpInterface.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
   let hasFolder = 1;
 }
 
@@ -1434,10 +1519,11 @@ def Tosa_ReshapeOp: Tosa_Op<"reshape", [
 
   let hasCanonicalizer = 1;
   let hasFolder = 1;
+  let hasVerifier = 1;
 
   let arguments = (ins
     Tosa_Tensor:$input1,
-    I64ArrayAttr:$new_shape
+    DenseI64ArrayAttr:$new_shape
   );
 
   let results = (outs
@@ -1487,14 +1573,15 @@ def Tosa_SliceOp: Tosa_Op<"slice", [
 
   let arguments = (ins
     Tosa_Tensor1Dto6D:$input,
-    I64ArrayAttr:$start,
-    I64ArrayAttr:$size
+    DenseI64ArrayAttr:$start,
+    DenseI64ArrayAttr:$size
   );
 
   let results = (outs
     Tosa_Tensor1Dto6D:$output
   );
 
+  let hasCanonicalizer = 1;
   let hasFolder = 1;
 }
 
@@ -1513,7 +1600,7 @@ def Tosa_TileOp: Tosa_Op<"tile", [
 
   let arguments = (ins
     Tosa_Tensor1Dto4D:$input1,
-    I64ArrayAttr:$multiples);
+    DenseI64ArrayAttr:$multiples);
 
   let results = (outs
     Tosa_Tensor1Dto4D:$output
@@ -1543,6 +1630,10 @@ def Tosa_TransposeOp : Tosa_Op<"transpose", [
   let results = (
     outs Tosa_Tensor1Dto6D:$output
   );
+
+  let extraClassDeclaration = [{
+    LogicalResult getConstantPerms(llvm::SmallVector<int64_t> &perms);
+  }];
 
   let hasCanonicalizer = 1;
   let hasFolder = 1;
@@ -1675,14 +1766,16 @@ def Tosa_CastOp: Tosa_Op<"cast", [Pure,
         float to signed 16      float   int16
         signed 8 to float       int8    float
         signed 16 to float      int16   float
+        float 32 to float 64    float32 float64
+        float 64 to float 32    float64 float32
   }];
 
   let arguments = (ins
-    Tosa_Tensor:$input
+    Tosa_Tensor_Plus_F64:$input
   );
 
   let results = (outs
-    Tosa_Tensor:$output
+    Tosa_Tensor_Plus_F64:$output
   );
 
   let hasFolder = 1;
@@ -1719,8 +1812,8 @@ def Tosa_RescaleOp: Tosa_Op<"rescale", [Pure,
     Tosa_Tensor:$input,
     I32Attr:$input_zp,
     I32Attr:$output_zp,
-    I32ArrayAttr:$multiplier,
-    I32ArrayAttr:$shift,
+    DenseI32ArrayAttr:$multiplier,
+    DenseI32ArrayAttr:$shift,
     BoolAttr:$scale32,
     BoolAttr:$double_round,
     BoolAttr:$per_channel
@@ -1753,7 +1846,7 @@ def Tosa_ConstOp : Tosa_Op<"const", [ConstantLike, Pure,
   );
 
   let results = (outs
-    Tosa_Tensor:$output
+    Tosa_Tensor_Plus_F64:$output
   );
   let hasFolder = 1;
 }

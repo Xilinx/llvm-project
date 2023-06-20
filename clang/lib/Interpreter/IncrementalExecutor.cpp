@@ -43,15 +43,6 @@ IncrementalExecutor::IncrementalExecutor(llvm::orc::ThreadSafeContext &TSC,
     Err = JitOrErr.takeError();
     return;
   }
-
-  const char Pref = Jit->getDataLayout().getGlobalPrefix();
-  // Discover symbols from the process as a fallback.
-  if (auto PSGOrErr = DynamicLibrarySearchGenerator::GetForCurrentProcess(Pref))
-    Jit->getMainJITDylib().addGenerator(std::move(*PSGOrErr));
-  else {
-    Err = PSGOrErr.takeError();
-    return;
-  }
 }
 
 IncrementalExecutor::~IncrementalExecutor() {}
@@ -86,7 +77,7 @@ llvm::Error IncrementalExecutor::runCtors() const {
   return Jit->initialize(Jit->getMainJITDylib());
 }
 
-llvm::Expected<llvm::JITTargetAddress>
+llvm::Expected<llvm::orc::ExecutorAddr>
 IncrementalExecutor::getSymbolAddress(llvm::StringRef Name,
                                       SymbolNameKind NameKind) const {
   auto Sym = (NameKind == LinkerName) ? Jit->lookupLinkerMangled(Name)
@@ -94,7 +85,7 @@ IncrementalExecutor::getSymbolAddress(llvm::StringRef Name,
 
   if (!Sym)
     return Sym.takeError();
-  return Sym->getValue();
+  return Sym;
 }
 
 } // end namespace clang

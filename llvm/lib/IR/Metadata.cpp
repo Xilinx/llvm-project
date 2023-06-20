@@ -17,7 +17,6 @@
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -82,7 +81,7 @@ static Metadata *canonicalizeMetadataForValue(LLVMContext &Context,
                                               Metadata *MD) {
   if (!MD)
     // !{}
-    return MDNode::get(Context, None);
+    return MDNode::get(Context, std::nullopt);
 
   // Return early if this isn't a single-operand MDNode.
   auto *N = dyn_cast<MDNode>(MD);
@@ -91,7 +90,7 @@ static Metadata *canonicalizeMetadataForValue(LLVMContext &Context,
 
   if (!N->getOperand(0))
     // !{}
-    return MDNode::get(Context, None);
+    return MDNode::get(Context, std::nullopt);
 
   if (auto *C = dyn_cast<ConstantAsMetadata>(N->getOperand(0)))
     // Look through the MDNode.
@@ -196,9 +195,9 @@ SmallVector<Metadata *> ReplaceableMetadataImpl::getAllArgListUsers() {
   SmallVector<std::pair<OwnerTy, uint64_t> *> MDUsersWithID;
   for (auto Pair : UseMap) {
     OwnerTy Owner = Pair.second.first;
-    if (!Owner.is<Metadata *>())
+    if (!isa<Metadata *>(Owner))
       continue;
-    Metadata *OwnerMD = Owner.get<Metadata *>();
+    Metadata *OwnerMD = cast<Metadata *>(Owner);
     if (OwnerMD->getMetadataID() == Metadata::DIArgListKind)
       MDUsersWithID.push_back(&UseMap[Pair.first]);
   }
@@ -207,7 +206,7 @@ SmallVector<Metadata *> ReplaceableMetadataImpl::getAllArgListUsers() {
   });
   SmallVector<Metadata *> MDUsers;
   for (auto *UserWithID : MDUsersWithID)
-    MDUsers.push_back(UserWithID->first.get<Metadata *>());
+    MDUsers.push_back(cast<Metadata *>(UserWithID->first));
   return MDUsers;
 }
 
@@ -264,9 +263,9 @@ void ReplaceableMetadataImpl::SalvageDebugInfo(const Constant &C) {
     MetadataTracking::OwnerTy Owner = Pair.second.first;
     if (!Owner)
       continue;
-    if (!Owner.is<Metadata *>())
+    if (!isa<Metadata *>(Owner))
       continue;
-    auto *OwnerMD = dyn_cast<MDNode>(Owner.get<Metadata *>());
+    auto *OwnerMD = dyn_cast_if_present<MDNode>(cast<Metadata *>(Owner));
     if (!OwnerMD)
       continue;
     if (isa<DINode>(OwnerMD)) {
@@ -302,13 +301,13 @@ void ReplaceableMetadataImpl::replaceAllUsesWith(Metadata *MD) {
     }
 
     // Check for MetadataAsValue.
-    if (Owner.is<MetadataAsValue *>()) {
-      Owner.get<MetadataAsValue *>()->handleChangedMetadata(MD);
+    if (isa<MetadataAsValue *>(Owner)) {
+      cast<MetadataAsValue *>(Owner)->handleChangedMetadata(MD);
       continue;
     }
 
     // There's a Metadata owner -- dispatch.
-    Metadata *OwnerMD = Owner.get<Metadata *>();
+    Metadata *OwnerMD = cast<Metadata *>(Owner);
     switch (OwnerMD->getMetadataID()) {
 #define HANDLE_METADATA_LEAF(CLASS)                                            \
   case Metadata::CLASS##Kind:                                                  \
@@ -342,11 +341,11 @@ void ReplaceableMetadataImpl::resolveAllUses(bool ResolveUsers) {
     auto Owner = Pair.second.first;
     if (!Owner)
       continue;
-    if (Owner.is<MetadataAsValue *>())
+    if (isa<MetadataAsValue *>(Owner))
       continue;
 
     // Resolve MDNodes that point at this.
-    auto *OwnerMD = dyn_cast<MDNode>(Owner.get<Metadata *>());
+    auto *OwnerMD = dyn_cast_if_present<MDNode>(cast<Metadata *>(Owner));
     if (!OwnerMD)
       continue;
     if (OwnerMD->isResolved())
@@ -1545,7 +1544,7 @@ bool Instruction::extractProfTotalWeight(uint64_t &TotalVal) const {
        getOpcode() == Instruction::Switch) &&
       "Looking for branch weights on something besides branch");
 
-  return ::extractProfTotalWeight(getMetadata(LLVMContext::MD_prof), TotalVal);
+  return ::extractProfTotalWeight(*this, TotalVal);
 }
 
 void GlobalObject::copyMetadata(const GlobalObject *Other, unsigned Offset) {
@@ -1627,7 +1626,7 @@ DISubprogram *Function::getSubprogram() const {
   return cast_or_null<DISubprogram>(getMetadata(LLVMContext::MD_dbg));
 }
 
-bool Function::isDebugInfoForProfiling() const {
+bool Function::shouldEmitDebugInfoForProfiling() const {
   if (DISubprogram *SP = getSubprogram()) {
     if (DICompileUnit *CU = SP->getUnit()) {
       return CU->getDebugInfoForProfiling();

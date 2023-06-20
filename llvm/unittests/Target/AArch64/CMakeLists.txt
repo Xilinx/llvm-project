@@ -5,9 +5,9 @@ include_directories(
 
 set(LLVM_LINK_COMPONENTS
   AArch64CodeGen
-  AArch64Utils
   AArch64Desc
   AArch64Info
+  AArch64Utils
   AsmParser
   CodeGen
   Core
@@ -17,11 +17,13 @@ set(LLVM_LINK_COMPONENTS
   SelectionDAG
   Support
   Target
+  TargetParser
   )
 
 add_llvm_target_unittest(AArch64Tests
-  InstSizes.cpp
+  AArch64InstPrinterTest.cpp
   DecomposeStackOffsetTest.cpp
+  InstSizes.cpp
   MatrixRegisterAliasing.cpp
   SMEAttributesTest.cpp
   )

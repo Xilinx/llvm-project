@@ -179,6 +179,12 @@ bool operator==(S4 const &, S4 const &) = default; // expected-error{{not a frie
 struct S5;                         // expected-note 3{{forward declaration}}
 bool operator==(S5, S5) = default; // expected-error{{not a friend}} expected-error 2{{has incomplete type}}
 
+struct S6;
+bool operator==(const S6&, const S6&); // expected-note {{previous declaration}}
+struct S6 {
+    friend bool operator==(const S6&, const S6&) = default; // expected-error {{because it was already declared outside}}
+};
+
 enum e {};
 bool operator==(e, int) = default; // expected-error{{expected class or reference to a constant class}}
 
@@ -220,3 +226,26 @@ void f2() {
   (void)(b == 0);
 }
 } // namespace p2085_2
+
+namespace GH61417 {
+struct A {
+  unsigned x : 1;
+  unsigned   : 0;
+  unsigned y : 1;
+
+  constexpr A() : x(0), y(0) {}
+  bool operator==(const A& rhs) const noexcept = default;
+};
+
+void f1() {
+  constexpr A a, b;
+  constexpr bool c = (a == b); // no diagnostic, we should not be comparing the
+                               // unnamed bit-field which is indeterminate
+}
+
+void f2() {
+    A a, b;
+    bool c = (a == b); // no diagnostic nor crash during codegen attempting to
+                       // access info for unnamed bit-field
+}
+}

@@ -1,8 +1,17 @@
+import("//llvm/utils/TableGen/tablegen.gni")
 import("//third-party/unittest/unittest.gni")
+
+tablegen("GenVT") {
+  visibility = [ ":SupportTests" ]
+  args = [ "-gen-vt" ]
+  td_file = "//llvm/include/llvm/CodeGen/ValueTypes.td"
+}
 
 unittest("SupportTests") {
   deps = [
+    ":GenVT",
     "//llvm/lib/Support",
+    "//llvm/lib/TargetParser",
     "//llvm/lib/Testing/Support",
   ]
   sources = [
@@ -11,7 +20,6 @@ unittest("SupportTests") {
     "AlignOfTest.cpp",
     "AlignmentTest.cpp",
     "AllocatorTest.cpp",
-    "AnnotationsTest.cpp",
     "ArrayRecyclerTest.cpp",
     "BLAKE3Test.cpp",
     "Base64Test.cpp",
@@ -20,7 +28,6 @@ unittest("SupportTests") {
     "BranchProbabilityTest.cpp",
     "CRCTest.cpp",
     "CSKYAttributeParserTest.cpp",
-    "CSKYTargetParserTest.cpp",
     "CachePruningTest.cpp",
     "Casting.cpp",
     "CheckedArithmeticTest.cpp",
@@ -33,6 +40,7 @@ unittest("SupportTests") {
     "DataExtractorTest.cpp",
     "DebugCounterTest.cpp",
     "DebugTest.cpp",
+    "DivisionByConstantTest.cpp",
     "ELFAttributeParserTest.cpp",
     "EndianStreamTest.cpp",
     "EndianTest.cpp",
@@ -44,21 +52,18 @@ unittest("SupportTests") {
     "FileCollectorTest.cpp",
     "FileOutputBufferTest.cpp",
     "FileUtilitiesTest.cpp",
-    "FormatChkTest.cpp",
     "FormatVariadicTest.cpp",
     "GlobPatternTest.cpp",
     "HashBuilderTest.cpp",
-    "Host.cpp",
     "IndexedAccessorTest.cpp",
     "InstructionCostTest.cpp",
-    "ItaniumManglingCanonicalizerTest.cpp",
     "JSONTest.cpp",
     "KnownBitsTest.cpp",
     "LEB128Test.cpp",
     "LineIteratorTest.cpp",
-    "LinearPolyBaseTest.cpp",
     "LockFileManagerTest.cpp",
     "MD5Test.cpp",
+    "MVTTest.cpp",
     "ManagedStatic.cpp",
     "MatchersTest.cpp",
     "MathExtrasTest.cpp",
@@ -72,6 +77,7 @@ unittest("SupportTests") {
     "ProcessTest.cpp",
     "ProgramTest.cpp",
     "RISCVAttributeParserTest.cpp",
+    "RISCVISAInfoTest.cpp",
     "RegexTest.cpp",
     "ReplaceFileTest.cpp",
     "ReverseIterationTest.cpp",
@@ -82,11 +88,8 @@ unittest("SupportTests") {
     "SpecialCaseListTest.cpp",
     "SuffixTreeTest.cpp",
     "SwapByteOrderTest.cpp",
-    "SymbolRemappingReaderTest.cpp",
     "TarWriterTest.cpp",
-    "TargetParserTest.cpp",
     "TaskQueueTest.cpp",
-    "ThreadLocalTest.cpp",
     "ThreadPool.cpp",
     "Threading.cpp",
     "TimeProfilerTest.cpp",
@@ -95,6 +98,7 @@ unittest("SupportTests") {
     "TrailingObjectsTest.cpp",
     "TrigramIndexTest.cpp",
     "TypeNameTest.cpp",
+    "TypeSizeTest.cpp",
     "TypeTraitsTest.cpp",
     "UnicodeTest.cpp",
     "VersionTupleTest.cpp",

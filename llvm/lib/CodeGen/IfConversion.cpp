@@ -189,11 +189,11 @@ namespace {
     std::vector<BBInfo> BBAnalysis;
     TargetSchedModel SchedModel;
 
-    const TargetLoweringBase *TLI;
-    const TargetInstrInfo *TII;
-    const TargetRegisterInfo *TRI;
-    const MachineBranchProbabilityInfo *MBPI;
-    MachineRegisterInfo *MRI;
+    const TargetLoweringBase *TLI = nullptr;
+    const TargetInstrInfo *TII = nullptr;
+    const TargetRegisterInfo *TRI = nullptr;
+    const MachineBranchProbabilityInfo *MBPI = nullptr;
+    MachineRegisterInfo *MRI = nullptr;
 
     LivePhysRegs Redefs;
 
@@ -2243,6 +2243,15 @@ void IfConverter::MergeBlocks(BBInfo &ToBBI, BBInfo &FromBBI, bool AddEdges) {
   MachineBasicBlock &FromMBB = *FromBBI.BB;
   assert(!FromMBB.hasAddressTaken() &&
          "Removing a BB whose address is taken!");
+
+  // If we're about to splice an INLINEASM_BR from FromBBI, we need to update
+  // ToBBI's successor list accordingly.
+  if (FromMBB.mayHaveInlineAsmBr())
+    for (MachineInstr &MI : FromMBB)
+      if (MI.getOpcode() == TargetOpcode::INLINEASM_BR)
+        for (MachineOperand &MO : MI.operands())
+          if (MO.isMBB() && !ToBBI.BB->isSuccessor(MO.getMBB()))
+            ToBBI.BB->addSuccessor(MO.getMBB(), BranchProbability::getZero());
 
   // In case FromMBB contains terminators (e.g. return instruction),
   // first move the non-terminator instructions, then the terminators.

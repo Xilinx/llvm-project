@@ -4,10 +4,12 @@ include_directories(
   )
 
 set(LLVM_LINK_COMPONENTS
-  PowerPC
-  Exegesis
   Core
+  Exegesis
+  MC
+  PowerPC
   Support
+  TargetParser
   )
 
 add_llvm_library(LLVMExegesisPowerPC
