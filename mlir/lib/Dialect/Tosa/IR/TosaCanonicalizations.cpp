@@ -1065,7 +1065,28 @@ OpFoldResult tosa::AbsOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
+static bool hasZeroSize(Type ty) {
+  auto ranked = dyn_cast<RankedTensorType>(ty);
+  if (!ranked)
+    return false;
+  return any_of(ranked.getShape(), [](auto d) { return d == 0; });
+}
+
 OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
+  /// Remove operands that have zero elements.
+  bool changed = false;
+  for (size_t i = 0; i < getInput1().size(); ) {
+    auto input = getInput1()[i];
+    if (hasZeroSize(input.getType())) {
+      getInput1Mutable().erase(i);
+      changed = true;
+    } else {
+      ++i;
+    }
+  }
+  if (changed)
+    return getResult();
+
   // Fold consecutive concats on the same axis into a single op.
   // Keep track of the operands so we are able to construct a new concat
   // later. Conservatively assume that we double the number of operands when

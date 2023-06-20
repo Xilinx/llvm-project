@@ -388,23 +388,23 @@ createLinalgBodyCalculationForElementwiseOp(Operation *op, ValueRange args,
 
   if (isa<tosa::ClampOp>(op) && isa<IntegerType>(elementTy)) {
     auto intTy = cast<IntegerType>(elementTy);
-    int32_t min = static_cast<int32_t>(
-        cast<IntegerAttr>(op->getAttr("min_int")).getValue().getSExtValue());
-    int32_t max = static_cast<int32_t>(
-        cast<IntegerAttr>(op->getAttr("max_int")).getValue().getSExtValue());
+    int64_t min =
+        cast<IntegerAttr>(op->getAttr("min_int")).getValue().getSExtValue();
+    int64_t max =
+        cast<IntegerAttr>(op->getAttr("max_int")).getValue().getSExtValue();
 
     if (intTy.isUnsignedInteger()) {
-      min = std::max<int32_t>(min, 0);
-      max = std::min<int32_t>(
+      min = std::max(min, (int64_t)0);
+      max = std::min(
           max,
           APInt::getMaxValue(intTy.getIntOrFloatBitWidth()).getSExtValue());
     } else {
-      min = std::max<int32_t>(
-          min, APInt::getSignedMinValue(intTy.getIntOrFloatBitWidth())
-                   .getSExtValue());
-      max = std::min<int32_t>(
-          max, APInt::getSignedMaxValue(intTy.getIntOrFloatBitWidth())
-                   .getSExtValue());
+      min =
+          std::max(min, APInt::getSignedMinValue(intTy.getIntOrFloatBitWidth())
+                            .getSExtValue());
+      max =
+          std::min(max, APInt::getSignedMaxValue(intTy.getIntOrFloatBitWidth())
+                            .getSExtValue());
     }
 
     auto minVal = rewriter.create<arith::ConstantIntOp>(
@@ -478,15 +478,32 @@ createLinalgBodyCalculationForElementwiseOp(Operation *op, ValueRange args,
     }
 
     if (arith::FPToSIOp::areCastCompatible(srcTy, dstTy)) {
-      auto intMin = rewriter.create<arith::ConstantOp>(
+      Value intMin = rewriter.create<arith::ConstantOp>(
           loc, rewriter.getF32FloatAttr(
                    APInt::getSignedMinValue(dstTy.getIntOrFloatBitWidth())
                        .getSExtValue()));
 
-      auto intMax = rewriter.create<arith::ConstantOp>(
+      Value intMax = rewriter.create<arith::ConstantOp>(
           loc, rewriter.getF32FloatAttr(
                    APInt::getSignedMaxValue(dstTy.getIntOrFloatBitWidth())
                        .getSExtValue()));
+
+      // Since F32 constants are created, we may still need to convert them to
+      // the correct type.
+      auto convertType = [&](Type ty, Value arg) {
+        auto argTy = arg.getType();
+        bool bitExtend =
+            argTy.getIntOrFloatBitWidth() < ty.getIntOrFloatBitWidth();
+        if (ty != argTy) {
+          if (!bitExtend)
+            arg = rewriter.create<arith::TruncFOp>(loc, ty, arg);
+          else
+            arg = rewriter.create<arith::ExtFOp>(loc, ty, arg);
+        }
+        return arg;
+      };
+      intMin = convertType(srcTy, intMin);
+      intMax = convertType(srcTy, intMax);
 
       auto rounded = rewriter.create<math::RoundEvenOp>(loc, args[0]);
 
@@ -510,6 +527,18 @@ createLinalgBodyCalculationForElementwiseOp(Operation *op, ValueRange args,
 
     if (isa<IntegerType>(srcTy) && isa<IntegerType>(dstTy) && !bitExtend) {
       return rewriter.create<arith::TruncIOp>(loc, dstTy, args[0]);
+    }
+  }
+
+  // tosa::CustomOp
+  if (auto customOp = dyn_cast<tosa::CustomOp>(op)) {
+    // Only legalize tosa.custom_op's that are marked as implementable with
+    // 'linalg.generic' by looking at the 'implementation_attrs' attribute
+    auto implementationAttr = customOp.getImplementationAttrs();
+    if (implementationAttr == "linalg.generic") {
+      OperationState state(loc, customOp.getIdentifierAttr(), args,
+                           resultTypes);
+      return rewriter.create(state)->getResult(0);
     }
   }
 
@@ -2231,6 +2260,7 @@ void mlir::tosa::populateTosaToLinalgConversionPatterns(
       PointwiseConverter<tosa::FloorOp>,
       PointwiseConverter<tosa::ClampOp>,
       PointwiseConverter<tosa::SigmoidOp>,
+      PointwiseConverter<tosa::CustomOp>,
       IdentityNConverter<tosa::IdentityOp>,
       ReduceConverter<tosa::ReduceAllOp>,
       ReduceConverter<tosa::ReduceAnyOp>,

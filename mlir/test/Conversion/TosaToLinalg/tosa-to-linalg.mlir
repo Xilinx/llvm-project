@@ -274,6 +274,17 @@ func.func @test_simple_f16(%arg0: tensor<1xf16>) -> () {
   // CHECK: arith.extf
   %0 = "tosa.cast"(%arg0) : (tensor<1xf16>) -> tensor<1xf32>
 
+  // CHECK: linalg.generic
+  // CHECK: %[[C_LOWEST:.+]] = arith.constant -2.14748365E+9
+  // CHECK: %[[C_MAX:.+]] = arith.constant 2.14748365E+9
+  // CHECK: arith.truncf %[[C_LOWEST]] : f32 to f16
+  // CHECK: arith.truncf %[[C_MAX]] : f32 to f16
+  // CHECK: math.roundeven
+  // CHECK: arith.minf
+  // CHECK: arith.maxf
+  // CHECK: arith.fptosi
+  %1 = "tosa.cast"(%arg0) : (tensor<1xf16>) -> tensor<1xi32>
+
   return
 }
 
@@ -1412,6 +1423,34 @@ func.func @select_fp32(%arg0: tensor<1x1x5x5xi1>, %arg1: tensor<1x12x5x5xf32>, %
   return %0 : tensor<1x12x5x5xf32>
 }
 
+// -----
+
+// CHECK-LABEL: @test_custom_ops
+func.func @test_custom_ops(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> () {
+  // CHECK: linalg.generic
+  // CHECK: math.sin
+  // CHECK: linalg.generic
+  // CHECK: math.atan2
+  %2 = "tosa.custom"(%arg0) <{config = "UNDEF", identifier = "math.sin", implementation_attrs = "linalg.generic"}> : (tensor<1xf32>) -> tensor<1xf32>
+  %3 = "tosa.custom"(%arg0, %arg1) <{config = "UNDEF", identifier = "math.atan2", implementation_attrs = "linalg.generic"}> : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+
+  return
+}
+
+
+// -----
+
+// CHECK-LABEL: @test_custom_ops_dyn
+func.func @test_custom_ops_dyn(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> () {
+  // CHECK: linalg.generic
+  // CHECK: math.cos
+  // CHECK: linalg.generic
+  // CHECK: math.atan2
+  %2 = "tosa.custom"(%arg0) <{config = "UNDEF", identifier = "math.cos", implementation_attrs = "linalg.generic"}> : (tensor<?xf32>) -> tensor<?xf32>
+  %3 = "tosa.custom"(%arg0, %arg1) <{config = "UNDEF", identifier = "math.atan2", implementation_attrs = "linalg.generic"}> : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+
+  return
+}
 // -----
 
 // CHECK: #[[$MAP0:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d3, d4)>
