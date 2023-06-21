@@ -2882,7 +2882,7 @@ Parser::createNativeCall(SMRange loc, StringRef nativeFuncName,
 
   FailureOr<ast::Expr *> nativeFuncExpr = parseDeclRefExpr(nativeFuncName, loc);
   if (failed(nativeFuncExpr))
-    return emitError(nativeFuncName + " not found.");
+    return failure();
 
   if (!(*nativeFuncExpr)->getType().isa<ast::RewriteType>())
     return emitError(nativeFuncName + " should be defined as a rewriter.");
@@ -2892,7 +2892,7 @@ Parser::createNativeCall(SMRange loc, StringRef nativeFuncName,
   if (failed(nativeCall))
     return failure();
 
-  // Create a unique anonymous name to use, as the name for this decl is not
+  // Create a unique anonymous name declaration to use, as its name is not
   // important.
   std::string anonName =
       llvm::formatv("{0}_{1}", nativeFuncName, anonymousDeclNameCounter++)
