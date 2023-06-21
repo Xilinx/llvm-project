@@ -54,7 +54,6 @@ public:
 
     /// General keywords.
     kw_Attr,
-    kw_Array,
     kw_erase,
     kw_let,
     kw_Constraint,

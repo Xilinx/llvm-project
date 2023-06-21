@@ -173,6 +173,14 @@ Pattern RewriteOneEntryDictionary {
   };
 }
 
+// -----
+
+// Rewriter helpers declarations.
+Rewrite createDictionaryAttr() -> Attr;
+Rewrite addEntryToDictionaryAttr(dict: Attr, attrName: Attr, attr : Attr) -> Attr;
+Rewrite createArrayAttr() -> Attr;
+Rewrite addElemToArrayAttr(arrayAttr: Attr, newElement: Attr) -> Attr;
+
 // CHECK-LABEL:   pdl.pattern @RewriteMultipleEntriesDictionary
 // CHECK:           %[[VAL_1:.*]] = operation "test.op"
 // CHECK:           %[[VAL_2:.*]] = attribute = "test2"
@@ -198,6 +206,14 @@ Pattern RewriteMultipleEntriesDictionary {
   };
 }
 
+// -----
+
+// Rewriter helpers declarations.
+Rewrite createDictionaryAttr() -> Attr;
+Rewrite addEntryToDictionaryAttr(dict: Attr, attrName: Attr, attr : Attr) -> Attr;
+Rewrite createArrayAttr() -> Attr;
+Rewrite addElemToArrayAttr(arrayAttr: Attr, newElement: Attr) -> Attr;
+
 // CHECK-LABEL:   pdl.pattern @RewriteOneDictionaryArrayAttr
 // CHECK:           %[[VAL_1:.*]] = operation "test.op"
 // CHECK:           rewrite %[[VAL_1]] {
@@ -212,10 +228,18 @@ Pattern RewriteMultipleEntriesDictionary {
 Pattern RewriteOneDictionaryArrayAttr {
   let root = op<test.op> -> ();
   rewrite root with {
-      let newRoot = op<test.success>() { some_array = array[{"firstAttr" = attr<"\"test1\"">}]} -> ();
+      let newRoot = op<test.success>() { some_array = [ {"firstAttr" = attr<"\"test1\"">}]} -> ();
       replace root with newRoot;
   };
 }
+
+// -----
+
+// Rewriter helpers declarations.
+Rewrite createDictionaryAttr() -> Attr;
+Rewrite addEntryToDictionaryAttr(dict: Attr, attrName: Attr, attr : Attr) -> Attr;
+Rewrite createArrayAttr() -> Attr;
+Rewrite addElemToArrayAttr(arrayAttr: Attr, newElement: Attr) -> Attr;
 
 // CHECK-LABEL:   pdl.pattern @RewriteMultiplyElementsArrayAttr
 // CHECK:           %[[VAL_1:.*]] = operation "test.op"
@@ -234,7 +258,7 @@ Pattern RewriteMultiplyElementsArrayAttr {
   let root = op<test.op> -> ();
   let attr2 = attr<"\"test2\"">;
   rewrite root with {
-      let newRoot = op<test.success>() { some_array = array[{"firstAttr" = attr<"\"test1\"">}, attr2]} -> ();
+      let newRoot = op<test.success>() { some_array = [ {"firstAttr" = attr<"\"test1\"">}, attr2]} -> ();
       replace root with newRoot;
   };
 }

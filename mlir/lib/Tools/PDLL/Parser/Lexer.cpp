@@ -329,7 +329,6 @@ Token Lexer::lexIdentifier(const char *tokStart) {
                          .Case("Value", Token::kw_Value)
                          .Case("ValueRange", Token::kw_ValueRange)
                          .Case("with", Token::kw_with)
-                         .Case("array", Token::kw_Array)
                          .Case("_", Token::underscore)
                          .Default(Token::identifier);
   return Token(kind, str);
@@ -379,7 +378,7 @@ Token Lexer::lexString(const char *tokStart, bool isStringBlock) {
       --curPtr;
 
       StringRef expectedEndStr = isStringBlock ? "}]" : "\"";
-      return emitError(curPtr - 1,
+      return emitError(tokStart,
                        "expected '" + expectedEndStr + "' in string literal");
     }
 

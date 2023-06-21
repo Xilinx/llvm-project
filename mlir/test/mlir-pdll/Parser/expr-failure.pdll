@@ -218,6 +218,29 @@ Pattern {
 
 // -----
 
+Pattern {
+  let root = op<func.func> -> ();
+  // CHECK: expected expression. If you are trying to create an ArrayAttr, use a space between `[` and `{`.
+  rewrite root with {
+      let newRoot = op<func.func>() { some_array =  [{"firstAttr" = attr<"\"test\"">}]} -> ();
+      replace root with newRoot;
+  };;
+}
+
+
+// -----
+
+Pattern {
+  let root = op<func.func> -> ();
+  // CHECK: expected '}]' in string literal
+  rewrite root with {
+      let newRoot = op<func.func>() { some_array =  [{"firstAttr" = attr<"\"test\"">}, attr<"\"test\"">]} -> ();
+      replace root with newRoot;
+  };;
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // `op` Expr
 //===----------------------------------------------------------------------===//
