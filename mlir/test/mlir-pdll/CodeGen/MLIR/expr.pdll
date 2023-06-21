@@ -178,8 +178,6 @@ Pattern RewriteOneEntryDictionary {
 // Rewriter helpers declarations.
 Rewrite createDictionaryAttr() -> Attr;
 Rewrite addEntryToDictionaryAttr(dict: Attr, attrName: Attr, attr : Attr) -> Attr;
-Rewrite createArrayAttr() -> Attr;
-Rewrite addElemToArrayAttr(arrayAttr: Attr, newElement: Attr) -> Attr;
 
 // CHECK-LABEL:   pdl.pattern @RewriteMultipleEntriesDictionary
 // CHECK:           %[[VAL_1:.*]] = operation "test.op"

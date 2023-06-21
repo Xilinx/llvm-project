@@ -318,7 +318,7 @@ private:
   FailureOr<ast::Expr *> parseAttributeExpr();
   FailureOr<ast::Expr *> parseCallExpr(ast::Expr *parentExpr);
   FailureOr<ast::Expr *> parseDeclRefExpr(StringRef name, SMRange loc);
-  FailureOr<ast::Expr *> parseDictExpr();
+  FailureOr<ast::Expr *> parseDictAttrExpr();
   FailureOr<ast::Expr *> parseIdentifierExpr();
   FailureOr<ast::Expr *> parseInlineConstraintLambdaExpr();
   FailureOr<ast::Expr *> parseInlineRewriteLambdaExpr();
@@ -1824,7 +1824,7 @@ FailureOr<ast::Expr *> Parser::parseExpr() {
     lhsExpr = parseTupleExpr();
     break;
   case Token::l_brace:
-    lhsExpr = parseDictExpr();
+    lhsExpr = parseDictAttrExpr();
     break;
   case Token::l_square:
     lhsExpr = parseArrayAttrExpr();
@@ -1947,7 +1947,7 @@ FailureOr<ast::Expr *> Parser::parseDeclRefExpr(StringRef name, SMRange loc) {
   return createDeclRefExpr(loc, decl);
 }
 
-FailureOr<ast::Expr *> Parser::parseDictExpr() {
+FailureOr<ast::Expr *> Parser::parseDictAttrExpr() {
   consumeToken(Token::l_brace);
   SMRange loc = curToken.getLoc();
 
