@@ -31,8 +31,8 @@
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Parser.h"
-#include <string>
 #include <optional>
+#include <string>
 
 using namespace mlir;
 using namespace mlir::pdll;
@@ -324,6 +324,7 @@ private:
   FailureOr<ast::Expr *> parseInlineConstraintLambdaExpr();
   FailureOr<ast::Expr *> parseInlineRewriteLambdaExpr();
   FailureOr<ast::Expr *> parseMemberAccessExpr(ast::Expr *parentExpr);
+  FailureOr<ast::Expr *> parseNegatedExpr();
   FailureOr<ast::OpNameDecl *> parseOperationName(bool allowEmptyName = false);
   FailureOr<ast::OpNameDecl *> parseWrappedOperationName(bool allowEmptyName);
   FailureOr<ast::Expr *>
@@ -1830,6 +1831,9 @@ FailureOr<ast::Expr *> Parser::parseExpr() {
   case Token::l_square:
     lhsExpr = parseArrayAttrExpr();
     break;
+  case Token::exclam:
+    lhsExpr = parseNegatedExpr();
+    break;
   case Token::string_block:
     return emitError("expected expression. If you are trying to create an "
                      "ArrayAttr, use a space between `[` and `{`.");
@@ -1845,11 +1849,11 @@ FailureOr<ast::Expr *> Parser::parseExpr() {
     case Token::dot:
       lhsExpr = parseMemberAccessExpr(*lhsExpr);
       break;
-    case Token::exclam:
-      // TODO: Fx: This parses the "!" as suffix instead of prefix.
-      consumeToken(Token::exclam);
-      lhsExpr = parseCallExpr(*lhsExpr, /*isNegated = */ true);
-      break;
+    // case Token::exclam:
+    //   // TODO: Fx: This parses the "!" as suffix instead of prefix.
+    //   consumeToken(Token::exclam);
+    //   lhsExpr = parseCallExpr(*lhsExpr, /*isNegated = */ true);
+    //   break;
     case Token::l_paren:
       lhsExpr = parseCallExpr(*lhsExpr);
       break;
@@ -2066,6 +2070,16 @@ FailureOr<ast::Expr *> Parser::parseMemberAccessExpr(ast::Expr *parentExpr) {
   consumeToken();
 
   return createMemberAccessExpr(parentExpr, memberName, loc);
+}
+
+FailureOr<ast::Expr *> Parser::parseNegatedExpr() {
+  consumeToken(Token::exclam);
+  if (!curToken.is(Token::identifier))
+    return emitError("expected native constraint");
+  FailureOr<ast::Expr *> identifierExpr = parseIdentifierExpr();
+  if (failed(identifierExpr))
+    return failure();
+  return parseCallExpr(*identifierExpr, /*isNegated = */ true);
 }
 
 FailureOr<ast::OpNameDecl *> Parser::parseOperationName(bool allowEmptyName) {
