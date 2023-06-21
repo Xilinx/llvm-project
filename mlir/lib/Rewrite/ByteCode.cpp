@@ -1449,7 +1449,6 @@ void ByteCodeExecutor::executeApplyConstraint(PatternRewriter &rewriter) {
     LogicalResult rewriteResult = constraintFn(rewriter, args);
     // Depending on the constraint jump to the proper destination.
     ByteCodeField isNegated = read();
-    llvm::dbgs() << "  * isNegated: " << isNegated;
     selectJump(isNegated != succeeded(rewriteResult));
   } else {
     const PDLRewriteFunction &constraintFn = rewriteFunctions[fun_idx];
@@ -1478,7 +1477,6 @@ void ByteCodeExecutor::executeApplyConstraint(PatternRewriter &rewriter) {
     }
     // Depending on the constraint jump to the proper destination.
     ByteCodeField isNegated = read();
-    llvm::dbgs() << "  * isNegated: " << isNegated;
     selectJump(isNegated != succeeded(rewriteResult));
   }
 }
