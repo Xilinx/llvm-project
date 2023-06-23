@@ -1849,11 +1849,6 @@ FailureOr<ast::Expr *> Parser::parseExpr() {
     case Token::dot:
       lhsExpr = parseMemberAccessExpr(*lhsExpr);
       break;
-    // case Token::exclam:
-    //   // TODO: Fx: This parses the "!" as suffix instead of prefix.
-    //   consumeToken(Token::exclam);
-    //   lhsExpr = parseCallExpr(*lhsExpr, /*isNegated = */ true);
-    //   break;
     case Token::l_paren:
       lhsExpr = parseCallExpr(*lhsExpr);
       break;
@@ -2825,6 +2820,8 @@ Parser::createCallExpr(SMRange loc, ast::Expr *parentExpr,
     if (isa<ast::UserConstraintDecl>(callableDecl))
       return emitError(
           loc, "unable to invoke `Constraint` within a rewrite section");
+    if (isNegated)
+      return emitError(loc, "negation of Rewrites is not supported");
   } else if (isa<ast::UserRewriteDecl>(callableDecl)) {
     return emitError(loc, "unable to invoke `Rewrite` within a match section");
   }
