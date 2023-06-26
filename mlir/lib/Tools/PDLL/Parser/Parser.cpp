@@ -31,8 +31,8 @@
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Parser.h"
-#include <string>
 #include <optional>
+#include <string>
 
 using namespace mlir;
 using namespace mlir::pdll;
@@ -316,13 +316,15 @@ private:
   /// Identifier expressions.
   FailureOr<ast::Expr *> parseArrayAttrExpr();
   FailureOr<ast::Expr *> parseAttributeExpr();
-  FailureOr<ast::Expr *> parseCallExpr(ast::Expr *parentExpr);
+  FailureOr<ast::Expr *> parseCallExpr(ast::Expr *parentExpr,
+                                       bool isNegated = false);
   FailureOr<ast::Expr *> parseDeclRefExpr(StringRef name, SMRange loc);
   FailureOr<ast::Expr *> parseDictAttrExpr();
   FailureOr<ast::Expr *> parseIdentifierExpr();
   FailureOr<ast::Expr *> parseInlineConstraintLambdaExpr();
   FailureOr<ast::Expr *> parseInlineRewriteLambdaExpr();
   FailureOr<ast::Expr *> parseMemberAccessExpr(ast::Expr *parentExpr);
+  FailureOr<ast::Expr *> parseNegatedExpr();
   FailureOr<ast::OpNameDecl *> parseOperationName(bool allowEmptyName = false);
   FailureOr<ast::OpNameDecl *> parseWrappedOperationName(bool allowEmptyName);
   FailureOr<ast::Expr *>
@@ -406,7 +408,7 @@ private:
 
   FailureOr<ast::CallExpr *>
   createCallExpr(SMRange loc, ast::Expr *parentExpr,
-                 MutableArrayRef<ast::Expr *> arguments);
+                 MutableArrayRef<ast::Expr *> arguments, bool isNegated);
   FailureOr<ast::DeclRefExpr *> createDeclRefExpr(SMRange loc, ast::Decl *decl);
   FailureOr<ast::DeclRefExpr *>
   createInlineVariableExpr(ast::Type type, StringRef name, SMRange loc,
@@ -1829,6 +1831,9 @@ FailureOr<ast::Expr *> Parser::parseExpr() {
   case Token::l_square:
     lhsExpr = parseArrayAttrExpr();
     break;
+  case Token::exclam:
+    lhsExpr = parseNegatedExpr();
+    break;
   case Token::string_block:
     return emitError("expected expression. If you are trying to create an "
                      "ArrayAttr, use a space between `[` and `{`.");
@@ -1912,7 +1917,8 @@ FailureOr<ast::Expr *> Parser::parseAttributeExpr() {
   return ast::AttributeExpr::create(ctx, loc, attrExpr);
 }
 
-FailureOr<ast::Expr *> Parser::parseCallExpr(ast::Expr *parentExpr) {
+FailureOr<ast::Expr *> Parser::parseCallExpr(ast::Expr *parentExpr,
+                                             bool isNegated) {
   consumeToken(Token::l_paren);
 
   // Parse the arguments of the call.
@@ -1936,7 +1942,7 @@ FailureOr<ast::Expr *> Parser::parseCallExpr(ast::Expr *parentExpr) {
   if (failed(parseToken(Token::r_paren, "expected `)` after argument list")))
     return failure();
 
-  return createCallExpr(loc, parentExpr, arguments);
+  return createCallExpr(loc, parentExpr, arguments, isNegated);
 }
 
 FailureOr<ast::Expr *> Parser::parseDeclRefExpr(StringRef name, SMRange loc) {
@@ -2059,6 +2065,16 @@ FailureOr<ast::Expr *> Parser::parseMemberAccessExpr(ast::Expr *parentExpr) {
   consumeToken();
 
   return createMemberAccessExpr(parentExpr, memberName, loc);
+}
+
+FailureOr<ast::Expr *> Parser::parseNegatedExpr() {
+  consumeToken(Token::exclam);
+  if (!curToken.is(Token::identifier))
+    return emitError("expected native constraint");
+  FailureOr<ast::Expr *> identifierExpr = parseIdentifierExpr();
+  if (failed(identifierExpr))
+    return failure();
+  return parseCallExpr(*identifierExpr, /*isNegated = */ true);
 }
 
 FailureOr<ast::OpNameDecl *> Parser::parseOperationName(bool allowEmptyName) {
@@ -2789,7 +2805,8 @@ Parser::validateTypeRangeConstraintExpr(const ast::Expr *typeExpr) {
 
 FailureOr<ast::CallExpr *>
 Parser::createCallExpr(SMRange loc, ast::Expr *parentExpr,
-                       MutableArrayRef<ast::Expr *> arguments) {
+                       MutableArrayRef<ast::Expr *> arguments,
+                       bool isNegated = false) {
   ast::Type parentType = parentExpr->getType();
 
   ast::CallableDecl *callableDecl = tryExtractCallableDecl(parentExpr);
@@ -2803,6 +2820,8 @@ Parser::createCallExpr(SMRange loc, ast::Expr *parentExpr,
     if (isa<ast::UserConstraintDecl>(callableDecl))
       return emitError(
           loc, "unable to invoke `Constraint` within a rewrite section");
+    if (isNegated)
+      return emitError(loc, "negation of Rewrites is not supported");
   } else if (isa<ast::UserRewriteDecl>(callableDecl)) {
     return emitError(loc, "unable to invoke `Rewrite` within a match section");
   }
@@ -2835,7 +2854,7 @@ Parser::createCallExpr(SMRange loc, ast::Expr *parentExpr,
   }
 
   return ast::CallExpr::create(ctx, loc, parentExpr, arguments,
-                               callableDecl->getResultType());
+                               callableDecl->getResultType(), isNegated);
 }
 
 FailureOr<ast::DeclRefExpr *> Parser::createDeclRefExpr(SMRange loc,
@@ -2959,8 +2978,7 @@ FailureOr<ast::OperationExpr *> Parser::createOperationExpr(
     OpResultTypeContext resultTypeContext,
     SmallVectorImpl<ast::Expr *> &operands,
     MutableArrayRef<ast::NamedAttributeDecl *> attributes,
-    SmallVectorImpl<ast::Expr *> &results,
-    unsigned numRegions) {
+    SmallVectorImpl<ast::Expr *> &results, unsigned numRegions) {
   std::optional<StringRef> opNameRef = name->getName();
   const ods::Operation *odsOp = lookupODSOperation(opNameRef);
 

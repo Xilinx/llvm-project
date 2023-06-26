@@ -100,8 +100,8 @@ def PDLInterp_ApplyConstraintOp : PDLInterp_PredicateOp<"apply_constraint"> {
     pdl_interp.apply_constraint "myConstraint"(%input, %attr, %op : !pdl.value, !pdl.attribute, !pdl.operation) -> ^matchDest, ^failureDest
     ```
   }];
-
-  let arguments = (ins StrAttr:$name, Variadic<PDL_AnyType>:$args);
+  
+  let arguments = (ins StrAttr:$name, Variadic<PDL_AnyType>:$args, DefaultValuedAttr<BoolAttr,"false">:$isNegated);
   let results = (outs Variadic<PDL_AnyType>:$results);
   let assemblyFormat = [{
     $name `(` $args `:` type($args) `)` (`:` type($results)^)? attr-dict `->` successors

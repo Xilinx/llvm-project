@@ -103,6 +103,43 @@ module @ir attributes { test.apply_constraint_3 } {
 
 // -----
 
+// Test support for negated constraints.
+module @patterns {
+  pdl_interp.func @matcher(%root : !pdl.operation) {
+    %test_attr = pdl_interp.create_attribute unit
+    %attr = pdl_interp.get_attribute "test_attr" of %root
+    pdl_interp.are_equal %test_attr, %attr : !pdl.attribute -> ^pat, ^end
+
+  ^pat:
+    pdl_interp.apply_constraint "single_entity_constraint"(%root : !pdl.operation) {isNegated = true} -> ^pat1, ^end
+
+  ^pat1:
+    pdl_interp.record_match @rewriters::@success(%root : !pdl.operation) : benefit(1), loc([%root]) -> ^end
+
+  ^end:
+    pdl_interp.finalize
+  }
+
+  module @rewriters {
+    pdl_interp.func @success(%root : !pdl.operation) {
+      %op = pdl_interp.create_operation "test.replaced_by_pattern"
+      pdl_interp.erase %root
+      pdl_interp.finalize
+    }
+  }
+}
+
+// CHECK-LABEL: test.apply_constraint_4
+// CHECK-NOT: "test.replaced_by_pattern"
+// CHECK: "test.replaced_by_pattern"
+
+module @ir attributes { test.apply_constraint_4 } {
+  "test.op"() { test_attr } : () -> ()
+  "test.foo"() { test_attr } : () -> ()
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // pdl_interp::ApplyRewriteOp
 //===----------------------------------------------------------------------===//
