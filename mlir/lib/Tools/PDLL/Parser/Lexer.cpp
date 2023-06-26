@@ -378,7 +378,7 @@ Token Lexer::lexString(const char *tokStart, bool isStringBlock) {
       --curPtr;
 
       StringRef expectedEndStr = isStringBlock ? "}]" : "\"";
-      return emitError(curPtr - 1,
+      return emitError(tokStart,
                        "expected '" + expectedEndStr + "' in string literal");
     }
 
