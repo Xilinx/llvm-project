@@ -468,7 +468,7 @@ void PatternLowering::generate(BoolNode *boolNode, Block *&currentBlock,
     auto *cstQuestion = cast<ConstraintQuestion>(question);
     auto applyConstraintOp = builder.create<pdl_interp::ApplyConstraintOp>(
         loc, cstQuestion->getResultTypes(), cstQuestion->getName(), args,
-        success, failure);
+        cstQuestion->getIsNegated(), success, failure);
     // Replace the generated placeholders with the results of the constraint and
     // erase them
     for (auto result : llvm::enumerate(applyConstraintOp.getResults())) {

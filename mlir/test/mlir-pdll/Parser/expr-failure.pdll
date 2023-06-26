@@ -183,6 +183,18 @@ Pattern {
 
 // -----
 
+Rewrite Foo(op: Op);
+
+Pattern {
+  // CHECK: negation of Rewrites is not supported
+  let root = op<>;
+  rewrite root with {
+    !Foo(root);
+  }
+}
+
+// -----
+
 Pattern {
   // CHECK: expected expression
   let tuple = (10 = _: Value);

@@ -791,6 +791,7 @@ void Generator::generate(pdl_interp::ApplyConstraintOp op,
     // TODO: Handle result ranges
     writer.append(result);
   }
+  writer.append(ByteCodeField(op.getIsNegated()));
   writer.append(op.getSuccessors());
 }
 void Generator::generate(pdl_interp::ApplyRewriteOp op,
@@ -1447,7 +1448,8 @@ void ByteCodeExecutor::executeApplyConstraint(PatternRewriter &rewriter) {
     const PDLConstraintFunction &constraintFn = constraintFunctions[fun_idx];
     LogicalResult rewriteResult = constraintFn(rewriter, args);
     // Depending on the constraint jump to the proper destination.
-    selectJump(succeeded(rewriteResult));
+    ByteCodeField isNegated = read();
+    selectJump(isNegated != succeeded(rewriteResult));
   } else {
     const PDLRewriteFunction &constraintFn = rewriteFunctions[fun_idx];
     ByteCodeRewriteResultList results(numResults);
@@ -1474,7 +1476,8 @@ void ByteCodeExecutor::executeApplyConstraint(PatternRewriter &rewriter) {
                            : 0;
     }
     // Depending on the constraint jump to the proper destination.
-    selectJump(succeeded(rewriteResult));
+    ByteCodeField isNegated = read();
+    selectJump(isNegated != succeeded(rewriteResult));
   }
 }
 

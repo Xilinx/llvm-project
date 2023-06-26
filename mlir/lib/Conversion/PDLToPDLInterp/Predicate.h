@@ -472,7 +472,7 @@ struct AttributeQuestion
 struct ConstraintQuestion
     : public PredicateBase<
           ConstraintQuestion, Qualifier,
-          std::tuple<StringRef, ArrayRef<Position *>, ArrayRef<Type>>,
+          std::tuple<StringRef, ArrayRef<Position *>, ArrayRef<Type>, bool>,
           Predicates::ConstraintQuestion> {
   using Base::Base;
 
@@ -485,13 +485,18 @@ struct ConstraintQuestion
   /// Return the result types of the constraint.
   ArrayRef<Type> getResultTypes() const { return std::get<2>(key); }
 
+  bool getIsNegated() const { return std::get<3>(key); }
+
   /// Construct an instance with the given storage allocator.
   static ConstraintQuestion *construct(StorageUniquer::StorageAllocator &alloc,
                                        KeyTy key) {
     return Base::construct(alloc, KeyTy{alloc.copyInto(std::get<0>(key)),
                                         alloc.copyInto(std::get<1>(key)),
-                                        alloc.copyInto(std::get<2>(key))});
+                                        alloc.copyInto(std::get<2>(key)),
+                                        std::get<3>(key)});
   }
+
+  static unsigned hashKey(const KeyTy &key) { return llvm::hash_value(key); }
 };
 
 /// Compare the equality of two values.
@@ -698,9 +703,9 @@ public:
 
   /// Create a predicate that applies a generic constraint.
   Predicate getConstraint(StringRef name, ArrayRef<Position *> args,
-                          ArrayRef<Type> resultTypes) {
-    return {ConstraintQuestion::get(uniquer,
-                                    std::make_tuple(name, args, resultTypes)),
+                          ArrayRef<Type> resultTypes, bool isNegated) {
+    return {ConstraintQuestion::get(
+                uniquer, std::make_tuple(name, args, resultTypes, isNegated)),
             TrueAnswer::get(uniquer)};
   }
 
