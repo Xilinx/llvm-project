@@ -230,7 +230,7 @@ void LinkerDriver::addBuffer(std::unique_ptr<MemoryBuffer> mb,
       ctx.symtab.addFile(make<DLLFile>(ctx, mbref));
       break;
     }
-    if (filename.endswith_insensitive(".dll")) {
+    if (filename.ends_with_insensitive(".dll")) {
       error(filename + ": bad file type. Did you specify a DLL instead of an "
                        "import library?");
       break;
@@ -247,10 +247,25 @@ void LinkerDriver::enqueuePath(StringRef path, bool wholeArchive, bool lazy) {
       createFutureForFile(std::string(path)));
   std::string pathStr = std::string(path);
   enqueueTask([=]() {
-    auto mbOrErr = future->get();
-    if (mbOrErr.second) {
-      std::string msg =
-          "could not open '" + pathStr + "': " + mbOrErr.second.message();
+    auto [mb, ec] = future->get();
+    if (ec) {
+      // Retry reading the file (synchronously) now that we may have added
+      // winsysroot search paths from SymbolTable::addFile().
+      // Retrying synchronously is important for keeping the order of inputs
+      // consistent.
+      // This makes it so that if the user passes something in the winsysroot
+      // before something we can find with an architecture, we won't find the
+      // winsysroot file.
+      if (std::optional<StringRef> retryPath = findFile(pathStr)) {
+        auto retryMb = MemoryBuffer::getFile(*retryPath, /*IsText=*/false,
+                                             /*RequiresNullTerminator=*/false);
+        ec = retryMb.getError();
+        if (!ec)
+          mb = std::move(*retryMb);
+      }
+    }
+    if (ec) {
+      std::string msg = "could not open '" + pathStr + "': " + ec.message();
       // Check if the filename is a typo for an option flag. OptTable thinks
       // that all args that are not known options and that start with / are
       // filenames, but e.g. `/nodefaultlibs` is more likely a typo for
@@ -262,7 +277,7 @@ void LinkerDriver::enqueuePath(StringRef path, bool wholeArchive, bool lazy) {
       else
         error(msg + "; did you mean '" + nearest + "'");
     } else
-      ctx.driver.addBuffer(std::move(mbOrErr.first), wholeArchive, lazy);
+      ctx.driver.addBuffer(std::move(mb), wholeArchive, lazy);
   });
 }
 
@@ -445,9 +460,12 @@ void LinkerDriver::parseDirectives(InputFile *file) {
     case OPT_editandcontinue:
     case OPT_guardsym:
     case OPT_throwingnew:
+    case OPT_inferasanlibs:
+    case OPT_inferasanlibs_no:
       break;
     default:
-      error(arg->getSpelling() + " is not allowed in .drectve");
+      error(arg->getSpelling() + " is not allowed in .drectve (" +
+            toString(file) + ")");
     }
   }
 }
@@ -500,7 +518,7 @@ std::optional<StringRef> LinkerDriver::findFile(StringRef filename) {
       return std::nullopt;
   }
 
-  if (path.endswith_insensitive(".lib"))
+  if (path.ends_with_insensitive(".lib"))
     visitedLibs.insert(std::string(sys::path::filename(path).lower()));
   return path;
 }
@@ -1931,6 +1949,9 @@ void LinkerDriver::linkerMain(ArrayRef<const char *> argsArr) {
   config->stdcallFixup =
       args.hasFlag(OPT_stdcall_fixup, OPT_stdcall_fixup_no, config->mingw);
   config->warnStdcallFixup = !args.hasArg(OPT_stdcall_fixup);
+
+  if (args.hasFlag(OPT_inferasanlibs, OPT_inferasanlibs_no, false))
+    warn("ignoring '/inferasanlibs', this flag is not supported");
 
   // Don't warn about long section names, such as .debug_info, for mingw or
   // when -debug:dwarf is requested.

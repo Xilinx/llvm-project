@@ -4,7 +4,7 @@
 // RUN: %clang_cc1 -std=c++14 -triple x86_64-unknown-unknown %s -verify -fexceptions -fcxx-exceptions -pedantic-errors
 // RUN: %clang_cc1 -std=c++17 -triple x86_64-unknown-unknown %s -verify -fexceptions -fcxx-exceptions -pedantic-errors
 // RUN: %clang_cc1 -std=c++20 -triple x86_64-unknown-unknown %s -verify -fexceptions -fcxx-exceptions -pedantic-errors
-// RUN: %clang_cc1 -std=c++2b -triple x86_64-unknown-unknown %s -verify -fexceptions -fcxx-exceptions -pedantic-errors
+// RUN: %clang_cc1 -std=c++23 -triple x86_64-unknown-unknown %s -verify -fexceptions -fcxx-exceptions -pedantic-errors
 
 #if __cplusplus < 201103L
 #define static_assert(...) _Static_assert(__VA_ARGS__)
@@ -18,6 +18,8 @@ B<A<void> > b2 = b1;
 int a = b2[0]; // expected-error {{does not provide a subscript operator}}
 int b = __builtin_addressof(b2)->foo; // expected-error {{no member}}
 }
+
+// dr2009: na
 
 namespace dr2026 { // dr2026: 11
   template<int> struct X {};

@@ -17,6 +17,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/ReachingDefAnalysis.h"
@@ -139,9 +140,8 @@ bool BreakFalseDeps::pickBestRegisterForUndef(MachineInstr *MI, unsigned OpIdx,
 
   // If the instruction has a true dependency, we can hide the false depdency
   // behind it.
-  for (MachineOperand &CurrMO : MI->operands()) {
-    if (!CurrMO.isReg() || CurrMO.isDef() || CurrMO.isUndef() ||
-      !OpRC->contains(CurrMO.getReg()))
+  for (MachineOperand &CurrMO : MI->all_uses()) {
+    if (CurrMO.isUndef() || !OpRC->contains(CurrMO.getReg()))
       continue;
     // We found a true dependency - replace the undef register with the true
     // dependency.
@@ -290,10 +290,16 @@ bool BreakFalseDeps::runOnMachineFunction(MachineFunction &mf) {
 
   LLVM_DEBUG(dbgs() << "********** BREAK FALSE DEPENDENCIES **********\n");
 
+  // Skip Dead blocks due to ReachingDefAnalysis has no idea about instructions
+  // in them.
+  df_iterator_default_set<MachineBasicBlock *> Reachable;
+  for (MachineBasicBlock *MBB : depth_first_ext(&mf, Reachable))
+    (void)MBB /* Mark all reachable blocks */;
+
   // Traverse the basic blocks.
-  for (MachineBasicBlock &MBB : mf) {
-    processBasicBlock(&MBB);
-  }
+  for (MachineBasicBlock &MBB : mf)
+    if (Reachable.count(&MBB))
+      processBasicBlock(&MBB);
 
   return false;
 }

@@ -103,6 +103,11 @@ static llvm::cl::opt<bool>
             llvm::cl::desc("Dump the FIR created by lowering and exit"),
             llvm::cl::init(false));
 
+static llvm::cl::opt<bool>
+    emitHLFIR("emit-hlfir",
+              llvm::cl::desc("Dump the HLFIR created by lowering and exit"),
+              llvm::cl::init(false));
+
 static llvm::cl::opt<bool> warnStdViolation("Mstandard",
                                             llvm::cl::desc("emit warnings"),
                                             llvm::cl::init(false));
@@ -132,6 +137,11 @@ static llvm::cl::opt<bool>
 // A simplified subset of the OpenMP RTL Flags from Flang, only the primary
 // positive options are available, no negative options e.g. fopen_assume* vs
 // fno_open_assume*
+static llvm::cl::opt<uint32_t>
+    setOpenMPVersion("fopenmp-version",
+                     llvm::cl::desc("OpenMP standard version"),
+                     llvm::cl::init(11));
+
 static llvm::cl::opt<uint32_t> setOpenMPTargetDebug(
     "fopenmp-target-debug",
     llvm::cl::desc("Enable debugging in the OpenMP offloading device RTL"),
@@ -269,7 +279,7 @@ static mlir::LogicalResult convertFortranSourceToMLIR(
   // Use default lowering options for bbc.
   Fortran::lower::LoweringOptions loweringOptions{};
   loweringOptions.setPolymorphicTypeImpl(enablePolymorphic);
-  loweringOptions.setLowerToHighLevelFIR(useHLFIR);
+  loweringOptions.setLowerToHighLevelFIR(useHLFIR || emitHLFIR);
   auto burnside = Fortran::lower::LoweringBridge::create(
       ctx, semanticsContext, defKinds, semanticsContext.intrinsics(),
       semanticsContext.targetCharacteristics(), parsing.allCooked(), "",
@@ -277,11 +287,12 @@ static mlir::LogicalResult convertFortranSourceToMLIR(
   burnside.lower(parseTree, semanticsContext);
   mlir::ModuleOp mlirModule = burnside.getModule();
   if (enableOpenMP) {
-    auto offloadModuleOpts =
-        OffloadModuleOpts(setOpenMPTargetDebug, setOpenMPTeamSubscription,
-                          setOpenMPThreadSubscription, setOpenMPNoThreadState,
-                          setOpenMPNoNestedParallelism, enableOpenMPDevice);
+    auto offloadModuleOpts = OffloadModuleOpts(
+        setOpenMPTargetDebug, setOpenMPTeamSubscription,
+        setOpenMPThreadSubscription, setOpenMPNoThreadState,
+        setOpenMPNoNestedParallelism, enableOpenMPDevice, setOpenMPVersion);
     setOffloadModuleInterfaceAttributes(mlirModule, offloadModuleOpts);
+    setOpenMPVersionAttribute(mlirModule, setOpenMPVersion);
   }
   std::error_code ec;
   std::string outputName = outputFilename;
@@ -300,11 +311,12 @@ static mlir::LogicalResult convertFortranSourceToMLIR(
   (void)mlir::applyPassManagerCLOptions(pm);
   if (passPipeline.hasAnyOccurrences()) {
     // run the command-line specified pipeline
+    hlfir::registerHLFIRPasses();
     (void)passPipeline.addToPipeline(pm, [&](const llvm::Twine &msg) {
       mlir::emitError(mlir::UnknownLoc::get(&ctx)) << msg;
       return mlir::failure();
     });
-  } else if (emitFIR) {
+  } else if (emitFIR || emitHLFIR) {
     // --emit-fir: Build the IR, verify it, and dump the IR if the IR passes
     // verification. Use --dump-module-on-failure to dump invalid IR.
     pm.addPass(std::make_unique<Fortran::lower::VerifierPass>());
@@ -312,6 +324,16 @@ static mlir::LogicalResult convertFortranSourceToMLIR(
       llvm::errs() << "FATAL: verification of lowering to FIR failed";
       return mlir::failure();
     }
+
+    if (emitFIR && useHLFIR) {
+      // lower HLFIR to FIR
+      fir::createHLFIRToFIRPassPipeline(pm, llvm::OptimizationLevel::O2);
+      if (mlir::failed(pm.run(mlirModule))) {
+        llvm::errs() << "FATAL: lowering from HLFIR to FIR failed";
+        return mlir::failure();
+      }
+    }
+
     printModule(mlirModule, out);
     return mlir::success();
   } else {
@@ -375,7 +397,7 @@ int main(int argc, char **argv) {
   // enable parsing of OpenACC
   if (enableOpenACC) {
     options.features.Enable(Fortran::common::LanguageFeature::OpenACC);
-    options.predefinitions.emplace_back("_OPENACC", "201911");
+    options.predefinitions.emplace_back("_OPENACC", "202011");
   }
 
   Fortran::common::IntrinsicTypeDefaultKinds defaultKinds;

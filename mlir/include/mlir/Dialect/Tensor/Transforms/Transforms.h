@@ -34,9 +34,6 @@ FailureOr<TilingResult> replaceExtractSliceWithTiledProducer(
 // Populate functions.
 //===----------------------------------------------------------------------===//
 
-/// Collects a set of patterns to rewrite ops within the tensor dialect.
-void populateExpandOpsPatterns(RewritePatternSet &patterns);
-
 /// Appends patterns for folding tensor aliasing ops into consumer load/store
 /// ops into `patterns`.
 void populateFoldTensorSubsetOpPatterns(RewritePatternSet &patterns);
@@ -46,6 +43,11 @@ void populateFoldTensorSubsetOpPatterns(RewritePatternSet &patterns);
 /// bufferization is sensitive over IR structure, particularly those
 /// tensor.extract_slice and tensor.insert_slice ops for creating the slices.
 void populateMergeConsecutiveInsertExtractSlicePatterns(
+    RewritePatternSet &patterns);
+
+/// Populates `patterns` with patterns that drop redundant tensor.insert_slice
+/// rank expansions.
+void populateDropRedundantInsertSliceRankExpansionPatterns(
     RewritePatternSet &patterns);
 
 /// Populates `patterns` with patterns that fold `tensor.expand_shape` and
@@ -60,6 +62,45 @@ void populateFoldTensorEmptyPatterns(RewritePatternSet &patterns);
 /// and `tensor.extract_slice` into `tensor.pack` and `tensor.unpack` operations
 /// respectively.
 void populateFoldIntoPackAndUnpackPatterns(RewritePatternSet &patterns);
+
+//===----------------------------------------------------------------------===//
+// Transform helpers
+//===----------------------------------------------------------------------===//
+
+/// Build a new tensor::PadOp with low/high padding that is independent of all
+/// given independencies. If the op is already independent of all
+/// independencies, the same PadOp result is returned.
+///
+/// Failure indicates the no suitable upper bound for low/high padding could be
+/// found.
+///
+/// Example:
+/// scf.for %iv = %lb to %ub step %step {
+///   %high = affine.apply affine_map<(d0)[s0] -> (s0 - d0)> (%i)[%ub]
+///   %p = tensor.pad %t low[5] high[%high] ...
+///   ...
+/// }
+///
+/// The function builds IR such as:
+/// %high_new = affine.apply affine_map<()[s0, s1] -> (-s0 + s1)> ()[%lb, %ub]
+/// %p_hoistable = tensor.pad %t low[5] high[%high_new]
+/// %dim = tensor.dim %t, %c0
+/// %size = affine.apply affine_map<(d0)[s0, s1] -> (-d0 + s0 + s1 + 5)>
+///     (%iv)[%ub, %dim]
+/// %slice = tensor.extract_slice %p_hoistable [0] [%size] [1]
+///
+/// The slice is returned.
+FailureOr<Value> buildIndependentOp(OpBuilder &b, tensor::PadOp padOp,
+                                    ValueRange independencies);
+
+/// Build a new tensor::EmptyOp who's dynamic sizes are independent of all
+/// given independencies. If the op is already independent of all
+/// independencies, the same EmptyOp result is returned.
+///
+/// Failure indicates the no suitable upper bound for the dynamic sizes could be
+/// found.
+FailureOr<Value> buildIndependentOp(OpBuilder &b, tensor::EmptyOp emptyOp,
+                                    ValueRange independencies);
 
 } // namespace tensor
 } // namespace mlir

@@ -130,6 +130,7 @@ namespace {
 /// UseFrag - Use Target as the new fragment.
 /// UseNoFrag - The new slice already covers the whole variable.
 /// Skip - The new alloca slice doesn't include this variable.
+/// FIXME: Can we use calculateFragmentIntersect instead?
 enum FragCalcResult { UseFrag, UseNoFrag, Skip };
 static FragCalcResult
 calculateFragment(DILocalVariable *Variable,
@@ -3976,6 +3977,10 @@ static Type *getTypePartition(const DataLayout &DL, Type *Ty, uint64_t Offset,
     return nullptr;
 
   const StructLayout *SL = DL.getStructLayout(STy);
+
+  if (SL->getSizeInBits().isScalable())
+    return nullptr;
+
   if (Offset >= SL->getSizeInBytes())
     return nullptr;
   uint64_t EndOffset = Offset + Size;

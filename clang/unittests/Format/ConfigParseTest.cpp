@@ -247,6 +247,8 @@ TEST(ConfigParseTest, ParsesConfiguration) {
               SpacesBeforeTrailingComments, 1234u);
   CHECK_PARSE("IndentWidth: 32", IndentWidth, 32u);
   CHECK_PARSE("ContinuationIndentWidth: 11", ContinuationIndentWidth, 11u);
+  CHECK_PARSE("BracedInitializerIndentWidth: 34", BracedInitializerIndentWidth,
+              34);
   CHECK_PARSE("CommentPragmas: '// abc$'", CommentPragmas, "// abc$");
 
   Style.QualifierAlignment = FormatStyle::QAS_Right;
@@ -1020,6 +1022,23 @@ TEST(ConfigParseTest, ParsesConfigurationWithLanguages) {
             ParseError::Error);
 
   EXPECT_EQ(FormatStyle::LK_Cpp, Style.Language);
+
+  Style.Language = FormatStyle::LK_Verilog;
+  CHECK_PARSE("---\n"
+              "Language: Verilog\n"
+              "IndentWidth: 12\n"
+              "---\n"
+              "Language: Cpp\n"
+              "IndentWidth: 34\n"
+              "...\n",
+              IndentWidth, 12u);
+  CHECK_PARSE("---\n"
+              "IndentWidth: 78\n"
+              "---\n"
+              "Language: Verilog\n"
+              "IndentWidth: 56\n"
+              "...\n",
+              IndentWidth, 56u);
 }
 
 TEST(ConfigParseTest, UsesLanguageForBasedOnStyle) {

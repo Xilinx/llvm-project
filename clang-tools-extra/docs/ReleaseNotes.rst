@@ -103,14 +103,29 @@ Improvements to clang-tidy
 
 - Fix a potential crash when using the `--dump-config` option.
 
+- Support specifying `SystemHeaders` in the `.clang-tidy` configuration file,
+  with the same functionality as the command-line option `--system-headers`.
+
 New checks
 ^^^^^^^^^^
+
+- New :doc:`bugprone-multiple-new-in-one-expression
+  <clang-tidy/checks/bugprone/multiple-new-in-one-expression>` check.
+
+  Finds multiple ``new`` operator calls in a single expression, where the allocated
+  memory by the first ``new`` may leak if the second allocation fails and throws exception.
 
 - New :doc:`bugprone-non-zero-enum-to-bool-conversion
   <clang-tidy/checks/bugprone/non-zero-enum-to-bool-conversion>` check.
 
   Detect implicit and explicit casts of ``enum`` type into ``bool`` where ``enum`` type
   doesn't have a zero-value enumerator.
+
+- New :doc:`bugprone-unique-ptr-array-mismatch
+  <clang-tidy/checks/bugprone/unique-ptr-array-mismatch>` check.
+
+  Finds initializations of C++ unique pointers to non-array type that are
+  initialized with an array.
 
 - New :doc:`bugprone-unsafe-functions
   <clang-tidy/checks/bugprone/unsafe-functions>` check.
@@ -132,6 +147,12 @@ New checks
 
   Warns when lambda specify a by-value capture default and capture ``this``.
 
+- New :doc:`cppcoreguidelines-missing-std-forward
+  <clang-tidy/checks/cppcoreguidelines/missing-std-forward>` check.
+
+  Warns when a forwarding reference parameter is not forwarded within the
+  function body.
+
 - New :doc:`cppcoreguidelines-rvalue-reference-param-not-moved
   <clang-tidy/checks/cppcoreguidelines/rvalue-reference-param-not-moved>` check.
 
@@ -144,11 +165,21 @@ New checks
   Checks that all implicit and explicit inline functions in header files are
   tagged with the ``LIBC_INLINE`` macro.
 
+- New :doc:`misc-include-cleaner
+  <clang-tidy/checks/misc/include-cleaner>` check.
+
+  Checks for unused and missing includes.
+
 - New :doc:`modernize-type-traits
   <clang-tidy/checks/modernize/type-traits>` check.
 
   Converts standard library type traits of the form ``traits<...>::type`` and
   ``traits<...>::value`` into ``traits_t<...>`` and ``traits_v<...>`` respectively.
+
+- New :doc:`performance-avoid-endl
+  <clang-tidy/checks/performance/avoid-endl>` check.
+
+  Finds uses of ``std::endl`` on streams and replaces them with ``'\n'``.
 
 - New :doc:`readability-avoid-unconditional-preprocessor-if
   <clang-tidy/checks/readability/avoid-unconditional-preprocessor-if>` check.
@@ -181,6 +212,12 @@ New check aliases
 
 Changes in existing checks
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- Fixed false-positives in :doc:`bugprone-branch-clone
+  <clang-tidy/checks/bugprone/branch-clone>` check by ignoring auto-generated
+  code, template instances, implicit code patterns and duplicated switch cases
+  marked with the ``[[fallthrough]]`` attribute.
+
 - Improved :doc:`readability-redundant-string-cstr
   <clang-tidy/checks/readability/redundant-string-cstr>` check to recognise
   unnecessary ``std::string::c_str()`` and ``std::string::data()`` calls in
@@ -195,6 +232,10 @@ Changes in existing checks
   in :doc:`bugprone-dynamic-static-initializers
   <clang-tidy/checks/bugprone/dynamic-static-initializers>` check.
   Global options of the same name should be used instead.
+
+- Improved :doc:`bugprone-exception-escape
+  <clang-tidy/checks/bugprone/exception-escape>` to not emit warnings for
+  forward declarations of functions.
 
 - Improved :doc:`bugprone-fold-init-type
   <clang-tidy/checks/bugprone/fold-init-type>` to handle iterators that do not
@@ -214,8 +255,13 @@ Changes in existing checks
   to ``std::forward``.
 
 - Improved :doc:`bugprone-use-after-move
-  <clang-tidy/checks/bugprone/use-after-move>` check to also cover constructor
-  initializers.
+  <clang-tidy/checks/bugprone/use-after-move>` check. Detect uses and moves in
+  constructor initializers. Correctly handle constructor arguments as being
+  sequenced when constructor call is written as list-initialization.
+
+- Extend :doc:`bugprone-unused-return-value
+  <clang-tidy/checks/bugprone/unused-return-value>` check to check for all functions
+  with specified return types using the ``CheckedReturnTypes`` option.
 
 - Deprecated :doc:`cert-dcl21-cpp
   <clang-tidy/checks/cert/dcl21-cpp>` check.
@@ -355,6 +401,14 @@ Changes in existing checks
 - Fixed a false positive in :doc:`performance-no-automatic-move
   <clang-tidy/checks/performance/no-automatic-move>` when warning would be
   emitted for a const local variable to which NRVO is applied.
+
+- Improved :doc:`performance-no-automatic-move
+  <clang-tidy/checks/performance/no-automatic-move>`: warn on ``const &&``
+  constructors.
+
+- Fixed :doc:`bugprone-exception-escape<clang-tidy/checks/bugprone/exception-escape>`
+  for coroutines where previously a warning would be emitted with coroutines
+  throwing exceptions in their bodies.
 
 Removed checks
 ^^^^^^^^^^^^^^

@@ -211,6 +211,7 @@ struct language_name_pair language_names[] = {
     {"ada2012", eLanguageTypeAda2012},
     // Vendor Extensions
     {"assembler", eLanguageTypeMipsAssembler},
+    {"mojo", eLanguageTypeMojo},
     // Now synonyms, in arbitrary order
     {"objc", eLanguageTypeObjC},
     {"objc++", eLanguageTypeObjC_plus_plus},
@@ -451,11 +452,9 @@ bool Language::ImageListTypeScavenger::Find_Impl(
   return result;
 }
 
-bool Language::GetFormatterPrefixSuffix(ValueObject &valobj,
-                                        ConstString type_hint,
-                                        std::string &prefix,
-                                        std::string &suffix) {
-  return false;
+std::pair<llvm::StringRef, llvm::StringRef>
+Language::GetFormatterPrefixSuffix(llvm::StringRef type_hint) {
+  return std::pair<llvm::StringRef, llvm::StringRef>();
 }
 
 bool Language::DemangledNameContainsPath(llvm::StringRef path, 

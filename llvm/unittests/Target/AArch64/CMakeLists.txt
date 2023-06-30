@@ -10,6 +10,7 @@ set(LLVM_LINK_COMPONENTS
   AArch64Utils
   AsmParser
   CodeGen
+  CodeGenTypes
   Core
   GlobalISel
   MC
@@ -22,6 +23,7 @@ set(LLVM_LINK_COMPONENTS
 
 add_llvm_target_unittest(AArch64Tests
   AArch64InstPrinterTest.cpp
+  AddressingModes.cpp
   DecomposeStackOffsetTest.cpp
   InstSizes.cpp
   MatrixRegisterAliasing.cpp

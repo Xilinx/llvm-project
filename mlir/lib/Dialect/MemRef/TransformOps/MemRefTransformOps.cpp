@@ -13,9 +13,10 @@
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Transforms.h"
 #include "mlir/Dialect/NVGPU/IR/NVGPUDialect.h"
-#include "mlir/Dialect/PDL/IR/PDL.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Transform/IR/TransformDialect.h"
 #include "mlir/Dialect/Transform/IR/TransformInterfaces.h"
+#include "mlir/Dialect/Transform/IR/TransformOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -34,9 +35,8 @@ DiagnosedSilenceableFailure transform::MemRefMultiBufferOp::apply(
     transform::TransformResults &transformResults,
     transform::TransformState &state) {
   SmallVector<Operation *> results;
-  ArrayRef<Operation *> payloadOps = state.getPayloadOps(getTarget());
   IRRewriter rewriter(getContext());
-  for (auto *op : payloadOps) {
+  for (Operation *op : state.getPayloadOps(getTarget())) {
     bool canApplyMultiBuffer = true;
     auto target = cast<memref::AllocOp>(op);
     LLVM_DEBUG(DBGS() << "Start multibuffer transform op: " << target << "\n";);
@@ -68,7 +68,7 @@ DiagnosedSilenceableFailure transform::MemRefMultiBufferOp::apply(
 
     results.push_back(*newBuffer);
   }
-  transformResults.set(getResult().cast<OpResult>(), results);
+  transformResults.set(cast<OpResult>(getResult()), results);
   return DiagnosedSilenceableFailure::success();
 }
 
@@ -98,6 +98,49 @@ transform::MemRefExtractAddressComputationsOp::applyToOne(
 }
 
 //===----------------------------------------------------------------------===//
+// MemRefMakeLoopIndependentOp
+//===----------------------------------------------------------------------===//
+
+DiagnosedSilenceableFailure transform::MemRefMakeLoopIndependentOp::applyToOne(
+    Operation *target, transform::ApplyToEachResultList &results,
+    transform::TransformState &state) {
+  // Gather IVs.
+  SmallVector<Value> ivs;
+  Operation *nextOp = target;
+  for (uint64_t i = 0, e = getNumLoops(); i < e; ++i) {
+    nextOp = nextOp->getParentOfType<scf::ForOp>();
+    if (!nextOp) {
+      DiagnosedSilenceableFailure diag = emitSilenceableError()
+                                         << "could not find " << i
+                                         << "-th enclosing loop";
+      diag.attachNote(target->getLoc()) << "target op";
+      return diag;
+    }
+    ivs.push_back(cast<scf::ForOp>(nextOp).getInductionVar());
+  }
+
+  // Rewrite IR.
+  IRRewriter rewriter(target->getContext());
+  FailureOr<Value> replacement = failure();
+  if (auto allocaOp = dyn_cast<memref::AllocaOp>(target)) {
+    replacement = memref::replaceWithIndependentOp(rewriter, allocaOp, ivs);
+  } else {
+    DiagnosedSilenceableFailure diag = emitSilenceableError()
+                                       << "unsupported target op";
+    diag.attachNote(target->getLoc()) << "target op";
+    return diag;
+  }
+  if (failed(replacement)) {
+    DiagnosedSilenceableFailure diag =
+        emitSilenceableError() << "could not make target op loop-independent";
+    diag.attachNote(target->getLoc()) << "target op";
+    return diag;
+  }
+  results.push_back(replacement->getDefiningOp());
+  return DiagnosedSilenceableFailure::success();
+}
+
+//===----------------------------------------------------------------------===//
 // Transform op registration
 //===----------------------------------------------------------------------===//
 
@@ -109,8 +152,7 @@ public:
   using Base::Base;
 
   void init() {
-    declareDependentDialect<pdl::PDLDialect>();
-    declareGeneratedDialect<AffineDialect>();
+    declareGeneratedDialect<affine::AffineDialect>();
     declareGeneratedDialect<arith::ArithDialect>();
     declareGeneratedDialect<memref::MemRefDialect>();
     declareGeneratedDialect<nvgpu::NVGPUDialect>();
@@ -120,6 +162,23 @@ public:
 #define GET_OP_LIST
 #include "mlir/Dialect/MemRef/TransformOps/MemRefTransformOps.cpp.inc"
         >();
+
+    addDialectDataInitializer<transform::PatternRegistry>(
+        [&](transform::PatternRegistry &registry) {
+          registry.registerPatterns("memref.expand_ops",
+                                    memref::populateExpandOpsPatterns);
+          registry.registerPatterns("memref.fold_memref_alias_ops",
+                                    memref::populateFoldMemRefAliasOpPatterns);
+          registry.registerPatterns(
+              "memref.resolve_ranked_shaped_type_result_dims",
+              memref::populateResolveRankedShapedTypeResultDimsPatterns);
+          registry.registerPatterns(
+              "memref.expand_strided_metadata",
+              memref::populateExpandStridedMetadataPatterns);
+          registry.registerPatterns(
+              "memref.extract_address_computations",
+              memref::populateExtractAddressComputationsPatterns);
+        });
   }
 };
 } // namespace

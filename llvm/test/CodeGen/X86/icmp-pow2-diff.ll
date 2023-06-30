@@ -182,7 +182,7 @@ define <8 x i1> @andnot_ne_v8i16_todo_no_splat(<8 x i16> %x) nounwind {
 define <8 x i1> @andnot_ne_v8i16(<8 x i16> %x) nounwind {
 ; AVX512-LABEL: andnot_ne_v8i16:
 ; AVX512:       # %bb.0:
-; AVX512-NEXT:    vpandn {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0, %xmm0
+; AVX512-NEXT:    vpandnd {{\.?LCPI[0-9]+_[0-9]+}}(%rip){1to4}, %xmm0, %xmm0
 ; AVX512-NEXT:    vpxor %xmm1, %xmm1, %xmm1
 ; AVX512-NEXT:    vpcmpeqw %xmm1, %xmm0, %xmm0
 ; AVX512-NEXT:    vpternlogq $15, %xmm0, %xmm0, %xmm0
@@ -217,7 +217,7 @@ define <16 x i1> @andnot_ne_v16i8_fail_max_not_n1(<16 x i8> %x) nounwind {
 ; AVX512:       # %bb.0:
 ; AVX512-NEXT:    vpcmpeqd %xmm1, %xmm1, %xmm1
 ; AVX512-NEXT:    vpcmpeqb %xmm1, %xmm0, %xmm1
-; AVX512-NEXT:    vmovdqa {{.*#+}} xmm2 = [127,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127]
+; AVX512-NEXT:    vpbroadcastd {{.*#+}} xmm2 = [127,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127]
 ; AVX512-NEXT:    vpcmpgtb %xmm0, %xmm2, %xmm0
 ; AVX512-NEXT:    vpandn %xmm0, %xmm1, %xmm0
 ; AVX512-NEXT:    retq
@@ -226,7 +226,7 @@ define <16 x i1> @andnot_ne_v16i8_fail_max_not_n1(<16 x i8> %x) nounwind {
 ; AVX2:       # %bb.0:
 ; AVX2-NEXT:    vpcmpeqd %xmm1, %xmm1, %xmm1
 ; AVX2-NEXT:    vpcmpeqb %xmm1, %xmm0, %xmm1
-; AVX2-NEXT:    vmovdqa {{.*#+}} xmm2 = [127,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127]
+; AVX2-NEXT:    vpbroadcastb {{.*#+}} xmm2 = [127,127,127,127,127,127,127,127,127,127,127,127,127,127,127,127]
 ; AVX2-NEXT:    vpcmpgtb %xmm0, %xmm2, %xmm0
 ; AVX2-NEXT:    vpandn %xmm0, %xmm1, %xmm0
 ; AVX2-NEXT:    retq
@@ -249,7 +249,7 @@ define <16 x i1> @andnot_ne_v16i8_fail_max_not_n1(<16 x i8> %x) nounwind {
 define <16 x i1> @andnot_ne_v16i8(<16 x i8> %x) nounwind {
 ; AVX512-LABEL: andnot_ne_v16i8:
 ; AVX512:       # %bb.0:
-; AVX512-NEXT:    vpandn {{\.?LCPI[0-9]+_[0-9]+}}(%rip), %xmm0, %xmm0
+; AVX512-NEXT:    vpandnd {{\.?LCPI[0-9]+_[0-9]+}}(%rip){1to4}, %xmm0, %xmm0
 ; AVX512-NEXT:    vpxor %xmm1, %xmm1, %xmm1
 ; AVX512-NEXT:    vpcmpeqb %xmm1, %xmm0, %xmm0
 ; AVX512-NEXT:    vpternlogq $15, %xmm0, %xmm0, %xmm0

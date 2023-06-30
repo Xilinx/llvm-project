@@ -16,7 +16,7 @@ define i1 @trunc_v2i64_v2i1(<2 x i64>) {
 ; SSE2:       # %bb.0:
 ; SSE2-NEXT:    psllq $63, %xmm0
 ; SSE2-NEXT:    movmskpd %xmm0, %eax
-; SSE2-NEXT:    cmpb $3, %al
+; SSE2-NEXT:    cmpl $3, %eax
 ; SSE2-NEXT:    sete %al
 ; SSE2-NEXT:    retq
 ;
@@ -151,7 +151,7 @@ define i1 @trunc_v4i64_v4i1(<4 x i64>) {
 ; SSE2-NEXT:    shufps {{.*#+}} xmm0 = xmm0[0,2],xmm1[0,2]
 ; SSE2-NEXT:    pslld $31, %xmm0
 ; SSE2-NEXT:    movmskps %xmm0, %eax
-; SSE2-NEXT:    cmpb $15, %al
+; SSE2-NEXT:    cmpl $15, %eax
 ; SSE2-NEXT:    sete %al
 ; SSE2-NEXT:    retq
 ;
@@ -439,15 +439,35 @@ define i1 @trunc_v32i16_v32i1(<32 x i16>) {
 ; AVX2-NEXT:    vzeroupper
 ; AVX2-NEXT:    retq
 ;
-; AVX512-LABEL: trunc_v32i16_v32i1:
-; AVX512:       # %bb.0:
-; AVX512-NEXT:    vmovdqa64 {{.*#+}} zmm1 = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-; AVX512-NEXT:    vpandq %zmm1, %zmm0, %zmm0
-; AVX512-NEXT:    vpcmpneqd %zmm1, %zmm0, %k0
-; AVX512-NEXT:    kortestw %k0, %k0
-; AVX512-NEXT:    sete %al
-; AVX512-NEXT:    vzeroupper
-; AVX512-NEXT:    retq
+; AVX512F-LABEL: trunc_v32i16_v32i1:
+; AVX512F:       # %bb.0:
+; AVX512F-NEXT:    vpbroadcastd {{.*#+}} zmm1 = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+; AVX512F-NEXT:    vpandq %zmm1, %zmm0, %zmm0
+; AVX512F-NEXT:    vpcmpneqd %zmm1, %zmm0, %k0
+; AVX512F-NEXT:    kortestw %k0, %k0
+; AVX512F-NEXT:    sete %al
+; AVX512F-NEXT:    vzeroupper
+; AVX512F-NEXT:    retq
+;
+; AVX512BW-LABEL: trunc_v32i16_v32i1:
+; AVX512BW:       # %bb.0:
+; AVX512BW-NEXT:    vpbroadcastw {{.*#+}} zmm1 = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+; AVX512BW-NEXT:    vpandq %zmm1, %zmm0, %zmm0
+; AVX512BW-NEXT:    vpcmpneqd %zmm1, %zmm0, %k0
+; AVX512BW-NEXT:    kortestw %k0, %k0
+; AVX512BW-NEXT:    sete %al
+; AVX512BW-NEXT:    vzeroupper
+; AVX512BW-NEXT:    retq
+;
+; AVX512VL-LABEL: trunc_v32i16_v32i1:
+; AVX512VL:       # %bb.0:
+; AVX512VL-NEXT:    vpbroadcastw {{.*#+}} zmm1 = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+; AVX512VL-NEXT:    vpandq %zmm1, %zmm0, %zmm0
+; AVX512VL-NEXT:    vpcmpneqd %zmm1, %zmm0, %k0
+; AVX512VL-NEXT:    kortestw %k0, %k0
+; AVX512VL-NEXT:    sete %al
+; AVX512VL-NEXT:    vzeroupper
+; AVX512VL-NEXT:    retq
   %a = trunc <32 x i16> %0 to <32 x i1>
   %b = call i1 @llvm.vector.reduce.and.v32i1(<32 x i1> %a)
   ret i1 %b
@@ -490,15 +510,35 @@ define i1 @trunc_v64i8_v64i1(<64 x i8>) {
 ; AVX2-NEXT:    vzeroupper
 ; AVX2-NEXT:    retq
 ;
-; AVX512-LABEL: trunc_v64i8_v64i1:
-; AVX512:       # %bb.0:
-; AVX512-NEXT:    vmovdqa64 {{.*#+}} zmm1 = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
-; AVX512-NEXT:    vpandq %zmm1, %zmm0, %zmm0
-; AVX512-NEXT:    vpcmpneqd %zmm1, %zmm0, %k0
-; AVX512-NEXT:    kortestw %k0, %k0
-; AVX512-NEXT:    sete %al
-; AVX512-NEXT:    vzeroupper
-; AVX512-NEXT:    retq
+; AVX512F-LABEL: trunc_v64i8_v64i1:
+; AVX512F:       # %bb.0:
+; AVX512F-NEXT:    vpbroadcastd {{.*#+}} zmm1 = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+; AVX512F-NEXT:    vpandq %zmm1, %zmm0, %zmm0
+; AVX512F-NEXT:    vpcmpneqd %zmm1, %zmm0, %k0
+; AVX512F-NEXT:    kortestw %k0, %k0
+; AVX512F-NEXT:    sete %al
+; AVX512F-NEXT:    vzeroupper
+; AVX512F-NEXT:    retq
+;
+; AVX512BW-LABEL: trunc_v64i8_v64i1:
+; AVX512BW:       # %bb.0:
+; AVX512BW-NEXT:    vpbroadcastb {{.*#+}} zmm1 = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+; AVX512BW-NEXT:    vpandq %zmm1, %zmm0, %zmm0
+; AVX512BW-NEXT:    vpcmpneqd %zmm1, %zmm0, %k0
+; AVX512BW-NEXT:    kortestw %k0, %k0
+; AVX512BW-NEXT:    sete %al
+; AVX512BW-NEXT:    vzeroupper
+; AVX512BW-NEXT:    retq
+;
+; AVX512VL-LABEL: trunc_v64i8_v64i1:
+; AVX512VL:       # %bb.0:
+; AVX512VL-NEXT:    vpbroadcastb {{.*#+}} zmm1 = [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+; AVX512VL-NEXT:    vpandq %zmm1, %zmm0, %zmm0
+; AVX512VL-NEXT:    vpcmpneqd %zmm1, %zmm0, %k0
+; AVX512VL-NEXT:    kortestw %k0, %k0
+; AVX512VL-NEXT:    sete %al
+; AVX512VL-NEXT:    vzeroupper
+; AVX512VL-NEXT:    retq
   %a = trunc <64 x i8> %0 to <64 x i1>
   %b = call i1 @llvm.vector.reduce.and.v64i1(<64 x i1> %a)
   ret i1 %b

@@ -14,7 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Demangle/Demangle.h"
-#include "llvm/Demangle/StringView.h"
+#include "llvm/Demangle/StringViewExtras.h"
 #include "llvm/Demangle/Utility.h"
 
 #include <cctype>
@@ -23,7 +23,7 @@
 
 using namespace llvm;
 using llvm::itanium_demangle::OutputBuffer;
-using llvm::itanium_demangle::StringView;
+using llvm::itanium_demangle::starts_with;
 
 namespace {
 
@@ -530,7 +530,7 @@ const char *Demangler::parseLName(OutputBuffer *Demangled, const char *Mangled,
     break;
   }
 
-  *Demangled << StringView(Mangled, Len);
+  *Demangled << std::string_view(Mangled, Len);
   Mangled += Len;
 
   return Mangled;
@@ -543,20 +543,20 @@ const char *Demangler::parseMangle(OutputBuffer *Demangled) {
   return parseMangle(Demangled, this->Str);
 }
 
-char *llvm::dlangDemangle(const char *MangledName) {
-  if (MangledName == nullptr || strncmp(MangledName, "_D", 2) != 0)
+char *llvm::dlangDemangle(std::string_view MangledName) {
+  if (MangledName.empty() || !starts_with(MangledName, "_D"))
     return nullptr;
 
   OutputBuffer Demangled;
-  if (strcmp(MangledName, "_Dmain") == 0) {
+  if (MangledName == "_Dmain") {
     Demangled << "D main";
   } else {
 
-    Demangler D = Demangler(MangledName);
-    MangledName = D.parseMangle(&Demangled);
+    Demangler D(MangledName.data());
+    const char *M = D.parseMangle(&Demangled);
 
     // Check that the entire symbol was successfully demangled.
-    if (MangledName == nullptr || *MangledName != '\0') {
+    if (M == nullptr || *M != '\0') {
       std::free(Demangled.getBuffer());
       return nullptr;
     }

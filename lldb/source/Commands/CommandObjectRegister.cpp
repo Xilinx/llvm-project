@@ -44,7 +44,10 @@ public:
             nullptr,
             eCommandRequiresFrame | eCommandRequiresRegContext |
                 eCommandProcessMustBeLaunched | eCommandProcessMustBePaused),
-        m_format_options(eFormatDefault) {
+        m_format_options(eFormatDefault, UINT64_MAX, UINT64_MAX,
+                         {{CommandArgumentType::eArgTypeFormat,
+                           "Specify a format to be used for display. If this "
+                           "is set, register fields will not be displayed."}}) {
     CommandArgumentEntry arg;
     CommandArgumentData register_arg;
 
@@ -168,8 +171,9 @@ protected:
       const size_t set_array_size = m_command_options.set_indexes.GetSize();
       if (set_array_size > 0) {
         for (size_t i = 0; i < set_array_size; ++i) {
-          set_idx = m_command_options.set_indexes[i]->GetUInt64Value(UINT32_MAX,
-                                                                     nullptr);
+          set_idx =
+              m_command_options.set_indexes[i]->GetValueAs<uint64_t>().value_or(
+                  UINT32_MAX);
           if (set_idx < reg_ctx->GetRegisterSetCount()) {
             if (!DumpRegisterSet(m_exe_ctx, strm, reg_ctx, set_idx)) {
               if (errno)
@@ -215,8 +219,12 @@ protected:
 
           if (const RegisterInfo *reg_info =
                   reg_ctx->GetRegisterInfoByName(arg_str)) {
+            // If they have asked for a specific format don't obscure that by
+            // printing flags afterwards.
+            bool print_flags =
+                !m_format_options.GetFormatValue().OptionWasSet();
             if (!DumpRegister(m_exe_ctx, strm, *reg_ctx, *reg_info,
-                              /*print_flags=*/true))
+                              print_flags))
               strm.Printf("%-12s = error: unavailable\n", reg_info->name);
           } else {
             result.AppendErrorWithFormat("Invalid register name '%s'.\n",

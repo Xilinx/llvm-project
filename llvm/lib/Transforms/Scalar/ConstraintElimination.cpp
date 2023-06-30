@@ -327,6 +327,13 @@ static Decomposition decompose(Value *V,
     if (match(V, m_NSWAdd(m_Value(Op0), m_Value(Op1))))
       return MergeResults(Op0, Op1, IsSigned);
 
+    ConstantInt *CI;
+    if (match(V, m_NSWMul(m_Value(Op0), m_ConstantInt(CI)))) {
+      auto Result = decompose(Op0, Preconditions, IsSigned, DL);
+      Result.mul(CI->getSExtValue());
+      return Result;
+    }
+
     return V;
   }
 
@@ -487,7 +494,9 @@ ConstraintInfo::getConstraint(CmpInst::Predicate Pred, Value *Op0, Value *Op1,
   }
 
   for (const auto &KV : VariablesB) {
-    R[GetOrAddIndex(KV.Variable)] -= KV.Coefficient;
+    if (SubOverflow(R[GetOrAddIndex(KV.Variable)], KV.Coefficient,
+                    R[GetOrAddIndex(KV.Variable)]))
+      return {};
     auto I =
         KnownNonNegativeVariables.insert({KV.Variable, KV.IsKnownNonNegative});
     I.first->second &= KV.IsKnownNonNegative;
@@ -959,7 +968,8 @@ static bool checkAndReplaceCondition(
     NumCondsRemoved++;
     Changed = true;
   }
-  if (CSToUse.isConditionImplied(ConstraintSystem::negate(R.Coefficients))) {
+  auto Negated = ConstraintSystem::negate(R.Coefficients);
+  if (!Negated.empty() && CSToUse.isConditionImplied(Negated)) {
     if (!DebugCounter::shouldExecute(EliminatedCounter))
       return false;
 
@@ -975,6 +985,22 @@ static bool checkAndReplaceCondition(
     Changed = true;
   }
   return Changed;
+}
+
+static void
+removeEntryFromStack(const StackEntry &E, ConstraintInfo &Info,
+                     Module *ReproducerModule,
+                     SmallVectorImpl<ReproducerEntry> &ReproducerCondStack,
+                     SmallVectorImpl<StackEntry> &DFSInStack) {
+  Info.popLastConstraint(E.IsSigned);
+  // Remove variables in the system that went out of scope.
+  auto &Mapping = Info.getValue2Index(E.IsSigned);
+  for (Value *V : E.ValuesToRelease)
+    Mapping.erase(V);
+  Info.popLastNVariables(E.IsSigned, E.ValuesToRelease.size());
+  DFSInStack.pop_back();
+  if (ReproducerModule)
+    ReproducerCondStack.pop_back();
 }
 
 void ConstraintInfo::addFact(CmpInst::Predicate Pred, Value *A, Value *B,
@@ -1160,16 +1186,8 @@ static bool eliminateConstraints(Function &F, DominatorTree &DT,
                        Info.getValue2Index(E.IsSigned));
         dbgs() << "\n";
       });
-
-      Info.popLastConstraint(E.IsSigned);
-      // Remove variables in the system that went out of scope.
-      auto &Mapping = Info.getValue2Index(E.IsSigned);
-      for (Value *V : E.ValuesToRelease)
-        Mapping.erase(V);
-      Info.popLastNVariables(E.IsSigned, E.ValuesToRelease.size());
-      DFSInStack.pop_back();
-      if (ReproducerModule)
-        ReproducerCondStack.pop_back();
+      removeEntryFromStack(E, Info, ReproducerModule.get(), ReproducerCondStack,
+                           DFSInStack);
     }
 
     LLVM_DEBUG({

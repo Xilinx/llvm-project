@@ -102,6 +102,7 @@ Clang-Tidy Checks
    `bugprone-misplaced-pointer-arithmetic-in-alloc <bugprone/misplaced-pointer-arithmetic-in-alloc.html>`_, "Yes"
    `bugprone-misplaced-widening-cast <bugprone/misplaced-widening-cast.html>`_,
    `bugprone-move-forwarding-reference <bugprone/move-forwarding-reference.html>`_, "Yes"
+   `bugprone-multiple-new-in-one-expression <bugprone/multiple-new-in-one-expression.html>`_,
    `bugprone-multiple-statement-macro <bugprone/multiple-statement-macro.html>`_,
    `bugprone-no-escape <bugprone/no-escape.html>`_,
    `bugprone-non-zero-enum-to-bool-conversion <bugprone/non-zero-enum-to-bool-conversion.html>`_,
@@ -138,6 +139,7 @@ Clang-Tidy Checks
    `bugprone-undelegated-constructor <bugprone/undelegated-constructor.html>`_,
    `bugprone-unhandled-exception-at-new <bugprone/unhandled-exception-at-new.html>`_,
    `bugprone-unhandled-self-assignment <bugprone/unhandled-self-assignment.html>`_,
+   `bugprone-unique-ptr-array-mismatch <bugprone/unique-ptr-array-mismatch.html>`_, "Yes"
    `bugprone-unsafe-functions <bugprone/unsafe-functions.html>`_,
    `bugprone-unused-raii <bugprone/unused-raii.html>`_, "Yes"
    `bugprone-unused-return-value <bugprone/unused-return-value.html>`_,
@@ -190,6 +192,7 @@ Clang-Tidy Checks
    `cppcoreguidelines-interfaces-global-init <cppcoreguidelines/interfaces-global-init.html>`_,
    `cppcoreguidelines-macro-usage <cppcoreguidelines/macro-usage.html>`_,
    `cppcoreguidelines-misleading-capture-default-by-value <cppcoreguidelines/misleading-capture-default-by-value.html>`_, "Yes"
+   `cppcoreguidelines-missing-std-forward <cppcoreguidelines/missing-std-forward.html>`_,
    `cppcoreguidelines-narrowing-conversions <cppcoreguidelines/narrowing-conversions.html>`_,
    `cppcoreguidelines-no-malloc <cppcoreguidelines/no-malloc.html>`_,
    `cppcoreguidelines-owning-memory <cppcoreguidelines/owning-memory.html>`_,
@@ -252,6 +255,7 @@ Clang-Tidy Checks
    `misc-confusable-identifiers <misc/confusable-identifiers.html>`_,
    `misc-const-correctness <misc/const-correctness.html>`_, "Yes"
    `misc-definitions-in-headers <misc/definitions-in-headers.html>`_, "Yes"
+   `misc-include-cleaner <misc/include-cleaner.html>`_, "Yes"
    `misc-misleading-bidirectional <misc/misleading-bidirectional.html>`_,
    `misc-misleading-identifier <misc/misleading-identifier.html>`_,
    `misc-misplaced-const <misc/misplaced-const.html>`_,
@@ -314,6 +318,7 @@ Clang-Tidy Checks
    `objc-super-self <objc/super-self.html>`_, "Yes"
    `openmp-exception-escape <openmp/exception-escape.html>`_,
    `openmp-use-default-none <openmp/use-default-none.html>`_,
+   `performance-avoid-endl <performance/avoid-endl.html>`_, "Yes"
    `performance-faster-string-find <performance/faster-string-find.html>`_, "Yes"
    `performance-for-range-copy <performance/for-range-copy.html>`_, "Yes"
    `performance-implicit-conversion-in-loop <performance/implicit-conversion-in-loop.html>`_,

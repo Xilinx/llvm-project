@@ -438,7 +438,7 @@ using Strategy = SmallVector<Tactic>;
 
 static FailureOr<Tactic> parseTactic(StringRef string) {
   const auto symbolize = [](StringRef item) {
-    return llvm::StringSwitch<Optional<Tactic::Method>>(item)
+    return llvm::StringSwitch<std::optional<Tactic::Method>>(item)
         .Case("seed", Tactic::Method::Seed)
         .Case("producers", Tactic::Method::FuseProducers)
         .Case("producers*", Tactic::Method::FuseProducersGreedy)
@@ -446,7 +446,7 @@ static FailureOr<Tactic> parseTactic(StringRef string) {
         .Case("consumers*", Tactic::Method::FuseConsumersGreedy)
         .Case("longest_consumer", Tactic::Method::FuseLongestAncestorConsumer)
         .Case("dissolve", Tactic::Method::Dissolve)
-        .Default(llvm::None);
+        .Default(std::nullopt);
   };
 
   auto [methodStr, tail] = string.split('(');
@@ -565,7 +565,7 @@ struct LinalgStructuralFusionPass
   }
 
 private:
-  Optional<Strategy> strategy;
+  std::optional<Strategy> strategy;
 
   using WorkingSet = llvm::SmallVector<SubgraphOp>;
 
