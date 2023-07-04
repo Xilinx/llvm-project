@@ -19,6 +19,7 @@
 #include "mlir/Dialect/Tosa/Utils/ShapeUtils.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/FoldUtils.h"
@@ -897,15 +898,24 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
     return SplatElementsAttr::get(outputTy, operand.getSplatValue<Attribute>());
   }
 
-  if (!getInput1().hasOneUse())
-    return {};
+  /*if (!getInput1().hasOneUse())
+    return {};*/
 
-  DenseElementsAttr input = dyn_cast_if_present<DenseElementsAttr>(adaptor.getInput1());
-  if (!input)
-    return {};
+  if (auto input =
+          dyn_cast_if_present<DenseElementsAttr>(adaptor.getInput1())) {
+    return input.reshape(llvm::cast<ShapedType>(inputTy).clone(getNewShape()));
+  }
 
-  return input.reshape(
-      llvm::cast<ShapedType>(inputTy).clone(getNewShape()));
+  if (auto input =
+          dyn_cast_if_present<DenseResourceElementsAttr>(adaptor.getInput1())) {
+   return DenseResourceElementsAttr::get(outputTy, input.getRawHandle());
+  }
+
+  if(adaptor.getInput1()) {
+    adaptor.getInput1().dump();
+  }
+
+  return {};
 }
 
 OpFoldResult PadOp::fold(FoldAdaptor adaptor) {
