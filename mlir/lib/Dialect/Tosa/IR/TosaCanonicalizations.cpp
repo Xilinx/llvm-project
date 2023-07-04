@@ -897,7 +897,15 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
     return SplatElementsAttr::get(outputTy, operand.getSplatValue<Attribute>());
   }
 
-  return {};
+  if (!getInput1().hasOneUse())
+    return {};
+
+  DenseElementsAttr input = dyn_cast_if_present<DenseElementsAttr>(adaptor.getInput1());
+  if (!input)
+    return {};
+
+  return input.reshape(
+      llvm::cast<ShapedType>(inputTy).clone(getNewShape()));
 }
 
 OpFoldResult PadOp::fold(FoldAdaptor adaptor) {
