@@ -477,7 +477,8 @@ createLinalgBodyCalculationForElementwiseOp(Operation *op, ValueRange args,
                                             args.front(), zero);
     }
 
-    if (arith::FPToSIOp::areCastCompatible(srcTy, dstTy)) {
+    if (dstTy.isSignlessInteger() &&
+        arith::FPToSIOp::areCastCompatible(srcTy, dstTy)) {
       Value intMin = rewriter.create<arith::ConstantOp>(
           loc, rewriter.getF32FloatAttr(
                    APInt::getSignedMinValue(dstTy.getIntOrFloatBitWidth())
@@ -510,6 +511,30 @@ createLinalgBodyCalculationForElementwiseOp(Operation *op, ValueRange args,
       auto clamped = clampFloatHelper(loc, rounded, intMin, intMax, rewriter);
 
       return rewriter.create<arith::FPToSIOp>(loc, dstTy, clamped);
+    }
+
+    if (dstTy.isUnsignedInteger() &&
+        arith::FPToUIOp::areCastCompatible(srcTy, dstTy)) {
+      auto intMin = rewriter.create<arith::ConstantOp>(
+          loc, rewriter.getF32FloatAttr(
+                   APInt::getMinValue(dstTy.getIntOrFloatBitWidth())
+                       .getZExtValue()));
+
+      auto intMax = rewriter.create<arith::ConstantOp>(
+          loc, rewriter.getF32FloatAttr(
+                   APInt::getMaxValue(dstTy.getIntOrFloatBitWidth())
+                       .getZExtValue()));
+
+      auto rounded = rewriter.create<math::RoundEvenOp>(loc, args[0]);
+
+      auto clamped = clampFloatHelper(loc, rounded, intMin, intMax, rewriter);
+
+      auto cast = rewriter.create<arith::FPToUIOp>(
+          loc, rewriter.getIntegerType(dstTy.getIntOrFloatBitWidth()), clamped);
+      // arith is signless, so temporarily cast back to being unsigned.
+      return rewriter
+          .create<UnrealizedConversionCastOp>(loc, dstTy, cast->getResult(0))
+          .getResult(0);
     }
 
     // Casting to boolean, integers need to only be checked as not-equal to

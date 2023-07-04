@@ -39,6 +39,32 @@ func.func @cast_nofold(%arg0: tensor<?x1xf32>) -> tensor<?x1xi32> {
   return %0 : tensor<?x1xi32>
 }
 
+// CHECK-LABEL: @cast_fold_double
+func.func @cast_fold_double(%arg0: tensor<?x1xf32>) -> tensor<?x1xi8> {
+  // CHECK: "tosa.cast"{{.*}} (tensor<?x1xf32>) -> tensor<?x1xi8>
+  %0 = "tosa.cast"(%arg0) : (tensor<?x1xf32>) -> tensor<?x1xi16>
+  %1 = "tosa.cast"(%0) : (tensor<?x1xi16>) -> tensor<?x1xi8>
+  return %1 : tensor<?x1xi8>
+}
+
+// CHECK-LABEL: @cast_no_fold_double1
+func.func @cast_no_fold_double1(%arg0: tensor<?x1xf32>) -> tensor<?x1xi8> {
+  // CHECK: "tosa.cast"{{.*}} (tensor<?x1xf32>) -> tensor<?x1xui16>
+    // CHECK: "tosa.cast"{{.*}} (tensor<?x1xui16>) -> tensor<?x1xi8>
+  %0 = "tosa.cast"(%arg0) : (tensor<?x1xf32>) -> tensor<?x1xui16>
+  %1 = "tosa.cast"(%0) : (tensor<?x1xui16>) -> tensor<?x1xi8>
+  return %1 : tensor<?x1xi8>
+}
+
+// CHECK-LABEL: @cast_no_fold_double2
+func.func @cast_no_fold_double2(%arg0: tensor<?x1xf32>) -> tensor<?x1xi16> {
+  // CHECK: "tosa.cast"{{.*}} (tensor<?x1xf32>) -> tensor<?x1xi8>
+  // CHECK: "tosa.cast"{{.*}} (tensor<?x1xi8>) -> tensor<?x1xi16>
+  %0 = "tosa.cast"(%arg0) : (tensor<?x1xf32>) -> tensor<?x1xi8>
+  %1 = "tosa.cast"(%0) : (tensor<?x1xi8>) -> tensor<?x1xi16>
+  return %1 : tensor<?x1xi16>
+}
+
 // CHECK-LABEL: @clamp_not_noop
 func.func @clamp_not_noop(%arg0: tensor<4xi32>) -> tensor<4xi32> {
   // CHECK: "tosa.clamp"

@@ -800,6 +800,8 @@ def Tosa_PowOp : Tosa_ElemWiseBinaryOp<"pow"> {
   let results = (outs
     Tosa_Tensor:$z
   );
+
+  //let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1090,6 +1092,8 @@ def Tosa_RsqrtOp : Tosa_ElemWiseUnaryOp<"rsqrt"> {
   let results = (outs
     Tosa_Tensor:$output
   );
+
+  //let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
