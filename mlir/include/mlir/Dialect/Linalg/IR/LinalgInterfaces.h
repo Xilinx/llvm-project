@@ -23,8 +23,40 @@
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 
+#include "llvm/ADT/BitmaskEnum.h"
+
 namespace mlir {
 namespace linalg {
+
+/// Limited classification of some operations subject to fusion.
+enum class OperatorClass {
+  /// No classification.
+  None = 0,
+  /// Constant-like operation.
+  Constant = 1 << 0,
+  /// Generic linalg operation.
+  Generic = 1 << 1,
+  /// Elementwise (linalg) operation.
+  Elementwise = 1 << 2,
+  /// Activation function.
+  Activation = 1 << 3,
+  /// Convolution operator.
+  Convolution = 1 << 4,
+  /// Pooling operator.
+  Pooling = 1 << 5,
+  /// Padding operator.
+  Padding = 1 << 6,
+  /// Broadcasted operator.
+  Broadcast = 1 << 7,
+  LLVM_MARK_AS_BITMASK_ENUM(Broadcast)
+};
+
+FailureOr<OperatorClass> parseOperatorClass(StringRef str);
+
+raw_ostream& operator<<(raw_ostream &os, OperatorClass value);
+
+OperatorClass classifyOperator(Operation *op);
+
 class IteratorTypeAttr;
 class LinalgOp;
 

@@ -662,6 +662,27 @@ OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
   return mulBinaryFolder(lhsAttr, rhsAttr, resultTy, getShift());
 }
 
+OpFoldResult ReciprocalOp::fold(FoldAdaptor adaptor) {
+  
+  auto constantAttr = dyn_cast_or_null<DenseElementsAttr>(adaptor.getOperands()[0]);
+  auto lhsTy = dyn_cast<RankedTensorType>(getInput1().getType());
+
+  if (!lhsTy || !constantAttr) {
+    return {};
+  }
+
+  if (!constantAttr.isSplat()) {
+    return {};
+  }
+
+  auto floatVal = constantAttr.getSplatValue<llvm::APFloat>();
+
+  auto recipAttr = FloatAttr::get(lhsTy.getElementType(), 1.0);
+  APFloat recip = recipAttr.getValue();
+  recip.divide(floatVal, APFloat::rmNearestTiesToEven);
+  return DenseElementsAttr::get(lhsTy, recip);
+}
+
 OpFoldResult SubOp::fold(FoldAdaptor adaptor) {
   auto lhsTy = llvm::dyn_cast<RankedTensorType>(getInput1().getType());
   auto rhsTy = llvm::dyn_cast<RankedTensorType>(getInput2().getType());
@@ -677,6 +698,9 @@ OpFoldResult SubOp::fold(FoldAdaptor adaptor) {
     return getInput1();
 
   if (!lhsAttr || !rhsAttr)
+    return {};
+
+  if (lhsTy != rhsTy)
     return {};
 
   return binaryFolder<std::minus<APInt>, std::minus<APFloat>>(lhsAttr, rhsAttr,

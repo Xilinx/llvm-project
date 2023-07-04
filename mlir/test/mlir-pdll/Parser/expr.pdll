@@ -14,6 +14,33 @@ Pattern {
 
 // -----
 
+// CHECK: |-NamedAttributeDecl {{.*}}  Name<some_array>
+// CHECK: `-UserRewriteDecl {{.*}} Name<addElemToArrayAttr> ResultType<Attr>
+// CHECK:   `Arguments`
+// CHECK:     `-CallExpr {{.*}} Type<Attr>
+// CHECK:       `-UserRewriteDecl {{.*}} Name<createArrayAttr> ResultType<Attr>
+// CHECK:     `-CallExpr {{.*}} Type<Attr>
+// CHECK:       `-UserRewriteDecl {{.*}} Name<addEntryToDictionaryAttr> ResultType<Attr>
+// CHECK:         `Arguments`
+// CHECK:           `-CallExpr {{.*}} Type<Attr>
+// CHECK:             `-UserRewriteDecl {{.*}} Name<createDictionaryAttr> ResultType<Attr>
+// CHECK:             `-AttributeExpr {{.*}} Value<""firstAttr"">
+Rewrite createDictionaryAttr() -> Attr;
+Rewrite addEntryToDictionaryAttr(dict: Attr, attrName: Attr, attr : Attr) -> Attr;
+Rewrite createArrayAttr() -> Attr;
+Rewrite addElemToArrayAttr(arrayAttr: Attr, newElement: Attr) -> Attr;
+
+Pattern {
+  let root = op<test.op> -> ();
+  let attr = attr<"\"test\"">;
+  rewrite root with {
+      let newRoot = op<test.success>() { some_array =  [ {"firstAttr" = attr<"\"test\"">}], attr} -> ();
+      replace root with newRoot;
+  };
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // CallExpr
 //===----------------------------------------------------------------------===//
@@ -46,6 +73,22 @@ Rewrite CreateNewOp(inputs: ValueRange) => op<my_dialect.foo>(inputs);
 Pattern {
   let inputOp = op<my_dialect.bar>;
   replace op<my_dialect.bar>(inputOp) with CreateNewOp(inputOp);
+}
+
+// -----
+
+// CHECK: Module {{.*}}
+// CHECK:  -UserConstraintDecl {{.*}} Name<checkOp> ResultType<Tuple<>>
+// CHECK: `-PatternDecl {{.*}}
+// CHECK:   -CallExpr {{.*}} Type<Tuple<>> negated
+// CHECK:     `-DeclRefExpr {{.*}} Type<Constraint>
+// CHECK:       `-UserConstraintDecl {{.*}} Name<checkOp> ResultType<Tuple<>>
+Constraint checkOp(op: Op);
+
+Pattern {
+  let inputOp = op<my_dialect.bar>;
+  !checkOp(inputOp);
+  erase inputOp;
 }
 
 // -----
@@ -236,6 +279,29 @@ Pattern {
   rewrite op<test.multi_variadic>() -> () with {
     op<test.all_variadic> -> ();
     op<test.multi_variadic> -> ();
+  };
+}
+
+// -----
+
+// Test parsing of an op with an empty region
+
+// CHECK: Module
+// CHECK:  -PatternDecl {{.*}}
+// CHECK:  -RewriteStmt {{.*}}
+// CHECK:  -OperationExpr {{.*}} Type<Op<test.foo>>
+// CHECK-SAME: numRegions:0
+// CHECK:    `Operands`
+// CHECK:    `Result Types`
+// CHECK:    `Attributes`
+// CHECK:  -OperationExpr {{.*}} Type<Op<test.foo_with_region>>
+// CHECK-SAME: numRegions:1
+// CHECK:    `Operands`
+// CHECK:    `Result Types`
+// CHECK:    `Attributes`
+Pattern {
+  rewrite op<test.foo>(operand: Value) {attr=attr: Attr} -> (type : Type) with {
+    op<test.foo_with_region>(operand) {attr=attr} -> (type) ({});
   };
 }
 

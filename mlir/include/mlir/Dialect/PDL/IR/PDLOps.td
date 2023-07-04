@@ -35,7 +35,7 @@ def PDL_ApplyNativeConstraintOp
   let description = [{
     `pdl.apply_native_constraint` operations apply a native C++ constraint, that
     has been registered externally with the consumer of PDL, to a given set of
-    entities.
+    entities and optionally return a number of values..
 
     Example:
 
@@ -45,8 +45,9 @@ def PDL_ApplyNativeConstraintOp
     ```
   }];
 
-  let arguments = (ins StrAttr:$name, Variadic<PDL_AnyType>:$args);
-  let assemblyFormat = "$name `(` $args `:` type($args) `)` attr-dict";
+  let arguments = (ins StrAttr:$name, Variadic<PDL_AnyType>:$args, DefaultValuedAttr<BoolAttr,"false">:$isNegated);
+  let results = (outs Variadic<PDL_AnyType>:$results);
+  let assemblyFormat = "$name `(` $args `:` type($args) `)` (`:`  type($results)^ )? attr-dict";
   let hasVerifier = 1;
 }
 
@@ -345,7 +346,8 @@ def PDL_OperationOp : PDL_Op<"operation", [AttrSizedOperandSegments]> {
                        Variadic<PDL_InstOrRangeOf<PDL_Value>>:$operandValues,
                        Variadic<PDL_Attribute>:$attributeValues,
                        StrArrayAttr:$attributeValueNames,
-                       Variadic<PDL_InstOrRangeOf<PDL_Type>>:$typeValues);
+                       Variadic<PDL_InstOrRangeOf<PDL_Type>>:$typeValues,
+                       OptionalAttr<UI32Attr>:$numRegions);
   let results = (outs PDL_Operation:$op);
   let assemblyFormat = [{
     ($opName^)? (`(` $operandValues^ `:` type($operandValues) `)`)?
@@ -360,9 +362,10 @@ def PDL_OperationOp : PDL_Op<"operation", [AttrSizedOperandSegments]> {
       CArg<"ValueRange", "std::nullopt">:$attrValues,
       CArg<"ValueRange", "std::nullopt">:$resultTypes), [{
       auto nameAttr = name ? $_builder.getStringAttr(*name) : StringAttr();
+      IntegerAttr numRegionsAttr;
       build($_builder, $_state, $_builder.getType<OperationType>(), nameAttr,
             operandValues, attrValues, $_builder.getStrArrayAttr(attrNames),
-            resultTypes);
+            resultTypes, numRegionsAttr);
     }]>,
   ];
   let extraClassDeclaration = [{

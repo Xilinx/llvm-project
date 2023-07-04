@@ -14,6 +14,7 @@
 #define LINALG_OPS
 
 include "mlir/Dialect/Linalg/IR/LinalgBase.td"
+include "mlir/Dialect/Linalg/IR/LinalgInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
@@ -85,6 +86,106 @@ def Linalg_IndexOp : Linalg_Op<"index", [Pure]>,
 
   let assemblyFormat = [{ $dim attr-dict `:` type($result) }];
   let hasVerifier = 1;
+}
+
+def Linalg_SoftmaxOp : Linalg_Op<"softmax", [Pure]> {
+  let arguments = (ins AnyTensor:$input,
+                       I64Attr:$dim);
+  let results = (outs AnyTensor:$result);
+  let summary = "linalg softmax operation";
+  let description = [{
+    This implements the softmax operator.
+  }];
+  let assemblyFormat = [{ attr-dict `ins``(` $input `:` type($input)`)` `->` type(results) }];
+  let hasVerifier = 1;
+}
+
+def Linalg_GlobalAveragePool2DOp : Linalg_Op<"globalaveragepool2d", [Pure]> {
+  let arguments = (ins AnyTensor:$input);
+  let results = (outs AnyTensor:$result);
+  let summary = "linalg globalaveragepool2d operation";
+  let description = [{
+    This implements the globalaveragepool2d operator.
+    The custom op is unfused into `linalg.pooling_nchw_sum` and `arith.divf`.
+  }];
+  let assemblyFormat = [{ attr-dict `ins``(` $input `:` type($input)`)` `->` type(results) }];
+  let hasVerifier = 1;
+}
+
+def Linalg_SubgraphOp
+    : Linalg_Op<"subgraph", [
+        IsolatedFromAbove,
+        DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+        DeclareOpInterfaceMethods<LinalgOperatorClassInterface>,
+        DeclareOpInterfaceMethods<
+          RegionBranchOpInterface, [
+            "getSuccessorEntryOperands",
+            "getNumRegionInvocations",
+            "getRegionInvocationBounds"]>,
+        SingleBlockImplicitTerminator<"YieldOp">]> {
+  let summary = "Fused operator region";
+  let description = [{
+    The `linalg.subgraph` operation declares a single block that collects
+    operations that produce a tensor value in a single region, with
+    all intermediary values being buffered internally and/or scalar replaced.
+
+    All values used within this block must be explicitly captured.
+
+    This operation also supports buffered semantics, where no value will be
+    returned, and all side-effects are expected to be mediated through captured
+    memrefs.
+
+    Example:
+
+    ```mlir
+    %0 = ... : tensor<1x3x108x108xf32>
+    %1 = linalg.subgraph (%ifm = %0 : tensor<1x3x108x108xf32>) {
+      %0 = linalg.conv2d_nchw ins(%ifm: ...
+      %1 = linalg.relu2d_nchw ins(%0: ...
+      linalg.yield %1 : tensor<1x3x106x106xf32>
+    } -> tensor<1x3x106x106xf32>
+    ```
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$captures);
+  let results = (outs Optional<AnyRankedTensor>:$result);
+  let regions = (region SizedRegion<1>:$body);
+
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
+  let hasCanonicalizer = 1;
+
+  let builders = [
+    OpBuilder<(ins
+      "Type":$resultType,
+      "ValueRange":$captures,
+      CArg<"function_ref<void(OpBuilder &, Location, IRMapping &)>", "nullptr">:$bodyBuilder)>,
+    OpBuilder<(ins
+      "ValueRange":$captures,
+      CArg<"function_ref<void(OpBuilder &, Location, IRMapping &)>", "nullptr">:$bodyBuilder)>
+  ];
+  let skipDefaultBuilders = 1;
+
+  code extraClassDeclaration = [{
+    Block::BlockArgListType getCaptureArgs() {
+      return getBody().getArguments();
+    }
+
+    IRMapping getCaptureMapping() {
+      IRMapping result;
+      for (unsigned idx = 0; idx < getCaptures().size(); ++idx) {
+        result.map(getCaptures()[idx], getCaptureArgs()[idx]);
+      }
+      return result;
+    }
+    IRMapping getUnCaptureMapping() {
+      IRMapping result;
+      for (unsigned idx = 0; idx < getCaptures().size(); ++idx) {
+        result.map(getCaptureArgs()[idx], getCaptures()[idx]);
+      }
+      return result;
+    }
+  }];
 }
 
 #endif // LINALG_OPS

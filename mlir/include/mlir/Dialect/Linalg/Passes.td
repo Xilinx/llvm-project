@@ -111,6 +111,37 @@ def LinalgGeneralization : Pass<"linalg-generalize-named-ops", "func::FuncOp"> {
   let dependentDialects = ["linalg::LinalgDialect"];
 }
 
+def LinalgUnfuse : Pass<"linalg-unfuse", "func::FuncOp"> {
+  let summary = "Convert fused named ops into simple ops";
+  let constructor = "mlir::createLinalgUnfusePass()";
+  let dependentDialects = [
+    "linalg::LinalgDialect",
+    "tensor::TensorDialect",
+    "arith::ArithDialect",
+    "math::MathDialect"
+  ];
+}
+
+def LinalgStructuralFusion : Pass<"linalg-structural-fusion", "func::FuncOp"> {
+  let summary = "Performs structural fusion based on the linalg.subgraph op";
+  let constructor = "mlir::createLinalgStructuralFusionPass()";
+  let dependentDialects = [
+    "linalg::LinalgDialect",
+    "tensor::TensorDialect",
+    "arith::ArithDialect"
+  ];
+  let options = [
+    ListOption<"strategyString", "strategy", "std::string",
+               "Declarative fusion strategy string."
+               "The format accepts a comma-separated list of tactics among "
+               "seed,producers,producers*,consumers,consumers*,dissolve "
+               "plus a filter in parens, which can take set of any of the "
+               "categories const,generic,el,act,conv,pool,pad,bcast "
+               "e.g. seed(conv),consumers(act),dissolve",
+               "llvm::cl::ZeroOrMore">
+  ];
+}
+
 def LinalgDetensorize : InterfacePass<"linalg-detensorize", "FunctionOpInterface"> {
   let summary = "Detensorize linalg ops";
   let constructor = "mlir::createLinalgDetensorizePass()";
