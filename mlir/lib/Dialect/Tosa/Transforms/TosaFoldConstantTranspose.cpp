@@ -111,8 +111,8 @@ struct TosaFoldConstantTranspose : public OpRewritePattern<tosa::TransposeOp> {
     if (!matchPattern(op.getInput1(), m_Constant(&inputValues)))
       return failure();
     // Make sure the input is a constant that has a single user.
-    if (!llvm::hasSingleElement(op.getInput1().getDefiningOp()->getUsers()))
-      return failure();
+    //if (!llvm::hasSingleElement(op.getInput1().getDefiningOp()->getUsers()))
+    //  return failure();
 
     DenseIntElementsAttr permAttr;
     if (!matchPattern(op.getPerms(), m_Constant(&permAttr)))

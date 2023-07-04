@@ -230,6 +230,7 @@ bool mlir::tosa::constantBinaryOpShouldBeFolded(
     return true;
   }
 
+return true;
   // If this is the only use of one of the tensors, it will be replaced an no
   // additional memory is required.
   if (firstOp.hasOneUse() || secondOp.hasOneUse()) {
@@ -255,7 +256,7 @@ bool mlir::tosa::constantUnaryOpShouldBeFolded(TosaOp unaryOp,
 
   // If this is the only use of the tensors it will be replaced an no
   // additional memory is required.
-  return inputOp.hasOneUse();
+  return true; //inputOp.hasOneUse();
 }
 
 APFloat mlir::tosa::computeReciprocal(const APFloat &floatVal,
