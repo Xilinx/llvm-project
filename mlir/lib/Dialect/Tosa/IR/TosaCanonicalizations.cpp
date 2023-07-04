@@ -773,6 +773,10 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
   auto outETy = outTy.getElementType();
 
   if (operand.isSplat()) {
+    // Bug? For DenseResourceElementsAttr, isSplat() can return true,
+    // but getSplatValue() will throw.
+    if (isa<DenseResourceElementsAttr>(operand))
+      return {};
     if (llvm::isa<FloatType>(inETy) && llvm::isa<FloatType>(outETy)) {
       bool overflow;
       auto splatVal = operand.getSplatValue<APFloat>();
