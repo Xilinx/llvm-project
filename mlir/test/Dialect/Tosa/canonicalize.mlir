@@ -358,12 +358,12 @@ func.func @reshape_canonicalize_double(%arg0: tensor<?x10xf32>) -> tensor<?x5xf3
 }
 
 // CHECK-LABEL: @reshape_canonicalize_const
-func.func @reshape_canonicalize_const() -> tensor<1x10xi32> {
-  // CHECK: %[[VAR0:.+]] = "tosa.const"() <{value = dense<0> : tensor<1x10xi32>}
+func.func @reshape_canonicalize_const() -> tensor<1x5xi32> {
+  // CHECK: %[[VAR0:.+]] = "tosa.const"() <{value = dense<{{\[\[}}0, 1, 2, 3, 4]]> : tensor<1x5xi32>}
   // CHECK: return %[[VAR0]]
-  %0 = "tosa.const"() {value = dense<0> : tensor<10xi32>} : () -> tensor<10xi32>
-  %1 = "tosa.reshape"(%0) {new_shape = array<i64: 1, 10>} : (tensor<10xi32>) -> tensor<1x10xi32>
-  return %1 : tensor<1x10xi32>
+  %0 = "tosa.const"() {value = dense<[0, 1, 2, 3, 4]> : tensor<5xi32>} : () -> tensor<5xi32>
+  %1 = "tosa.reshape"(%0) {new_shape = array<i64: 1, 5>} : (tensor<5xi32>) -> tensor<1x5xi32>
+  return %1 : tensor<1x5xi32>
 }
 
 // CHECK-LABEL: @reshape_canonicalize_const_spat

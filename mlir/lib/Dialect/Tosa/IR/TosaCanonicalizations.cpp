@@ -877,11 +877,23 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
     return getInput1();
 
   auto operand = llvm::dyn_cast_if_present<DenseElementsAttr>(adaptor.getInput1());
-  if (operand && outputTy.hasStaticShape() && operand.isSplat()) {
+  if (!operand)
+    return {};
+
+  if (!outputTy.hasStaticShape())
+    return {};
+
+  // Okay to duplicate splat constants.
+  if (operand.isSplat()) {
     return SplatElementsAttr::get(outputTy, operand.getSplatValue<Attribute>());
   }
 
-  return {};
+  // Don't duplicate other constants.
+  if (!(getInput1().hasOneUse() || operand.isSplat()))
+    return {};
+
+  return operand.reshape(
+      llvm::cast<ShapedType>(operand.getType()).clone(getNewShape()));
 }
 
 OpFoldResult PadOp::fold(FoldAdaptor adaptor) {
