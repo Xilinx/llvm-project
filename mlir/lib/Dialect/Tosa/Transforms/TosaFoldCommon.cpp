@@ -112,6 +112,12 @@ template DenseElementsAttr mlir::tosa::applyElementWise<APFloat, APFloat>(
     TensorType targetType,
     const std::function<APFloat(const APFloat &, const APFloat &)> &toApply);
 
+template DenseElementsAttr mlir::tosa::applyElementWise<APFloat, APInt>(
+    const DenseElementsAttr &first, const DenseElementsAttr &second,
+    TensorType targetType,
+    const std::function<APInt(const APFloat &, const APFloat &)> &toApply);
+
+
 template DenseElementsAttr mlir::tosa::applyElementWise<APInt, APInt>(
     const DenseElementsAttr &first, const DenseElementsAttr &second,
     TensorType targetType,
@@ -127,6 +133,18 @@ mlir::tosa::notifyIfNotConstantFloatTosaTensor(TypedValue<TensorType> toCheck,
   }
   return notifyIfNoTosaDenseConstantTensor(toCheck, location, rewriter);
 }
+
+LogicalResult
+mlir::tosa::notifyIfNotConstantIntegerTosaTensor(TypedValue<TensorType> toCheck,
+                                               TosaOp location,
+                                               PatternRewriter &rewriter) {
+  auto floatCheck = notifyIfNotInteger(toCheck, location, rewriter);
+  if (failed(floatCheck)) {
+    return floatCheck;
+  }
+  return notifyIfNoTosaDenseConstantTensor(toCheck, location, rewriter);
+}
+
 
 LogicalResult
 mlir::tosa::notifyIfNoTosaDenseConstantTensor(TypedValue<TensorType> toCheck,
@@ -157,6 +175,17 @@ LogicalResult mlir::tosa::notifyIfNotFloat(TypedValue<TensorType> toCheck,
                                            TosaOp location,
                                            PatternRewriter &rewriter) {
   if (isa<FloatType>(toCheck.getType().getElementType())) {
+    return success();
+  }
+  return rewriter.notifyMatchFailure(location,
+                                     "Unexpected input tensor type: the "
+                                     "TOSA spec only allows floats");
+}
+
+LogicalResult mlir::tosa::notifyIfNotInteger(TypedValue<TensorType> toCheck,
+                                           TosaOp location,
+                                           PatternRewriter &rewriter) {
+  if (isa<IntegerType>(toCheck.getType().getElementType())) {
     return success();
   }
   return rewriter.notifyMatchFailure(location,

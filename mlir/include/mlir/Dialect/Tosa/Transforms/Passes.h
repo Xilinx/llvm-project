@@ -37,6 +37,10 @@ void populateTosaFoldConstantClampPatterns(MLIRContext *ctx,
 void populateTosaFoldConstantCastPatterns(MLIRContext *ctx,
                                           RewritePatternSet &patterns,
                                           bool enableIntCastFolding);
+void populateTosaFoldConstantGreaterPatterns(MLIRContext *ctx,
+                                          RewritePatternSet &patterns);
+void populateTosaFoldConstantLogicalNotPatterns(MLIRContext *ctx,
+                                          RewritePatternSet &patterns);                                          
 void populateTosaFoldConstantMulPatterns(MLIRContext *ctx,
                                          RewritePatternSet &patterns);
 void populateTosaFoldConstantPowPatterns(MLIRContext *ctx,

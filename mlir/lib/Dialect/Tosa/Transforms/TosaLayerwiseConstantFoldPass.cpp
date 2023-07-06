@@ -54,6 +54,8 @@ struct TosaLayerwiseConstantFoldPass
     mlir::tosa::populateTosaFoldConstantCastPatterns(ctx, patterns,
                                                      enableIntCastFolding);
     mlir::tosa::populateTosaFoldConstantClampPatterns(ctx, patterns);
+    mlir::tosa::populateTosaFoldConstantGreaterPatterns(ctx, patterns);
+    populateTosaFoldConstantLogicalNotPatterns(ctx, patterns);
     mlir::tosa::populateTosaFoldConstantMulPatterns(ctx, patterns);
     mlir::tosa::populateTosaFoldConstantPowPatterns(ctx, patterns);
     mlir::tosa::populateTosaFoldConstantReciprocalPatterns(ctx, patterns);

@@ -52,6 +52,12 @@ LogicalResult notifyIfNotConstantFloatTosaTensor(TypedValue<TensorType> toCheck,
                                                  TosaOp location,
                                                  PatternRewriter &rewriter);
 
+/// Function that checks if \p toCheck is a dense TOSA constant integer tensor.
+LogicalResult notifyIfNotConstantIntegerTosaTensor(TypedValue<TensorType> toCheck,
+                                                   TosaOp location,
+                                                   PatternRewriter &rewriter);
+
+
 /// Function that checks if \p toCheck is a dense TOSA constant tensor.
 LogicalResult notifyIfNoTosaDenseConstantTensor(TypedValue<TensorType> toCheck,
                                                 TosaOp location,
@@ -60,6 +66,11 @@ LogicalResult notifyIfNoTosaDenseConstantTensor(TypedValue<TensorType> toCheck,
 /// Function that checks if the type contained in \p toCheck is float.
 LogicalResult notifyIfNotFloat(TypedValue<TensorType> toCheck, TosaOp location,
                                PatternRewriter &rewriter);
+
+/// Function that checks if the type contained in \p toCheck is integer.
+LogicalResult notifyIfNotInteger(TypedValue<TensorType> toCheck, TosaOp location,
+                                 PatternRewriter &rewriter);
+
 
 /// Compute the offset in \p shape which corresponds to the given \p index.
 OffsetType indexToOffset(DimensionType shape, DimensionType index);
