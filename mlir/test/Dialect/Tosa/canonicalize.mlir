@@ -384,6 +384,22 @@ func.func @reshape_canonicalize_const_sparse() -> (tensor<3xi32>, tensor<1x3xi32
   return %0 , %1 : tensor<3xi32>, tensor<1x3xi32>
 }
 
+// CHECK-LABEL: @reshape_canonicalize_const_resource_elided
+func.func @reshape_canonicalize_const_resource_elided() -> (tensor<3xi32>, tensor<1x3xi32>) {
+  // CHECK-NOT: "tosa.reshape"
+  %0 = "tosa.const"() {value = dense_resource<__elided__> : tensor<3xi32>} : ()-> tensor<3xi32>
+  %1 = "tosa.reshape"(%0) {new_shape = array<i64: 1, 3>} : (tensor<3xi32>) -> tensor<1x3xi32>
+  return %0 , %1 : tensor<3xi32>, tensor<1x3xi32>
+}
+
+// CHECK-LABEL: @reshape_canonicalize_const_resource_other
+func.func @reshape_canonicalize_const_resource_other() -> (tensor<3xi32>, tensor<1x3xi32>) {
+  // CHECK: "tosa.reshape"
+  %0 = "tosa.const"() {value = dense_resource<__other__> : tensor<3xi32>} : ()-> tensor<3xi32>
+  %1 = "tosa.reshape"(%0) {new_shape = array<i64: 1, 3>} : (tensor<3xi32>) -> tensor<1x3xi32>
+  return %0 , %1 : tensor<3xi32>, tensor<1x3xi32>
+}
+
 // CHECK-LABEL: @reshape_canonicalize_quant
 func.func @reshape_canonicalize_quant() -> (tensor<1x3x!quant.uniform<i8:f32, 1.000000e+00>>) {
   // CHECK{LITERAL}: "tosa.const"() <{value = dense<[[1, 2, 3]]> : tensor<1x3xi8>}> : () -> tensor<1x3x!quant.uniform<i8:f32, 1.000000e+00>>

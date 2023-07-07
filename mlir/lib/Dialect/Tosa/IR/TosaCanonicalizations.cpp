@@ -19,6 +19,7 @@
 #include "mlir/Dialect/Tosa/Utils/ShapeUtils.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/DialectResourceBlobManager.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/FoldUtils.h"
@@ -847,6 +848,12 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
 
   if (!outputTy.hasStaticShape())
     return {};
+
+  if (auto resource = dyn_cast_if_present<DenseResourceElementsAttr>(adaptor.getInput1())) {
+    if (resource.getRawHandle().getKey() != "__elided__")
+      return {};
+    return DenseResourceElementsAttr::get(outputTy, resource.getRawHandle());
+  }
 
   auto operand = llvm::dyn_cast_if_present<DenseElementsAttr>(adaptor.getInput1());
   if (!operand)
