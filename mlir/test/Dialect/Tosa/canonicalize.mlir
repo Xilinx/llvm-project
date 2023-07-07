@@ -366,8 +366,8 @@ func.func @reshape_canonicalize_const() -> tensor<1x5xi32> {
   return %1 : tensor<1x5xi32>
 }
 
-// CHECK-LABEL: @reshape_canonicalize_const_spat
-func.func @reshape_canonicalize_const_spat() -> (tensor<10xi32>, tensor<1x10xi32>) {
+// CHECK-LABEL: @reshape_canonicalize_const_splat
+func.func @reshape_canonicalize_const_splat() -> (tensor<10xi32>, tensor<1x10xi32>) {
   // CHECK-DAG: %[[VAR0:.+]] = "tosa.const"() <{value = dense<0> : tensor<10xi32>}
   // CHECK-DAG: %[[VAR1:.+]] = "tosa.const"() <{value = dense<0> : tensor<1x10xi32>}
   // CHECK: return %[[VAR0]], %[[VAR1]]
