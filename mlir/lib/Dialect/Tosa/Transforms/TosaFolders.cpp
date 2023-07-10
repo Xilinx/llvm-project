@@ -1070,6 +1070,30 @@ struct TosaFoldConstantAdd : public TosaFoldConstantBinary<TosaFoldConstantAdd, 
   }
 };
 
+struct TosaFoldConstantGreater : public TosaFoldConstantBinary<TosaFoldConstantGreater, GreaterOp> {
+  using TosaFoldConstantBinary<TosaFoldConstantGreater, GreaterOp>::TosaFoldConstantBinary;
+
+  DenseElementsAttr computeInteger(DenseElementsAttr lhsValues,
+                            DenseElementsAttr rhsValues,
+                            TensorType resultType,
+                            GreaterOp op) const {
+      return applyElementWise<APInt, APInt>(lhsValues, rhsValues,
+                                                 resultType, [](const APInt &first, const APInt &second) {
+        return APInt(1, first.sgt(second));
+      });
+  }
+
+  DenseElementsAttr computeFloat(DenseElementsAttr lhsValues,
+                            DenseElementsAttr rhsValues,
+                            TensorType resultType,
+                            GreaterOp op) const {
+    return applyElementWise<APFloat, APInt>(lhsValues, rhsValues,
+                                                    resultType,[](const APFloat &first, const APFloat &second) {
+        return APInt(1, first > second);
+      });
+  }
+};
+
 } // namespace
 
 void mlir::tosa::populateTosaFoldConstantPatterns(
@@ -1088,5 +1112,5 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
     patterns.add<TosaFoldConstantFloatCasts>(ctx, foldSplatOrSingleUseOnly);
   }
   patterns.add<TosaFoldConstantAdd>(ctx, foldSplatOrSingleUseOnly);
-  
+  patterns.add<TosaFoldConstantGreater>(ctx, foldSplatOrSingleUseOnly);
 }
