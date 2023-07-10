@@ -575,6 +575,24 @@ struct TosaFoldConstantRSQRT
   }
 };
 
+struct TosaFoldConstantLogicalNot
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantLogicalNot,
+                                              LogicalNotOp> {
+  using TosaFoldConstantUnaryElementwise<
+      TosaFoldConstantLogicalNot,
+      LogicalNotOp>::TosaFoldConstantUnaryElementwise;
+
+  DenseElementsAttr computeInteger(DenseElementsAttr values,
+                                   TensorType resultType, TosaOp op) const {
+    return applyElementWise<APInt, APInt, IntegerType>(
+        values,
+        [](const APInt &val, IntegerType) {
+          return APInt(1, !val.getBoolValue());
+        },
+        cast<IntegerType>(values.getElementType()));
+  }
+};
+
 struct TosaFoldConstantPow : public TosaFoldConstantBase<PowOp> {
 
   using TosaFoldConstantBase::TosaFoldConstantBase;
@@ -1113,6 +1131,7 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
   patterns.add<TosaFoldConstantTranspose>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantReciprocal>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantRSQRT>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantLogicalNot>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantPow>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantMul>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantClamp>(ctx, foldSplatOrSingleUseOnly);
