@@ -756,6 +756,18 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
   if (getInput().getType() == getType())
     return getInput();
 
+  // cast-to-iN(cast-to-iM(x)) -> cast-to-iN(x) when N <= M
+  if (auto cast = getInput().getDefiningOp<CastOp>()) {
+    auto intermediateElTy = cast.getType().getElementType().dyn_cast<IntegerType>();
+    auto finalElTy = getType().getElementType().dyn_cast<IntegerType>();
+    if (intermediateElTy && finalElTy &&
+        intermediateElTy.getSignedness() == finalElTy.getSignedness() &&
+        intermediateElTy.getWidth() >= finalElTy.getWidth()) {
+      getInputMutable().assign(cast.getInput());
+      return getResult();
+    }
+  }
+
   auto operand = llvm::dyn_cast_if_present<ElementsAttr>(adaptor.getInput());
   if (!operand)
     return {};
