@@ -41,12 +41,10 @@ void populateTosaFoldConstantMulPatterns(MLIRContext *ctx,
                                          RewritePatternSet &patterns);
 void populateTosaFoldConstantPowPatterns(MLIRContext *ctx,
                                          RewritePatternSet &patterns);
-void populateTosaFoldConstantReciprocalPatterns(MLIRContext *ctx,
-                                                RewritePatternSet &patterns);
 void populateTosaFoldConstantRSQRTPatterns(MLIRContext *ctx,
                                            RewritePatternSet &patterns);
-void populateTosaFoldConstantTransposePatterns(MLIRContext *ctx,
-                                               RewritePatternSet &patterns);
+void populateTosaFoldConstantPatterns(MLIRContext *ctx,
+                                      RewritePatternSet &patterns);
 
 std::unique_ptr<Pass> createTosaLayerwiseConstantFoldPass();
 std::unique_ptr<Pass> createTosaInferShapesPass();

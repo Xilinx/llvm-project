@@ -8,9 +8,8 @@ add_mlir_dialect_library(MLIRTosaTransforms
   TosaFoldConstantClamp.cpp
   TosaFoldConstantMul.cpp
   TosaFoldConstantPow.cpp
-  TosaFoldConstantReciprocal.cpp
   TosaFoldConstantRSQRT.cpp
-  TosaFoldConstantTranspose.cpp
+  TosaFolders.cpp
   TosaInferShapes.cpp
   TosaLayerwiseConstantFoldPass.cpp
   TosaMakeBroadcastable.cpp
