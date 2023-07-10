@@ -177,7 +177,7 @@ DenseElementsAttr applyElementWise(
 }
 
 /// Function that checks if \p toCheck is a dense TOSA constant tensor.
-LogicalResult notifyIfNoTosaDenseConstantTensor(TypedValue<TensorType> toCheck,
+LogicalResult notifyIfNoTosaDenseConstantTensor(Value toCheck,
                                                 TosaOp location,
                                                 PatternRewriter &rewriter) {
   // Check whether the tensor is constant and dense
@@ -200,18 +200,6 @@ LogicalResult notifyIfNoTosaDenseConstantTensor(TypedValue<TensorType> toCheck,
                                      "The reciprocal can only be folded if "
                                      "it operates on a TOSA constant");
 }
-
-/// Function that checks if \p toCheck is a dense TOSA constant float tensor.
-LogicalResult notifyIfNotConstantFloatTosaTensor(TypedValue<TensorType> toCheck,
-                                                 TosaOp location,
-                                                 PatternRewriter &rewriter) {
-  auto floatCheck = notifyIfNotFloat(toCheck, location, rewriter);
-  if (failed(floatCheck)) {
-    return floatCheck;
-  }
-  return notifyIfNoTosaDenseConstantTensor(toCheck, location, rewriter);
-}
-
 
 template <typename BaseType>
 DenseElementsAttr transposeType(ElementsAttr attr, ShapedType inputType,
@@ -348,6 +336,151 @@ struct TosaFoldConstantBase: public OpRewritePattern<TosaOp> {
   }
 };
 
+template <typename BaseClass, typename TosaOp>
+struct TosaFoldConstantUnaryElementwise : public TosaFoldConstantBase<TosaOp> {
+  using TosaFoldConstantBase<TosaOp>::TosaFoldConstantBase;
+
+  LogicalResult matchAndRewrite(TosaOp op,
+                                PatternRewriter &rewriter) const override {
+    auto inputTensor = op.getOperand();
+    // Check that we can apply folding
+    auto preCondCheck =
+        notifyIfNoTosaDenseConstantTensor(inputTensor, op, rewriter);
+    if (failed(preCondCheck)) {
+      return preCondCheck;
+    }
+
+    // Extract the tensor values
+    DenseElementsAttr inputValues;
+    matchPattern(inputTensor, m_Constant(&inputValues));
+
+    // Check whether this should be folded.
+    if (!TosaFoldConstantBase<TosaOp>::constantUnaryOpShouldBeFolded(
+            op, inputValues)) {
+      return rewriter.notifyMatchFailure(
+          op, "Currently, unary ops will only be folded if the input "
+              "tensor has a single user");
+    }
+
+    DenseElementsAttr newTensor = static_cast<const BaseClass *>(this)->compute(
+        inputValues, rewriter, op);
+    if (!newTensor) {
+      return rewriter.notifyMatchFailure(op,
+                                         "Type or values cannot be folded.");
+    }
+    rewriter.replaceOpWithNewOp<ConstOp>(op, newTensor.getType(), newTensor);
+    return success();
+  }
+
+  DenseElementsAttr compute(DenseElementsAttr values, PatternRewriter &rewriter,
+                            TosaOp op) const {
+    if (isa<IntegerType>(values.getElementType()))
+      return static_cast<const BaseClass *>(this)->computeInteger(values,
+                                                                  rewriter, op);
+
+    assert(isa<FloatType>(values.getElementType()));
+    return static_cast<const BaseClass *>(this)->computeFloat(values, rewriter,
+                                                              op);
+  }
+
+  /// Called when the values.getElementType() is IntegerType.
+  DenseElementsAttr computeInteger(DenseElementsAttr values,
+                                   PatternRewriter &rewriter, TosaOp op) const {
+    return {};
+  }
+
+  /// Called when the values.getElementType() is FloatType.
+  DenseElementsAttr computeFloat(DenseElementsAttr values,
+                                 PatternRewriter &rewriter, TosaOp op) const {
+    return {};
+  }
+};
+
+template<typename BaseClass, typename TosaOp>
+struct TosaFoldConstantBinary : public TosaFoldConstantBase<TosaOp> {
+  using TosaFoldConstantBase<TosaOp>::TosaFoldConstantBase;
+
+  LogicalResult matchAndRewrite(TosaOp op,
+                                PatternRewriter &rewriter) const override {
+    auto leftOp = op.getOperand(0);
+    auto rightOp = op.getOperand(1);
+
+    auto lhsTensorType = dyn_cast<TensorType>(leftOp.getType());
+    auto rhsTensorType = dyn_cast<TensorType>(rightOp.getType());
+    if (!lhsTensorType || !rhsTensorType) {
+      return rewriter.notifyMatchFailure(
+          op, "Expected types to be tensors.");
+    }
+
+    auto lhsElemType = lhsTensorType.getElementType();
+    auto rhsElemType = rhsTensorType.getElementType();
+    if (lhsElemType != rhsElemType) {
+      return rewriter.notifyMatchFailure(
+          op, "Expected type of binary op arguments to match.");
+    }
+
+    // Check if both tensors are constant
+    auto rhsIsConstantCheck =
+        notifyIfNoTosaDenseConstantTensor(leftOp, op, rewriter);
+    if (failed(rhsIsConstantCheck)) {
+      return rhsIsConstantCheck;
+    }
+    auto lhsIsConstantCheck =
+        notifyIfNoTosaDenseConstantTensor(rightOp, op, rewriter);
+    if (failed(lhsIsConstantCheck)) {
+      return lhsIsConstantCheck;
+    }
+
+    // Extract the tensor values
+    DenseElementsAttr lhsValues;
+    matchPattern(leftOp, m_Constant(&lhsValues));
+
+    DenseElementsAttr rhsValues;
+    matchPattern(rightOp, m_Constant(&rhsValues));
+
+    if (!TosaFoldConstantBase<TosaOp>::constantBinaryOpShouldBeFolded(op, lhsValues, rhsValues)) {
+      return rewriter.notifyMatchFailure(
+          op, "Currently, binary ops will only be folded if this requires only "
+                 "little additional memory usage.");
+    }
+
+    DenseElementsAttr newTensor = static_cast<const BaseClass *>(this)->compute(
+        lhsValues, rhsValues, rewriter, op);
+    if (!newTensor) {
+        return rewriter.notifyMatchFailure(
+          op, "Type or values cannot be folded.");
+    }
+    rewriter.replaceOpWithNewOp<ConstOp>(op, newTensor.getType(), newTensor);
+    return success();
+  }
+
+  DenseElementsAttr compute(DenseElementsAttr lhsValues,
+                            DenseElementsAttr rhsValues,
+                            PatternRewriter &rewriter, TosaOp op) const {
+    if (isa<IntegerType>(lhsValues.getElementType()))
+        return static_cast<const BaseClass *>(this)->computeInteger(
+            lhsValues, rhsValues, rewriter, op);
+
+    assert(isa<FloatType>(lhsValues.getElementType()));
+    return static_cast<const BaseClass *>(this)->computeFloat(
+        lhsValues, rhsValues, rewriter, op);
+  }
+
+  /// Called when the lhsValues.getElementType() is IntegerType.
+  DenseElementsAttr computeInteger(DenseElementsAttr lhsValues,
+                                   DenseElementsAttr rhsValues,
+                                   PatternRewriter &rewriter, TosaOp op) const {
+    return {};
+  }
+
+  /// Called when the lhsValues.getElementType() is FloatType.
+  DenseElementsAttr computeFloat(DenseElementsAttr lhsValues,
+                                 DenseElementsAttr rhsValues,
+                                 PatternRewriter &rewriter, TosaOp op) const {
+    return {};
+  }
+};
+
 struct TosaFoldConstantTranspose : public TosaFoldConstantBase<tosa::TransposeOp> {
   using TosaFoldConstantBase::TosaFoldConstantBase;
 
@@ -388,45 +521,22 @@ static APFloat computeReciprocal(const APFloat &floatVal, FloatType floatTy) {
   return recip;
 }
 
-struct TosaFoldConstantReciprocal : public TosaFoldConstantBase<ReciprocalOp> {
-  using TosaFoldConstantBase::TosaFoldConstantBase;
+struct TosaFoldConstantReciprocal
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantReciprocal, ReciprocalOp> {
+  using TosaFoldConstantUnaryElementwise<TosaFoldConstantReciprocal,
+                              ReciprocalOp>::TosaFoldConstantUnaryElementwise;
 
-  LogicalResult matchAndRewrite(ReciprocalOp recip,
-                                PatternRewriter &rewriter) const override {
-    auto inputTensor = recip.getInput1();
-
-    // Check that we can apply folding
-    auto preCondCheck =
-        notifyIfNotConstantFloatTosaTensor(inputTensor, recip, rewriter);
-    if (failed(preCondCheck)) {
-      return preCondCheck;
-    }
-
-    // Extract the tensor values
-    DenseElementsAttr inputValues;
-    matchPattern(inputTensor, m_Constant(&inputValues));
-
-    // Check whether this should be folded.
-    if (!constantUnaryOpShouldBeFolded(recip, inputValues)) {
-      return rewriter.notifyMatchFailure(
-          recip, "Currently, reciprocals will only be folded if the input "
-                 "tensor has a single user");
-    }
-
-    // Create a new tensor with the updated values
-    auto newTensor = applyElementWise<APFloat, APFloat, FloatType>(
-        inputValues, &computeReciprocal,
-        cast<FloatType>(inputValues.getElementType()));
-
-    // Replace the use of the reciprocal with the transformed tensor
-    rewriter.replaceOpWithNewOp<ConstOp>(recip, newTensor.getType(), newTensor);
-    return success();
+  DenseElementsAttr computeFloat(DenseElementsAttr values,
+                                 PatternRewriter &rewriter, TosaOp op) const {
+    return applyElementWise<APFloat, APFloat, FloatType>(
+        values, &computeReciprocal, cast<FloatType>(values.getElementType()));
   }
 };
 
-struct TosaFoldConstantRSQRT : public TosaFoldConstantBase<RsqrtOp> {
-
-  using TosaFoldConstantBase::TosaFoldConstantBase;
+struct TosaFoldConstantRSQRT
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantRSQRT, RsqrtOp> {
+  using TosaFoldConstantUnaryElementwise<TosaFoldConstantRSQRT,
+                              RsqrtOp>::TosaFoldConstantUnaryElementwise;
 
   static APFloat computeRSQRT(const APFloat &apFloatVal, FloatType floatTy) {
     // The result for negative values (apart from zero) is always NaN
@@ -444,44 +554,35 @@ struct TosaFoldConstantRSQRT : public TosaFoldConstantBase<RsqrtOp> {
     return computeReciprocal(apSqrtVal, floatTy);
   }
 
-  LogicalResult matchAndRewrite(RsqrtOp rsqrt,
-                                PatternRewriter &rewriter) const override {
-    auto inputTensor = rsqrt.getInput1();
-
-    // Reject non-float or non-dense tensors
-    auto foldable =
-        notifyIfNotConstantFloatTosaTensor(inputTensor, rsqrt, rewriter);
-    if (failed(foldable)) {
-      return foldable;
-    }
-
-    // Extract the tensor values
-    DenseElementsAttr inputValues;
-    matchPattern(inputTensor, m_Constant(&inputValues));
-
-    // Check whether this should be folded.
-    if (!constantUnaryOpShouldBeFolded(rsqrt, inputValues)) {
-      return rewriter.notifyMatchFailure(
-          rsqrt, "Currently, reciprocals will only be folded if the input "
-                 "tensor has a single user");
-    }
-
-    // Create a new tensor with the updated values
-    auto newTensor = applyElementWise<APFloat, APFloat, FloatType>(
-        inputValues, &computeRSQRT,
-        cast<FloatType>(inputValues.getElementType()));
-
-    // Replace the use of the reciprocal with the transformed tensor
-    rewriter.replaceOpWithNewOp<ConstOp>(rsqrt, newTensor.getType(), newTensor);
-
-    return success();
+  DenseElementsAttr computeFloat(DenseElementsAttr values,
+                                 PatternRewriter &rewriter, TosaOp op) const {
+    return applyElementWise<APFloat, APFloat, FloatType>(
+        values, &computeRSQRT, cast<FloatType>(values.getElementType()));
   }
 };
 
+struct TosaFoldConstantLogicalNot
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantLogicalNot,
+                                              LogicalNotOp> {
+  using TosaFoldConstantUnaryElementwise<
+      TosaFoldConstantLogicalNot,
+      LogicalNotOp>::TosaFoldConstantUnaryElementwise;
 
-struct TosaFoldConstantPow : public TosaFoldConstantBase<PowOp> {
+  DenseElementsAttr computeInteger(DenseElementsAttr values,
+                                   PatternRewriter &rewriter, TosaOp op) const {
+    return applyElementWise<APInt, APInt, IntegerType>(
+        values,
+        [](const APInt &val, IntegerType) {
+          return APInt(1, !val.getBoolValue());
+        },
+        cast<IntegerType>(values.getElementType()));
+  }
+};
 
-  using TosaFoldConstantBase::TosaFoldConstantBase;
+struct TosaFoldConstantPow
+    : public TosaFoldConstantBinary<TosaFoldConstantPow, PowOp> {
+  using TosaFoldConstantBinary<TosaFoldConstantPow,
+                               PowOp>::TosaFoldConstantBinary;
 
   static APFloat computePower(const APFloat &base, const APFloat &exp) {
     // Propagate NaN
@@ -510,141 +611,73 @@ struct TosaFoldConstantPow : public TosaFoldConstantBase<PowOp> {
     return res;
   }
 
-  LogicalResult matchAndRewrite(PowOp powOp,
-                                PatternRewriter &rewriter) const override {
-    auto baseOp = powOp.getInput1();
-    auto expOp = powOp.getInput2();
-
-    if (baseOp.getType().getElementType() != expOp.getType().getElementType()) {
-      return rewriter.notifyMatchFailure(
-          powOp, "Expected type of pow arguments to match.");
-    }
-
-    // Check if both tensors are constant
-    auto baseIsConstCheck =
-        notifyIfNotConstantFloatTosaTensor(baseOp, powOp, rewriter);
-    if (failed(baseIsConstCheck)) {
-      return baseIsConstCheck;
-    }
-    auto expIsConstCheck =
-        notifyIfNotConstantFloatTosaTensor(expOp, powOp, rewriter);
-    if (failed(expIsConstCheck)) {
-      return expIsConstCheck;
-    }
-
-    // Extract the tensor values
-    DenseElementsAttr baseValues;
-    matchPattern(baseOp, m_Constant(&baseValues));
-
-    DenseElementsAttr expValues;
-    matchPattern(expOp, m_Constant(&expValues));
-
-    if (!constantBinaryOpShouldBeFolded(powOp, baseValues, expValues)) {
-      return rewriter.notifyMatchFailure(
-          powOp, "Currently, pows will only be folded if this requires only "
-                 "little additional memory usage.");
-    }
-
-    auto newTensor = applyElementWise<APFloat, APFloat>(
-        baseValues, expValues, powOp.getType(), &computePower);
-    rewriter.replaceOpWithNewOp<ConstOp>(powOp, newTensor.getType(), newTensor);
-
-    return success();
+  /// Called when the lhsValues.getElementType() is FloatType.
+  DenseElementsAttr computeFloat(DenseElementsAttr lhsValues,
+                                 DenseElementsAttr rhsValues,
+                                 PatternRewriter &rewriter, PowOp op) const {
+    return applyElementWise<APFloat, APFloat>(lhsValues, rhsValues,
+                                              op.getType(), computePower);
   }
 };
 
+struct TosaFoldConstantMul
+    : public TosaFoldConstantBinary<TosaFoldConstantMul, MulOp> {
+  using TosaFoldConstantBinary<TosaFoldConstantMul,
+                               MulOp>::TosaFoldConstantBinary;
 
-struct TosaFoldConstantMul : public TosaFoldConstantBase<MulOp> {
-
-  using TosaFoldConstantBase::TosaFoldConstantBase;
-
-  LogicalResult matchAndRewrite(MulOp mulOp,
-                                PatternRewriter &rewriter) const override {
-    if (mulOp.getShift() > 0) {
-      return rewriter.notifyMatchFailure(
-          mulOp, "Non-zero shift folding is currently not implemented.");
+  /// Called when the lhsValues.getElementType() is IntegerType.
+  DenseElementsAttr computeInteger(DenseElementsAttr lhsValues,
+                                   DenseElementsAttr rhsValues,
+                                   PatternRewriter &rewriter, MulOp op) const {
+    if (op.getShift() > 0) {
+      (void)rewriter.notifyMatchFailure(
+          op, "Non-zero shift folding is currently not implemented.");
+      return {};
     }
 
-    auto leftOp = mulOp.getInput1();
-    auto rightOp = mulOp.getInput2();
+    auto resultElementWidth =
+        op.getType().getElementType().getIntOrFloatBitWidth();
+    assert(resultElementWidth >=
+               lhsValues.getElementType().getIntOrFloatBitWidth() &&
+           "The multiplication is expected to have an at least as big output "
+           "as input type");
 
-    // Check if both tensors are constant
-    auto rhsIsConstantCheck =
-        notifyIfNoTosaDenseConstantTensor(leftOp, mulOp, rewriter);
-    if (failed(rhsIsConstantCheck)) {
-      return rhsIsConstantCheck;
+    // Compute the multiplication and track if an overflow occurred to enable
+    // emitting a warning
+    bool mulOverflowed = false;
+    auto newTensor = applyElementWise<APInt, APInt>(
+        lhsValues, rhsValues, op.getType(),
+        [&resultElementWidth, &mulOverflowed](const APInt &first,
+                                              const APInt &second) {
+          bool didOverflow;
+          auto res = first.sext(resultElementWidth)
+                         .smul_ov(second.sext(resultElementWidth), didOverflow);
+          mulOverflowed |= didOverflow;
+          return res;
+        });
+    if (mulOverflowed) {
+      op.emitWarning(
+          "Multiplication did overflow. The results are unspecified.");
     }
-    auto lhsIsConstantCheck =
-        notifyIfNoTosaDenseConstantTensor(rightOp, mulOp, rewriter);
-    if (failed(lhsIsConstantCheck)) {
-      return lhsIsConstantCheck;
-    }
+    return newTensor;
+  }
 
-    // Extract the tensor values
-    DenseElementsAttr lhsValues;
-    matchPattern(leftOp, m_Constant(&lhsValues));
-
-    DenseElementsAttr rhsValues;
-    matchPattern(rightOp, m_Constant(&rhsValues));
-
-    if (!constantBinaryOpShouldBeFolded(mulOp, lhsValues, rhsValues)) {
-      return rewriter.notifyMatchFailure(
-          mulOp, "Currently, muls will only be folded if this requires only "
-                 "little additional memory usage.");
-    }
-
-    DenseElementsAttr newTensor;
-
-    auto lhsElemType = leftOp.getType().getElementType();
-    auto rhsElemType = rightOp.getType().getElementType();
-    assert(lhsElemType == rhsElemType);
-
-    auto resultType = mulOp.getType();
-    auto resultElementType = resultType.getElementType();
-    if (isa<IntegerType>(lhsElemType)) {
-      assert(isa<IntegerType>(rhsElemType) &&
-             isa<IntegerType>(resultElementType));
-      auto resultElementWidth = resultElementType.getIntOrFloatBitWidth();
-      assert(resultElementWidth >= lhsElemType.getIntOrFloatBitWidth() &&
-             "The multiplication is expected to have an at least as big output "
-             "as input type");
-
-      // Compute the multiplication and track if an overflow occurred to enable
-      // emitting a warning
-      bool mulOverflowed = false;
-      auto intMulFun = [&resultElementWidth, &mulOverflowed](
-                           const APInt &first, const APInt &second) {
-        bool didOverflow;
-        auto res = first.sext(resultElementWidth)
-                       .smul_ov(second.sext(resultElementWidth), didOverflow);
-        mulOverflowed |= didOverflow;
-        return res;
-      };
-      newTensor = applyElementWise<APInt, APInt>(lhsValues, rhsValues,
-                                                 resultType, intMulFun);
-      if (mulOverflowed) {
-        mulOp.emitWarning(
-            "Multiplication did overflow. The results are unspecified.");
-      }
-    } else {
-      assert(isa<FloatType>(lhsElemType) && isa<FloatType>(rhsElemType) &&
-             isa<FloatType>(resultType.getElementType()));
-      auto mulFun = [](const APFloat &first, const APFloat &second) {
-        return first * second;
-      };
-      newTensor = applyElementWise<APFloat, APFloat>(lhsValues, rhsValues,
-                                                     resultType, mulFun);
-    }
-    rewriter.replaceOpWithNewOp<ConstOp>(mulOp, newTensor.getType(), newTensor);
-
-    return success();
+  /// Called when the lhsValues.getElementType() is FloatType.
+  DenseElementsAttr computeFloat(DenseElementsAttr lhsValues,
+                                 DenseElementsAttr rhsValues,
+                                 PatternRewriter &rewriter, MulOp op) const {
+    return applyElementWise<APFloat, APFloat>(
+        lhsValues, rhsValues, op.getType(),
+        [](const APFloat &first, const APFloat &second) {
+          return first * second;
+        });
   }
 };
 
-
-struct TosaFoldConstantClamp : public TosaFoldConstantBase<ClampOp> {
-
-  using TosaFoldConstantBase::TosaFoldConstantBase;
+struct TosaFoldConstantClamp
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantClamp, ClampOp> {
+  using TosaFoldConstantUnaryElementwise<
+      TosaFoldConstantClamp, ClampOp>::TosaFoldConstantUnaryElementwise;
 
   static void
   changeSemanticsLossless(APFloat &floatVal,
@@ -718,62 +751,35 @@ struct TosaFoldConstantClamp : public TosaFoldConstantBase<ClampOp> {
     return newTensor;
   }
 
-  LogicalResult matchAndRewrite(ClampOp clampOp,
-                                PatternRewriter &rewriter) const override {
-    auto valsToClamp = clampOp.getInput();
-    auto inputElementType = valsToClamp.getType().getElementType();
-
-    // Check if the input is constant
-    if (failed(notifyIfNoTosaDenseConstantTensor(valsToClamp, clampOp,
-                                                 rewriter))) {
-      return failure();
+  /// Called when the values.getElementType() is IntegerType.
+  DenseElementsAttr computeInteger(DenseElementsAttr values,
+                                   PatternRewriter &rewriter,
+                                   ClampOp op) const {
+    if (isa<IntegerType>(values.getElementType()) &&
+        cast<IntegerType>(values.getElementType()).isUnsigned()) {
+      (void)rewriter.notifyMatchFailure(
+          op, "Currently, unsigned integer clamps are unsupported.");
+      return {};
     }
 
-    if (isa<IntegerType>(inputElementType) &&
-        cast<IntegerType>(inputElementType).isUnsigned()) {
-      return rewriter.notifyMatchFailure(
-          clampOp, "Currently, unsigned integer clamps are unsupported.");
-    }
+    auto lowerBoundVal = op.getMinIntAttr().getValue();
+    auto upperBoundVal = op.getMaxIntAttr().getValue();
+    assert(lowerBoundVal.getBitWidth() == upperBoundVal.getBitWidth());
 
-    // Extract the tensor values
-    DenseElementsAttr inputValues;
-    matchPattern(valsToClamp, m_Constant(&inputValues));
+    return applyClamp(values, lowerBoundVal, upperBoundVal, op.getType());
+  }
 
-    if (!constantUnaryOpShouldBeFolded(clampOp, inputValues)) {
-      return rewriter.notifyMatchFailure(
-          clampOp,
-          "Currently, clamps will only be folded if this requires only "
-          "little additional memory usage.");
-    }
+  /// Called when the values.getElementType() is FloatType.
+  DenseElementsAttr computeFloat(DenseElementsAttr values,
+                                 PatternRewriter &rewriter, ClampOp op) const {
+    auto lowerBoundVal = op.getMinFp();
+    auto upperBoundVal = op.getMaxFp();
+    assert(APFloat::getSizeInBits(lowerBoundVal.getSemantics()) ==
+           APFloat::getSizeInBits(upperBoundVal.getSemantics()));
 
-    // Apply the clamp to all values of the int/float tensor
-    auto resultType = clampOp.getType();
-    DenseElementsAttr newTensor;
-    if (isa<IntegerType>(inputElementType)) {
-      auto lowerBoundVal = clampOp.getMinIntAttr().getValue();
-      auto upperBoundVal = clampOp.getMaxIntAttr().getValue();
-      assert(lowerBoundVal.getBitWidth() == upperBoundVal.getBitWidth());
-
-      newTensor =
-          applyClamp(inputValues, lowerBoundVal, upperBoundVal, resultType);
-    } else {
-      assert(isa<FloatType>(inputElementType));
-      auto lowerBoundVal = clampOp.getMinFp();
-      auto upperBoundVal = clampOp.getMaxFp();
-      assert(APFloat::getSizeInBits(lowerBoundVal.getSemantics()) ==
-             APFloat::getSizeInBits(upperBoundVal.getSemantics()));
-
-      newTensor =
-          applyClamp(inputValues, lowerBoundVal, upperBoundVal, resultType);
-    }
-
-    rewriter.replaceOpWithNewOp<ConstOp>(clampOp, newTensor.getType(),
-                                         newTensor);
-
-    return success();
+    return applyClamp(values, lowerBoundVal, upperBoundVal, op.getType());
   }
 };
-
 
 struct TosaFoldConstantCast : public TosaFoldConstantBase<CastOp> {
 
@@ -949,80 +955,63 @@ struct TosaFoldConstantFloatCasts : TosaFoldConstantCast {
   }
 };
 
-struct TosaFoldConstantAdd : public TosaFoldConstantBase<AddOp> {
+struct TosaFoldConstantAdd : public TosaFoldConstantBinary<TosaFoldConstantAdd, AddOp> {
+  using TosaFoldConstantBinary<TosaFoldConstantAdd, AddOp>::TosaFoldConstantBinary;
 
-  using TosaFoldConstantBase::TosaFoldConstantBase;
-
-  LogicalResult matchAndRewrite(AddOp addOp,
-                                PatternRewriter &rewriter) const override {
-    auto leftOp = addOp.getInput1();
-    auto rightOp = addOp.getInput2();
-
-    auto resultType = addOp.getType();
-    auto lhsElemType = leftOp.getType().getElementType();
-    auto rhsElemType = rightOp.getType().getElementType();
-    if (lhsElemType != rhsElemType) {
-      return rewriter.notifyMatchFailure(
-          addOp, "Expected type of add arguments to match.");
+  DenseElementsAttr computeInteger(DenseElementsAttr lhsValues,
+                                   DenseElementsAttr rhsValues,
+                                   PatternRewriter &rewriter, AddOp op) const {
+    bool addOverflowed = false;
+    auto intAdd = [&addOverflowed](const APInt &first, const APInt &second) {
+      bool didOverflow;
+      auto res = first.sadd_ov(second, didOverflow);
+      addOverflowed |= didOverflow;
+      return res;
+    };
+    auto newTensor = applyElementWise<APInt, APInt>(lhsValues, rhsValues,
+                                                    op.getType(), intAdd);
+    if (addOverflowed) {
+      op->emitWarning("Addition did overflow. The results are unspecified.");
     }
+    return newTensor;
+  }
 
-    // Check if both tensors are constant
-    auto rhsIsConstantCheck =
-        notifyIfNoTosaDenseConstantTensor(leftOp, addOp, rewriter);
-    if (failed(rhsIsConstantCheck)) {
-      return rhsIsConstantCheck;
-    }
-    auto lhsIsConstantCheck =
-        notifyIfNoTosaDenseConstantTensor(rightOp, addOp, rewriter);
-    if (failed(lhsIsConstantCheck)) {
-      return lhsIsConstantCheck;
-    }
-
-    // Extract the tensor values
-    DenseElementsAttr lhsValues;
-    matchPattern(leftOp, m_Constant(&lhsValues));
-
-    DenseElementsAttr rhsValues;
-    matchPattern(rightOp, m_Constant(&rhsValues));
-
-    if (!constantBinaryOpShouldBeFolded(addOp, lhsValues, rhsValues)) {
-      return rewriter.notifyMatchFailure(
-          addOp, "Currently, adds will only be folded if this requires only "
-                 "little additional memory usage.");
-    }
-
-    DenseElementsAttr newTensor;
-    if (isa<IntegerType>(lhsElemType)) {
-      assert(isa<IntegerType>(rhsElemType) &&
-             isa<IntegerType>(resultType.getElementType()));
-      bool addOverflowed = false;
-      auto intAdd = [&addOverflowed](const APInt &first, const APInt &second) {
-        bool didOverflow;
-        auto res = first.sadd_ov(second, didOverflow);
-        addOverflowed |= didOverflow;
-        return res;
-      };
-      newTensor = applyElementWise<APInt, APInt>(lhsValues, rhsValues,
-                                                 resultType, intAdd);
-      if (addOverflowed) {
-        addOp->emitWarning(
-            "Addition did overflow. The results are unspecified.");
-      }
-    } else {
-      assert(isa<FloatType>(lhsElemType) && isa<FloatType>(rhsElemType) &&
-             isa<FloatType>(resultType.getElementType()));
-      auto floatAdd = [](const APFloat &first, const APFloat &second) {
-        return first + second;
-      };
-      newTensor = applyElementWise<APFloat, APFloat>(lhsValues, rhsValues,
-                                                     resultType, floatAdd);
-    }
-    rewriter.replaceOpWithNewOp<ConstOp>(addOp, newTensor.getType(), newTensor);
-
-    return success();
+  DenseElementsAttr computeFloat(DenseElementsAttr lhsValues,
+                                 DenseElementsAttr rhsValues,
+                                 PatternRewriter &rewriter, AddOp op) const {
+    auto floatAdd = [](const APFloat &first, const APFloat &second) {
+      return first + second;
+    };
+    return applyElementWise<APFloat, APFloat>(lhsValues, rhsValues,
+                                              op.getType(), floatAdd);
   }
 };
 
+struct TosaFoldConstantGreater : public TosaFoldConstantBinary<TosaFoldConstantGreater, GreaterOp> {
+  using TosaFoldConstantBinary<TosaFoldConstantGreater, GreaterOp>::TosaFoldConstantBinary;
+
+  DenseElementsAttr computeInteger(DenseElementsAttr lhsValues,
+                                   DenseElementsAttr rhsValues,
+                                   PatternRewriter &rewriter,
+                                   GreaterOp op) const {
+    return applyElementWise<APInt, APInt>(
+        lhsValues, rhsValues, op.getType(),
+        [](const APInt &first, const APInt &second) {
+          return APInt(1, first.sgt(second));
+        });
+  }
+
+  DenseElementsAttr computeFloat(DenseElementsAttr lhsValues,
+                                 DenseElementsAttr rhsValues,
+                                 PatternRewriter &rewriter,
+                                 GreaterOp op) const {
+      return applyElementWise<APFloat, APInt>(
+          lhsValues, rhsValues, op.getType(),
+          [](const APFloat &first, const APFloat &second) {
+            return APInt(1, first > second);
+          });
+  }
+};
 
 } // namespace
 
@@ -1033,6 +1022,7 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
   patterns.add<TosaFoldConstantTranspose>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantReciprocal>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantRSQRT>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantLogicalNot>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantPow>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantMul>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantClamp>(ctx, foldSplatOrSingleUseOnly);
@@ -1042,5 +1032,5 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
     patterns.add<TosaFoldConstantFloatCasts>(ctx, foldSplatOrSingleUseOnly);
   }
   patterns.add<TosaFoldConstantAdd>(ctx, foldSplatOrSingleUseOnly);
-  
+  patterns.add<TosaFoldConstantGreater>(ctx, foldSplatOrSingleUseOnly);
 }
