@@ -30,21 +30,9 @@ void populateTosaDecomposeTransposeConv(MLIRContext *ctx,
                                         RewritePatternSet &patterns);
 void populateTosaDecomposeDepthwise(MLIRContext *ctx,
                                     RewritePatternSet &patterns);
-void populateTosaFoldConstantAddPatterns(MLIRContext *ctx,
-                                         RewritePatternSet &patterns);
-void populateTosaFoldConstantClampPatterns(MLIRContext *ctx,
-                                           RewritePatternSet &patterns);
-void populateTosaFoldConstantCastPatterns(MLIRContext *ctx,
-                                          RewritePatternSet &patterns,
-                                          bool enableIntCastFolding);
-void populateTosaFoldConstantMulPatterns(MLIRContext *ctx,
-                                         RewritePatternSet &patterns);
-void populateTosaFoldConstantPowPatterns(MLIRContext *ctx,
-                                         RewritePatternSet &patterns);
-void populateTosaFoldConstantRSQRTPatterns(MLIRContext *ctx,
-                                           RewritePatternSet &patterns);
 void populateTosaFoldConstantPatterns(MLIRContext *ctx,
-                                      RewritePatternSet &patterns);
+                                      RewritePatternSet &patterns,
+                                      bool enableIntCastFolding);
 
 std::unique_ptr<Pass> createTosaLayerwiseConstantFoldPass();
 std::unique_ptr<Pass> createTosaInferShapesPass();
