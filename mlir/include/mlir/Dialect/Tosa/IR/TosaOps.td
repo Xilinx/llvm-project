@@ -1068,6 +1068,8 @@ def Tosa_ReciprocalOp : Tosa_ElemWiseUnaryOp<"reciprocal"> {
   let results = (outs
     Tosa_Tensor:$output
   );
+
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1410,6 +1412,8 @@ def Tosa_ConcatOp : Tosa_Op<"concat", [
     Tosa_Tensor:$output
   );
 
+  let hasFolder = 1;
+
   let hasCanonicalizer = 1;
   let hasFolder = 1;
 
@@ -1418,6 +1422,7 @@ def Tosa_ConcatOp : Tosa_Op<"concat", [
     /// Method used by InferTypeOpInterface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
   }];
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1552,6 +1557,7 @@ def Tosa_SliceOp: Tosa_Op<"slice", [
 
   let hasCanonicalizer = 1;
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1592,12 +1598,12 @@ def Tosa_TransposeOp : Tosa_Op<"transpose", [
   }];
 
   let arguments = (ins
-    Tosa_Tensor1Dto6D:$input1,
+    Tosa_Tensor:$input1,
     Tosa_Int32Or64Tensor:$perms
   );
 
   let results = (
-    outs Tosa_Tensor1Dto6D:$output
+    outs Tosa_Tensor:$output
   );
 
   let extraClassDeclaration = [{

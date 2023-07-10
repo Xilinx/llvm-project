@@ -646,6 +646,357 @@ void FillOp::getCanonicalizationPatterns(RewritePatternSet &results,
 }
 
 //===----------------------------------------------------------------------===//
+// SoftmaxOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult SoftmaxOp::verify() {
+  auto inputTensor = getInput().getType().dyn_cast<RankedTensorType>();
+  auto outputTensor = getResult().getType().dyn_cast<RankedTensorType>();
+  if (!inputTensor || !outputTensor)
+    return failure();
+  if (inputTensor.getShape() != outputTensor.getShape())
+    return emitOpError("input and output shapes must be the same");
+
+  auto dimS = getDimAttr().getValue().getSExtValue();
+  if (dimS >= inputTensor.getRank() || dimS < -inputTensor.getRank())
+    return emitOpError("dim must be in range [-inputRank, inputRank)");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// GlobalAveragePool2D
+//===----------------------------------------------------------------------===//
+
+LogicalResult GlobalAveragePool2DOp::verify() {
+  auto inputTensor = getInput().getType().dyn_cast<RankedTensorType>();
+  auto outputTensor = getResult().getType().dyn_cast<RankedTensorType>();
+  if (!inputTensor || !outputTensor)
+    return failure();
+  if (inputTensor.getRank() != outputTensor.getRank())
+    return emitOpError("rank in input and output tensor needs to match");
+  if ((inputTensor.getShape()[0] != outputTensor.getShape()[0]) ||
+      (inputTensor.getShape()[1] != outputTensor.getShape()[1]))
+    return emitOpError("input and output batchsize and channel needs to match");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Subgraph
+//===----------------------------------------------------------------------===//
+
+void SubgraphOp::print(OpAsmPrinter &p) {
+  // (%arg0 = %capture0 : type, ...)
+  p << '(';
+  llvm::interleaveComma(
+      llvm::zip(getCaptureArgs(), getCaptures()), p, [&](auto it) {
+        p << std::get<0>(it) << " = " << std::get<1>(it) << " : ";
+        p.printType(std::get<1>(it).getType());
+      });
+  p << ") ";
+
+  // attr-dict-with-keyword
+  auto attrs = static_cast<Operation *>(*this)->getAttrs();
+  p.printOptionalAttrDictWithKeyword(attrs);
+  if (!attrs.empty())
+    p << ' ';
+
+  // { ... }
+  p.printRegion(getBodyRegion(), false);
+
+  // -> type
+  if (getResult()) {
+    p << " -> ";
+    p.printType(getResult().getType());
+  };
+}
+
+/// Parses a captured SSA operand.
+///
+/// Format:
+///     ssa-id `=` ssa-id `:` type
+static ParseResult parseCapture(OpAsmParser &p,
+                                OpAsmParser::UnresolvedOperand &arg,
+                                OpAsmParser::UnresolvedOperand &src,
+                                Type &type) {
+  // ssa-id `=` ssa-id `:` type
+  if (p.parseOperand(arg))
+    return failure();
+  if (p.parseEqual())
+    return failure();
+  if (p.parseOperand(src))
+    return failure();
+  if (p.parseColon())
+    return failure();
+  if (p.parseType(type))
+    return failure();
+
+  return success();
+}
+
+/// Parses a comma-separated list of zero or more captured SSA operands.
+///
+/// Format:
+///     `(` [ capture { `,` capture } ] `)`
+static ParseResult parseCaptures(OpAsmParser &p,
+                                 SmallVectorImpl<OpAsmParser::Argument> &args,
+                                 SmallVectorImpl<Value> &srcs) {
+  // `(` [ capture { `,` capture } ] `)`
+  return p.parseCommaSeparatedList(
+      OpAsmParser::Delimiter::Paren, [&]() -> ParseResult {
+        auto &arg = args.emplace_back();
+        OpAsmParser::UnresolvedOperand src;
+        if (parseCapture(p, arg.ssaName, src, arg.type))
+          return failure();
+        if (p.resolveOperand(src, arg.type, srcs))
+          return failure();
+        return success();
+      });
+}
+
+ParseResult SubgraphOp::parse(OpAsmParser &p, OperationState &state) {
+  SmallVector<OpAsmParser::Argument> captureArgs;
+
+  // (%arg0 = %capture0 : type, ...)
+  if (parseCaptures(p, captureArgs, state.operands))
+    return failure();
+
+  // attr-dict-with-keyword
+  if (p.parseOptionalAttrDictWithKeyword(state.attributes))
+    return failure();
+
+  // { ... }
+  if (p.parseRegion(*state.addRegion(), captureArgs, true))
+    return failure();
+
+  // -> type
+  if (succeeded(p.parseOptionalArrow())) {
+    if (p.parseType(state.types.emplace_back()))
+      return failure();
+  }
+
+  return success();
+}
+
+LogicalResult SubgraphOp::verify() {
+  // NOTE: SizedRegion<1> already verifie that:
+  //       - there's a single block.
+  // NOTE: SingleBlockImplicitTerminator already verified that:
+  //       - it's terminated by YieldOp.
+
+  if (!llvm::equal(
+          llvm::map_range(getCaptures(), [](auto x) { return x.getType(); }),
+          llvm::map_range(getCaptureArgs(),
+                          [](auto x) { return x.getType(); })))
+    return emitOpError("block arguments do not match capture arguments");
+
+  // NOTE: Because we don't implement the LinalgOp interface, we need to do this
+  //       ourselves.
+
+  auto yield = cast<YieldOp>(getBody().front().getTerminator());
+
+  // Check that the yield matches the result declaration.
+  if (yield.getNumOperands() != (getResult() ? 1 : 0))
+    return yield.emitOpError("number of yield operands (")
+           << yield.getNumOperands() << ") does not match number of results ("
+           << (getResult() ? 1 : 0) << ")";
+  if (getResult()) {
+    if (yield.getOperand(0).getType() != getResult().getType())
+      return yield.emitOpError("type of yield operand (")
+             << yield.getOperand(0).getType()
+             << ") does not match result type (" << getResult().getType()
+             << ")";
+  }
+
+  return success();
+}
+
+using BodyBuilder = void(OpBuilder &, Location, IRMapping &);
+
+void SubgraphOp::build(OpBuilder &builder, OperationState &state,
+                       Type resultType, ValueRange captures,
+                       function_ref<BodyBuilder> bodyBuilder) {
+  if (resultType)
+    state.types.push_back(resultType);
+
+  state.addOperands(captures);
+
+  auto region = state.addRegion();
+
+  if (!bodyBuilder)
+    return;
+
+  OpBuilder::InsertionGuard guard(builder);
+
+  auto captureTypes = llvm::to_vector(
+      llvm::map_range(captures, [](auto x) { return x.getType(); }));
+  auto captureLocs = llvm::to_vector(
+      llvm::map_range(captures, [](auto x) { return x.getLoc(); }));
+  auto body =
+      builder.createBlock(region, region->end(), captureTypes, captureLocs);
+
+  IRMapping captureMapping;
+  for (unsigned idx = 0; idx < captures.size(); ++idx) {
+    captureMapping.map(state.operands[idx], body->getArgument(idx));
+  }
+  bodyBuilder(builder, state.location, captureMapping);
+}
+
+void SubgraphOp::build(OpBuilder &builder, OperationState &state,
+                       ValueRange captures,
+                       function_ref<BodyBuilder> bodyBuilder) {
+  build(builder, state, Type{}, captures, bodyBuilder);
+}
+
+namespace {
+
+struct DropUnusedCaptures : OpRewritePattern<SubgraphOp> {
+  using OpRewritePattern<SubgraphOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SubgraphOp op,
+                                PatternRewriter &rewriter) const override {
+    // Find all unused arguments.
+    auto unused = llvm::to_vector(llvm::make_filter_range(
+        op.getBody().getArguments(),
+        [](BlockArgument arg) { return arg.use_empty(); }));
+    if (unused.empty())
+      return failure();
+
+    rewriter.updateRootInPlace(op, [&]() {
+      for (auto &arg : llvm::reverse(unused)) {
+        // Erase both the operand and the block argument.
+        op->eraseOperand(arg.getArgNumber());
+        op.getBody().eraseArgument(arg.getArgNumber());
+      }
+    });
+    return success();
+  }
+};
+
+struct DropUnusedResult : OpRewritePattern<SubgraphOp> {
+  using OpRewritePattern<SubgraphOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SubgraphOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!op.getResult() || !op.getResult().getUses().empty())
+      return failure();
+
+    // Replace this op with a new op that does not have any results.
+    auto newOp = rewriter.create<SubgraphOp>(op.getLoc(), op.getCaptures());
+    IRMapping removedArgs;
+    op.getBody().cloneInto(&newOp.getBodyRegion(), removedArgs);
+    rewriter.setInsertionPointToEnd(&newOp.getBody().front());
+    rewriter.replaceOpWithNewOp<YieldOp>(
+        newOp.getBody().front().getTerminator());
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+};
+
+struct EraseEmptySubgraph : OpRewritePattern<SubgraphOp> {
+  using OpRewritePattern<SubgraphOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(SubgraphOp op,
+                                PatternRewriter &rewriter) const override {
+    auto terminator = op.getBody().front().getTerminator();
+    if (terminator != &op.getBody().front().getOperations().front())
+      return failure();
+
+    if (terminator->getNumOperands() == 0) {
+      rewriter.eraseOp(op);
+      return success();
+    }
+
+    auto capture = llvm::find(op.getCaptureArgs(), terminator->getOperand(0));
+    assert(capture != op.getCaptureArgs().end());
+    rewriter.replaceOp(op, op.getCaptures()[capture->getArgNumber()]);
+
+    return success();
+  }
+};
+
+} // namespace
+
+void SubgraphOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                             MLIRContext *context) {
+  results.add<DropUnusedCaptures, DropUnusedResult, EraseEmptySubgraph>(
+      context);
+}
+
+OperatorClass SubgraphOp::getOperatorClass() { return OperatorClass::None; }
+
+using MemoryEffect = SideEffects::EffectInstance<MemoryEffects::Effect>;
+
+void SubgraphOp::getEffects(SmallVectorImpl<MemoryEffect> &effects) {
+  struct ArgEffect {
+    /*implicit*/ ArgEffect(Value capture) : capture(capture), effects() {}
+
+    Value capture;
+    SmallPtrSet<MemoryEffects::Effect *, 4> effects;
+  };
+
+  // Preprare to collect side-effects for all captured arguments.
+  DenseMap<Value, ArgEffect> argEffects;
+  for (auto idx = 0UL; idx < getBody().getNumArguments(); ++idx) {
+    argEffects.try_emplace(getBody().getArgument(idx), getCaptures()[idx]);
+  }
+
+  // Collect all side-effects on captured arguments.
+  for (auto &op : getBody().front()) {
+    auto sideEffectInterface = dyn_cast<MemoryEffectOpInterface>(op);
+    if (!sideEffectInterface)
+      continue;
+
+    SmallVector<MemoryEffect> sideEffects;
+    sideEffectInterface.getEffects(sideEffects);
+    for (auto &sideEffect : sideEffects) {
+      auto it = argEffects.find(sideEffect.getValue());
+      if (it != argEffects.end()) {
+        it->getSecond().effects.insert(sideEffect.getEffect());
+      }
+    }
+  }
+
+  // Emit all these side-effects remapped to the captured arguments.
+  effects.clear();
+  for (auto &pair : argEffects) {
+    for (auto effect : pair.getSecond().effects) {
+      effects.emplace_back(effect, pair.getSecond().capture,
+                           SideEffects::DefaultResource::get());
+    }
+  }
+}
+
+OperandRange SubgraphOp::getSuccessorEntryOperands(std::optional<unsigned> index) {
+  assert(index.value() == 0 && "invalid region index");
+
+  // The body takes the captured values.
+  return getCaptures();
+}
+
+void SubgraphOp::getSuccessorRegions(
+    std::optional<unsigned> index, ArrayRef<Attribute> operands,
+    SmallVectorImpl<RegionSuccessor> &regions) {
+  if (index.has_value()) {
+    assert(index.value() == 0 && "invalid region index");
+
+    // The body branches back to the parent.
+    regions.push_back(RegionSuccessor(getResults()));
+    return;
+  }
+
+  // The entry branches to the body.
+  regions.push_back(RegionSuccessor(&getBodyRegion(), getCaptureArgs()));
+}
+
+void SubgraphOp::getRegionInvocationBounds(
+    ArrayRef<Attribute> operands,
+    SmallVectorImpl<InvocationBounds> &invocationBounds) {
+  // The body is executed exactly once.
+  invocationBounds.assign(1, {1, 1});
+}
+
+//===----------------------------------------------------------------------===//
 // GenericOp
 //===----------------------------------------------------------------------===//
 
@@ -1783,6 +2134,11 @@ LogicalResult linalg::YieldOp::verify() {
   if (auto linalgOp = dyn_cast<LinalgOp>(parentOp))
     return verifyYield(*this, linalgOp);
 
+  if (auto subgraphOp = dyn_cast<SubgraphOp>(parentOp)) {
+    // We perform this verification in the Subgraph.
+    return success();
+  }
+
   return emitOpError("expected parent op with LinalgOp interface");
 }
 
@@ -2139,6 +2495,89 @@ struct InferStaticShapeOfOperands : public OpInterfaceRewritePattern<LinalgOp> {
 
 // All named ops canonicalizers and folders are auto-generated in the
 // .cpp.inc.
+
+//===----------------------------------------------------------------------===//
+// OperatorClassInterfaceFallback
+//===----------------------------------------------------------------------===//
+
+static bool isElementwiseGeneric(LinalgOp op) {
+  if (!op.hasTensorSemantics())
+    return false;
+  if (op.getNumParallelLoops() != op.getNumLoops())
+    return false;
+  if (op.getNumDpsInits() != 1)
+    return false;
+  return op.getMatchingIndexingMap(op.getDpsInitOperand(0)).isPermutation();
+}
+
+namespace {
+
+struct OperatorClassInterfaceFallback
+    : OperatorClassInterface::FallbackModel<OperatorClassInterfaceFallback> {
+  OperatorClass getOperatorClass(Operation *op) const {
+    using llvm::operator|;
+
+    //
+    // Known ops
+    //
+
+    if (matchPattern(op, m_Constant()) || isa<tensor::EmptyOp>(op))
+      return OperatorClass::Constant;
+    if (isa<ApplyBias2DFchwOp, tensor::SplatOp, linalg::BroadcastBias2DFchwOp,
+            linalg::FillOp>(op))
+      return OperatorClass::Broadcast;
+    if (isa<Relu2DNchwOp, Lrelu2DNchwOp>(op))
+      return OperatorClass::Activation;
+    if (isa<tensor::PadOp>(op))
+      return OperatorClass::Padding;
+    if (isa<Conv2DReluOp, Conv2DLreluOp>(op))
+      return OperatorClass::Convolution | OperatorClass::Activation;
+    if (isa<Conv2DLreluMaxpoolOp>(op))
+      return OperatorClass::Convolution | OperatorClass::Activation |
+             OperatorClass::Padding | OperatorClass::Pooling;
+
+    //
+    // Guessing
+    //
+
+    if (isa<arith::ArithDialect, math::MathDialect>(op->getDialect()))
+      return OperatorClass::Elementwise;
+
+    if (auto conv = dyn_cast<ConvolutionOpInterface>(op)) {
+      if (conv.filter().getDefiningOp<tensor::EmptyOp>()) {
+        // Probably a pooling operator.
+        return OperatorClass::Pooling;
+      }
+
+      // Probably a convolution operator.
+      return OperatorClass::Convolution;
+    }
+
+    if (auto generic = dyn_cast<LinalgOp>(op)) {
+      if (isElementwiseGeneric(generic))
+        return OperatorClass::Elementwise;
+
+      return OperatorClass::Generic;
+    }
+
+    return OperatorClass::None;
+  }
+};
+
+} // namespace
+
+OperatorClass mlir::linalg::classifyOperator(Operation *op) {
+  if (auto iface = dyn_cast<OperatorClassInterface>(op)) {
+    return iface.getOperatorClass();
+  }
+
+  return OperatorClassInterfaceFallback().getOperatorClass(op);
+}
+
+void *mlir::linalg::getOperatorClassInterfaceFallback() {
+  static OperatorClassInterfaceFallback instance;
+  return static_cast<void *>(&instance);
+}
 
 //===----------------------------------------------------------------------===//
 // LinalgDialect

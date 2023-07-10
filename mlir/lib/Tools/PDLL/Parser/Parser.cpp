@@ -31,8 +31,8 @@
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Parser.h"
-#include <string>
 #include <optional>
+#include <string>
 
 using namespace mlir;
 using namespace mlir::pdll;
@@ -314,13 +314,17 @@ private:
   FailureOr<ast::Expr *> parseExpr();
 
   /// Identifier expressions.
+  FailureOr<ast::Expr *> parseArrayAttrExpr();
   FailureOr<ast::Expr *> parseAttributeExpr();
-  FailureOr<ast::Expr *> parseCallExpr(ast::Expr *parentExpr);
+  FailureOr<ast::Expr *> parseCallExpr(ast::Expr *parentExpr,
+                                       bool isNegated = false);
   FailureOr<ast::Expr *> parseDeclRefExpr(StringRef name, SMRange loc);
+  FailureOr<ast::Expr *> parseDictAttrExpr();
   FailureOr<ast::Expr *> parseIdentifierExpr();
   FailureOr<ast::Expr *> parseInlineConstraintLambdaExpr();
   FailureOr<ast::Expr *> parseInlineRewriteLambdaExpr();
   FailureOr<ast::Expr *> parseMemberAccessExpr(ast::Expr *parentExpr);
+  FailureOr<ast::Expr *> parseNegatedExpr();
   FailureOr<ast::OpNameDecl *> parseOperationName(bool allowEmptyName = false);
   FailureOr<ast::OpNameDecl *> parseWrappedOperationName(bool allowEmptyName);
   FailureOr<ast::Expr *>
@@ -329,7 +333,6 @@ private:
   FailureOr<ast::Expr *> parseTupleExpr();
   FailureOr<ast::Expr *> parseTypeExpr();
   FailureOr<ast::Expr *> parseUnderscoreExpr();
-
   //===--------------------------------------------------------------------===//
   // Stmts
 
@@ -405,13 +408,20 @@ private:
 
   FailureOr<ast::CallExpr *>
   createCallExpr(SMRange loc, ast::Expr *parentExpr,
-                 MutableArrayRef<ast::Expr *> arguments);
+                 MutableArrayRef<ast::Expr *> arguments, bool isNegated);
   FailureOr<ast::DeclRefExpr *> createDeclRefExpr(SMRange loc, ast::Decl *decl);
   FailureOr<ast::DeclRefExpr *>
   createInlineVariableExpr(ast::Type type, StringRef name, SMRange loc,
                            ArrayRef<ast::ConstraintRef> constraints);
   FailureOr<ast::MemberAccessExpr *>
   createMemberAccessExpr(ast::Expr *parentExpr, StringRef name, SMRange loc);
+
+  // Create a native call with \p nativeFuncName and \p arguments.
+  // This should be accompanied by a C++ implementation of the function that
+  // needs to be linked and registered in passes that process PDLL files.
+  FailureOr<ast::DeclRefExpr *>
+  createNativeCall(SMRange loc, StringRef nativeFuncName,
+                   MutableArrayRef<ast::Expr *> arguments);
 
   /// Validate the member access `name` into the given parent expression. On
   /// success, this also returns the type of the member accessed.
@@ -422,7 +432,8 @@ private:
                       OpResultTypeContext resultTypeContext,
                       SmallVectorImpl<ast::Expr *> &operands,
                       MutableArrayRef<ast::NamedAttributeDecl *> attributes,
-                      SmallVectorImpl<ast::Expr *> &results);
+                      SmallVectorImpl<ast::Expr *> &results,
+                      unsigned numRegions);
   LogicalResult
   validateOperationOperands(SMRange loc, std::optional<StringRef> name,
                             const ods::Operation *odsOp,
@@ -1359,12 +1370,6 @@ FailureOr<T *> Parser::parseUserNativeConstraintOrRewriteDecl(
   if (failed(parseToken(Token::semicolon,
                         "expected `;` after native declaration")))
     return failure();
-  // TODO: PDL should be able to support constraint results in certain
-  // situations, we should revise this.
-  if (std::is_same<ast::UserConstraintDecl, T>::value && !results.empty()) {
-    return emitError(
-        "native Constraints currently do not support returning results");
-  }
   return T::createNative(ctx, name, arguments, results, optCodeStr, resultType);
 }
 
@@ -1820,6 +1825,18 @@ FailureOr<ast::Expr *> Parser::parseExpr() {
   case Token::l_paren:
     lhsExpr = parseTupleExpr();
     break;
+  case Token::l_brace:
+    lhsExpr = parseDictAttrExpr();
+    break;
+  case Token::l_square:
+    lhsExpr = parseArrayAttrExpr();
+    break;
+  case Token::exclam:
+    lhsExpr = parseNegatedExpr();
+    break;
+  case Token::string_block:
+    return emitError("expected expression. If you are trying to create an "
+                     "ArrayAttr, use a space between `[` and `{`.");
   default:
     return emitError("expected expression");
   }
@@ -1841,6 +1858,40 @@ FailureOr<ast::Expr *> Parser::parseExpr() {
     if (failed(lhsExpr))
       return failure();
   }
+}
+
+FailureOr<ast::Expr *> Parser::parseArrayAttrExpr() {
+
+  consumeToken(Token::l_square);
+
+  if (parserContext != ParserContext::Rewrite)
+    return emitError(
+        "Parsing of array attributes as constraint not supported!");
+
+  auto arrayAttrCall =
+      createNativeCall(curToken.getLoc(), "createArrayAttr", {});
+  if (failed(arrayAttrCall))
+    return failure();
+
+  do {
+    FailureOr<ast::Expr *> attr = parseExpr();
+    if (failed(attr))
+      return failure();
+
+    SmallVector<ast::Expr *> arrayAttrArgs{*arrayAttrCall, *attr};
+    auto elemToArrayCall = createNativeCall(
+        curToken.getLoc(), "addElemToArrayAttr", arrayAttrArgs);
+    if (failed(elemToArrayCall))
+      return failure();
+
+    // Uses the new array for the next element.
+    arrayAttrCall = elemToArrayCall;
+  } while (consumeIf(Token::comma));
+
+  if (failed(
+          parseToken(Token::r_square, "expected `]` to close array attribute")))
+    return failure();
+  return arrayAttrCall;
 }
 
 FailureOr<ast::Expr *> Parser::parseAttributeExpr() {
@@ -1866,7 +1917,8 @@ FailureOr<ast::Expr *> Parser::parseAttributeExpr() {
   return ast::AttributeExpr::create(ctx, loc, attrExpr);
 }
 
-FailureOr<ast::Expr *> Parser::parseCallExpr(ast::Expr *parentExpr) {
+FailureOr<ast::Expr *> Parser::parseCallExpr(ast::Expr *parentExpr,
+                                             bool isNegated) {
   consumeToken(Token::l_paren);
 
   // Parse the arguments of the call.
@@ -1890,7 +1942,7 @@ FailureOr<ast::Expr *> Parser::parseCallExpr(ast::Expr *parentExpr) {
   if (failed(parseToken(Token::r_paren, "expected `)` after argument list")))
     return failure();
 
-  return createCallExpr(loc, parentExpr, arguments);
+  return createCallExpr(loc, parentExpr, arguments, isNegated);
 }
 
 FailureOr<ast::Expr *> Parser::parseDeclRefExpr(StringRef name, SMRange loc) {
@@ -1899,6 +1951,62 @@ FailureOr<ast::Expr *> Parser::parseDeclRefExpr(StringRef name, SMRange loc) {
     return emitError(loc, "undefined reference to `" + name + "`");
 
   return createDeclRefExpr(loc, decl);
+}
+
+FailureOr<ast::Expr *> Parser::parseDictAttrExpr() {
+  consumeToken(Token::l_brace);
+  SMRange loc = curToken.getLoc();
+
+  if (parserContext != ParserContext::Rewrite)
+    return emitError(
+        "Parsing of dictionary attributes as constraint not supported!");
+
+  auto dictAttrCall = createNativeCall(loc, "createDictionaryAttr", {});
+  if (failed(dictAttrCall))
+    return failure();
+
+  // Add each nested attribute to the dict
+  do {
+    FailureOr<ast::NamedAttributeDecl *> decl =
+        parseNamedAttributeDecl(std::nullopt);
+    if (failed(decl))
+      return failure();
+
+    ast::NamedAttributeDecl *namedDecl = *decl;
+
+    std::string stringAttrValue =
+        "\"" + std::string((*namedDecl).getName().getName()) + "\"";
+    auto *stringAttr = ast::AttributeExpr::create(ctx, loc, stringAttrValue);
+
+    // Declare it as a variable
+    std::string anonName =
+        llvm::formatv("dict{0}", anonymousDeclNameCounter++).str();
+    FailureOr<ast::VariableDecl *> stringAttrDecl =
+        createVariableDecl(anonName, namedDecl->getLoc(), stringAttr, {});
+    if (failed(stringAttrDecl))
+      return failure();
+
+    // Get its reference
+    auto stringAttrRef = parseDeclRefExpr(
+        (*stringAttrDecl)->getName().getName(), namedDecl->getLoc());
+    if (failed(stringAttrRef))
+      return failure();
+
+    // Create addEntryToDictionaryAttr native call.
+    SmallVector<ast::Expr *> arrayAttrArgs{*dictAttrCall, *stringAttrRef,
+                                           namedDecl->getValue()};
+    auto entryToDictionaryCall =
+        createNativeCall(loc, "addEntryToDictionaryAttr", arrayAttrArgs);
+    if (failed(entryToDictionaryCall))
+      return failure();
+
+    // Uses the new array for the next element.
+    dictAttrCall = entryToDictionaryCall;
+  } while (consumeIf(Token::comma));
+  if (failed(parseToken(Token::r_brace,
+                        "expected `}` to close dictionary attribute")))
+    return failure();
+  return dictAttrCall;
 }
 
 FailureOr<ast::Expr *> Parser::parseIdentifierExpr() {
@@ -1957,6 +2065,16 @@ FailureOr<ast::Expr *> Parser::parseMemberAccessExpr(ast::Expr *parentExpr) {
   consumeToken();
 
   return createMemberAccessExpr(parentExpr, memberName, loc);
+}
+
+FailureOr<ast::Expr *> Parser::parseNegatedExpr() {
+  consumeToken(Token::exclam);
+  if (!curToken.is(Token::identifier))
+    return emitError("expected native constraint");
+  FailureOr<ast::Expr *> identifierExpr = parseIdentifierExpr();
+  if (failed(identifierExpr))
+    return failure();
+  return parseCallExpr(*identifierExpr, /*isNegated = */ true);
 }
 
 FailureOr<ast::OpNameDecl *> Parser::parseOperationName(bool allowEmptyName) {
@@ -2137,8 +2255,23 @@ Parser::parseOperationExpr(OpResultTypeContext inputResultTypeContext) {
     resultTypeContext = OpResultTypeContext::Interface;
   }
 
+  // Parse list of regions
+  unsigned numRegions = 0;
+  if (consumeIf(Token::l_paren)) {
+    do {
+      if (failed(parseToken(Token::l_brace, "expected `{` to open region")))
+        return failure();
+      if (failed(parseToken(Token::r_brace, "expected `}` to close region")))
+        return failure();
+      numRegions++;
+    } while (consumeIf(Token::comma));
+    if (failed(parseToken(Token::r_paren, "expected `)` to close region "
+                                          "list")))
+      return failure();
+  }
+
   return createOperationExpr(loc, *opNameDecl, resultTypeContext, operands,
-                             attributes, resultTypes);
+                             attributes, resultTypes, numRegions);
 }
 
 FailureOr<ast::Expr *> Parser::parseTupleExpr() {
@@ -2672,7 +2805,8 @@ Parser::validateTypeRangeConstraintExpr(const ast::Expr *typeExpr) {
 
 FailureOr<ast::CallExpr *>
 Parser::createCallExpr(SMRange loc, ast::Expr *parentExpr,
-                       MutableArrayRef<ast::Expr *> arguments) {
+                       MutableArrayRef<ast::Expr *> arguments,
+                       bool isNegated = false) {
   ast::Type parentType = parentExpr->getType();
 
   ast::CallableDecl *callableDecl = tryExtractCallableDecl(parentExpr);
@@ -2686,6 +2820,8 @@ Parser::createCallExpr(SMRange loc, ast::Expr *parentExpr,
     if (isa<ast::UserConstraintDecl>(callableDecl))
       return emitError(
           loc, "unable to invoke `Constraint` within a rewrite section");
+    if (isNegated)
+      return emitError(loc, "negation of Rewrites is not supported");
   } else if (isa<ast::UserRewriteDecl>(callableDecl)) {
     return emitError(loc, "unable to invoke `Rewrite` within a match section");
   }
@@ -2718,7 +2854,7 @@ Parser::createCallExpr(SMRange loc, ast::Expr *parentExpr,
   }
 
   return ast::CallExpr::create(ctx, loc, parentExpr, arguments,
-                               callableDecl->getResultType());
+                               callableDecl->getResultType(), isNegated);
 }
 
 FailureOr<ast::DeclRefExpr *> Parser::createDeclRefExpr(SMRange loc,
@@ -2757,6 +2893,35 @@ Parser::createMemberAccessExpr(ast::Expr *parentExpr, StringRef name,
     return failure();
 
   return ast::MemberAccessExpr::create(ctx, loc, parentExpr, name, *memberType);
+}
+
+FailureOr<ast::DeclRefExpr *>
+Parser::createNativeCall(SMRange loc, StringRef nativeFuncName,
+                         MutableArrayRef<ast::Expr *> arguments) {
+
+  FailureOr<ast::Expr *> nativeFuncExpr = parseDeclRefExpr(nativeFuncName, loc);
+  if (failed(nativeFuncExpr))
+    return failure();
+
+  if (!(*nativeFuncExpr)->getType().isa<ast::RewriteType>())
+    return emitError(nativeFuncName + " should be defined as a rewriter.");
+
+  FailureOr<ast::CallExpr *> nativeCall =
+      createCallExpr(loc, *nativeFuncExpr, arguments);
+  if (failed(nativeCall))
+    return failure();
+
+  // Create a unique anonymous name declaration to use, as its name is not
+  // important.
+  std::string anonName =
+      llvm::formatv("{0}_{1}", nativeFuncName, anonymousDeclNameCounter++)
+          .str();
+  FailureOr<ast::VariableDecl *> varDecl = defineVariableDecl(
+      anonName, loc, (*nativeCall)->getType(), *nativeCall, {});
+  if (failed(varDecl))
+    return failure();
+
+  return createDeclRefExpr(loc, *varDecl);
 }
 
 FailureOr<ast::Type> Parser::validateMemberAccess(ast::Expr *parentExpr,
@@ -2813,7 +2978,7 @@ FailureOr<ast::OperationExpr *> Parser::createOperationExpr(
     OpResultTypeContext resultTypeContext,
     SmallVectorImpl<ast::Expr *> &operands,
     MutableArrayRef<ast::NamedAttributeDecl *> attributes,
-    SmallVectorImpl<ast::Expr *> &results) {
+    SmallVectorImpl<ast::Expr *> &results, unsigned numRegions) {
   std::optional<StringRef> opNameRef = name->getName();
   const ods::Operation *odsOp = lookupODSOperation(opNameRef);
 
@@ -2850,7 +3015,7 @@ FailureOr<ast::OperationExpr *> Parser::createOperationExpr(
   }
 
   return ast::OperationExpr::create(ctx, loc, odsOp, name, operands, results,
-                                    attributes);
+                                    attributes, numRegions);
 }
 
 LogicalResult

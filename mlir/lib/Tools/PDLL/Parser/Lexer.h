@@ -79,6 +79,7 @@ public:
     equal,
     equal_arrow,
     semicolon,
+    exclam,
     /// Paired punctuation.
     less,
     greater,

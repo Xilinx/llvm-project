@@ -225,7 +225,10 @@ void NodePrinter::printImpl(const AttributeExpr *expr) {
 void NodePrinter::printImpl(const CallExpr *expr) {
   os << "CallExpr " << expr << " Type<";
   print(expr->getType());
-  os << ">\n";
+  os << ">";
+  if (expr->getIsNegated())
+    os << " negated";
+  os << "\n";
   printChildren(expr->getCallableExpr());
   printChildren("Arguments", expr->getArguments());
 }
@@ -248,7 +251,7 @@ void NodePrinter::printImpl(const MemberAccessExpr *expr) {
 void NodePrinter::printImpl(const OperationExpr *expr) {
   os << "OperationExpr " << expr << " Type<";
   print(expr->getType());
-  os << ">\n";
+  os << "> numRegions:" << expr->getNumRegions() << "\n";
 
   printChildren(expr->getNameDecl());
   printChildren("Operands", expr->getOperands());

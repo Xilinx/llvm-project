@@ -82,40 +82,9 @@ struct ReshapeReshapeOptimization : public OpRewritePattern<tosa::ReshapeOp> {
   }
 };
 
-struct ReshapeConstOptimization : public OpRewritePattern<tosa::ReshapeOp> {
-  using OpRewritePattern<tosa::ReshapeOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(tosa::ReshapeOp op,
-                                PatternRewriter &rewriter) const override {
-    Value input = op.getInput1();
-    ShapedType inputTy = llvm::cast<ShapedType>(input.getType());
-    ShapedType resultTy = llvm::cast<ShapedType>(op.getType());
-
-    if (inputTy.getElementType() != resultTy.getElementType())
-      return rewriter.notifyMatchFailure(op, "element type does not match.");
-
-    // Check if input is constant
-    DenseElementsAttr inputAttr;
-    if (!matchPattern(input, m_Constant(&inputAttr)))
-      return rewriter.notifyMatchFailure(op, "Non-constant input.");
-
-    // Check if has >1 consumer and is not splat
-    if (!input.hasOneUse() && !inputAttr.isSplat())
-      return rewriter.notifyMatchFailure(op,
-                                         "Used more than once or not-splat");
-
-    // Build new const op with correct output shape
-    DenseElementsAttr outputAttr = inputAttr.reshape(
-        llvm::cast<ShapedType>(inputAttr.getType()).clone(op.getNewShape()));
-    rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, resultTy, outputAttr);
-    return success();
-  }
-};
-
 void ReshapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                             MLIRContext *context) {
   results.add<ReshapeReshapeOptimization>(context);
-  results.add<ReshapeConstOptimization>(context);
 }
 
 LogicalResult SelectOp::canonicalize(SelectOp op, PatternRewriter &rewriter) {
@@ -661,6 +630,27 @@ OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
   return mulBinaryFolder(lhsAttr, rhsAttr, resultTy, getShift());
 }
 
+OpFoldResult ReciprocalOp::fold(FoldAdaptor adaptor) {
+  
+  auto constantAttr = dyn_cast_or_null<DenseElementsAttr>(adaptor.getOperands()[0]);
+  auto lhsTy = dyn_cast<RankedTensorType>(getInput1().getType());
+
+  if (!lhsTy || !constantAttr) {
+    return {};
+  }
+
+  if (!constantAttr.isSplat()) {
+    return {};
+  }
+
+  auto floatVal = constantAttr.getSplatValue<llvm::APFloat>();
+
+  auto recipAttr = FloatAttr::get(lhsTy.getElementType(), 1.0);
+  APFloat recip = recipAttr.getValue();
+  recip.divide(floatVal, APFloat::rmNearestTiesToEven);
+  return DenseElementsAttr::get(lhsTy, recip);
+}
+
 OpFoldResult SubOp::fold(FoldAdaptor adaptor) {
   auto lhsTy = llvm::dyn_cast<RankedTensorType>(getInput1().getType());
   auto rhsTy = llvm::dyn_cast<RankedTensorType>(getInput2().getType());
@@ -676,6 +666,9 @@ OpFoldResult SubOp::fold(FoldAdaptor adaptor) {
     return getInput1();
 
   if (!lhsAttr || !rhsAttr)
+    return {};
+
+  if (lhsTy != rhsTy)
     return {};
 
   return binaryFolder<std::minus<APInt>, std::minus<APFloat>>(lhsAttr, rhsAttr,
@@ -851,12 +844,23 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
   if (inputTy == outputTy)
     return getInput1();
 
+  if (!outputTy.hasStaticShape())
+    return {};
+
   auto operand = llvm::dyn_cast_if_present<DenseElementsAttr>(adaptor.getInput1());
-  if (operand && outputTy.hasStaticShape() && operand.isSplat()) {
+  if (!operand)
+    return {};
+
+  if (operand.isSplat()) {
     return SplatElementsAttr::get(outputTy, operand.getSplatValue<Attribute>());
   }
 
-  return {};
+  // Don't duplicate other constants.
+  if (!getInput1().hasOneUse())
+    return {};
+
+  return operand.reshape(
+      llvm::cast<ShapedType>(operand.getType()).clone(getNewShape()));
 }
 
 OpFoldResult PadOp::fold(FoldAdaptor adaptor) {
@@ -1037,7 +1041,28 @@ OpFoldResult tosa::AbsOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
+static bool hasZeroSize(Type ty) {
+  auto ranked = dyn_cast<RankedTensorType>(ty);
+  if (!ranked)
+    return false;
+  return any_of(ranked.getShape(), [](auto d) { return d == 0; });
+}
+
 OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
+  /// Remove operands that have zero elements.
+  bool changed = false;
+  for (size_t i = 0; i < getInput1().size(); ) {
+    auto input = getInput1()[i];
+    if (hasZeroSize(input.getType())) {
+      getInput1Mutable().erase(i);
+      changed = true;
+    } else {
+      ++i;
+    }
+  }
+  if (changed)
+    return getResult();
+
   // Fold consecutive concats on the same axis into a single op.
   // Keep track of the operands so we are able to construct a new concat
   // later. Conservatively assume that we double the number of operands when

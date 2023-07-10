@@ -16,8 +16,14 @@
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/AffineMap.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/TypeUtilities.h"
+
+#include "llvm/ADT/iterator_range.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallBitVector.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringSwitch.h"
 
 using namespace mlir;
 using namespace mlir::linalg;
@@ -815,4 +821,88 @@ LogicalResult mlir::linalg::detail::verifyStructuredOpInterface(Operation *op) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Operator class
+//===----------------------------------------------------------------------===//
+
+FailureOr<OperatorClass> mlir::linalg::parseOperatorClass(StringRef str) {
+  const auto symbolize = [](StringRef item) {
+    return llvm::StringSwitch<std::optional<OperatorClass>>(item)
+        .Case("const", OperatorClass::Constant)
+        .Case("generic", OperatorClass::Generic)
+        .Case("el", OperatorClass::Elementwise)
+        .Case("act", OperatorClass::Activation)
+        .Case("conv", OperatorClass::Convolution)
+        .Case("pool", OperatorClass::Pooling)
+        .Case("pad", OperatorClass::Padding)
+        .Case("bcast", OperatorClass::Broadcast)
+        .Default(std::nullopt);
+  };
+
+  if (!str.startswith("[")) {
+    auto result = symbolize(str);
+    if (result.has_value())
+      return result.value();
+
+    return failure();
+  }
+
+  if (!str.endswith("]"))
+    return failure();
+
+  using llvm::operator|=;
+  auto result = OperatorClass::None;
+  auto split = str.split(',');
+  do {
+    const auto item = symbolize(split.first.trim());
+    if (!item.has_value())
+      return failure();
+
+    result |= item.value();
+    split = str.split(',');
+  } while (!split.second.empty());
+
+  return result;
+}
+
+raw_ostream& mlir::linalg::operator<<(raw_ostream &os, OperatorClass value) {
+  if (value == OperatorClass::None)
+    return os << "[]";
+
+  using int_t = std::underlying_type_t<OperatorClass>;
+  bool isSet = static_cast<int_t>(value) & static_cast<int_t>(value) - 1;
+
+  const auto stringify = [](OperatorClass item) {
+    switch (item) {
+    case OperatorClass::Constant: return "const";
+    case OperatorClass::Generic: return "generic";
+    case OperatorClass::Elementwise: return "el";
+    case OperatorClass::Activation: return "act";
+    case OperatorClass::Convolution: return "conv";
+    case OperatorClass::Pooling: return "pool";
+    case OperatorClass::Padding: return "pad";
+    case OperatorClass::Broadcast: return "bcast";
+    default: llvm_unreachable("unknown OperatorClass item");
+    }
+  };
+
+  if (!isSet)
+    return os << stringify(value);
+
+  os << '[';
+  llvm::interleaveComma(
+    llvm::make_filter_range(
+      llvm::map_range(
+        llvm::iota_range<unsigned>(0, llvm::BitWidth<OperatorClass>, false),
+        [](unsigned shift) {
+          return static_cast<OperatorClass>(static_cast<int_t>(1 << shift)); }),
+      [value](OperatorClass item) {
+        using llvm::operator&;
+        return (value & item) == value;
+      }),
+    os,
+    [&](OperatorClass item) { os << stringify(item); });
+  return os << ']';
 }

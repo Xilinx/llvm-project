@@ -390,7 +390,8 @@ class CallExpr final : public Node::NodeBase<CallExpr, Expr>,
                        private llvm::TrailingObjects<CallExpr, Expr *> {
 public:
   static CallExpr *create(Context &ctx, SMRange loc, Expr *callable,
-                          ArrayRef<Expr *> arguments, Type resultType);
+                          ArrayRef<Expr *> arguments, Type resultType,
+                          bool isNegated = false);
 
   /// Return the callable of this call.
   Expr *getCallableExpr() const { return callable; }
@@ -403,9 +404,13 @@ public:
     return const_cast<CallExpr *>(this)->getArguments();
   }
 
+  bool getIsNegated() const { return isNegated; }
+
 private:
-  CallExpr(SMRange loc, Type type, Expr *callable, unsigned numArgs)
-      : Base(loc, type), callable(callable), numArgs(numArgs) {}
+  CallExpr(SMRange loc, Type type, Expr *callable, unsigned numArgs,
+           bool isNegated)
+      : Base(loc, type), callable(callable), numArgs(numArgs),
+        isNegated(isNegated) {}
 
   /// The callable of this call.
   Expr *callable;
@@ -415,6 +420,8 @@ private:
 
   /// TrailingObject utilities.
   friend llvm::TrailingObjects<CallExpr, Expr *>;
+
+  bool isNegated;
 };
 
 //===----------------------------------------------------------------------===//
@@ -502,12 +509,11 @@ class OperationExpr final
       private llvm::TrailingObjects<OperationExpr, Expr *,
                                     NamedAttributeDecl *> {
 public:
-  static OperationExpr *create(Context &ctx, SMRange loc,
-                               const ods::Operation *odsOp,
-                               const OpNameDecl *nameDecl,
-                               ArrayRef<Expr *> operands,
-                               ArrayRef<Expr *> resultTypes,
-                               ArrayRef<NamedAttributeDecl *> attributes);
+  static OperationExpr *
+  create(Context &ctx, SMRange loc, const ods::Operation *odsOp,
+         const OpNameDecl *nameDecl, ArrayRef<Expr *> operands,
+         ArrayRef<Expr *> resultTypes,
+         ArrayRef<NamedAttributeDecl *> attributes, unsigned numRegions);
 
   /// Return the name of the operation, or std::nullopt if there isn't one.
   std::optional<StringRef> getName() const;
@@ -543,19 +549,22 @@ public:
     return const_cast<OperationExpr *>(this)->getAttributes();
   }
 
+  unsigned getNumRegions() const { return numRegions; }
+
 private:
   OperationExpr(SMRange loc, Type type, const OpNameDecl *nameDecl,
                 unsigned numOperands, unsigned numResultTypes,
-                unsigned numAttributes, SMRange nameLoc)
+                unsigned numAttributes, unsigned numRegions, SMRange nameLoc)
       : Base(loc, type), nameDecl(nameDecl), numOperands(numOperands),
         numResultTypes(numResultTypes), numAttributes(numAttributes),
-        nameLoc(nameLoc) {}
+        numRegions(numRegions), nameLoc(nameLoc) {}
 
   /// The name decl of this expression.
   const OpNameDecl *nameDecl;
 
-  /// The number of operands, result types, and attributes of the operation.
-  unsigned numOperands, numResultTypes, numAttributes;
+  /// The number of operands, result types, attributes and regions of the
+  /// operation.
+  unsigned numOperands, numResultTypes, numAttributes, numRegions;
 
   /// The location of the operation name in the expression if it has a name.
   SMRange nameLoc;

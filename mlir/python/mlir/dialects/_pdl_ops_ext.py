@@ -19,17 +19,16 @@ class ApplyNativeConstraintOp:
     """Specialization for PDL apply native constraint op class."""
 
     def __init__(
-        self,
-        name: Union[str, StringAttr],
-        args: Optional[Sequence[Union[OpView, Operation, Value]]] = None,
-        *,
-        loc=None,
-        ip=None,
-    ):
-        if args is None:
-            args = []
+               self,
+               name: Union[str, StringAttr],
+               results: Sequence[Type] = [],
+               args: Sequence[Union[OpView, Operation, Value]] = [],
+               *,
+               loc=None,
+               ip=None):
         args = _get_values(args)
-        super().__init__(name, args, loc=loc, ip=ip)
+        results = _get_values(results)
+        super().__init__(results, name, args, loc=loc, ip=ip)
 
 
 class ApplyNativeRewriteOp:

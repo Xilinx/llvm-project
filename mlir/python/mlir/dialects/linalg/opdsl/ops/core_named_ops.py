@@ -2,9 +2,230 @@ from ..lang import *
 
 T1 = TV.T1
 T2 = TV.T2
+T3 = TV.T3
 
 Batch = S.Batch
 
+
+# Define set of fused ops in linalg
+
+@linalg_structured_op
+def conv_2d_relu(
+    I=TensorDef(T1, S.N, S.C, S.OH * S.SH + S.KH * S.DH, S.OW * S.SW + S.KW * S.DW),
+    K=TensorDef(T2, S.F, S.C, S.KH, S.KW),
+    B=TensorDef(T3, S.F),
+    O=TensorDef(U, S.N, S.F, S.OH, S.OW, output=True),
+    strides=IndexAttrDef(S.SH, S.SW, default=[1, 1]),
+    dilations=IndexAttrDef(S.DH, S.DW, default=[1, 1])):
+  """Performs fused 2-D convolution and relu.
+  Layout:
+    * Input: NCHW.
+    * Kernel: FCHW.
+  Todo: When this fused op is lowered to generic/affine/loops the inner loop functionality
+  is incorrect. Implementation of correct conv2d_relu functionality. Current
+  inner loop functionality is a dummy implementation
+  """
+  implements(ConvolutionOpInterface)
+  domain(D.n, D.f, D.oh, D.ow, D.c, D.kh, D.kw)
+  O[D.n, D.f, D.oh, D.ow] += (TypeFn.cast_signed(U, B[D.f]) + TypeFn.cast_signed(
+      U, I[D.n, D.c, D.oh * S.SH + D.kh * S.DH,
+                     D.ow * S.SW + D.kw * S.DW])
+         * TypeFn.cast_signed(U, K[D.f, D.c, D.kh, D.kw]))
+
+
+@linalg_structured_op
+def conv_2d_lrelu(
+    I=TensorDef(T1, S.N, S.C, S.OH * S.SH + S.KH * S.DH, S.OW * S.SW + S.KW * S.DW),
+    K=TensorDef(T2, S.F, S.C, S.KH, S.KW),
+    B=TensorDef(T3, S.F),
+    alpha=ScalarDef(F32),
+    O=TensorDef(U, S.N, S.F, S.OH, S.OW, output=True),
+    strides=IndexAttrDef(S.SH, S.SW, default=[1, 1]),
+    dilations=IndexAttrDef(S.DH, S.DW, default=[1, 1])):
+  """Performs fused 2-D convolution and leaky-relu.
+  Layout:
+    * Input: NCHW.
+    * Kernel: FCHW.
+  Todo: When this fused op is lowered to generic/affine/loops the inner loop functionality
+  is incorrect. Implementation of correct conv2d_lrelu functionality. Current
+  inner loop functionality is a dummy implementation
+  """
+  implements(ConvolutionOpInterface)
+  domain(D.n, D.f, D.oh, D.ow, D.c, D.kh, D.kw)
+  O[D.n, D.f, D.oh, D.ow] += alpha * (TypeFn.cast_signed(U, B[D.f]) + TypeFn.cast_signed(
+      U, I[D.n, D.c, D.oh * S.SH + D.kh * S.DH,
+                     D.ow * S.SW + D.kw * S.DW])
+         * TypeFn.cast_signed(U, K[D.f, D.c, D.kh, D.kw]))
+
+
+@linalg_structured_op
+def conv_2d_lrelu_maxpool(
+    I=TensorDef(T1, S.N, S.C, S.OH * S.SH * S.MSH + S.KH * S.DH, S.OW * S.SW * S.MSW + S.KW * S.DW),
+    K=TensorDef(T2, S.F, S.C, S.KH, S.KW),
+    B=TensorDef(T3, S.F),
+    alpha=ScalarDef(F32),
+    O=TensorDef(U, S.N, S.F, S.OH, S.OW, output=True),
+    strides=IndexAttrDef(S.SH, S.SW, default=[1, 1]),
+    dilations=IndexAttrDef(S.DH, S.DW, default=[1, 1]),
+    mpKernelSize=IndexAttrDef(S.MKH, S.MKW, default=[1, 1]),
+    mpStrides=IndexAttrDef(S.MSH, S.MSW, default=[1, 1]),
+    mpPadding=IndexAttrDef(S.MPHL, S.MPHH, S.MPWL, S.MPWH, default=[0, 0, 0, 0]),
+    mpDilations=IndexAttrDef(S.MDH, S.MDW, default=[1, 1])):
+  """Performs fused 2-D convolution, leaky-relu and max-pool.
+  Layout:
+    * Input: NCHW.
+    * Kernel: FCHW.
+  Todo: When this fused op is lowered to generic/affine/loops the inner loop functionality
+  is incorrect. Implementation of correct conv2d_lrelu_maxpool functionality. Current
+  inner loop functionality is a dummy implementation
+  """
+  implements(ConvolutionOpInterface)
+  domain(D.n, D.f, D.oh, D.ow, D.c, D.kh, D.kw)
+  O[D.n, D.f, D.oh, D.ow] += alpha * (TypeFn.cast_signed(U, B[D.f]) + TypeFn.cast_signed(
+      U, I[D.n, D.c, D.oh * S.SH * S.MSH  + D.kh * S.DH, D.ow * S.SW * S.MSW + D.kw * S.DW
+           ]) * TypeFn.cast_signed(U, K[D.f, D.c, D.kh, D.kw]))
+
+@linalg_structured_op
+def conv_2d_relu_maxpool(
+    I=TensorDef(T1, S.N, S.C, S.OH * S.SH * S.MSH + S.KH * S.DH, S.OW * S.SW * S.MSW + S.KW * S.DW),
+    K=TensorDef(T2, S.F, S.C, S.KH, S.KW),
+    B=TensorDef(T3, S.F),
+    O=TensorDef(U, S.N, S.F, S.OH, S.OW, output=True),
+    strides=IndexAttrDef(S.SH, S.SW, default=[1, 1]),
+    dilations=IndexAttrDef(S.DH, S.DW, default=[1, 1]),
+    mpKernelSize=IndexAttrDef(S.MKH, S.MKW, default=[1, 1]),
+    mpStrides=IndexAttrDef(S.MSH, S.MSW, default=[1, 1]),
+    mpPadding=IndexAttrDef(S.MPHL, S.MPHH, S.MPWL, S.MPWH, default=[0, 0, 0, 0]),
+    mpDilations=IndexAttrDef(S.MDH, S.MDW, default=[1, 1])):
+  """Performs fused 2-D convolution, leaky-relu and max-pool.
+  Layout:
+    * Input: NCHW.
+    * Kernel: FCHW.
+  Todo: When this fused op is lowered to generic/affine/loops the inner loop functionality
+  is incorrect. Implementation of correct conv2d_lrelu_maxpool functionality. Current
+  inner loop functionality is a dummy implementation
+  """
+  implements(ConvolutionOpInterface)
+  domain(D.n, D.f, D.oh, D.ow, D.c, D.kh, D.kw)
+  O[D.n, D.f, D.oh, D.ow] += (TypeFn.cast_signed(U, B[D.f]) + TypeFn.cast_signed(
+      U, I[D.n, D.c, D.oh * S.SH * S.MSH  + D.kh * S.DH, D.ow * S.SW * S.MSW + D.kw * S.DW
+           ]) * TypeFn.cast_signed(U, K[D.f, D.c, D.kh, D.kw]))
+
+@linalg_structured_op
+def relu_2d_nchw(
+    IFM=TensorDef(T1, Batch, S.C, S.OH, S.OW),
+    OFM=TensorDef(T1, Batch, S.C, S.OH, S.OW, output=True)):
+  """Applies the ReLU activation function to every value in the tensor.
+  
+  Layout:
+    * Input: NCHW
+  """
+  domain(D.b, D.c, D.oh, D.ow)
+  OFM[D.b, D.c, D.oh, D.ow] = BinaryFn.max_signed(
+    IFM[D.b, D.c, D.oh, D.ow], TypeFn.cast_signed(T1, const(0.0))
+  )
+
+@linalg_structured_op
+def lrelu_2d_nchw(
+    IFM=TensorDef(T1, Batch, S.C, S.OH, S.OW),
+    alpha=ScalarDef(T1),
+    OFM=TensorDef(T1, Batch, S.C, S.OH, S.OW, output=True)):
+  """Applies the leaky ReLU activation function to every value in the tensor.
+  
+  Layout:
+    * Input: NCHW
+  """
+  domain(D.b, D.c, D.oh, D.ow)
+  zero = TypeFn.cast_signed(T1, const(0.0))
+  pos = BinaryFn.max_signed(IFM[D.b, D.c, D.oh, D.ow], zero)
+  neg = IFM[D.b, D.c, D.oh, D.ow] * alpha
+  leak = BinaryFn.min_signed(neg, zero)
+  OFM[D.b, D.c, D.oh, D.ow] = pos + leak
+
+@linalg_structured_op
+def apply_bias_2d_fchw(
+    IFM=TensorDef(T1, Batch, S.F, S.OH, S.OW),
+    bias=TensorDef(T1, S.F),
+    OFM=TensorDef(T1, Batch, S.F, S.OH, S.OW, output=True)):
+  """Applies the bias value to the input tensor by broadcasting.
+  
+  Layout:
+    * Input: NFHW
+    * Bias: F
+  """
+  domain(D.b, D.f, D.oh, D.ow)
+  OFM[D.b, D.f, D.oh, D.ow] = IFM[D.b, D.f, D.oh, D.ow] + bias[D.f]
+
+@linalg_structured_op
+def broadcast_bias_2d_fchw(
+    bias=TensorDef(T1, S.F),
+    OFM=TensorDef(T1, Batch, S.F, S.OH, S.OW, output=True)):
+  """Applies the bias value to the input tensor by broadcasting.
+  
+  Layout:
+    * Input: NFHW
+    * Bias: F
+  """
+  domain(D.b, D.f, D.oh, D.ow)
+  OFM[D.b, D.f, D.oh, D.ow] = bias[D.f]
+
+@linalg_structured_op
+def broadcast_1d_to_2d(
+    input=TensorDef(T1, S.H),
+    output=TensorDef(T1,  S.W, S.H, output=True)):
+  """
+  Broadcast the input tensor from 1D to 2D
+  
+  Layout:
+    * Input: H
+    * Output: WH
+  """
+  domain(D.W, D.H)
+  output[D.W, D.H] = input[D.H]
+
+@linalg_structured_op
+def transpose2d(
+    input=TensorDef(T1, S.W, S.H),
+    output=TensorDef(T1,  S.H, S.W, output=True)):
+  """
+  Transposes the 2D input tensor
+  
+  Layout:
+    * Input: WH
+    * Output: HW
+  """
+  domain(D.W, D.H)
+  output[D.H, D.W] = input[D.W, D.H]
+
+@linalg_structured_op
+def linear(
+    I=TensorDef(T1, S.W, S.H),
+    W=TensorDef(T1,  S.K, S.H),
+    B=TensorDef(T1,  S.K),
+    O=TensorDef(T1,  S.W, S.K, output=True)):
+  """
+    The following custom operator implements the linear operator 
+      y = I * transpose(W) + B
+    Remember, B is broadcastable, therefore it is of rank 1.
+    Linear can be decomposed into two generic linalg operators one broadcasting
+    B into 2D tensor, the other transposing the weights. With a linalg matmul
+    consuming the input tensor, transposed weights and the broadcasted B tensor.
+
+    Note the implementation of the functionality for linear in named structured
+    ops is incorrect as we cannot add the bias at the end of the multiplication
+    for one output element.
+
+  Layout:
+    * I: WH (Input)
+    * W: WH (Weights)
+    * B: H  (Bias)
+  """
+  domain(D.W, D.H, D.K)
+  # implementation is incorrect the addition of the bias should happen after
+  # the multiplication, not on each element
+  O[D.W, D.K] += I[D.W, D.H]*W[D.K, D.H] + B[D.K]
+
+# Standard linalg ops
 
 @linalg_structured_op
 def copy(
@@ -34,6 +255,202 @@ def elemwise_unary(
     """
     O[None] = fun(cast(U, I[None]))
 
+
+
+@linalg_structured_op
+def conv_2d_tensor_add(
+    I=TensorDef(T1, S.N, S.C, S.OH * S.SH + S.KH * S.DH, S.OW * S.SW + S.KW * S.DW),
+    K=TensorDef(T2, S.F, S.C, S.KH, S.KW),
+    B=TensorDef(T3, S.F),
+    J=TensorDef(T1, S.N, S.F, S.OH, S.OW),
+    O=TensorDef(U, S.N, S.F, S.OH, S.OW, output=True),
+    strides=IndexAttrDef(S.SH, S.SW, default=[1, 1]),
+    dilations=IndexAttrDef(S.DH, S.DW, default=[1, 1])):
+  """Performs fused 2-D convolution and elementwise add.
+
+  Layout:
+    * Input: NCHW.
+    * Kernel: FCHW.
+
+  Todo: When this fused op is lowered to generic/affine/loops the inner loop functionality
+  is incorrect. Implementation of correct conv_2d_tensor_add functionality. Current
+  inner loop functionality is a dummy implementation
+  """
+  implements(ConvolutionOpInterface)
+  domain(D.n, D.f, D.oh, D.ow, D.c, D.kh, D.kw)
+  O[D.n, D.f, D.oh, D.ow] += BinaryFn.add(TypeFn.cast_signed(U, B[D.f]) + TypeFn.cast_signed(
+      U, I[D.n, D.c, D.oh * S.SH + D.kh * S.DH,
+                     D.ow * S.SW + D.kw * S.DW])
+         * TypeFn.cast_signed(U, K[D.f, D.c, D.kh, D.kw]), 
+         TypeFn.cast_signed(T1, J[D.n, D.f, D.oh, D.ow]))
+
+
+@linalg_structured_op
+def conv_2d_tensor_add_relu(
+    I=TensorDef(T1, S.N, S.C, S.OH * S.SH + S.KH * S.DH, S.OW * S.SW + S.KW * S.DW),
+    K=TensorDef(T2, S.F, S.C, S.KH, S.KW),
+    B=TensorDef(T3, S.F),
+    J=TensorDef(T1, S.N, S.F, S.OH, S.OW),
+    O=TensorDef(U, S.N, S.F, S.OH, S.OW, output=True),
+    strides=IndexAttrDef(S.SH, S.SW, default=[1, 1]),
+    dilations=IndexAttrDef(S.DH, S.DW, default=[1, 1])):
+  """Performs fused 2-D convolution and elementwise add and relu.
+
+  Layout:
+    * Input: NCHW.
+    * Kernel: FCHW.
+
+  Todo: When this fused op is lowered to generic/affine/loops the inner loop functionality
+  is incorrect. Implementation of correct conv_2d_tensor_add_relu functionality. Current
+  inner loop functionality is a dummy implementation
+  """
+  implements(ConvolutionOpInterface)
+  domain(D.n, D.f, D.oh, D.ow, D.c, D.kh, D.kw)
+  O[D.n, D.f, D.oh, D.ow] += BinaryFn.add(TypeFn.cast_signed(U, B[D.f]) + TypeFn.cast_signed(
+      U, I[D.n, D.c, D.oh * S.SH + D.kh * S.DH,
+                     D.ow * S.SW + D.kw * S.DW])
+         * TypeFn.cast_signed(U, K[D.f, D.c, D.kh, D.kw]), 
+         TypeFn.cast_signed(T1, J[D.n, D.f, D.oh, D.ow]))
+
+
+@linalg_structured_op
+def conv_2d_tensor_add_lrelu(
+    I=TensorDef(T1, S.N, S.C, S.OH * S.SH + S.KH * S.DH, S.OW * S.SW + S.KW * S.DW),
+    K=TensorDef(T2, S.F, S.C, S.KH, S.KW),
+    B=TensorDef(T3, S.F),
+    J=TensorDef(T1, S.N, S.F, S.OH, S.OW),
+    alpha=ScalarDef(F32),
+    O=TensorDef(U, S.N, S.F, S.OH, S.OW, output=True),
+    strides=IndexAttrDef(S.SH, S.SW, default=[1, 1]),
+    dilations=IndexAttrDef(S.DH, S.DW, default=[1, 1])):
+  """Performs fused 2-D convolution, elementwise add and leaky-relu.
+
+  Layout:
+    * Input: NCHW.
+    * Kernel: FCHW.
+
+  Todo: When this fused op is lowered to generic/affine/loops the inner loop functionality
+  is incorrect. Implementation of correct conv_2d_tensor_add_lrelu functionality. Current
+  inner loop functionality is a dummy implementation
+  """
+  implements(ConvolutionOpInterface)
+  domain(D.n, D.f, D.oh, D.ow, D.c, D.kh, D.kw)
+  O[D.n, D.f, D.oh, D.ow] += alpha * BinaryFn.add(TypeFn.cast_signed(U, B[D.f]) + TypeFn.cast_signed(
+      U, I[D.n, D.c, D.oh * S.SH + D.kh * S.DH,
+                     D.ow * S.SW + D.kw * S.DW])
+         * TypeFn.cast_signed(U, K[D.f, D.c, D.kh, D.kw]), 
+         TypeFn.cast_signed(T1, J[D.n, D.f, D.oh, D.ow]))
+
+
+@linalg_structured_op
+def conv_2d_tensor_add_globalaveragepool(
+    I=TensorDef(T1, S.N, S.C, S.OH * S.SH + S.KH * S.DH, S.OW * S.SW + S.KW * S.DW),
+    K=TensorDef(T2, S.F, S.C, S.KH, S.KW),
+    B=TensorDef(T3, S.F),
+    J=TensorDef(T1, S.N, S.F, S.OH, S.OW),
+    O=TensorDef(U, S.N, S.F, S.C1, S.C1, output=True),
+    strides=IndexAttrDef(S.SH, S.SW, default=[1, 1]),
+    dilations=IndexAttrDef(S.DH, S.DW, default=[1, 1])):
+  """Performs fused 2-D convolution, elementwise add and global average pool.
+
+  Note last two dimensions of the output tensor should be always set to 1 as the table
+  gen file was generated using the python Linalg DSL. However, due to the DSL constrains
+  these dimensions must be symbolic.
+
+  Layout:
+    * I: NxCIxHxW   (Input to Convlution)
+    * K: FxCIxKHxKW (Kernel to Convolution)
+    * B: F          (Bias added to Convolution)
+    * J: NxCOxOHxOW (Input to ElemAdd after Convolution of I)
+    * O: NxCOx1x1   (Output Tensor Shape after GlobalAveragePool)
+  
+  Note, we cannot model this operator with a convolution interface because the relationship
+  between input dimensions, filter dimensions and output dimensions do not meet the requirements
+  for convolution.
+
+  Note the loop functionality is incorrect and will not execute correctly - see -linalg-unfuse
+  to get a valid executable expansion.
+  """
+  domain(D.n, D.f, D.oh, D.ow, D.c, D.kh, D.kw, D.c1)
+  # Below implementation is completly incorrect
+  O[D.n, D.f, D.c1, D.c1] += BinaryFn.add(TypeFn.cast_signed(U, B[D.f]) +
+  TypeFn.cast_signed(U, I[D.n, D.c, D.oh * S.SH + D.kh * S.DH, D.ow * S.SW + D.kw * S.DW])
+         * TypeFn.cast_signed(U, K[D.f, D.c, D.kh, D.kw]),
+         TypeFn.cast_signed(T1, J[D.n, D.f, D.oh, D.ow]))
+
+@linalg_structured_op
+def conv_2d_tensor_add_relu_globalaveragepool(
+    I=TensorDef(T1, S.N, S.C, S.OH * S.SH + S.KH * S.DH, S.OW * S.SW + S.KW * S.DW),
+    K=TensorDef(T2, S.F, S.C, S.KH, S.KW),
+    B=TensorDef(T3, S.F),
+    J=TensorDef(T1, S.N, S.F, S.OH, S.OW),
+    O=TensorDef(U, S.N, S.F, S.C1, S.C1, output=True),
+    strides=IndexAttrDef(S.SH, S.SW, default=[1, 1]),
+    dilations=IndexAttrDef(S.DH, S.DW, default=[1, 1])):
+  """Performs fused Conv2D + Tensor-Add + ReLU + GlobalAveragePool compound operation
+
+  Note last two dimensions of the output tensor should be always set to 1 as the table
+  gen file was generated using the python Linalg DSL. However, due to the DSL constrains
+  these dimensions must be symbolic.
+
+  Layout:
+    * I: NxCIxHxW   (Input to Convlution)
+    * K: FxCIxKHxKW (Kernel to Convolution)
+    * B: F          (Bias added to Convolution)
+    * J: NxCOxOHxOW (Input to ElemAdd after Convolution of I)
+    * O: NxCOx1x1   (Output Tensor Shape after GlobalAveragePool)
+
+  Note, we cannot model this operator with a convolution interface because the relationship
+  between input dimensions, filter dimensions and output dimensions do not meet the requirements
+  for convolution.
+
+  Note the loop functionality is incorrect and will not execute correctly - see -linalg-unfuse
+  to get a valid executable expansion.
+  """
+  domain(D.n, D.f, D.oh, D.ow, D.c, D.kh, D.kw, D.c1)
+  # Below implementation is completly incorrect
+  O[D.n, D.f, D.c1, D.c1] += BinaryFn.add(TypeFn.cast_signed(U, B[D.f]) +
+  TypeFn.cast_signed(U, I[D.n, D.c, D.oh * S.SH + D.kh * S.DH, D.ow * S.SW + D.kw * S.DW])
+         * TypeFn.cast_signed(U, K[D.f, D.c, D.kh, D.kw]),
+         TypeFn.cast_signed(T1, J[D.n, D.f, D.oh, D.ow]))
+
+@linalg_structured_op
+def conv_2d_tensor_add_lrelu_globalaveragepool(
+    I=TensorDef(T1, S.N, S.C, S.OH * S.SH + S.KH * S.DH, S.OW * S.SW + S.KW * S.DW),
+    K=TensorDef(T2, S.F, S.C, S.KH, S.KW),
+    B=TensorDef(T3, S.F),
+    J=TensorDef(T1, S.N, S.F, S.OH, S.OW),
+    A=ScalarDef(F32),
+    O=TensorDef(U, S.N, S.F, S.C1, S.C1, output=True),
+    strides=IndexAttrDef(S.SH, S.SW, default=[1, 1]),
+    dilations=IndexAttrDef(S.DH, S.DW, default=[1, 1])):
+  """Performs fused Conv2D + Tensor-Add + LeakyReLU + GlobalAveragePool compound operation
+
+  Note last two dimensions of the output tensor should be always set to 1 as the table
+  gen file was generated using the python Linalg DSL. However, due to the DSL constrains
+  these dimensions must be symbolic.
+
+  Layout:
+    * I: NxCIxHxW   (Input to Convlution)
+    * K: FxCIxKHxKW (Kernel to Convolution)
+    * B: F          (Bias added to Convolution)
+    * J: NxCOxOHxOW (Input to ElemAdd after Convolution of I)
+    * A: F32        (alpha value for the leaky relu op)
+    * O: NxCOx1x1   (Output Tensor Shape after GlobalAveragePool)
+
+  Note, we cannot model this operator with a convolution interface because the relationship
+  between input dimensions, filter dimensions and output dimensions do not meet the requirements
+  for convolution.
+
+  Note the loop functionality is incorrect and will not execute correctly - see -linalg-unfuse
+  to get a valid executable expansion.
+  """
+  domain(D.n, D.f, D.oh, D.ow, D.c, D.kh, D.kw, D.c1)
+  # Below implementation is completly incorrect
+  O[D.n, D.f, D.c1, D.c1] += BinaryFn.mul(A,BinaryFn.add(TypeFn.cast_signed(U, B[D.f]) +
+  TypeFn.cast_signed(U, I[D.n, D.c, D.oh * S.SH + D.kh * S.DH, D.ow * S.SW + D.kw * S.DW])
+         * TypeFn.cast_signed(U, K[D.f, D.c, D.kh, D.kw]),
+         TypeFn.cast_signed(T1, J[D.n, D.f, D.oh, D.ow])))
 
 @linalg_structured_op
 def elemwise_binary(
@@ -1320,3 +1737,39 @@ def fill_rng_2d(
     O[D.m, D.n] = TypeFn.cast_signed(
         T, (offset + TypeFn.cast_signed(F64, rand2)) * scaling + min
     )
+
+@linalg_structured_op
+def linear_relu(
+    I=TensorDef(T1, S.W, S.H),
+    W=TensorDef(T1,  S.K, S.H),
+    B=TensorDef(T1,  S.K),
+    O=TensorDef(T1,  S.W, S.K, output=True)):
+  """Performs a linear/fully-connected + relu operation
+
+  Performs a linear operation followed by a Relu
+
+  Layout:
+    * I: WH (Input)
+    * W: WH (Weights)
+    * B: H  (Bias)
+  """
+  domain(D.W, D.H, D.K)
+  # implementation is incorrect the addition of the bias should happen after
+  # the multiplication, not on each element
+  O[D.W, D.K] += I[D.W, D.H]*W[D.K, D.H] + B[D.K] 
+
+  
+@linalg_structured_op
+def relu_nc(
+    IFM=TensorDef(T1, Batch, S.C ),
+    OFM=TensorDef(T1, Batch, S.C, output=True )):
+  """Applies the ReLU activation function to every value in the tensor.
+  
+  Layout:
+    * Input: NC
+  """
+  domain(D.b, D.c)
+  OFM[D.b, D.c] = BinaryFn.max_signed(
+    IFM[D.b, D.c], TypeFn.cast_signed(T1, const(0.0))
+  )
+

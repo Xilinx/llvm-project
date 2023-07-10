@@ -897,4 +897,17 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
   let verifyWithRegions = 1;
 }
 
+def LinalgOperatorClassInterface : OpInterface<"OperatorClassInterface"> {
+  let cppNamespace = "::mlir::linalg";
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/[{}],
+      /*retTy=*/"OperatorClass",
+      /*methodName=*/"getOperatorClass",
+      /*args=*/(ins),
+      /*methodBody=*/"",
+      /*defaultImplementation=*/""
+    >
+  ];
+}
 #endif // LINALG_IR_LINALGINTERFACES

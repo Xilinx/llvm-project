@@ -30,6 +30,15 @@ static LogicalResult customMultiEntityVariadicConstraint(
   return success();
 }
 
+// Custom constraint that returns a value
+static LogicalResult customResultConstraint(PatternRewriter &rewriter,
+                                            PDLResultList &results,
+                                            ArrayRef<PDLValue> args) {
+  StringAttr customAttr = rewriter.getStringAttr("test.success");
+  results.push_back(customAttr);
+  return success();
+}
+
 // Custom creator invoked from PDL.
 static Operation *customCreate(PatternRewriter &rewriter, Operation *op) {
   return rewriter.create(OperationState(op->getLoc(), "test.success"));
@@ -102,6 +111,9 @@ struct TestPDLByteCodePass
                                           customMultiEntityConstraint);
     pdlPattern.registerConstraintFunction("multi_entity_var_constraint",
                                           customMultiEntityVariadicConstraint);
+    pdlPattern.registerRewriteFunction("check_op_and_get_attr_constr",
+                                       customResultConstraint);
+
     pdlPattern.registerRewriteFunction("creator", customCreate);
     pdlPattern.registerRewriteFunction("var_creator",
                                        customVariadicResultCreate);
