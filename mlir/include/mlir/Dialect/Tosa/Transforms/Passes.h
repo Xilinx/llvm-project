@@ -32,6 +32,7 @@ void populateTosaDecomposeDepthwise(MLIRContext *ctx,
                                     RewritePatternSet &patterns);
 void populateTosaFoldConstantPatterns(MLIRContext *ctx,
                                       RewritePatternSet &patterns,
+                                      bool foldSplatOrSingleUseOnly,
                                       bool enableIntCastFolding);
 
 std::unique_ptr<Pass> createTosaLayerwiseConstantFoldPass();

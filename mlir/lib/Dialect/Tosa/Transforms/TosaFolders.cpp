@@ -291,7 +291,9 @@ DenseElementsAttr transpose(ElementsAttr attr, ShapedType inputType,
 
 template<typename TosaOp>
 struct TosaFoldConstantBase: public OpRewritePattern<TosaOp> {
-  TosaFoldConstantBase(MLIRContext* ctxt) : OpRewritePattern<TosaOp>(ctxt) {}
+  TosaFoldConstantBase(MLIRContext* ctxt, bool foldSplatOrSingleUseOnly) : OpRewritePattern<TosaOp>(ctxt), foldSplatOrSingleUseOnly(foldSplatOrSingleUseOnly) {}
+
+  bool foldSplatOrSingleUseOnly;
 
   /// Heuristic to decide when to replace a unary operation on a constant with the
   /// folded value.
@@ -301,7 +303,9 @@ struct TosaFoldConstantBase: public OpRewritePattern<TosaOp> {
   /// negligible.
   /// Takes the \p unaryOp and the constant input \p values.
   /// \returns Whether folding should be applied.
-  bool constantUnaryOpShouldBeFolded(TosaOp unaryOp, DenseElementsAttr values) {
+  bool constantUnaryOpShouldBeFolded(TosaOp unaryOp, DenseElementsAttr values) const {
+    if (!foldSplatOrSingleUseOnly)
+      return true;
     assert(unaryOp->getNumOperands() == 1);
     auto inputOp = unaryOp->getOperand(0);
 
@@ -317,7 +321,9 @@ struct TosaFoldConstantBase: public OpRewritePattern<TosaOp> {
 
   bool constantBinaryOpShouldBeFolded(
       TosaOp binaryOp, DenseElementsAttr valuesFirst,
-      DenseElementsAttr valuesSecond) {
+      DenseElementsAttr valuesSecond) const {
+    if (!foldSplatOrSingleUseOnly)
+      return true;
     assert(binaryOp->getNumOperands() == 2);
     auto firstOp = binaryOp->getOperand(0);
     auto secondOp = binaryOp->getOperand(1);
@@ -930,7 +936,7 @@ struct TosaFoldConstantCast : public TosaFoldConstantBase<CastOp> {
 
 struct TosaFoldConstantFloatCasts : TosaFoldConstantCast {
 
-  TosaFoldConstantFloatCasts(MLIRContext *ctx) : TosaFoldConstantCast(ctx) {}
+  TosaFoldConstantFloatCasts(MLIRContext *ctx, bool foldSplatOrSingleUseOnly) : TosaFoldConstantCast(ctx, foldSplatOrSingleUseOnly) {}
 
   LogicalResult matchAndRewrite(CastOp tosaCast,
                                 PatternRewriter &rewriter) const override {
@@ -942,7 +948,6 @@ struct TosaFoldConstantFloatCasts : TosaFoldConstantCast {
     return TosaFoldConstantCast::matchAndRewrite(tosaCast, rewriter);
   }
 };
-
 
 struct TosaFoldConstantAdd : public TosaFoldConstantBase<AddOp> {
 
@@ -1022,18 +1027,20 @@ struct TosaFoldConstantAdd : public TosaFoldConstantBase<AddOp> {
 } // namespace
 
 void mlir::tosa::populateTosaFoldConstantPatterns(
-    MLIRContext *ctx, RewritePatternSet &patterns, bool enableIntCastFolding) {
-  patterns.add<TosaFoldConstantTranspose>(ctx);
-  patterns.add<TosaFoldConstantReciprocal>(ctx);
-  patterns.add<TosaFoldConstantRSQRT>(ctx);
-  patterns.add<TosaFoldConstantPow>(ctx);
-  patterns.add<TosaFoldConstantMul>(ctx);
-  patterns.add<TosaFoldConstantClamp>(ctx);
+    MLIRContext *ctx, RewritePatternSet &patterns,
+    bool foldSplatOrSingleUseOnly,
+    bool enableIntCastFolding) {
+  patterns.add<TosaFoldConstantTranspose>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantReciprocal>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantRSQRT>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantPow>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantMul>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantClamp>(ctx, foldSplatOrSingleUseOnly);
   if (enableIntCastFolding) {
-    patterns.add<TosaFoldConstantCast>(ctx);
+    patterns.add<TosaFoldConstantCast>(ctx, foldSplatOrSingleUseOnly);
   } else {
-    patterns.add<TosaFoldConstantFloatCasts>(ctx);
+    patterns.add<TosaFoldConstantFloatCasts>(ctx, foldSplatOrSingleUseOnly);
   }
-  patterns.add<TosaFoldConstantAdd>(ctx);
+  patterns.add<TosaFoldConstantAdd>(ctx, foldSplatOrSingleUseOnly);
   
 }
