@@ -212,53 +212,6 @@ LogicalResult notifyIfNotConstantFloatTosaTensor(TypedValue<TensorType> toCheck,
   return notifyIfNoTosaDenseConstantTensor(toCheck, location, rewriter);
 }
 
-/// Heuristic to decide when to replace a unary operation on a constant with the
-/// folded value.
-/// Folding operations on constants can lead to an increased memory usage
-/// whenever the input cannot be replaced but a new constant is inserted. Hence,
-/// this will currently only suggest folding when the memory impact is
-/// negligible.
-/// Takes the \p unaryOp and the constant input \p values.
-/// \returns Whether folding should be applied.
-bool constantUnaryOpShouldBeFolded(TosaOp unaryOp, DenseElementsAttr values) {
-  assert(unaryOp->getNumOperands() == 1);
-  auto inputOp = unaryOp->getOperand(0);
-
-  // If the input is a splat, we don't care for the number of users
-  if (isa<SplatElementsAttr>(values)) {
-    return true;
-  }
-
-  // If this is the only use of the tensor it should be replaced as no
-  // additional memory is required
-  return inputOp.hasOneUse();
-}
-
-bool constantBinaryOpShouldBeFolded(
-    TosaOp binaryOp, DenseElementsAttr valuesFirst,
-    DenseElementsAttr valuesSecond) {
-  assert(binaryOp->getNumOperands() == 2);
-  auto firstOp = binaryOp->getOperand(0);
-  auto secondOp = binaryOp->getOperand(1);
-
-  // If both tensors are splat, we don't care for the number of users
-  if (isa<SplatElementsAttr>(valuesFirst) &&
-      isa<SplatElementsAttr>(valuesSecond)) {
-    return true;
-  }
-
-  // If this is the only use of one of the tensors, it will be replaced an no
-  // additional memory is required.
-  if (firstOp.hasOneUse() || secondOp.hasOneUse()) {
-    return true;
-  }
-
-  // Fold it both inputs are equal and those are the only uses. Don't fold
-  // otherwise.
-  auto numUsers =
-      std::distance(firstOp.getUses().begin(), firstOp.getUses().end());
-  return firstOp == secondOp && numUsers == 2;
-}
 
 template <typename BaseType>
 DenseElementsAttr transposeType(ElementsAttr attr, ShapedType inputType,
@@ -339,6 +292,54 @@ DenseElementsAttr transpose(ElementsAttr attr, ShapedType inputType,
 template<typename TosaOp>
 struct TosaFoldConstantBase: public OpRewritePattern<TosaOp> {
   TosaFoldConstantBase(MLIRContext* ctxt) : OpRewritePattern<TosaOp>(ctxt) {}
+
+  /// Heuristic to decide when to replace a unary operation on a constant with the
+  /// folded value.
+  /// Folding operations on constants can lead to an increased memory usage
+  /// whenever the input cannot be replaced but a new constant is inserted. Hence,
+  /// this will currently only suggest folding when the memory impact is
+  /// negligible.
+  /// Takes the \p unaryOp and the constant input \p values.
+  /// \returns Whether folding should be applied.
+  bool constantUnaryOpShouldBeFolded(TosaOp unaryOp, DenseElementsAttr values) {
+    assert(unaryOp->getNumOperands() == 1);
+    auto inputOp = unaryOp->getOperand(0);
+
+    // If the input is a splat, we don't care for the number of users
+    if (isa<SplatElementsAttr>(values)) {
+      return true;
+    }
+
+    // If this is the only use of the tensor it should be replaced as no
+    // additional memory is required
+    return inputOp.hasOneUse();
+  }
+
+  bool constantBinaryOpShouldBeFolded(
+      TosaOp binaryOp, DenseElementsAttr valuesFirst,
+      DenseElementsAttr valuesSecond) {
+    assert(binaryOp->getNumOperands() == 2);
+    auto firstOp = binaryOp->getOperand(0);
+    auto secondOp = binaryOp->getOperand(1);
+
+    // If both tensors are splat, we don't care for the number of users
+    if (isa<SplatElementsAttr>(valuesFirst) &&
+        isa<SplatElementsAttr>(valuesSecond)) {
+      return true;
+    }
+
+    // If this is the only use of one of the tensors, it will be replaced an no
+    // additional memory is required.
+    if (firstOp.hasOneUse() || secondOp.hasOneUse()) {
+      return true;
+    }
+
+    // Fold it both inputs are equal and those are the only uses. Don't fold
+    // otherwise.
+    auto numUsers =
+        std::distance(firstOp.getUses().begin(), firstOp.getUses().end());
+    return firstOp == secondOp && numUsers == 2;
+  }
 };
 
 struct TosaFoldConstantTranspose : public TosaFoldConstantBase<tosa::TransposeOp> {
