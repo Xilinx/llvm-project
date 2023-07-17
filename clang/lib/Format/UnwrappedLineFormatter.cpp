@@ -1411,20 +1411,28 @@ unsigned UnwrappedLineFormatter::format(
       NextLine = Joiner.getNextMergedLine(DryRun, IndentTracker);
       RangeMinLevel = UINT_MAX;
     }
-    if (!DryRun)
-      markFinalized(TheLine.First);
+    if (!DryRun) {
+      auto *Tok = TheLine.First;
+      if (Tok->is(tok::hash) && !Tok->Previous && Tok->Next &&
+          Tok->Next->isOneOf(tok::pp_if, tok::pp_ifdef, tok::pp_ifndef,
+                             tok::pp_elif, tok::pp_elifdef, tok::pp_elifndef,
+                             tok::pp_else, tok::pp_endif)) {
+        Tok = Tok->Next;
+      }
+      markFinalized(Tok);
+    }
   }
   PenaltyCache[CacheKey] = Penalty;
   return Penalty;
 }
 
-static auto newlinesBeforeLine(const AnnotatedLine &Line,
-                               const AnnotatedLine *PreviousLine,
-                               const AnnotatedLine *PrevPrevLine,
-                               const SmallVectorImpl<AnnotatedLine *> &Lines,
-                               const FormatStyle &Style) {
+static auto computeNewlines(const AnnotatedLine &Line,
+                            const AnnotatedLine *PreviousLine,
+                            const AnnotatedLine *PrevPrevLine,
+                            const SmallVectorImpl<AnnotatedLine *> &Lines,
+                            const FormatStyle &Style) {
   const auto &RootToken = *Line.First;
-  unsigned Newlines =
+  auto Newlines =
       std::min(RootToken.NewlinesBefore, Style.MaxEmptyLinesToKeep + 1);
   // Remove empty lines before "}" where applicable.
   if (RootToken.is(tok::r_brace) &&
@@ -1513,18 +1521,22 @@ void UnwrappedLineFormatter::formatFirstToken(
     unsigned NewlineIndent) {
   FormatToken &RootToken = *Line.First;
   if (RootToken.is(tok::eof)) {
-    unsigned Newlines = std::min(RootToken.NewlinesBefore, 1u);
+    unsigned Newlines =
+        std::min(RootToken.NewlinesBefore,
+                 Style.KeepEmptyLinesAtEOF ? Style.MaxEmptyLinesToKeep + 1 : 1);
     unsigned TokenIndent = Newlines ? NewlineIndent : 0;
     Whitespaces->replaceWhitespace(RootToken, Newlines, TokenIndent,
                                    TokenIndent);
     return;
   }
 
-  const auto Newlines =
-      RootToken.Finalized
-          ? RootToken.NewlinesBefore
-          : newlinesBeforeLine(Line, PreviousLine, PrevPrevLine, Lines, Style);
-  if (Newlines)
+  if (RootToken.Newlines < 0) {
+    RootToken.Newlines =
+        computeNewlines(Line, PreviousLine, PrevPrevLine, Lines, Style);
+    assert(RootToken.Newlines >= 0);
+  }
+
+  if (RootToken.Newlines > 0)
     Indent = NewlineIndent;
 
   // Preprocessor directives get indented before the hash only if specified. In
@@ -1536,7 +1548,7 @@ void UnwrappedLineFormatter::formatFirstToken(
     Indent = 0;
   }
 
-  Whitespaces->replaceWhitespace(RootToken, Newlines, Indent, Indent,
+  Whitespaces->replaceWhitespace(RootToken, RootToken.Newlines, Indent, Indent,
                                  /*IsAligned=*/false,
                                  Line.InPPDirective &&
                                      !RootToken.HasUnescapedNewline);

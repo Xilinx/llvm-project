@@ -1376,21 +1376,27 @@ public:
   lldb::addr_t GetHighmemCodeAddressMask();
   lldb::addr_t GetHighmemDataAddressMask();
 
-  void SetCodeAddressMask(lldb::addr_t code_address_mask) {
-    m_code_address_mask = code_address_mask;
-  }
+  void SetCodeAddressMask(lldb::addr_t code_address_mask);
+  void SetDataAddressMask(lldb::addr_t data_address_mask);
 
-  void SetDataAddressMask(lldb::addr_t data_address_mask) {
-    m_data_address_mask = data_address_mask;
-  }
+  void SetHighmemCodeAddressMask(lldb::addr_t code_address_mask);
+  void SetHighmemDataAddressMask(lldb::addr_t data_address_mask);
 
-  void SetHighmemCodeAddressMask(lldb::addr_t code_address_mask) {
-    m_highmem_code_address_mask = code_address_mask;
-  }
+  /// Some targets might use bits in a code address to indicate a mode switch,
+  /// ARM uses bit zero to signify a code address is thumb, so any ARM ABI
+  /// plug-ins would strip those bits.
+  /// Or use the high bits to authenticate a pointer value.
+  lldb::addr_t FixCodeAddress(lldb::addr_t pc);
+  lldb::addr_t FixDataAddress(lldb::addr_t pc);
 
-  void SetHighmemDataAddressMask(lldb::addr_t data_address_mask) {
-    m_highmem_data_address_mask = data_address_mask;
-  }
+  /// Use this method when you do not know, or do not care what kind of address
+  /// you are fixing. On platforms where there would be a difference between the
+  /// two types, it will pick the safest option.
+  ///
+  /// Its purpose is to signal that no specific choice was made and provide an
+  /// alternative to randomly picking FixCode/FixData address. Which could break
+  /// platforms where there is a difference (only Arm Thumb at this time).
+  lldb::addr_t FixAnyAddress(lldb::addr_t pc);
 
   /// Get the Modification ID of the process.
   ///
@@ -2561,7 +2567,7 @@ void PruneThreadPlans();
   ///     The plugin if one is available for the specified feature;
   ///     otherwise, returns an empty shared pointer.
   lldb::StructuredDataPluginSP
-  GetStructuredDataPlugin(ConstString type_name) const;
+  GetStructuredDataPlugin(llvm::StringRef type_name) const;
 
   virtual void *GetImplementation() { return nullptr; }
 
@@ -2827,7 +2833,7 @@ protected:
   ///
   ///     virtual void
   ///     HandleArrivalOfStructuredData(Process &process,
-  ///                                   ConstString type_name,
+  ///                                   llvm::StringRef type_name,
   ///                                   const StructuredData::ObjectSP
   ///                                   &object_sp)
   ///
@@ -2907,9 +2913,6 @@ protected:
       return callback == rhs.callback && baton == rhs.baton;
     }
   };
-
-  using StructuredDataPluginMap =
-      std::map<ConstString, lldb::StructuredDataPluginSP>;
 
   // Member variables
   std::weak_ptr<Target> m_target_wp; ///< The target that owns this process.
@@ -3033,7 +3036,7 @@ protected:
                                        // don't support the ability to modify
                                        // the stack.
   std::mutex m_run_thread_plan_lock;
-  StructuredDataPluginMap m_structured_data_plugin_map;
+  llvm::StringMap<lldb::StructuredDataPluginSP> m_structured_data_plugin_map;
 
   enum { eCanJITDontKnow = 0, eCanJITYes, eCanJITNo } m_can_jit;
 

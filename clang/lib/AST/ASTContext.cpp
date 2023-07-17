@@ -1998,7 +1998,7 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
       Align = 16;
     else if (VT->getVectorKind() == VectorType::RVVFixedLengthDataVector)
       // Adjust the alignment for fixed-length RVV vectors.
-      Align = 64;
+      Align = std::min<unsigned>(64, Width);
     break;
   }
 
@@ -4141,8 +4141,8 @@ QualType ASTContext::getExtVectorType(QualType vecType,
   assert(vecType->isBuiltinType() || vecType->isDependentType() ||
          (vecType->isBitIntType() &&
           // Only support _BitInt elements with byte-sized power of 2 NumBits.
-          llvm::isPowerOf2_32(vecType->getAs<BitIntType>()->getNumBits()) &&
-          vecType->getAs<BitIntType>()->getNumBits() >= 8));
+          llvm::isPowerOf2_32(vecType->castAs<BitIntType>()->getNumBits()) &&
+          vecType->castAs<BitIntType>()->getNumBits() >= 8));
 
   // Check if we've already instantiated a vector of this type.
   llvm::FoldingSetNodeID ID;
@@ -9579,11 +9579,8 @@ bool ASTContext::areCompatibleRVVTypes(QualType FirstType,
   auto IsValidCast = [this](QualType FirstType, QualType SecondType) {
     if (const auto *BT = FirstType->getAs<BuiltinType>()) {
       if (const auto *VT = SecondType->getAs<VectorType>()) {
-        if (VT->getVectorKind() == VectorType::RVVFixedLengthDataVector)
-          return FirstType->isRVVVLSBuiltinType() &&
-                 VT->getElementType().getCanonicalType() ==
-                     FirstType->getRVVEltType(*this);
-        if (VT->getVectorKind() == VectorType::GenericVector)
+        if (VT->getVectorKind() == VectorType::RVVFixedLengthDataVector ||
+            VT->getVectorKind() == VectorType::GenericVector)
           return FirstType->isRVVVLSBuiltinType() &&
                  getTypeSize(SecondType) == getRVVTypeSize(*this, BT) &&
                  hasSameType(VT->getElementType(),
@@ -10033,6 +10030,9 @@ static bool sameObjCTypeArgs(ASTContext &ctx,
     return false;
 
   ObjCTypeParamList *typeParams = iface->getTypeParamList();
+  if (!typeParams)
+    return false;
+
   for (unsigned i = 0, n = lhsArgs.size(); i != n; ++i) {
     if (ctx.hasSameType(lhsArgs[i], rhsArgs[i]))
       continue;
@@ -13581,16 +13581,17 @@ operator<<(const StreamingDiagnostic &DB,
 }
 
 bool ASTContext::mayExternalize(const Decl *D) const {
-  bool IsStaticVar =
-      isa<VarDecl>(D) && cast<VarDecl>(D)->getStorageClass() == SC_Static;
+  bool IsInternalVar =
+      isa<VarDecl>(D) &&
+      basicGVALinkageForVariable(*this, cast<VarDecl>(D)) == GVA_Internal;
   bool IsExplicitDeviceVar = (D->hasAttr<CUDADeviceAttr>() &&
                               !D->getAttr<CUDADeviceAttr>()->isImplicit()) ||
                              (D->hasAttr<CUDAConstantAttr>() &&
                               !D->getAttr<CUDAConstantAttr>()->isImplicit());
-  // CUDA/HIP: static managed variables need to be externalized since it is
+  // CUDA/HIP: managed variables need to be externalized since it is
   // a declaration in IR, therefore cannot have internal linkage. Kernels in
   // anonymous name space needs to be externalized to avoid duplicate symbols.
-  return (IsStaticVar &&
+  return (IsInternalVar &&
           (D->hasAttr<HIPManagedAttr>() || IsExplicitDeviceVar)) ||
          (D->hasAttr<CUDAGlobalAttr>() &&
           basicGVALinkageForFunction(*this, cast<FunctionDecl>(D)) ==

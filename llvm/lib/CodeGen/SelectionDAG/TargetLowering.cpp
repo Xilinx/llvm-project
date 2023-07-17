@@ -4085,8 +4085,12 @@ static SDValue simplifySetCCWithCTPOP(const TargetLowering &TLI, EVT VT,
     ISD::CondCode InvCond = ISD::getSetCCInverse(Cond, CTVT);
     SDValue Add = DAG.getNode(ISD::ADD, dl, CTVT, CTOp, NegOne);
     SDValue And = DAG.getNode(ISD::AND, dl, CTVT, CTOp, Add);
-    SDValue LHS = DAG.getSetCC(dl, VT, CTOp, Zero, InvCond);
     SDValue RHS = DAG.getSetCC(dl, VT, And, Zero, Cond);
+    // Its not uncommon for known-never-zero X to exist in (ctpop X) eq/ne 1, so
+    // check before the emit a potentially unnecessary op.
+    if (DAG.isKnownNeverZero(CTOp))
+      return RHS;
+    SDValue LHS = DAG.getSetCC(dl, VT, CTOp, Zero, InvCond);
     unsigned LogicOpcode = Cond == ISD::SETEQ ? ISD::AND : ISD::OR;
     return DAG.getNode(LogicOpcode, dl, VT, LHS, RHS);
   }
@@ -6816,7 +6820,7 @@ SDValue TargetLowering::getNegatedExpression(SDValue Op, SelectionDAG &DAG,
                                              NegatibleCost &Cost,
                                              unsigned Depth) const {
   // fneg is removable even if it has multiple uses.
-  if (Op.getOpcode() == ISD::FNEG) {
+  if (Op.getOpcode() == ISD::FNEG || Op.getOpcode() == ISD::VP_FNEG) {
     Cost = NegatibleCost::Cheaper;
     return Op.getOperand(0);
   }
@@ -8050,6 +8054,19 @@ SDValue TargetLowering::expandFMINNUM_FMAXNUM(SDNode *Node,
   return SDValue();
 }
 
+/// If this FPClassTest can be performed with a fcmp to 0, return the test mask
+/// for the floating-point mode.
+static bool isFCmpEqualZero(FPClassTest Test, const fltSemantics &Semantics,
+                            const MachineFunction &MF) {
+  if (Test == fcZero &&
+      MF.getDenormalMode(Semantics).Input == DenormalMode::IEEE)
+    return true;
+  if (Test == (fcZero | fcSubnormal) &&
+      MF.getDenormalMode(Semantics).inputsAreZero())
+    return true;
+  return false;
+}
+
 SDValue TargetLowering::expandIS_FPCLASS(EVT ResultVT, SDValue Op,
                                          FPClassTest Test, SDNodeFlags Flags,
                                          const SDLoc &DL,
@@ -8058,7 +8075,7 @@ SDValue TargetLowering::expandIS_FPCLASS(EVT ResultVT, SDValue Op,
   assert(OperandVT.isFloatingPoint());
 
   // Degenerated cases.
-  if (Test == 0)
+  if (Test == fcNone)
     return DAG.getBoolConstant(false, DL, ResultVT, OperandVT);
   if ((Test & fcAllFlags) == fcAllFlags)
     return DAG.getBoolConstant(true, DL, ResultVT, OperandVT);
@@ -8088,18 +8105,14 @@ SDValue TargetLowering::expandIS_FPCLASS(EVT ResultVT, SDValue Op,
   // Some checks can be implemented using float comparisons, if floating point
   // exceptions are ignored.
   if (Flags.hasNoFPExcept() &&
+      // TODO: Should check isCondCodeLegal
       isOperationLegalOrCustom(ISD::SETCC, OperandVT.getScalarType())) {
-    if (Test == fcZero) {
-      DenormalMode Mode = DAG.getMachineFunction().getDenormalMode(Semantics);
-      if (Mode.Input == DenormalMode::IEEE) {
-        // If denormals could be implicitly treated as 0, this is not equivalent
-        // to a compare with 0 since it will also be true for denormals.
-        //
-        // TODO: With DAZ, check == fcZero | fcSubnormal
-        return DAG.getSetCC(DL, ResultVT, Op,
-                            DAG.getConstantFP(0.0, DL, OperandVT),
-                            IsInverted ? ISD::SETUNE : ISD::SETOEQ);
-      }
+    if (isFCmpEqualZero(Test, Semantics, DAG.getMachineFunction())) {
+      // If denormals could be implicitly treated as 0, this is not equivalent
+      // to a compare with 0 since it will also be true for denormals.
+      return DAG.getSetCC(DL, ResultVT, Op,
+                          DAG.getConstantFP(0.0, DL, OperandVT),
+                          IsInverted ? ISD::SETUNE : ISD::SETOEQ);
     }
 
     if (Test == fcNan)
@@ -9731,6 +9744,37 @@ SDValue TargetLowering::expandAddSubSat(SDNode *Node, SelectionDAG &DAG) const {
     }
     // Overflow ? 0 : (LHS - RHS)
     return DAG.getSelect(dl, VT, Overflow, Zero, SumDiff);
+  }
+
+  if (Opcode == ISD::SADDSAT || Opcode == ISD::SSUBSAT) {
+    APInt MinVal = APInt::getSignedMinValue(BitWidth);
+    APInt MaxVal = APInt::getSignedMaxValue(BitWidth);
+
+    KnownBits KnownLHS = DAG.computeKnownBits(LHS);
+    KnownBits KnownRHS = DAG.computeKnownBits(RHS);
+
+    // If either of the operand signs are known, then they are guaranteed to
+    // only saturate in one direction. If non-negative they will saturate
+    // towards SIGNED_MAX, if negative they will saturate towards SIGNED_MIN.
+    //
+    // In the case of ISD::SSUBSAT, 'x - y' is equivalent to 'x + (-y)', so the
+    // sign of 'y' has to be flipped.
+
+    bool LHSIsNonNegative = KnownLHS.isNonNegative();
+    bool RHSIsNonNegative = Opcode == ISD::SADDSAT ? KnownRHS.isNonNegative()
+                                                   : KnownRHS.isNegative();
+    if (LHSIsNonNegative || RHSIsNonNegative) {
+      SDValue SatMax = DAG.getConstant(MaxVal, dl, VT);
+      return DAG.getSelect(dl, VT, Overflow, SatMax, SumDiff);
+    }
+
+    bool LHSIsNegative = KnownLHS.isNegative();
+    bool RHSIsNegative = Opcode == ISD::SADDSAT ? KnownRHS.isNegative()
+                                                : KnownRHS.isNonNegative();
+    if (LHSIsNegative || RHSIsNegative) {
+      SDValue SatMin = DAG.getConstant(MinVal, dl, VT);
+      return DAG.getSelect(dl, VT, Overflow, SatMin, SumDiff);
+    }
   }
 
   // Overflow ? (SumDiff >> BW) ^ MinVal : SumDiff

@@ -166,6 +166,8 @@ std::optional<HighlightingKind> kindForDecl(const NamedDecl *D,
     return HighlightingKind::TemplateParameter;
   if (isa<ConceptDecl>(D))
     return HighlightingKind::Concept;
+  if (isa<LabelDecl>(D))
+    return HighlightingKind::Label;
   if (const auto *UUVD = dyn_cast<UnresolvedUsingValueDecl>(D)) {
     auto Targets = Resolver->resolveUsingValueDecl(UUVD);
     if (!Targets.empty() && Targets[0] != UUVD) {
@@ -1209,7 +1211,8 @@ getSemanticHighlightings(ParsedAST &AST, bool IncludeInactiveRegionTokens) {
       AST.getHeuristicResolver());
   // Add highlightings for macro references.
   auto AddMacro = [&](const MacroOccurrence &M) {
-    auto &T = Builder.addToken(M.Rng, HighlightingKind::Macro);
+    auto &T = Builder.addToken(M.toRange(C.getSourceManager()),
+                               HighlightingKind::Macro);
     T.addModifier(HighlightingModifier::GlobalScope);
     if (M.IsDefinition)
       T.addModifier(HighlightingModifier::Declaration);
@@ -1271,6 +1274,8 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, HighlightingKind K) {
     return OS << "Operator";
   case HighlightingKind::Bracket:
     return OS << "Bracket";
+  case HighlightingKind::Label:
+    return OS << "Label";
   case HighlightingKind::InactiveCode:
     return OS << "InactiveCode";
   }
@@ -1470,6 +1475,8 @@ llvm::StringRef toSemanticTokenType(HighlightingKind Kind) {
     return "operator";
   case HighlightingKind::Bracket:
     return "bracket";
+  case HighlightingKind::Label:
+    return "label";
   case HighlightingKind::InactiveCode:
     return "comment";
   }

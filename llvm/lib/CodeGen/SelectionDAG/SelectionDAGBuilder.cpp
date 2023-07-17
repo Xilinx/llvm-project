@@ -33,6 +33,7 @@
 #include "llvm/CodeGen/CodeGenCommonISel.h"
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
 #include "llvm/CodeGen/GCMetadata.h"
+#include "llvm/CodeGen/ISDOpcodes.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -417,6 +418,10 @@ static SDValue getCopyFromPartsVector(SelectionDAG &DAG, const SDLoc &DL,
         return Val;
       if (PartEVT.isInteger() && ValueVT.isFloatingPoint())
         return DAG.getNode(ISD::BITCAST, DL, ValueVT, Val);
+
+      // Vector/Vector bitcast (e.g. <2 x bfloat> -> <2 x half>).
+      if (ValueVT.getSizeInBits() == PartEVT.getSizeInBits())
+        return DAG.getNode(ISD::BITCAST, DL, ValueVT, Val);
     }
 
     // Promoted vector extract
@@ -622,6 +627,8 @@ static SDValue widenVectorToPartType(SelectionDAG &DAG, SDValue Val,
     return SDValue();
 
   EVT ValueVT = Val.getValueType();
+  EVT PartEVT = PartVT.getVectorElementType();
+  EVT ValueEVT = ValueVT.getVectorElementType();
   ElementCount PartNumElts = PartVT.getVectorElementCount();
   ElementCount ValueNumElts = ValueVT.getVectorElementCount();
 
@@ -629,9 +636,18 @@ static SDValue widenVectorToPartType(SelectionDAG &DAG, SDValue Val,
   // fixed/scalable properties. If a target needs to widen a fixed-length type
   // to a scalable one, it should be possible to use INSERT_SUBVECTOR below.
   if (ElementCount::isKnownLE(PartNumElts, ValueNumElts) ||
-      PartNumElts.isScalable() != ValueNumElts.isScalable() ||
-      PartVT.getVectorElementType() != ValueVT.getVectorElementType())
+      PartNumElts.isScalable() != ValueNumElts.isScalable())
     return SDValue();
+
+  // Have a try for bf16 because some targets share its ABI with fp16.
+  if (ValueEVT == MVT::bf16 && PartEVT == MVT::f16) {
+    assert(DAG.getTargetLoweringInfo().isTypeLegal(PartVT) &&
+           "Cannot widen to illegal type");
+    Val = DAG.getNode(ISD::BITCAST, DL,
+                      ValueVT.changeVectorElementType(MVT::f16), Val);
+  } else if (PartEVT != ValueEVT) {
+    return SDValue();
+  }
 
   // Widening a scalable vector to another scalable vector is done by inserting
   // the vector into a larger undef one.
@@ -639,12 +655,11 @@ static SDValue widenVectorToPartType(SelectionDAG &DAG, SDValue Val,
     return DAG.getNode(ISD::INSERT_SUBVECTOR, DL, PartVT, DAG.getUNDEF(PartVT),
                        Val, DAG.getVectorIdxConstant(0, DL));
 
-  EVT ElementVT = PartVT.getVectorElementType();
   // Vector widening case, e.g. <2 x float> -> <4 x float>.  Shuffle in
   // undef elements.
   SmallVector<SDValue, 16> Ops;
   DAG.ExtractVectorElements(Val, Ops);
-  SDValue EltUndef = DAG.getUNDEF(ElementVT);
+  SDValue EltUndef = DAG.getUNDEF(PartEVT);
   Ops.append((PartNumElts - ValueNumElts).getFixedValue(), EltUndef);
 
   // FIXME: Use CONCAT for 2x -> 4x.
@@ -2014,8 +2029,8 @@ void SelectionDAGBuilder::visitRet(const ReturnInst &I) {
     // registers the usual way.
     SmallVector<EVT, 1> PtrValueVTs;
     ComputeValueVTs(TLI, DL,
-                    F->getReturnType()->getPointerTo(
-                        DAG.getDataLayout().getAllocaAddrSpace()),
+                    PointerType::get(F->getContext(),
+                                     DAG.getDataLayout().getAllocaAddrSpace()),
                     PtrValueVTs);
 
     SDValue RetPtr =
@@ -5544,13 +5559,8 @@ static SDValue expandDivFix(unsigned Opcode, const SDLoc &DL,
         PromVT = EVT::getVectorVT(Ctx, PromVT, VT.getVectorElementCount());
       } else
         llvm_unreachable("Wrong VT for DIVFIX?");
-      if (Signed) {
-        LHS = DAG.getSExtOrTrunc(LHS, DL, PromVT);
-        RHS = DAG.getSExtOrTrunc(RHS, DL, PromVT);
-      } else {
-        LHS = DAG.getZExtOrTrunc(LHS, DL, PromVT);
-        RHS = DAG.getZExtOrTrunc(RHS, DL, PromVT);
-      }
+      LHS = DAG.getExtOrTrunc(Signed, LHS, DL, PromVT);
+      RHS = DAG.getExtOrTrunc(Signed, RHS, DL, PromVT);
       EVT ShiftTy = TLI.getShiftAmountTy(PromVT, DAG.getDataLayout());
       // For saturating operations, we need to shift up the LHS to get the
       // proper saturation width, and then shift down again afterwards.
@@ -6447,6 +6457,12 @@ void SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I,
                              getValue(I.getArgOperand(0)),
                              getValue(I.getArgOperand(1)), Flags));
     return;
+  case Intrinsic::ldexp:
+    setValue(&I, DAG.getNode(ISD::FLDEXP, sdl,
+                             getValue(I.getArgOperand(0)).getValueType(),
+                             getValue(I.getArgOperand(0)),
+                             getValue(I.getArgOperand(1)), Flags));
+    return;
   case Intrinsic::arithmetic_fence: {
     setValue(&I, DAG.getNode(ISD::ARITH_FENCE, sdl,
                              getValue(I.getArgOperand(0)).getValueType(),
@@ -6575,10 +6591,10 @@ void SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I,
     const DataLayout DLayout = DAG.getDataLayout();
     EVT EnvVT = TLI.getValueType(DLayout, I.getType());
     Align TempAlign = DAG.getEVTAlign(EnvVT);
-    SDValue Chain = DAG.getRoot();
+    SDValue Chain = getRoot();
     // Use GET_FPENV if it is legal or custom. Otherwise use memory-based node
     // and temporary storage in stack.
-    if (TLI.isOperationLegalOrCustom(ISD::SET_FPENV, EnvVT)) {
+    if (TLI.isOperationLegalOrCustom(ISD::GET_FPENV, EnvVT)) {
       Res = DAG.getNode(
           ISD::GET_FPENV, sdl,
           DAG.getVTList(TLI.getValueType(DAG.getDataLayout(), I.getType()),
@@ -7188,10 +7204,9 @@ void SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I,
   }
   case Intrinsic::xray_customevent: {
     // Here we want to make sure that the intrinsic behaves as if it has a
-    // specific calling convention, and only for x86_64.
-    // FIXME: Support other platforms later.
+    // specific calling convention.
     const auto &Triple = DAG.getTarget().getTargetTriple();
-    if (Triple.getArch() != Triple::x86_64)
+    if (!Triple.isAArch64(64) && Triple.getArch() != Triple::x86_64)
       return;
 
     SmallVector<SDValue, 8> Ops;
@@ -7218,10 +7233,9 @@ void SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I,
   }
   case Intrinsic::xray_typedevent: {
     // Here we want to make sure that the intrinsic behaves as if it has a
-    // specific calling convention, and only for x86_64.
-    // FIXME: Support other platforms later.
+    // specific calling convention.
     const auto &Triple = DAG.getTarget().getTargetTriple();
-    if (Triple.getArch() != Triple::x86_64)
+    if (!Triple.isAArch64(64) && Triple.getArch() != Triple::x86_64)
       return;
 
     SmallVector<SDValue, 8> Ops;
@@ -7269,6 +7283,8 @@ void SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I,
   case Intrinsic::vector_reduce_umin:
   case Intrinsic::vector_reduce_fmax:
   case Intrinsic::vector_reduce_fmin:
+  case Intrinsic::vector_reduce_fmaximum:
+  case Intrinsic::vector_reduce_fminimum:
     visitVectorReduce(I, Intrinsic);
     return;
 
@@ -8206,10 +8222,7 @@ void SelectionDAGBuilder::processIntegerCallValue(const Instruction &I,
                                                   bool IsSigned) {
   EVT VT = DAG.getTargetLoweringInfo().getValueType(DAG.getDataLayout(),
                                                     I.getType(), true);
-  if (IsSigned)
-    Value = DAG.getSExtOrTrunc(Value, getCurSDLoc(), VT);
-  else
-    Value = DAG.getZExtOrTrunc(Value, getCurSDLoc(), VT);
+  Value = DAG.getExtOrTrunc(IsSigned, Value, getCurSDLoc(), VT);
   setValue(&I, Value);
 }
 
@@ -8633,6 +8646,12 @@ void SelectionDAGBuilder::visitCall(const CallInst &I) {
       case LibFunc_exp2f:
       case LibFunc_exp2l:
         if (visitUnaryFloatCall(I, ISD::FEXP2))
+          return;
+        break;
+      case LibFunc_ldexp:
+      case LibFunc_ldexpf:
+      case LibFunc_ldexpl:
+        if (visitBinaryFloatCall(I, ISD::FLDEXP))
           return;
         break;
       case LibFunc_memcmp:
@@ -9984,6 +10003,12 @@ void SelectionDAGBuilder::visitVectorReduce(const CallInst &I,
   case Intrinsic::vector_reduce_fmin:
     Res = DAG.getNode(ISD::VECREDUCE_FMIN, dl, VT, Op1, SDFlags);
     break;
+  case Intrinsic::vector_reduce_fmaximum:
+    Res = DAG.getNode(ISD::VECREDUCE_FMAXIMUM, dl, VT, Op1, SDFlags);
+    break;
+  case Intrinsic::vector_reduce_fminimum:
+    Res = DAG.getNode(ISD::VECREDUCE_FMINIMUM, dl, VT, Op1, SDFlags);
+    break;
   default:
     llvm_unreachable("Unhandled vector reduce intrinsic");
   }
@@ -10337,7 +10362,8 @@ TargetLowering::LowerCallTo(TargetLowering::CallLoweringInfo &CLI) const {
     // The instruction result is the result of loading from the
     // hidden sret parameter.
     SmallVector<EVT, 1> PVTs;
-    Type *PtrRetTy = OrigRetTy->getPointerTo(DL.getAllocaAddrSpace());
+    Type *PtrRetTy =
+        PointerType::get(OrigRetTy->getContext(), DL.getAllocaAddrSpace());
 
     ComputeValueVTs(*this, DL, PtrRetTy, PVTs);
     assert(PVTs.size() == 1 && "Pointers should fit in one register");
@@ -10589,9 +10615,9 @@ static void tryToElideArgumentCopy(
     DenseMap<int, int> &ArgCopyElisionFrameIndexMap,
     SmallPtrSetImpl<const Instruction *> &ElidedArgCopyInstrs,
     ArgCopyElisionMapTy &ArgCopyElisionCandidates, const Argument &Arg,
-    SDValue ArgVal, bool &ArgHasUses) {
+    ArrayRef<SDValue> ArgVals, bool &ArgHasUses) {
   // Check if this is a load from a fixed stack object.
-  auto *LNode = dyn_cast<LoadSDNode>(ArgVal);
+  auto *LNode = dyn_cast<LoadSDNode>(ArgVals[0]);
   if (!LNode)
     return;
   auto *FINode = dyn_cast<FrameIndexSDNode>(LNode->getBasePtr().getNode());
@@ -10634,7 +10660,8 @@ static void tryToElideArgumentCopy(
   MFI.setIsImmutableObjectIndex(FixedIndex, false);
   AllocaIndex = FixedIndex;
   ArgCopyElisionFrameIndexMap.insert({OldIndex, FixedIndex});
-  Chains.push_back(ArgVal.getValue(1));
+  for (SDValue ArgVal : ArgVals)
+    Chains.push_back(ArgVal.getValue(1));
 
   // Avoid emitting code for the store implementing the copy.
   const StoreInst *SI = ArgCopyIter->second.second;
@@ -10664,8 +10691,8 @@ void SelectionDAGISel::LowerArguments(const Function &F) {
     // Put in an sret pointer parameter before all the other parameters.
     SmallVector<EVT, 1> ValueVTs;
     ComputeValueVTs(*TLI, DAG.getDataLayout(),
-                    F.getReturnType()->getPointerTo(
-                        DAG.getDataLayout().getAllocaAddrSpace()),
+                    PointerType::get(F.getContext(),
+                                     DAG.getDataLayout().getAllocaAddrSpace()),
                     ValueVTs);
 
     // NOTE: Assuming that a pointer will never break down to more than one VT
@@ -10858,8 +10885,8 @@ void SelectionDAGISel::LowerArguments(const Function &F) {
     // from the sret argument into it.
     SmallVector<EVT, 1> ValueVTs;
     ComputeValueVTs(*TLI, DAG.getDataLayout(),
-                    F.getReturnType()->getPointerTo(
-                        DAG.getDataLayout().getAllocaAddrSpace()),
+                    PointerType::get(F.getContext(),
+                                     DAG.getDataLayout().getAllocaAddrSpace()),
                     ValueVTs);
     MVT VT = ValueVTs[0].getSimpleVT();
     MVT RegVT = TLI->getRegisterType(*CurDAG->getContext(), VT);
@@ -10895,9 +10922,14 @@ void SelectionDAGISel::LowerArguments(const Function &F) {
     // Elide the copying store if the target loaded this argument from a
     // suitable fixed stack object.
     if (Ins[i].Flags.isCopyElisionCandidate()) {
+      unsigned NumParts = 0;
+      for (EVT VT : ValueVTs)
+        NumParts += TLI->getNumRegistersForCallingConv(*CurDAG->getContext(),
+                                                       F.getCallingConv(), VT);
+
       tryToElideArgumentCopy(*FuncInfo, Chains, ArgCopyElisionFrameIndexMap,
                              ElidedArgCopyInstrs, ArgCopyElisionCandidates, Arg,
-                             InVals[i], ArgHasUses);
+                             ArrayRef(&InVals[i], NumParts), ArgHasUses);
     }
 
     // If this argument is unused then remember its value. It is used to generate

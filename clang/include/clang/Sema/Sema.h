@@ -792,8 +792,7 @@ public:
   /// we won't know until all lvalue-to-rvalue and discarded value conversions
   /// have been applied to all subexpressions of the enclosing full expression.
   /// This is cleared at the end of each full expression.
-  using MaybeODRUseExprSet = llvm::SetVector<Expr *, SmallVector<Expr *, 4>,
-                                             llvm::SmallPtrSet<Expr *, 4>>;
+  using MaybeODRUseExprSet = llvm::SmallSetVector<Expr *, 4>;
   MaybeODRUseExprSet MaybeODRUseExprs;
 
   std::unique_ptr<sema::FunctionScopeInfo> CachedFunctionScope;
@@ -1066,9 +1065,13 @@ public:
       S.PushFunctionScope();
       S.PushExpressionEvaluationContext(
           Sema::ExpressionEvaluationContext::PotentiallyEvaluated);
-      if (auto *FD = dyn_cast<FunctionDecl>(DC))
+      if (auto *FD = dyn_cast<FunctionDecl>(DC)) {
         FD->setWillHaveBody(true);
-      else
+        S.ExprEvalContexts.back().InImmediateFunctionContext =
+            FD->isImmediateFunction();
+        S.ExprEvalContexts.back().InImmediateEscalatingFunctionContext =
+            S.getLangOpts().CPlusPlus20 && FD->isImmediateEscalating();
+      } else
         assert(isa<ObjCMethodDecl>(DC));
     }
 
@@ -1154,9 +1157,6 @@ public:
 
   /// The C++ "type_info" declaration, which is defined in \<typeinfo>.
   RecordDecl *CXXTypeInfoDecl;
-
-  /// The MSVC "_GUID" struct, which is defined in MSVC header files.
-  RecordDecl *MSVCGuidDecl;
 
   /// The C++ "std::source_location::__impl" struct, defined in
   /// \<source_location>.
@@ -1247,7 +1247,7 @@ public:
 
     /// In addition of being constant evaluated, the current expression
     /// occurs in an immediate function context - either a consteval function
-    /// or a consteval if function.
+    /// or a consteval if statement.
     ImmediateFunctionContext,
 
     /// The current expression is potentially evaluated at run time,
@@ -1328,6 +1328,7 @@ public:
     // an immediate function context, so they need to be tracked independently.
     bool InDiscardedStatement;
     bool InImmediateFunctionContext;
+    bool InImmediateEscalatingFunctionContext;
 
     bool IsCurrentlyCheckingDefaultArgumentOrInitializer = false;
 
@@ -1356,7 +1357,8 @@ public:
         : Context(Context), ParentCleanup(ParentCleanup),
           NumCleanupObjects(NumCleanupObjects), NumTypos(0),
           ManglingContextDecl(ManglingContextDecl), ExprContext(ExprContext),
-          InDiscardedStatement(false), InImmediateFunctionContext(false) {}
+          InDiscardedStatement(false), InImmediateFunctionContext(false),
+          InImmediateEscalatingFunctionContext(false) {}
 
     bool isUnevaluated() const {
       return Context == ExpressionEvaluationContext::Unevaluated ||
@@ -1625,7 +1627,7 @@ public:
   bool DeclareRISCVVBuiltins = false;
 
   /// Indicate RISC-V SiFive vector builtin functions enabled or not.
-  bool DeclareRISCVVectorBuiltins = false;
+  bool DeclareRISCVSiFiveVectorBuiltins = false;
 
 private:
   std::unique_ptr<sema::RISCVIntrinsicManager> RVIntrinsicManager;
@@ -5693,16 +5695,27 @@ public:
   ExprResult ActOnStringLiteral(ArrayRef<Token> StringToks,
                                 Scope *UDLScope = nullptr);
 
+  /// ControllingExprOrType is either an opaque pointer coming out of a
+  /// ParsedType or an Expr *. FIXME: it'd be better to split this interface
+  /// into two so we don't take a void *, but that's awkward because one of
+  /// the operands is either a ParsedType or an Expr *, which doesn't lend
+  /// itself to generic code very well.
   ExprResult ActOnGenericSelectionExpr(SourceLocation KeyLoc,
                                        SourceLocation DefaultLoc,
                                        SourceLocation RParenLoc,
-                                       Expr *ControllingExpr,
+                                       bool PredicateIsExpr,
+                                       void *ControllingExprOrType,
                                        ArrayRef<ParsedType> ArgTypes,
                                        ArrayRef<Expr *> ArgExprs);
+  /// ControllingExprOrType is either a TypeSourceInfo * or an Expr *. FIXME:
+  /// it'd be better to split this interface into two so we don't take a
+  /// void *, but see the FIXME on ActOnGenericSelectionExpr as to why that
+  /// isn't a trivial change.
   ExprResult CreateGenericSelectionExpr(SourceLocation KeyLoc,
                                         SourceLocation DefaultLoc,
                                         SourceLocation RParenLoc,
-                                        Expr *ControllingExpr,
+                                        bool PredicateIsExpr,
+                                        void *ControllingExprOrType,
                                         ArrayRef<TypeSourceInfo *> Types,
                                         ArrayRef<Expr *> Exprs);
 
@@ -6535,6 +6548,13 @@ public:
   /// invocation.
   ExprResult CheckForImmediateInvocation(ExprResult E, FunctionDecl *Decl);
 
+  bool CheckImmediateEscalatingFunctionDefinition(
+      FunctionDecl *FD, bool HasImmediateEscalatingExpression);
+
+  void MarkExpressionAsImmediateEscalating(Expr *E);
+
+  void DiagnoseImmediateEscalatingReason(const clang::FunctionDecl *FD);
+
   bool CompleteConstructorCall(CXXConstructorDecl *Constructor,
                                QualType DeclInitType, MultiExprArg ArgsPtr,
                                SourceLocation Loc,
@@ -6971,9 +6991,6 @@ public:
     }
   };
 
-  bool isNonTypeNestedNameSpecifier(Scope *S, CXXScopeSpec &SS,
-                                    NestedNameSpecInfo &IdInfo);
-
   bool BuildCXXNestedNameSpecifier(Scope *S,
                                    NestedNameSpecInfo &IdInfo,
                                    bool EnteringContext,
@@ -7160,8 +7177,7 @@ public:
       IdentifierInfo *Id, unsigned InitStyle, Expr *Init, DeclContext *DeclCtx);
 
   /// Add an init-capture to a lambda scope.
-  void addInitCapture(sema::LambdaScopeInfo *LSI, VarDecl *Var,
-                      bool isReferenceType);
+  void addInitCapture(sema::LambdaScopeInfo *LSI, VarDecl *Var, bool ByRef);
 
   /// Note that we have finished the explicit captures for the
   /// given lambda.
@@ -9148,6 +9164,9 @@ public:
   void DiagnoseAutoDeductionFailure(VarDecl *VDecl, Expr *Init);
   bool DeduceReturnType(FunctionDecl *FD, SourceLocation Loc,
                         bool Diagnose = true);
+
+  bool CheckIfFunctionSpecializationIsImmediate(FunctionDecl *FD,
+                                                SourceLocation Loc);
 
   /// Declare implicit deduction guides for a class template if we've
   /// not already done so.
@@ -13552,6 +13571,7 @@ private:
   bool CheckRISCVLMUL(CallExpr *TheCall, unsigned ArgNum);
   bool CheckRISCVBuiltinFunctionCall(const TargetInfo &TI, unsigned BuiltinID,
                                      CallExpr *TheCall);
+  void checkRVVTypeSupport(QualType Ty, SourceLocation Loc, ValueDecl *D);
   bool CheckLoongArchBuiltinFunctionCall(const TargetInfo &TI,
                                          unsigned BuiltinID, CallExpr *TheCall);
   bool CheckWebAssemblyBuiltinFunctionCall(const TargetInfo &TI,
@@ -13628,6 +13648,12 @@ private:
   // WebAssembly builtin handling.
   bool BuiltinWasmRefNullExtern(CallExpr *TheCall);
   bool BuiltinWasmRefNullFunc(CallExpr *TheCall);
+  bool BuiltinWasmTableGet(CallExpr *TheCall);
+  bool BuiltinWasmTableSet(CallExpr *TheCall);
+  bool BuiltinWasmTableSize(CallExpr *TheCall);
+  bool BuiltinWasmTableGrow(CallExpr *TheCall);
+  bool BuiltinWasmTableFill(CallExpr *TheCall);
+  bool BuiltinWasmTableCopy(CallExpr *TheCall);
 
 public:
   enum FormatStringType {

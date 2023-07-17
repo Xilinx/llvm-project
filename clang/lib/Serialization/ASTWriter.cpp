@@ -2879,10 +2879,9 @@ void ASTWriter::WriteSubmodules(Module *WritingModule) {
 
     // Emit the top headers.
     {
-      auto TopHeaders = Mod->getTopHeaders(PP->getFileManager());
       RecordData::value_type Record[] = {SUBMODULE_TOPHEADER};
-      for (auto *H : TopHeaders) {
-        SmallString<128> HeaderName(H->getName());
+      for (FileEntryRef H : Mod->getTopHeaders(PP->getFileManager())) {
+        SmallString<128> HeaderName(H.getName());
         PreparePathForOutput(HeaderName);
         Stream.EmitRecordWithBlob(TopHeaderAbbrev, Record, HeaderName);
       }
@@ -3178,6 +3177,13 @@ void ASTWriter::WriteComments() {
   auto _ = llvm::make_scope_exit([this] { Stream.ExitBlock(); });
   if (!PP->getPreprocessorOpts().WriteCommentListToPCH)
     return;
+
+  // Don't write comments to BMI to reduce the size of BMI.
+  // If language services (e.g., clangd) want such abilities,
+  // we can offer a special option then.
+  if (isWritingStdCXXNamedModules())
+    return;
+
   RecordData Record;
   for (const auto &FO : Context->Comments.OrderedComments) {
     for (const auto &OC : FO.second) {

@@ -267,6 +267,10 @@ void AMDGPUTTIImpl::getPeelingPreferences(Loop *L, ScalarEvolution &SE,
   BaseT::getPeelingPreferences(L, SE, PP);
 }
 
+int64_t AMDGPUTTIImpl::getMaxInlineSizeThreshold() const {
+  return 1024;
+}
+
 const FeatureBitset GCNTTIImpl::InlineFeatureIgnoreList = {
     // Codegen control options which don't matter.
     AMDGPU::FeatureEnableLoadStoreOpt, AMDGPU::FeatureEnableSIScheduler,
@@ -295,6 +299,10 @@ GCNTTIImpl::GCNTTIImpl(const AMDGPUTargetMachine *TM, const Function &F)
   SIModeRegisterDefaults Mode(F);
   HasFP32Denormals = Mode.allFP32Denormals();
   HasFP64FP16Denormals = Mode.allFP64FP16Denormals();
+}
+
+bool GCNTTIImpl::hasBranchDivergence(const Function *F) const {
+  return true;
 }
 
 unsigned GCNTTIImpl::getNumberOfRegisters(unsigned RCID) const {
@@ -395,6 +403,10 @@ bool GCNTTIImpl::isLegalToVectorizeStoreChain(unsigned ChainSizeInBytes,
   return isLegalToVectorizeMemChain(ChainSizeInBytes, Alignment, AddrSpace);
 }
 
+int64_t GCNTTIImpl::getMaxInlineSizeThreshold() const {
+  return 1024;
+}
+
 // FIXME: Really we would like to issue multiple 128-bit loads and stores per
 // iteration. Should we report a larger size and let it legalize?
 //
@@ -486,8 +498,6 @@ unsigned GCNTTIImpl::getMaxInterleaveFactor(ElementCount VF) {
 bool GCNTTIImpl::getTgtMemIntrinsic(IntrinsicInst *Inst,
                                        MemIntrinsicInfo &Info) const {
   switch (Inst->getIntrinsicID()) {
-  case Intrinsic::amdgcn_atomic_inc:
-  case Intrinsic::amdgcn_atomic_dec:
   case Intrinsic::amdgcn_ds_ordered_add:
   case Intrinsic::amdgcn_ds_ordered_swap:
   case Intrinsic::amdgcn_ds_fadd:
@@ -998,8 +1008,6 @@ bool GCNTTIImpl::isAlwaysUniform(const Value *V) const {
 bool GCNTTIImpl::collectFlatAddressOperands(SmallVectorImpl<int> &OpIndexes,
                                             Intrinsic::ID IID) const {
   switch (IID) {
-  case Intrinsic::amdgcn_atomic_inc:
-  case Intrinsic::amdgcn_atomic_dec:
   case Intrinsic::amdgcn_ds_fadd:
   case Intrinsic::amdgcn_ds_fmin:
   case Intrinsic::amdgcn_ds_fmax:
@@ -1020,8 +1028,6 @@ Value *GCNTTIImpl::rewriteIntrinsicWithAddressSpace(IntrinsicInst *II,
                                                     Value *NewV) const {
   auto IntrID = II->getIntrinsicID();
   switch (IntrID) {
-  case Intrinsic::amdgcn_atomic_inc:
-  case Intrinsic::amdgcn_atomic_dec:
   case Intrinsic::amdgcn_ds_fadd:
   case Intrinsic::amdgcn_ds_fmin:
   case Intrinsic::amdgcn_ds_fmax: {

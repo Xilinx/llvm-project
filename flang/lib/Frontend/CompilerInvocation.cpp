@@ -12,6 +12,7 @@
 
 #include "flang/Frontend/CompilerInvocation.h"
 #include "flang/Common/Fortran-features.h"
+#include "flang/Common/OpenMP-features.h"
 #include "flang/Common/Version.h"
 #include "flang/Frontend/CodeGenOptions.h"
 #include "flang/Frontend/PreprocessorOptions.h"
@@ -919,6 +920,10 @@ bool CompilerInvocation::createFromArgs(
     res.loweringOpts.setLowerToHighLevelFIR(true);
   }
 
+  if (args.hasArg(clang::driver::options::OPT_flang_experimental_polymorphism)) {
+    res.loweringOpts.setPolymorphicTypeImpl(true);
+  }
+
   success &= parseFrontendArgs(res.getFrontendOpts(), args, diags);
   parseTargetArgs(res.getTargetOpts(), args);
   parsePreprocessorArgs(res.getPreprocessorOpts(), args);
@@ -1005,7 +1010,6 @@ void CompilerInvocation::setDefaultFortranOpts() {
 void CompilerInvocation::setDefaultPredefinitions() {
   auto &fortranOptions = getFortranOpts();
   const auto &frontendOptions = getFrontendOpts();
-
   // Populate the macro list with version numbers and other predefinitions.
   fortranOptions.predefinitions.emplace_back("__flang__", "1");
   fortranOptions.predefinitions.emplace_back("__flang_major__",
@@ -1022,7 +1026,8 @@ void CompilerInvocation::setDefaultPredefinitions() {
   }
   if (frontendOptions.features.IsEnabled(
           Fortran::common::LanguageFeature::OpenMP)) {
-    fortranOptions.predefinitions.emplace_back("_OPENMP", "201511");
+    Fortran::common::setOpenMPMacro(getLangOpts().OpenMPVersion,
+                                    fortranOptions.predefinitions);
   }
   llvm::Triple targetTriple{llvm::Triple(this->targetOpts.triple)};
   if (targetTriple.getArch() == llvm::Triple::ArchType::x86_64) {
@@ -1106,6 +1111,9 @@ void CompilerInvocation::setSemanticsOpts(
   semanticsContext->targetCharacteristics()
       .set_compilerOptionsString(allCompilerInvocOpts)
       .set_compilerVersionString(version);
+
+  if (targetTriple.isPPC())
+    semanticsContext->targetCharacteristics().set_isPPC(true);
 }
 
 /// Set \p loweringOptions controlling lowering behavior based

@@ -28,6 +28,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsAArch64.h"
 #include "llvm/IR/IntrinsicsARM.h"
+#include "llvm/IR/IntrinsicsRISCV.h"
 #include "llvm/IR/IntrinsicsWebAssembly.h"
 #include "llvm/IR/IntrinsicsX86.h"
 #include "llvm/IR/LLVMContext.h"
@@ -829,16 +830,25 @@ static bool UpgradeIntrinsicFunction1(Function *F, Function *&NewFn) {
         Name == "arm.cde.vcx3qa.predicated.v2i64.v4i1")
       return true;
 
-    if (Name == "amdgcn.alignbit") {
+    if (Name.startswith("amdgcn."))
+      Name = Name.substr(7); // Strip off "amdgcn."
+
+    if (Name == "alignbit") {
       // Target specific intrinsic became redundant
       NewFn = Intrinsic::getDeclaration(F->getParent(), Intrinsic::fshr,
                                         {F->getReturnType()});
       return true;
     }
 
+    if (Name.startswith("atomic.inc") || Name.startswith("atomic.dec")) {
+      // This was replaced with atomicrmw uinc_wrap and udec_wrap, so there's no
+      // new declaration.
+      NewFn = nullptr;
+      return true;
+    }
+
     break;
   }
-
   case 'c': {
     if (Name.startswith("ctlz.") && F->arg_size() == 1) {
       rename(F);
@@ -1123,6 +1133,47 @@ static bool UpgradeIntrinsicFunction1(Function *F, Function *&NewFn) {
       NewFn = Intrinsic::getDeclaration(
           F->getParent(), Intrinsic::ptr_annotation,
           {F->arg_begin()->getType(), F->getArg(1)->getType()});
+      return true;
+    }
+    break;
+
+  case 'r':
+    if (Name == "riscv.aes32dsi" &&
+        !F->getFunctionType()->getParamType(2)->isIntegerTy(32)) {
+      rename(F);
+      NewFn = Intrinsic::getDeclaration(F->getParent(), Intrinsic::riscv_aes32dsi);
+      return true;
+    }
+    if (Name == "riscv.aes32dsmi" &&
+        !F->getFunctionType()->getParamType(2)->isIntegerTy(32)) {
+      rename(F);
+      NewFn = Intrinsic::getDeclaration(F->getParent(), Intrinsic::riscv_aes32dsmi);
+      return true;
+    }
+    if (Name == "riscv.aes32esi" &&
+        !F->getFunctionType()->getParamType(2)->isIntegerTy(32)) {
+      rename(F);
+      NewFn = Intrinsic::getDeclaration(F->getParent(), Intrinsic::riscv_aes32esi);
+      return true;
+    }
+    if (Name == "riscv.aes32esmi" &&
+        !F->getFunctionType()->getParamType(2)->isIntegerTy(32)) {
+      rename(F);
+      NewFn = Intrinsic::getDeclaration(F->getParent(), Intrinsic::riscv_aes32esmi);
+      return true;
+    }
+    if (Name.startswith("riscv.sm4ks") &&
+        !F->getFunctionType()->getParamType(2)->isIntegerTy(32)) {
+      rename(F);
+      NewFn = Intrinsic::getDeclaration(F->getParent(), Intrinsic::riscv_sm4ks,
+                                        F->getReturnType());
+      return true;
+    }
+    if (Name.startswith("riscv.sm4ed") &&
+        !F->getFunctionType()->getParamType(2)->isIntegerTy(32)) {
+      rename(F);
+      NewFn = Intrinsic::getDeclaration(F->getParent(), Intrinsic::riscv_sm4ed,
+                                        F->getReturnType());
       return true;
     }
     break;
@@ -2120,6 +2171,38 @@ static Value *UpgradeARMIntrinsicCall(StringRef Name, CallBase *CI, Function *F,
   llvm_unreachable("Unknown function for ARM CallBase upgrade.");
 }
 
+static Value *UpgradeAMDGCNIntrinsicCall(StringRef Name, CallBase *CI,
+                                         Function *F, IRBuilder<> &Builder) {
+  const bool IsInc = Name.startswith("atomic.inc.");
+  if (IsInc || Name.startswith("atomic.dec.")) {
+    if (CI->getNumOperands() != 6) // Malformed bitcode.
+      return nullptr;
+
+    AtomicRMWInst::BinOp RMWOp =
+        IsInc ? AtomicRMWInst::UIncWrap : AtomicRMWInst::UDecWrap;
+
+    Value *Ptr = CI->getArgOperand(0);
+    Value *Val = CI->getArgOperand(1);
+    ConstantInt *OrderArg = dyn_cast<ConstantInt>(CI->getArgOperand(2));
+    ConstantInt *VolatileArg = dyn_cast<ConstantInt>(CI->getArgOperand(4));
+
+    AtomicOrdering Order = AtomicOrdering::SequentiallyConsistent;
+    if (OrderArg && isValidAtomicOrdering(OrderArg->getZExtValue()))
+      Order = static_cast<AtomicOrdering>(OrderArg->getZExtValue());
+    if (Order == AtomicOrdering::NotAtomic ||
+        Order == AtomicOrdering::Unordered)
+      Order = AtomicOrdering::SequentiallyConsistent;
+
+    AtomicRMWInst *RMW = Builder.CreateAtomicRMW(RMWOp, Ptr, Val, std::nullopt, Order);
+
+    if (!VolatileArg || !VolatileArg->isZero())
+      RMW->setVolatile(true);
+    return RMW;
+  }
+
+  llvm_unreachable("Unknown function for AMDGPU intrinsic upgrade.");
+}
+
 /// Upgrade a call to an old intrinsic. All argument and return casting must be
 /// provided to seamlessly integrate with existing context.
 void llvm::UpgradeIntrinsicCall(CallBase *CI, Function *NewFn) {
@@ -2150,6 +2233,9 @@ void llvm::UpgradeIntrinsicCall(CallBase *CI, Function *NewFn) {
     bool IsARM = Name.startswith("arm.");
     if (IsARM)
       Name = Name.substr(4);
+    bool IsAMDGCN = Name.startswith("amdgcn.");
+    if (IsAMDGCN)
+      Name = Name.substr(7);
 
     if (IsX86 && Name.startswith("sse4a.movnt.")) {
       SmallVector<Metadata *, 1> Elts;
@@ -3969,6 +4055,8 @@ void llvm::UpgradeIntrinsicCall(CallBase *CI, Function *NewFn) {
                                CI->getArgOperand(0), "h2f");
     } else if (IsARM) {
       Rep = UpgradeARMIntrinsicCall(Name, CI, F, Builder);
+    } else if (IsAMDGCN) {
+      Rep = UpgradeAMDGCNIntrinsicCall(Name, CI, F, Builder);
     } else {
       llvm_unreachable("Unknown function for CallBase upgrade.");
     }
@@ -4236,6 +4324,24 @@ void llvm::UpgradeIntrinsicCall(CallBase *CI, Function *NewFn) {
     CI->eraseFromParent();
     return;
 
+  case Intrinsic::riscv_aes32dsi:
+  case Intrinsic::riscv_aes32dsmi:
+  case Intrinsic::riscv_aes32esi:
+  case Intrinsic::riscv_aes32esmi:
+  case Intrinsic::riscv_sm4ks:
+  case Intrinsic::riscv_sm4ed: {
+    // The last argument to these intrinsics used to be i8 and changed to i32.
+    Value *Arg2 = CI->getArgOperand(2);
+    if (Arg2->getType()->isIntegerTy(32))
+      return;
+
+    Arg2 = ConstantInt::get(Type::getInt32Ty(C), cast<ConstantInt>(Arg2)->getZExtValue());
+
+    NewCall = Builder.CreateCall(NewFn, {CI->getArgOperand(0),
+                                 CI->getArgOperand(1), Arg2});
+    break;
+  }
+
   case Intrinsic::x86_xop_vfrcz_ss:
   case Intrinsic::x86_xop_vfrcz_sd:
     NewCall = Builder.CreateCall(NewFn, {CI->getArgOperand(1)});
@@ -4453,12 +4559,16 @@ void llvm::UpgradeCallsToIntrinsic(Function *F) {
 }
 
 MDNode *llvm::UpgradeTBAANode(MDNode &MD) {
+  const unsigned NumOperands = MD.getNumOperands();
+  if (NumOperands == 0)
+    return &MD; // Invalid, punt to a verifier error.
+
   // Check if the tag uses struct-path aware TBAA format.
-  if (isa<MDNode>(MD.getOperand(0)) && MD.getNumOperands() >= 3)
+  if (isa<MDNode>(MD.getOperand(0)) && NumOperands >= 3)
     return &MD;
 
   auto &Context = MD.getContext();
-  if (MD.getNumOperands() == 3) {
+  if (NumOperands == 3) {
     Metadata *Elts[] = {MD.getOperand(0), MD.getOperand(1)};
     MDNode *ScalarType = MDNode::get(Context, Elts);
     // Create a MDNode <ScalarType, ScalarType, offset 0, const>

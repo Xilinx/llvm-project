@@ -245,7 +245,7 @@ static bool isConvertibleToVMV_V_V(const RISCVSubtarget &STI,
       for (const MachineOperand &MO : MBBI->explicit_operands()) {
         if (!MO.isReg() || !MO.isDef())
           continue;
-        if (!FoundDef && TRI->isSubRegisterEq(MO.getReg(), SrcReg)) {
+        if (!FoundDef && TRI->regsOverlap(MO.getReg(), SrcReg)) {
           // We only permit the source of COPY has the same LMUL as the defined
           // operand.
           // There are cases we need to keep the whole register copy if the LMUL
@@ -417,12 +417,13 @@ void RISCVInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
 
   if (IsScalableVector) {
     bool UseVMV_V_V = false;
+    bool UseVMV_V_I = false;
     MachineBasicBlock::const_iterator DefMBBI;
-    unsigned VIOpc;
     if (isConvertibleToVMV_V_V(STI, MBB, MBBI, DefMBBI, LMul)) {
       UseVMV_V_V = true;
       // We only need to handle LMUL = 1/2/4/8 here because we only define
       // vector register classes for LMUL = 1/2/4/8.
+      unsigned VIOpc;
       switch (LMul) {
       default:
         llvm_unreachable("Impossible LMUL for vector register copy.");
@@ -443,12 +444,11 @@ void RISCVInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
         VIOpc = RISCV::PseudoVMV_V_I_M8;
         break;
       }
-    }
 
-    bool UseVMV_V_I = false;
-    if (UseVMV_V_V && (DefMBBI->getOpcode() == VIOpc)) {
-      UseVMV_V_I = true;
-      Opc = VIOpc;
+      if (DefMBBI->getOpcode() == VIOpc) {
+        UseVMV_V_I = true;
+        Opc = VIOpc;
+      }
     }
 
     if (NF == 1) {
@@ -745,7 +745,7 @@ void RISCVInstrInfo::movImm(MachineBasicBlock &MBB,
       RISCVMatInt::generateInstSeq(Val, STI.getFeatureBits());
   assert(!Seq.empty());
 
-  for (RISCVMatInt::Inst &Inst : Seq) {
+  for (const RISCVMatInt::Inst &Inst : Seq) {
     switch (Inst.getOpndKind()) {
     case RISCVMatInt::Imm:
       BuildMI(MBB, MBBI, DL, get(Inst.getOpcode()), DstReg)
@@ -1265,11 +1265,25 @@ unsigned RISCVInstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
     }
   }
 
+  if (Opcode == TargetOpcode::BUNDLE)
+    return getInstBundleLength(MI);
+
   if (MI.getParent() && MI.getParent()->getParent()) {
     if (isCompressibleInst(MI, STI))
       return 2;
   }
   return get(Opcode).getSize();
+}
+
+unsigned RISCVInstrInfo::getInstBundleLength(const MachineInstr &MI) const {
+  unsigned Size = 0;
+  MachineBasicBlock::const_instr_iterator I = MI.getIterator();
+  MachineBasicBlock::const_instr_iterator E = MI.getParent()->instr_end();
+  while (++I != E && I->isInsideBundle()) {
+    assert(!I->isBundle() && "No nested bundle!");
+    Size += getInstSizeInBytes(*I);
+  }
+  return Size;
 }
 
 bool RISCVInstrInfo::isAsCheapAsAMove(const MachineInstr &MI) const {
@@ -1793,13 +1807,6 @@ bool RISCVInstrInfo::verifyInstruction(const MachineInstr &MI,
   }
 
   const uint64_t TSFlags = Desc.TSFlags;
-  if (RISCVII::hasMergeOp(TSFlags)) {
-    unsigned OpIdx = RISCVII::getMergeOpNum(Desc);
-    if (MI.findTiedOperandIdx(0) != OpIdx) {
-      ErrInfo = "Merge op improperly tied";
-      return false;
-    }
-  }
   if (RISCVII::hasVLOp(TSFlags)) {
     const MachineOperand &Op = MI.getOperand(RISCVII::getVLOpNum(Desc));
     if (!Op.isImm() && !Op.isReg())  {

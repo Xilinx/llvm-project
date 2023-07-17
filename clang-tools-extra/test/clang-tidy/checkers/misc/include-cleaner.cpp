@@ -1,4 +1,4 @@
-// RUN: %check_clang_tidy %s misc-include-cleaner %t -- -- -I%S/Inputs -isystem%S/system
+// RUN: %check_clang_tidy %s misc-include-cleaner %t -- -- -I%S/Inputs -isystem%S/Inputs/system
 #include "bar.h"
 // CHECK-FIXES: {{^}}#include "baz.h"{{$}}
 #include "foo.h"
@@ -10,8 +10,8 @@
 // CHECK-FIXES: {{^}}
 int BarResult = bar();
 int BazResult = baz();
-// CHECK-MESSAGES: :[[@LINE-1]]:17: warning: no header providing "baz.h" is directly included [misc-include-cleaner]
+// CHECK-MESSAGES: :[[@LINE-1]]:17: warning: no header providing "baz" is directly included [misc-include-cleaner]
 std::string HelloString;
-// CHECK-MESSAGES: :[[@LINE-1]]:6: warning: no header providing <string> is directly included [misc-include-cleaner]
+// CHECK-MESSAGES: :[[@LINE-1]]:6: warning: no header providing "std::string" is directly included [misc-include-cleaner]
 int FooBarResult = foobar();
-// CHECK-MESSAGES: :[[@LINE-1]]:20: warning: no header providing "public.h" is directly included [misc-include-cleaner]
+// CHECK-MESSAGES: :[[@LINE-1]]:20: warning: no header providing "foobar" is directly included [misc-include-cleaner]

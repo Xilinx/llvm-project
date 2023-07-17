@@ -71,6 +71,7 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/ConstantFolding.h"
@@ -161,10 +162,6 @@ static cl::opt<bool, true> VerifySCEVOpt(
 static cl::opt<bool> VerifySCEVStrict(
     "verify-scev-strict", cl::Hidden,
     cl::desc("Enable stricter verification with -verify-scev is passed"));
-static cl::opt<bool>
-    VerifySCEVMap("verify-scev-maps", cl::Hidden,
-                  cl::desc("Verify no dangling value in ScalarEvolution's "
-                           "ExprValueMap (slow)"));
 
 static cl::opt<bool> VerifyIR(
     "scev-verify-ir", cl::Hidden,
@@ -3265,9 +3262,8 @@ const SCEV *ScalarEvolution::getMulExpr(SmallVectorImpl<const SCEV *> &Ops,
     // if they are loop invariant w.r.t. the recurrence.
     SmallVector<const SCEV *, 8> LIOps;
     const SCEVAddRecExpr *AddRec = cast<SCEVAddRecExpr>(Ops[Idx]);
-    const Loop *AddRecLoop = AddRec->getLoop();
     for (unsigned i = 0, e = Ops.size(); i != e; ++i)
-      if (isAvailableAtLoopEntry(Ops[i], AddRecLoop)) {
+      if (isAvailableAtLoopEntry(Ops[i], AddRec->getLoop())) {
         LIOps.push_back(Ops[i]);
         Ops.erase(Ops.begin()+i);
         --i; --e;
@@ -3290,7 +3286,7 @@ const SCEV *ScalarEvolution::getMulExpr(SmallVectorImpl<const SCEV *> &Ops,
       // will be inferred if either NUW or NSW is true.
       SCEV::NoWrapFlags Flags = ComputeFlags({Scale, AddRec});
       const SCEV *NewRec = getAddRecExpr(
-          NewOps, AddRecLoop, AddRec->getNoWrapFlags(Flags));
+          NewOps, AddRec->getLoop(), AddRec->getNoWrapFlags(Flags));
 
       // If all of the other operands were loop invariant, we are done.
       if (Ops.size() == 1) return NewRec;
@@ -3324,7 +3320,7 @@ const SCEV *ScalarEvolution::getMulExpr(SmallVectorImpl<const SCEV *> &Ops,
          ++OtherIdx) {
       const SCEVAddRecExpr *OtherAddRec =
         dyn_cast<SCEVAddRecExpr>(Ops[OtherIdx]);
-      if (!OtherAddRec || OtherAddRec->getLoop() != AddRecLoop)
+      if (!OtherAddRec || OtherAddRec->getLoop() != AddRec->getLoop())
         continue;
 
       // Limit max number of arguments to avoid creation of unreasonably big
@@ -3363,7 +3359,7 @@ const SCEV *ScalarEvolution::getMulExpr(SmallVectorImpl<const SCEV *> &Ops,
         AddRecOps.push_back(getAddExpr(SumOps, SCEV::FlagAnyWrap, Depth + 1));
       }
       if (!Overflow) {
-        const SCEV *NewAddRec = getAddRecExpr(AddRecOps, AddRecLoop,
+        const SCEV *NewAddRec = getAddRecExpr(AddRecOps, AddRec->getLoop(),
                                               SCEV::FlagAnyWrap);
         if (Ops.size() == 2) return NewAddRec;
         Ops[Idx] = NewAddRec;
@@ -4458,13 +4454,6 @@ ArrayRef<Value *> ScalarEvolution::getSCEVValues(const SCEV *S) {
   ExprValueMapType::iterator SI = ExprValueMap.find_as(S);
   if (SI == ExprValueMap.end())
     return std::nullopt;
-#ifndef NDEBUG
-  if (VerifySCEVMap) {
-    // Check there is no dangling Value in the set returned.
-    for (Value *V : SI->second)
-      assert(ValueExprMap.count(V));
-  }
-#endif
   return SI->second.getArrayRef();
 }
 
@@ -6776,9 +6765,10 @@ const ConstantRange &ScalarEvolution::getRangeRef(
   }
   case scUnknown: {
     const SCEVUnknown *U = cast<SCEVUnknown>(S);
+    Value *V = U->getValue();
 
     // Check if the IR explicitly contains !range metadata.
-    std::optional<ConstantRange> MDRange = GetRangeFromMetadata(U->getValue());
+    std::optional<ConstantRange> MDRange = GetRangeFromMetadata(V);
     if (MDRange)
       ConservativeResult =
           ConservativeResult.intersectWith(*MDRange, RangeType);
@@ -6791,13 +6781,13 @@ const ConstantRange &ScalarEvolution::getRangeRef(
 
     // See if ValueTracking can give us a useful range.
     const DataLayout &DL = getDataLayout();
-    KnownBits Known = computeKnownBits(U->getValue(), DL, 0, &AC, nullptr, &DT);
+    KnownBits Known = computeKnownBits(V, DL, 0, &AC, nullptr, &DT);
     if (Known.getBitWidth() != BitWidth)
       Known = Known.zextOrTrunc(BitWidth);
 
     // ValueTracking may be able to compute a tighter result for the number of
     // sign bits than for the value of those sign bits.
-    unsigned NS = ComputeNumSignBits(U->getValue(), DL, 0, &AC, nullptr, &DT);
+    unsigned NS = ComputeNumSignBits(V, DL, 0, &AC, nullptr, &DT);
     if (U->getType()->isPointerTy()) {
       // If the pointer size is larger than the index size type, this can cause
       // NS to be larger than BitWidth. So compensate for this.
@@ -6826,15 +6816,14 @@ const ConstantRange &ScalarEvolution::getRangeRef(
           RangeType);
 
     if (U->getType()->isPointerTy() && SignHint == HINT_RANGE_UNSIGNED) {
-      // Strengthen the range if the underlying IR value is a global using the
-      // size of the global.
+      // Strengthen the range if the underlying IR value is a global/alloca
+      // using the size of the object.
       ObjectSizeOpts Opts;
       Opts.RoundToAlign = false;
       Opts.NullIsUnknownSize = true;
       uint64_t ObjSize;
-      auto *GV = dyn_cast<GlobalVariable>(U->getValue());
-      if (GV && getObjectSize(U->getValue(), ObjSize, DL, &TLI, Opts) &&
-          ObjSize > 1) {
+      if ((isa<GlobalVariable>(V) || isa<AllocaInst>(V)) &&
+          getObjectSize(V, ObjSize, DL, &TLI, Opts) && ObjSize > 1) {
         // The highest address the object can start is ObjSize bytes before the
         // end (unsigned max value). If this value is not a multiple of the
         // alignment, the last possible start value is the next lowest multiple
@@ -6842,7 +6831,7 @@ const ConstantRange &ScalarEvolution::getRangeRef(
         // because if they would there's no possible start address for the
         // object.
         APInt MaxVal = APInt::getMaxValue(BitWidth) - APInt(BitWidth, ObjSize);
-        uint64_t Align = GV->getAlign().valueOrOne().value();
+        uint64_t Align = U->getValue()->getPointerAlignment(DL).value();
         uint64_t Rem = MaxVal.urem(Align);
         MaxVal -= APInt(BitWidth, Rem);
         ConservativeResult = ConservativeResult.intersectWith(
@@ -6851,7 +6840,7 @@ const ConstantRange &ScalarEvolution::getRangeRef(
     }
 
     // A range of Phi is a subset of union of all ranges of its input.
-    if (PHINode *Phi = dyn_cast<PHINode>(U->getValue())) {
+    if (PHINode *Phi = dyn_cast<PHINode>(V)) {
       // Make sure that we do not run over cycled Phis.
       if (PendingPhiRanges.insert(Phi).second) {
         ConstantRange RangeFromOps(BitWidth, /*isFullSet=*/false);
@@ -6872,7 +6861,7 @@ const ConstantRange &ScalarEvolution::getRangeRef(
     }
 
     // vscale can't be equal to zero
-    if (const auto *II = dyn_cast<IntrinsicInst>(U->getValue()))
+    if (const auto *II = dyn_cast<IntrinsicInst>(V))
       if (II->getIntrinsicID() == Intrinsic::vscale) {
         ConstantRange Disallowed = APInt::getZero(BitWidth);
         ConservativeResult = ConservativeResult.difference(Disallowed);
@@ -14969,9 +14958,25 @@ public:
 
   const SCEV *visitZeroExtendExpr(const SCEVZeroExtendExpr *Expr) {
     auto I = Map.find(Expr);
-    if (I == Map.end())
+    if (I == Map.end()) {
+      // If we didn't find the extact ZExt expr in the map, check if there's an
+      // entry for a smaller ZExt we can use instead.
+      Type *Ty = Expr->getType();
+      const SCEV *Op = Expr->getOperand(0);
+      unsigned Bitwidth = Ty->getScalarSizeInBits() / 2;
+      while (Bitwidth % 8 == 0 && Bitwidth >= 8 &&
+             Bitwidth > Op->getType()->getScalarSizeInBits()) {
+        Type *NarrowTy = IntegerType::get(SE.getContext(), Bitwidth);
+        auto *NarrowExt = SE.getZeroExtendExpr(Op, NarrowTy);
+        auto I = Map.find(NarrowExt);
+        if (I != Map.end())
+          return SE.getZeroExtendExpr(I->second, Ty);
+        Bitwidth = Bitwidth / 2;
+      }
+
       return SCEVRewriteVisitor<SCEVLoopGuardRewriter>::visitZeroExtendExpr(
           Expr);
+    }
     return I->second;
   }
 

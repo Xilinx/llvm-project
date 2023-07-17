@@ -410,10 +410,10 @@ NVPTXTargetLowering::NVPTXTargetLowering(const NVPTXTargetMachine &TM,
   addRegisterClass(MVT::i64, &NVPTX::Int64RegsRegClass);
   addRegisterClass(MVT::f32, &NVPTX::Float32RegsRegClass);
   addRegisterClass(MVT::f64, &NVPTX::Float64RegsRegClass);
-  addRegisterClass(MVT::f16, &NVPTX::Float16RegsRegClass);
-  addRegisterClass(MVT::v2f16, &NVPTX::Float16x2RegsRegClass);
-  addRegisterClass(MVT::bf16, &NVPTX::Float16RegsRegClass);
-  addRegisterClass(MVT::v2bf16, &NVPTX::Float16x2RegsRegClass);
+  addRegisterClass(MVT::f16, &NVPTX::Int16RegsRegClass);
+  addRegisterClass(MVT::v2f16, &NVPTX::Int32RegsRegClass);
+  addRegisterClass(MVT::bf16, &NVPTX::Int16RegsRegClass);
+  addRegisterClass(MVT::v2bf16, &NVPTX::Int32RegsRegClass);
 
   // Conversion to/from FP16/FP16x2 is always legal.
   setOperationAction(ISD::SINT_TO_FP, MVT::f16, Legal);
@@ -2464,6 +2464,10 @@ SDValue NVPTXTargetLowering::LowerSTORE(SDValue Op, SelectionDAG &DAG) const {
       !allowsMemoryAccessForAlignment(*DAG.getContext(), DAG.getDataLayout(),
                                       VT, *Store->getMemOperand()))
     return expandUnalignedStore(Store, DAG);
+
+  // v2f16 and v2bf16 don't need special handling.
+  if (VT == MVT::v2f16 || VT == MVT::v2bf16)
+    return SDValue();
 
   if (VT.isVector())
     return LowerSTOREVector(Op, DAG);
@@ -5146,7 +5150,8 @@ static void ReplaceLoadVector(SDNode *N, SelectionDAG &DAG,
 
   Align Alignment = LD->getAlign();
   auto &TD = DAG.getDataLayout();
-  Align PrefAlign = TD.getPrefTypeAlign(ResVT.getTypeForEVT(*DAG.getContext()));
+  Align PrefAlign =
+      TD.getPrefTypeAlign(LD->getMemoryVT().getTypeForEVT(*DAG.getContext()));
   if (Alignment < PrefAlign) {
     // This load is not sufficiently aligned, so bail out and let this vector
     // load be scalarized.  Note that we may still be able to emit smaller

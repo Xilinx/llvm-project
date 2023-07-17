@@ -45,7 +45,8 @@ class LoopAnnotationImporter;
 /// that are introduced at the beginning of the region.
 class ModuleImport {
 public:
-  ModuleImport(ModuleOp mlirModule, std::unique_ptr<llvm::Module> llvmModule);
+  ModuleImport(ModuleOp mlirModule, std::unique_ptr<llvm::Module> llvmModule,
+               bool emitExpensiveWarnings);
 
   /// Calls the LLVMImportInterface initialization that queries the registered
   /// dialect interfaces for the supported LLVM IR intrinsics and metadata kinds
@@ -55,6 +56,10 @@ public:
 
   /// Converts all functions of the LLVM module to MLIR functions.
   LogicalResult convertFunctions();
+
+  /// Converts all comdat selectors of the LLVM module to MLIR comdat
+  /// operations.
+  LogicalResult convertComdats();
 
   /// Converts all global variables of the LLVM module to MLIR global variables.
   LogicalResult convertGlobals();
@@ -284,6 +289,10 @@ private:
   /// metadata that converts to MLIR operations. Creates the global metadata
   /// operation on the first invocation.
   MetadataOp getGlobalMetadataOp();
+  /// Returns a global comdat operation that serves as a container for LLVM
+  /// comdat selectors. Creates the global comdat operation on the first
+  /// invocation.
+  ComdatOp getGlobalComdatOp();
   /// Performs conversion of LLVM TBAA metadata starting from
   /// `node`. On exit from this function all nodes reachable
   /// from `node` are converted, and tbaaMapping map is updated
@@ -312,6 +321,8 @@ private:
   Operation *globalInsertionOp = nullptr;
   /// Operation to insert metadata operations into.
   MetadataOp globalMetadataOp = nullptr;
+  /// Operation to insert comdat selector operations into.
+  ComdatOp globalComdatOp = nullptr;
   /// The current context.
   MLIRContext *context;
   /// The MLIR module being created.
@@ -343,6 +354,11 @@ private:
   std::unique_ptr<detail::DebugImporter> debugImporter;
   /// Loop annotation importer.
   std::unique_ptr<detail::LoopAnnotationImporter> loopAnnotationImporter;
+
+  /// An option to control if expensive but uncritical diagnostics should be
+  /// emitted. Avoids generating warnings for unhandled debug intrinsics and
+  /// metadata that otherwise dominate the translation time for large inputs.
+  bool emitExpensiveWarnings;
 };
 
 } // namespace LLVM

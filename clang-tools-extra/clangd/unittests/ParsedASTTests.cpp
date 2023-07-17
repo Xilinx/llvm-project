@@ -13,8 +13,8 @@
 
 #include "../../clang-tidy/ClangTidyCheck.h"
 #include "AST.h"
-#include "Annotations.h"
 #include "Compiler.h"
+#include "Config.h"
 #include "Diagnostics.h"
 #include "Headers.h"
 #include "ParsedAST.h"
@@ -23,16 +23,19 @@
 #include "TestFS.h"
 #include "TestTU.h"
 #include "TidyProvider.h"
+#include "support/Context.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TokenKinds.h"
 #include "clang/Tooling/Syntax/Tokens.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Testing/Annotations/Annotations.h"
 #include "llvm/Testing/Support/Error.h"
 #include "gmock/gmock-matchers.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include <utility>
 
 namespace clang {
 namespace clangd {
@@ -278,7 +281,7 @@ TEST(ParsedASTTest, CanBuildInvocationWithUnknownArgs) {
 }
 
 TEST(ParsedASTTest, CollectsMainFileMacroExpansions) {
-  Annotations TestCase(R"cpp(
+  llvm::Annotations TestCase(R"cpp(
     #define ^MACRO_ARGS(X, Y) X Y
     // - preamble ends
     ^ID(int A);
@@ -331,15 +334,16 @@ TEST(ParsedASTTest, CollectsMainFileMacroExpansions) {
     int D = DEF;
   )cpp";
   ParsedAST AST = TU.build();
-  std::vector<Position> MacroExpansionPositions;
+  std::vector<size_t> MacroExpansionPositions;
   for (const auto &SIDToRefs : AST.getMacros().MacroRefs) {
     for (const auto &R : SIDToRefs.second)
-      MacroExpansionPositions.push_back(R.Rng.start);
+      MacroExpansionPositions.push_back(R.StartOffset);
   }
   for (const auto &R : AST.getMacros().UnknownMacros)
-    MacroExpansionPositions.push_back(R.Rng.start);
-  EXPECT_THAT(MacroExpansionPositions,
-              testing::UnorderedElementsAreArray(TestCase.points()));
+    MacroExpansionPositions.push_back(R.StartOffset);
+  EXPECT_THAT(
+      MacroExpansionPositions,
+      testing::UnorderedElementsAreArray(TestCase.points()));
 }
 
 MATCHER_P(withFileName, Inc, "") { return arg.FileName == Inc; }
@@ -513,6 +517,13 @@ TEST(ParsedASTTest, HeaderGuards) {
 //   size is part of the lookup key for HeaderFileInfo, and we don't want to
 //   rely on the preamble's HFI being looked up when parsing the main file.
 TEST(ParsedASTTest, HeaderGuardsSelfInclude) {
+  // Disable include cleaner diagnostics to prevent them from interfering with
+  // other diagnostics.
+  Config Cfg;
+  Cfg.Diagnostics.MissingIncludes = Config::IncludesPolicy::None;
+  Cfg.Diagnostics.UnusedIncludes = Config::IncludesPolicy::None;
+  WithContextValue Ctx(Config::Key, std::move(Cfg));
+
   TestTU TU;
   TU.ImplicitHeaderGuard = false;
   TU.Filename = "self.h";

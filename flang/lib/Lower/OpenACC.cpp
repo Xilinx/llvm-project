@@ -18,6 +18,7 @@
 #include "flang/Lower/Support/Utils.h"
 #include "flang/Optimizer/Builder/BoxValue.h"
 #include "flang/Optimizer/Builder/FIRBuilder.h"
+#include "flang/Optimizer/Builder/IntrinsicCall.h"
 #include "flang/Optimizer/Builder/Todo.h"
 #include "flang/Parser/parse-tree.h"
 #include "flang/Semantics/expression.h"
@@ -31,73 +32,6 @@ static const Fortran::parser::Name *
 getDesignatorNameIfDataRef(const Fortran::parser::Designator &designator) {
   const auto *dataRef = std::get_if<Fortran::parser::DataRef>(&designator.u);
   return dataRef ? std::get_if<Fortran::parser::Name>(&dataRef->u) : nullptr;
-}
-
-static void
-genObjectList(const Fortran::parser::AccObjectList &objectList,
-              Fortran::lower::AbstractConverter &converter,
-              Fortran::semantics::SemanticsContext &semanticsContext,
-              Fortran::lower::StatementContext &stmtCtx,
-              llvm::SmallVectorImpl<mlir::Value> &operands) {
-  auto addOperands = [&](Fortran::lower::SymbolRef sym) {
-    const auto variable = converter.getSymbolAddress(sym);
-    // TODO: Might need revisiting to handle for non-shared clauses
-    if (variable) {
-      operands.push_back(variable);
-    } else {
-      if (const auto *details =
-              sym->detailsIf<Fortran::semantics::HostAssocDetails>())
-        operands.push_back(converter.getSymbolAddress(details->symbol()));
-    }
-  };
-
-  fir::FirOpBuilder &builder = converter.getFirOpBuilder();
-
-  for (const auto &accObject : objectList.v) {
-    std::visit(
-        Fortran::common::visitors{
-            [&](const Fortran::parser::Designator &designator) {
-              mlir::Location operandLocation =
-                  converter.genLocation(designator.source);
-              if (auto expr{Fortran::semantics::AnalyzeExpr(semanticsContext,
-                                                            designator)}) {
-                if ((*expr).Rank() > 0 &&
-                    Fortran::parser::Unwrap<Fortran::parser::ArrayElement>(
-                        designator)) {
-                  // Array sections.
-                  fir::ExtendedValue exV =
-                      converter.genExprBox(operandLocation, *expr, stmtCtx);
-                  mlir::Value section = fir::getBase(exV);
-                  auto mem = builder.create<fir::AllocaOp>(
-                      operandLocation, section.getType(), /*pinned=*/false);
-                  builder.create<fir::StoreOp>(operandLocation, section, mem);
-                  operands.push_back(mem);
-                } else if (Fortran::parser::Unwrap<
-                               Fortran::parser::StructureComponent>(
-                               designator)) {
-                  // Derived type components.
-                  fir::ExtendedValue fieldAddr =
-                      converter.genExprAddr(operandLocation, *expr, stmtCtx);
-                  operands.push_back(fir::getBase(fieldAddr));
-                } else {
-                  // Scalar or full array.
-                  if (const auto *dataRef{std::get_if<Fortran::parser::DataRef>(
-                          &designator.u)}) {
-                    const Fortran::parser::Name &name =
-                        Fortran::parser::GetLastName(*dataRef);
-                    addOperands(*name.symbol);
-                  } else { // Unsupported
-                    TODO(operandLocation,
-                         "Unsupported type of OpenACC operand");
-                  }
-                }
-              }
-            },
-            [&](const Fortran::parser::Name &name) {
-              addOperands(*name.symbol);
-            }},
-        accObject.u);
-  }
 }
 
 /// Generate the acc.bounds operation from the descriptor information.
@@ -499,6 +433,36 @@ Fortran::lower::createOrGetPrivateRecipe(mlir::OpBuilder &builder,
   return recipe;
 }
 
+mlir::acc::FirstprivateRecipeOp Fortran::lower::createOrGetFirstprivateRecipe(
+    mlir::OpBuilder &builder, llvm::StringRef recipeName, mlir::Location loc,
+    mlir::Type ty) {
+  mlir::ModuleOp mod =
+      builder.getBlock()->getParent()->getParentOfType<mlir::ModuleOp>();
+  if (auto recipe =
+          mod.lookupSymbol<mlir::acc::FirstprivateRecipeOp>(recipeName))
+    return recipe;
+
+  auto crtPos = builder.saveInsertionPoint();
+  mlir::OpBuilder modBuilder(mod.getBodyRegion());
+  auto recipe =
+      modBuilder.create<mlir::acc::FirstprivateRecipeOp>(loc, recipeName, ty);
+  builder.createBlock(&recipe.getInitRegion(), recipe.getInitRegion().end(),
+                      {ty}, {loc});
+  builder.setInsertionPointToEnd(&recipe.getInitRegion().back());
+  builder.create<mlir::acc::YieldOp>(
+      loc, recipe.getInitRegion().front().getArgument(0));
+
+  // Add empty copy region for firstprivate. TODO add copy sequence.
+  builder.createBlock(&recipe.getCopyRegion(), recipe.getCopyRegion().end(),
+                      {ty, ty}, {loc, loc});
+  builder.setInsertionPointToEnd(&recipe.getCopyRegion().back());
+  builder.create<mlir::acc::TerminatorOp>(loc);
+
+  builder.restoreInsertionPoint(crtPos);
+  return recipe;
+}
+
+template <typename RecipeOp>
 static void
 genPrivatizations(const Fortran::parser::AccObjectList &objectList,
                   Fortran::lower::AbstractConverter &converter,
@@ -514,14 +478,29 @@ genPrivatizations(const Fortran::parser::AccObjectList &objectList,
     mlir::Value baseAddr = gatherDataOperandAddrAndBounds(
         converter, builder, semanticsContext, stmtCtx, accObject,
         operandLocation, asFortran, bounds);
-    std::string recipeName = fir::getTypeAsString(
-        baseAddr.getType(), converter.getKindMap(), "privatization");
-    mlir::acc::PrivateRecipeOp recipe =
-        Fortran::lower::createOrGetPrivateRecipe(
-            builder, recipeName, operandLocation, baseAddr.getType());
+
+    RecipeOp recipe;
+    if constexpr (std::is_same_v<RecipeOp, mlir::acc::PrivateRecipeOp>) {
+      std::string recipeName = fir::getTypeAsString(
+          baseAddr.getType(), converter.getKindMap(), "privatization");
+      recipe = Fortran::lower::createOrGetPrivateRecipe(
+          builder, recipeName, operandLocation, baseAddr.getType());
+      auto op = createDataEntryOp<mlir::acc::PrivateOp>(
+          builder, operandLocation, baseAddr, asFortran, bounds, true,
+          mlir::acc::DataClause::acc_private);
+      dataOperands.push_back(op.getAccPtr());
+    } else {
+      std::string recipeName = fir::getTypeAsString(
+          baseAddr.getType(), converter.getKindMap(), "firstprivatization");
+      recipe = Fortran::lower::createOrGetFirstprivateRecipe(
+          builder, recipeName, operandLocation, baseAddr.getType());
+      auto op = createDataEntryOp<mlir::acc::FirstprivateOp>(
+          builder, operandLocation, baseAddr, asFortran, bounds, true,
+          mlir::acc::DataClause::acc_firstprivate);
+      dataOperands.push_back(op.getAccPtr());
+    }
     privatizations.push_back(mlir::SymbolRefAttr::get(
         builder.getContext(), recipe.getSymName().str()));
-    dataOperands.push_back(baseAddr);
   }
 }
 
@@ -556,29 +535,143 @@ getReductionOperator(const Fortran::parser::AccReductionOperator &op) {
   llvm_unreachable("unexpected reduction operator");
 }
 
-static mlir::Value genReductionInitValue(mlir::OpBuilder &builder,
+/// Get the correct DenseElementsAttr attribute for the given init value.
+/// The verifier on the DenseElementsAttr is strict about the init value passed
+/// to it so it must matched the type.
+static mlir::DenseElementsAttr getDenseAttr(mlir::ShapedType shTy,
+                                            int64_t value) {
+  if (shTy.getElementType().isIntOrIndex()) {
+    if (auto intTy = mlir::dyn_cast<mlir::IntegerType>(shTy.getElementType())) {
+      if (intTy.getIntOrFloatBitWidth() == 8)
+        return mlir::DenseElementsAttr::get(shTy, static_cast<int8_t>(value));
+      if (intTy.getIntOrFloatBitWidth() == 16)
+        return mlir::DenseElementsAttr::get(shTy, static_cast<int16_t>(value));
+      if (intTy.getIntOrFloatBitWidth() == 32)
+        return mlir::DenseElementsAttr::get(shTy, static_cast<int32_t>(value));
+      if (intTy.getIntOrFloatBitWidth() == 64)
+        return mlir::DenseElementsAttr::get(shTy, value);
+    }
+  }
+
+  if (mlir::isa<mlir::FloatType>(shTy.getElementType())) {
+    if (auto intTy = mlir::dyn_cast<mlir::FloatType>(shTy.getElementType())) {
+      if (intTy.getIntOrFloatBitWidth() == 16)
+        return mlir::DenseElementsAttr::get(shTy, static_cast<float>(value));
+      if (intTy.getIntOrFloatBitWidth() == 32)
+        return mlir::DenseElementsAttr::get(shTy, static_cast<float>(value));
+      if (intTy.getIntOrFloatBitWidth() == 64)
+        return mlir::DenseElementsAttr::get(shTy, static_cast<double>(value));
+      if (intTy.getIntOrFloatBitWidth() == 128)
+        return mlir::DenseElementsAttr::get(shTy,
+                                            static_cast<long double>(value));
+    }
+  }
+
+  llvm_unreachable("unsupported dense attribute type");
+}
+
+static mlir::Value genReductionInitValue(fir::FirOpBuilder &builder,
                                          mlir::Location loc, mlir::Type ty,
                                          mlir::acc::ReductionOperator op) {
   if (op != mlir::acc::ReductionOperator::AccAdd &&
-      op != mlir::acc::ReductionOperator::AccMul)
+      op != mlir::acc::ReductionOperator::AccMul &&
+      op != mlir::acc::ReductionOperator::AccMin &&
+      op != mlir::acc::ReductionOperator::AccMax)
     TODO(loc, "reduction operator");
 
-  // 0 for +, ior, ieor
-  // 1 for *
-  unsigned initValue = op == mlir::acc::ReductionOperator::AccMul ? 1 : 0;
+  // min -> largest
+  if (op == mlir::acc::ReductionOperator::AccMin) {
+    if (ty.isIntOrIndex()) {
+      unsigned bits = ty.getIntOrFloatBitWidth();
+      return builder.create<mlir::arith::ConstantOp>(
+          loc, ty,
+          builder.getIntegerAttr(
+              ty, llvm::APInt::getSignedMaxValue(bits).getSExtValue()));
+    }
+    if (auto floatTy = mlir::dyn_cast_or_null<mlir::FloatType>(ty)) {
+      const llvm::fltSemantics &sem = floatTy.getFloatSemantics();
+      return builder.create<mlir::arith::ConstantOp>(
+          loc, ty,
+          builder.getFloatAttr(
+              ty, llvm::APFloat::getLargest(sem, /*negative=*/false)));
+    }
+    // max -> least
+  } else if (op == mlir::acc::ReductionOperator::AccMax) {
+    if (ty.isIntOrIndex())
+      return builder.create<mlir::arith::ConstantOp>(
+          loc, ty,
+          builder.getIntegerAttr(
+              ty, llvm::APInt::getSignedMinValue(ty.getIntOrFloatBitWidth())
+                      .getSExtValue()));
+    if (auto floatTy = mlir::dyn_cast_or_null<mlir::FloatType>(ty))
+      return builder.create<mlir::arith::ConstantOp>(
+          loc, ty,
+          builder.getFloatAttr(
+              ty, llvm::APFloat::getSmallest(floatTy.getFloatSemantics(),
+                                             /*negative=*/true)));
+  } else {
+    // 0 for +, ior, ieor
+    // 1 for *
+    int64_t initValue = op == mlir::acc::ReductionOperator::AccMul ? 1 : 0;
+    if (ty.isIntOrIndex())
+      return builder.create<mlir::arith::ConstantOp>(
+          loc, ty, builder.getIntegerAttr(ty, initValue));
+    if (mlir::isa<mlir::FloatType>(ty))
+      return builder.create<mlir::arith::ConstantOp>(
+          loc, ty, builder.getFloatAttr(ty, initValue));
+    if (auto refTy = mlir::dyn_cast<fir::ReferenceType>(ty)) {
+      if (auto seqTy = mlir::dyn_cast<fir::SequenceType>(refTy.getEleTy())) {
+        mlir::Type vecType =
+            mlir::VectorType::get(seqTy.getShape(), seqTy.getEleTy());
+        mlir::DenseElementsAttr denseAttr =
+            getDenseAttr(vecType.cast<mlir::ShapedType>(), initValue);
+        return builder.create<mlir::arith::ConstantOp>(loc, vecType, denseAttr);
+      }
+    }
+  }
 
-  if (ty.isIntOrIndex())
-    return builder.create<mlir::arith::ConstantOp>(
-        loc, ty, builder.getIntegerAttr(ty, initValue));
-  if (mlir::isa<mlir::FloatType>(ty))
-    return builder.create<mlir::arith::ConstantOp>(
-        loc, ty, builder.getFloatAttr(ty, initValue));
   TODO(loc, "reduction type");
 }
 
-static mlir::Value genCombiner(mlir::OpBuilder &builder, mlir::Location loc,
+static mlir::Value genCombiner(fir::FirOpBuilder &builder, mlir::Location loc,
                                mlir::acc::ReductionOperator op, mlir::Type ty,
                                mlir::Value value1, mlir::Value value2) {
+
+  // Handle combiner on arrays.
+  if (auto refTy = mlir::dyn_cast<fir::ReferenceType>(ty)) {
+    if (auto seqTy = mlir::dyn_cast<fir::SequenceType>(refTy.getEleTy())) {
+      if (seqTy.hasDynamicExtents())
+        TODO(loc, "OpenACC reduction on array with dynamic extents");
+      mlir::Type idxTy = builder.getIndexType();
+      mlir::Type refTy = fir::ReferenceType::get(seqTy.getEleTy());
+
+      llvm::SmallVector<fir::DoLoopOp> loops;
+      llvm::SmallVector<mlir::Value> ivs;
+      for (auto ext : seqTy.getShape()) {
+        auto lb = builder.create<mlir::arith::ConstantOp>(
+            loc, idxTy, builder.getIntegerAttr(idxTy, 0));
+        auto ub = builder.create<mlir::arith::ConstantOp>(
+            loc, idxTy, builder.getIntegerAttr(idxTy, ext - 1));
+        auto step = builder.create<mlir::arith::ConstantOp>(
+            loc, idxTy, builder.getIntegerAttr(idxTy, 1));
+        auto loop = builder.create<fir::DoLoopOp>(loc, lb, ub, step,
+                                                  /*unordered=*/false);
+        builder.setInsertionPointToStart(loop.getBody());
+        loops.push_back(loop);
+        ivs.push_back(loop.getInductionVar());
+      }
+      auto addr1 = builder.create<fir::CoordinateOp>(loc, refTy, value1, ivs);
+      auto addr2 = builder.create<fir::CoordinateOp>(loc, refTy, value2, ivs);
+      auto load1 = builder.create<fir::LoadOp>(loc, addr1);
+      auto load2 = builder.create<fir::LoadOp>(loc, addr2);
+      auto combined =
+          genCombiner(builder, loc, op, seqTy.getEleTy(), load1, load2);
+      builder.create<fir::StoreOp>(loc, combined, addr1);
+      builder.setInsertionPointAfter(loops[0]);
+      return value1;
+    }
+  }
+
   if (op == mlir::acc::ReductionOperator::AccAdd) {
     if (ty.isIntOrIndex())
       return builder.create<mlir::arith::AddIOp>(loc, value1, value2);
@@ -594,11 +687,18 @@ static mlir::Value genCombiner(mlir::OpBuilder &builder, mlir::Location loc,
       return builder.create<mlir::arith::MulFOp>(loc, value1, value2);
     TODO(loc, "reduction mul type");
   }
+
+  if (op == mlir::acc::ReductionOperator::AccMin)
+    return fir::genMin(builder, loc, {value1, value2});
+
+  if (op == mlir::acc::ReductionOperator::AccMax)
+    return fir::genMax(builder, loc, {value1, value2});
+
   TODO(loc, "reduction operator");
 }
 
 mlir::acc::ReductionRecipeOp Fortran::lower::createOrGetReductionRecipe(
-    mlir::OpBuilder &builder, llvm::StringRef recipeName, mlir::Location loc,
+    fir::FirOpBuilder &builder, llvm::StringRef recipeName, mlir::Location loc,
     mlir::Type ty, mlir::acc::ReductionOperator op) {
   mlir::ModuleOp mod =
       builder.getBlock()->getParent()->getParentOfType<mlir::ModuleOp>();
@@ -646,10 +746,19 @@ genReductions(const Fortran::parser::AccObjectListWithReduction &objectList,
         converter, builder, semanticsContext, stmtCtx, accObject,
         operandLocation, asFortran, bounds);
 
-    if (!fir::isa_trivial(fir::unwrapRefType(baseAddr.getType())))
+    mlir::Type reductionTy = fir::unwrapRefType(baseAddr.getType());
+    if (auto seqTy = mlir::dyn_cast<fir::SequenceType>(reductionTy))
+      reductionTy = seqTy.getEleTy();
+
+    if (!fir::isa_trivial(reductionTy))
       TODO(operandLocation, "reduction with unsupported type");
 
-    mlir::Type ty = fir::unwrapRefType(baseAddr.getType());
+    auto op = createDataEntryOp<mlir::acc::ReductionOp>(
+        builder, operandLocation, baseAddr, asFortran, bounds,
+        /*structured=*/true, mlir::acc::DataClause::acc_reduction);
+    mlir::Type ty = fir::unwrapRefType(op.getAccPtr().getType());
+    if (!fir::isa_trivial(ty))
+      ty = baseAddr.getType();
     std::string recipeName = fir::getTypeAsString(
         ty, converter.getKindMap(),
         ("reduction_" + stringifyReductionOperator(mlirOp)).str());
@@ -658,7 +767,7 @@ genReductions(const Fortran::parser::AccObjectListWithReduction &objectList,
                                                    operandLocation, ty, mlirOp);
     reductionRecipes.push_back(mlir::SymbolRefAttr::get(
         builder.getContext(), recipe.getSymName().str()));
-    reductionOperands.push_back(baseAddr);
+    reductionOperands.push_back(op.getAccPtr());
   }
 }
 
@@ -799,6 +908,7 @@ createLoopOp(Fortran::lower::AbstractConverter &converter,
   mlir::Value workerNum;
   mlir::Value vectorNum;
   mlir::Value gangNum;
+  mlir::Value gangDim;
   mlir::Value gangStatic;
   llvm::SmallVector<mlir::Value, 2> tileOperands, privateOperands,
       reductionOperands;
@@ -810,25 +920,30 @@ createLoopOp(Fortran::lower::AbstractConverter &converter,
     if (const auto *gangClause =
             std::get_if<Fortran::parser::AccClause::Gang>(&clause.u)) {
       if (gangClause->v) {
-        const Fortran::parser::AccGangArgument &x = *gangClause->v;
-        if (const auto &gangNumValue =
-                std::get<std::optional<Fortran::parser::ScalarIntExpr>>(x.t)) {
-          gangNum = fir::getBase(converter.genExprValue(
-              *Fortran::semantics::GetExpr(gangNumValue.value()), stmtCtx));
-        }
-        if (const auto &gangStaticValue =
-                std::get<std::optional<Fortran::parser::AccSizeExpr>>(x.t)) {
-          const auto &expr =
-              std::get<std::optional<Fortran::parser::ScalarIntExpr>>(
-                  gangStaticValue.value().t);
-          if (expr) {
-            gangStatic = fir::getBase(converter.genExprValue(
-                *Fortran::semantics::GetExpr(*expr), stmtCtx));
-          } else {
-            // * was passed as value and will be represented as a special
-            // constant.
-            gangStatic = builder.createIntegerConstant(
-                clauseLocation, builder.getIndexType(), starCst);
+        const Fortran::parser::AccGangArgList &x = *gangClause->v;
+        for (const Fortran::parser::AccGangArg &gangArg : x.v) {
+          if (const auto *num =
+                  std::get_if<Fortran::parser::AccGangArg::Num>(&gangArg.u)) {
+            gangNum = fir::getBase(converter.genExprValue(
+                *Fortran::semantics::GetExpr(num->v), stmtCtx));
+          } else if (const auto *staticArg =
+                         std::get_if<Fortran::parser::AccGangArg::Static>(
+                             &gangArg.u)) {
+            const Fortran::parser::AccSizeExpr &sizeExpr = staticArg->v;
+            if (sizeExpr.v) {
+              gangStatic = fir::getBase(converter.genExprValue(
+                  *Fortran::semantics::GetExpr(*sizeExpr.v), stmtCtx));
+            } else {
+              // * was passed as value and will be represented as a special
+              // constant.
+              gangStatic = builder.createIntegerConstant(
+                  clauseLocation, builder.getIndexType(), starCst);
+            }
+          } else if (const auto *dim =
+                         std::get_if<Fortran::parser::AccGangArg::Dim>(
+                             &gangArg.u)) {
+            gangDim = fir::getBase(converter.genExprValue(
+                *Fortran::semantics::GetExpr(dim->v), stmtCtx));
           }
         }
       }
@@ -869,8 +984,9 @@ createLoopOp(Fortran::lower::AbstractConverter &converter,
     } else if (const auto *privateClause =
                    std::get_if<Fortran::parser::AccClause::Private>(
                        &clause.u)) {
-      genPrivatizations(privateClause->v, converter, semanticsContext, stmtCtx,
-                        privateOperands, privatizations);
+      genPrivatizations<mlir::acc::PrivateRecipeOp>(
+          privateClause->v, converter, semanticsContext, stmtCtx,
+          privateOperands, privatizations);
     } else if (const auto *reductionClause =
                    std::get_if<Fortran::parser::AccClause::Reduction>(
                        &clause.u)) {
@@ -883,6 +999,7 @@ createLoopOp(Fortran::lower::AbstractConverter &converter,
   llvm::SmallVector<mlir::Value> operands;
   llvm::SmallVector<int32_t> operandSegments;
   addOperand(operands, operandSegments, gangNum);
+  addOperand(operands, operandSegments, gangDim);
   addOperand(operands, operandSegments, gangStatic);
   addOperand(operands, operandSegments, workerNum);
   addOperand(operands, operandSegments, vectorNum);
@@ -910,9 +1027,16 @@ createLoopOp(Fortran::lower::AbstractConverter &converter,
 
   // Lower clauses mapped to attributes
   for (const Fortran::parser::AccClause &clause : accClauseList.v) {
+    mlir::Location clauseLocation = converter.genLocation(clause.source);
     if (const auto *collapseClause =
             std::get_if<Fortran::parser::AccClause::Collapse>(&clause.u)) {
-      const auto *expr = Fortran::semantics::GetExpr(collapseClause->v);
+      const Fortran::parser::AccCollapseArg &arg = collapseClause->v;
+      const auto &force = std::get<bool>(arg.t);
+      if (force)
+        TODO(clauseLocation, "OpenACC collapse force modifier");
+      const auto &intExpr =
+          std::get<Fortran::parser::ScalarIntConstantExpr>(arg.t);
+      const auto *expr = Fortran::semantics::GetExpr(intExpr);
       const std::optional<int64_t> collapseValue =
           Fortran::evaluate::ToInt64(*expr);
       if (collapseValue) {
@@ -997,7 +1121,8 @@ createComputeOp(Fortran::lower::AbstractConverter &converter,
 
   llvm::SmallVector<mlir::Value> reductionOperands, privateOperands,
       firstprivateOperands;
-  llvm::SmallVector<mlir::Attribute> privatizations;
+  llvm::SmallVector<mlir::Attribute> privatizations, firstPrivatizations,
+      reductionRecipes;
 
   // Async, wait and self clause have optional values but can be present with
   // no value as well. When there is no value, the op has an attribute to
@@ -1144,15 +1269,20 @@ createComputeOp(Fortran::lower::AbstractConverter &converter,
     } else if (const auto *privateClause =
                    std::get_if<Fortran::parser::AccClause::Private>(
                        &clause.u)) {
-      genPrivatizations(privateClause->v, converter, semanticsContext, stmtCtx,
-                        privateOperands, privatizations);
+      genPrivatizations<mlir::acc::PrivateRecipeOp>(
+          privateClause->v, converter, semanticsContext, stmtCtx,
+          privateOperands, privatizations);
     } else if (const auto *firstprivateClause =
                    std::get_if<Fortran::parser::AccClause::Firstprivate>(
                        &clause.u)) {
-      genObjectList(firstprivateClause->v, converter, semanticsContext, stmtCtx,
-                    firstprivateOperands);
-    } else if (std::get_if<Fortran::parser::AccClause::Reduction>(&clause.u)) {
-      TODO(clauseLocation, "compute construct reduction clause lowering");
+      genPrivatizations<mlir::acc::FirstprivateRecipeOp>(
+          firstprivateClause->v, converter, semanticsContext, stmtCtx,
+          firstprivateOperands, firstPrivatizations);
+    } else if (const auto *reductionClause =
+                   std::get_if<Fortran::parser::AccClause::Reduction>(
+                       &clause.u)) {
+      genReductions(reductionClause->v, converter, semanticsContext, stmtCtx,
+                    reductionOperands, reductionRecipes);
     }
   }
 
@@ -1194,6 +1324,12 @@ createComputeOp(Fortran::lower::AbstractConverter &converter,
     if (!privatizations.empty())
       computeOp.setPrivatizationsAttr(
           mlir::ArrayAttr::get(builder.getContext(), privatizations));
+    if (!reductionRecipes.empty())
+      computeOp.setReductionRecipesAttr(
+          mlir::ArrayAttr::get(builder.getContext(), reductionRecipes));
+    if (!firstPrivatizations.empty())
+      computeOp.setFirstprivatizationsAttr(
+          mlir::ArrayAttr::get(builder.getContext(), firstPrivatizations));
   }
 
   auto insPt = builder.saveInsertionPoint();

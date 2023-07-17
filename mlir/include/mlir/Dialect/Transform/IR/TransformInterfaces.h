@@ -13,15 +13,16 @@
 #include "mlir/Dialect/Transform/Utils/DiagnosedSilenceableFailure.h"
 #include "mlir/Dialect/Transform/Utils/RaggedArray.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Support/LogicalResult.h"
 
 namespace mlir {
-
 namespace transform {
 
 class TransformOpInterface;
 class TransformResults;
+class TransformRewriter;
 class TransformState;
 
 using Param = Attribute;
@@ -64,7 +65,18 @@ void forwardTerminatorOperands(Block *block, transform::TransformState &state,
 /// outside of test cases.
 TransformState makeTransformStateForTesting(Region *region,
                                             Operation *payloadRoot);
+
+/// Returns all operands that are handles and being consumed by the given op.
+SmallVector<OpOperand *>
+getConsumedHandleOpOperands(transform::TransformOpInterface transformOp);
 } // namespace detail
+} // namespace transform
+} // namespace mlir
+
+#include "mlir/Dialect/Transform/IR/TransformInterfaces.h.inc"
+
+namespace mlir {
+namespace transform {
 
 /// Options controlling the application of transform operations by the
 /// TransformState.
@@ -175,6 +187,8 @@ private:
   detail::makeTransformStateForTesting(Region *region, Operation *payloadRoot);
 
 public:
+  const TransformOptions &getOptions() const { return options; }
+
   /// Returns the op at which the transformation state is rooted. This is
   /// typically helpful for transformations that apply globally.
   Operation *getTopLevel() const;
@@ -265,14 +279,7 @@ public:
     /// Forgets the mapping from or to values defined in the associated
     /// transform IR region, and restores the mapping that existed before
     /// entering this scope.
-    ~RegionScope() {
-      state.mappings.erase(region);
-      if (storedMappings.has_value())
-        state.mappings.swap(*storedMappings);
-#if LLVM_ENABLE_ABI_BREAKING_CHECKS
-      state.regionStack.pop_back();
-#endif // LLVM_ENABLE_ABI_BREAKING_CHECKS
-    }
+    ~RegionScope();
 
   private:
     /// Tag structure for differentiating the constructor for isolated regions.
@@ -835,6 +842,149 @@ TransformState::make_isolated_region_scope(Region &region) {
   return RegionScope(*this, region, RegionScope::Isolated());
 }
 
+/// A listener that updates a TransformState based on IR modifications. This
+/// listener can be used during a greedy pattern rewrite to keep the transform
+/// state up-to-date.
+class TrackingListener : public RewriterBase::Listener,
+                         public TransformState::Extension {
+public:
+  /// Create a new TrackingListener for usage in the specified transform op.
+  TrackingListener(TransformState &state, TransformOpInterface op);
+
+protected:
+  /// Return a replacement payload op for the given op, which is going to be
+  /// replaced with the given values. By default, if all values are defined by
+  /// the same op, which also has the same type as the given op, that defining
+  /// op is used as a replacement.
+  ///
+  /// A "failure" return value indicates that no replacement operation could be
+  /// found. A "nullptr" return value indicates that no replacement op is needed
+  /// (e.g., handle is dead or was consumed) and that the payload op should
+  /// be dropped from the mapping.
+  ///
+  /// Example: A tracked "linalg.generic" with two results is replaced with two
+  /// values defined by (another) "linalg.generic". It is reasonable to assume
+  /// that the replacement "linalg.generic" represents the same "computation".
+  /// Therefore, the payload op mapping is updated to the defining op of the
+  /// replacement values.
+  ///
+  /// Counter Example: A "linalg.generic" is replaced with values defined by an
+  /// "scf.for". Without further investigation, the relationship between the
+  /// "linalg.generic" and the "scf.for" is unclear. They may not represent the
+  /// same computation; e.g., there may be tiled "linalg.generic" inside the
+  /// loop body that represents the original computation. Therefore, the
+  /// TrackingListener is conservative by default: it drops the mapping and
+  /// triggers the "payload replacement not found" notification.
+  ///
+  /// If no replacement op could be found according to the rules mentioned
+  /// above, this function tries to skip over cast-like ops that implement
+  /// `CastOpInterface`.
+  ///
+  /// Example: A tracked "linalg.generic" is replaced with "linalg.generic",
+  /// wrapped in a "tensor.cast". A cast is a metadata-only operation and it is
+  /// reasonable to assume that the wrapped "linalg.generic" represents the same
+  /// computation as the original "linalg.generic". The mapping is updated
+  /// accordingly.
+  ///
+  /// Certain ops (typically also metadata-only ops) are not considered casts,
+  /// but should be skipped nonetheless. Such ops should implement
+  /// `FindPayloadReplacementOpInterface` to specify with which operands the
+  /// lookup should continue.
+  ///
+  /// Example: A tracked "linalg.generic" is replaced with "linalg.generic",
+  /// wrapped in a "tensor.reshape". A reshape is a metadata-only operation but
+  /// not cast. (Implementing `CastOpInterface` would be incorrect and cause
+  /// invalid foldings.) However, due to its `FindPayloadReplacementOpInterface`
+  /// implementation, the replacement op lookup continues with the wrapped
+  /// "linalg.generic" and the mapping is updated accordingly.
+  ///
+  /// Derived classes may override `findReplacementOp` to specify custom
+  /// replacement rules.
+  virtual FailureOr<Operation *> findReplacementOp(Operation *op,
+                                                   ValueRange newValues) const;
+
+  /// Notify the listener that the pattern failed to match the given operation,
+  /// and provide a callback to populate a diagnostic with the reason why the
+  /// failure occurred.
+  LogicalResult
+  notifyMatchFailure(Location loc,
+                     function_ref<void(Diagnostic &)> reasonCallback) override;
+
+  /// This function is called when a tracked payload op is dropped because no
+  /// replacement op was found. Derived classes can implement this function for
+  /// custom error handling.
+  virtual void notifyPayloadReplacementNotFound(Operation *op,
+                                                ValueRange values) {}
+
+  /// Return the single op that defines all given values (if any).
+  static Operation *getCommonDefiningOp(ValueRange values);
+
+  /// Return the transform op in which this TrackingListener is used.
+  TransformOpInterface getTransformOp() const { return transformOp; }
+
+private:
+  void notifyOperationRemoved(Operation *op) override;
+
+  void notifyOperationReplaced(Operation *op, ValueRange newValues) override;
+
+  /// The transform op in which this TrackingListener is used.
+  TransformOpInterface transformOp;
+
+  /// The handles that are consumed by the transform op.
+  DenseSet<Value> consumedHandles;
+};
+
+/// A specialized listener that keeps track of cases in which no replacement
+/// payload could be found. The error state of this listener must be checked
+/// before the end of its lifetime.
+class ErrorCheckingTrackingListener : public TrackingListener {
+public:
+  using transform::TrackingListener::TrackingListener;
+
+  ~ErrorCheckingTrackingListener() override;
+
+  /// Check and return the current error state of this listener. Afterwards,
+  /// resets the error state to "success".
+  DiagnosedSilenceableFailure checkAndResetError();
+
+  /// Return "true" if this tracking listener had a failure.
+  bool failed() const;
+
+protected:
+  void notifyPayloadReplacementNotFound(Operation *op,
+                                        ValueRange values) override;
+
+private:
+  /// The error state of this listener. "Success" indicates that no error
+  /// happened so far.
+  DiagnosedSilenceableFailure status = DiagnosedSilenceableFailure::success();
+
+  /// The number of errors that have been encountered.
+  int64_t errorCounter = 0;
+};
+
+/// This is a special rewriter to be used in transform op implementations,
+/// providing additional helper functions to update the transform state, etc.
+// TODO: Helper functions will be added in a subsequent change.
+class TransformRewriter : public RewriterBase {
+protected:
+  friend class TransformState;
+
+  /// Create a new TransformRewriter.
+  explicit TransformRewriter(MLIRContext *ctx,
+                             ErrorCheckingTrackingListener *listener);
+
+public:
+  /// Return "true" if the tracking listener had failures.
+  bool hasTrackingFailures() const;
+
+  /// Silence all tracking failures that have been encountered so far.
+  void silenceTrackingFailure();
+
+private:
+  ErrorCheckingTrackingListener *const listener;
+};
+
 /// This trait is supposed to be attached to Transform dialect operations that
 /// can be standalone top-level transforms. Such operations typically contain
 /// other Transform dialect operations that can be executed following some
@@ -931,34 +1081,11 @@ public:
   ///   5. If any `applyToOne` return silenceableFailure, the transformation is
   ///      considered silenceable.
   ///   6. Otherwise the transformation is considered successful.
-  DiagnosedSilenceableFailure apply(TransformResults &transformResults,
+  DiagnosedSilenceableFailure apply(transform::TransformRewriter &rewriter,
+                                    TransformResults &transformResults,
                                     TransformState &state);
 
   /// Checks that the op matches the expectations of this trait.
-  static LogicalResult verifyTrait(Operation *op);
-};
-
-/// Trait implementing the applyToOne function required by TransformEachOpTrait
-/// by greedily applying a set of patterns to each target payload operation.
-/// This requires the transform operation to implement TransformEachOpTrait and
-/// to provide the following method:
-///   - void populatePatterns(RewritePatternSet &)
-/// that populates the given object with the patterns to apply. This is an
-/// instance method that can depend on the transform operation attributes.
-///
-/// The payload operation is expected to have the IsolatedFromAboveTrait, which
-/// is a requirement of the pattern rewriter. If it does not, or if pattern
-/// application fails, the transform fails definitively as the rewriter will
-/// have likely left the payload IR in some intermediate state that precludes
-/// further transformation.
-template <typename OpTy>
-class TransformWithPatternsOpTrait
-    : public OpTrait::TraitBase<OpTy, TransformWithPatternsOpTrait> {
-public:
-  DiagnosedSilenceableFailure applyToOne(Operation *target,
-                                         ApplyToEachResultList &results,
-                                         TransformState &state);
-
   static LogicalResult verifyTrait(Operation *op);
 };
 
@@ -1104,13 +1231,14 @@ public:
   }
 };
 
-} // namespace transform
-} // namespace mlir
-
-#include "mlir/Dialect/Transform/IR/TransformInterfaces.h.inc"
-
-namespace mlir {
-namespace transform {
+/// `TrackingListener` failures are reported only for ops that have this trait.
+/// The purpose of this trait is to give users more time to update their custom
+/// transform ops to use the provided `TransformRewriter` for all IR
+/// modifications. This trait will eventually be removed, and failures will be
+/// reported for all transform ops.
+template <typename OpTy>
+class ReportTrackingListenerFailuresOpTrait
+    : public OpTrait::TraitBase<OpTy, ReportTrackingListenerFailuresOpTrait> {};
 
 /// A single result of applying a transform op with `ApplyEachOpTrait` to a
 /// single payload operation.
@@ -1206,14 +1334,14 @@ void setApplyToOneResults(Operation *transformOp,
 ///   `targets` contains operations of the same class and a silenceable failure
 ///   is reported if it does not.
 template <typename TransformOpTy, typename Range>
-DiagnosedSilenceableFailure
-applyTransformToEach(TransformOpTy transformOp, Range &&targets,
-                     SmallVectorImpl<ApplyToEachResultList> &results,
-                     TransformState &state) {
+DiagnosedSilenceableFailure applyTransformToEach(
+    TransformOpTy transformOp, TransformRewriter &rewriter, Range &&targets,
+    SmallVectorImpl<ApplyToEachResultList> &results, TransformState &state) {
   using OpTy = typename llvm::function_traits<
-      decltype(&TransformOpTy::applyToOne)>::template arg_t<0>;
+      decltype(&TransformOpTy::applyToOne)>::template arg_t<1>;
   static_assert(std::is_convertible<OpTy, Operation *>::value,
                 "expected transform function to take an operation");
+  OpBuilder::InsertionGuard g(rewriter);
 
   SmallVector<Diagnostic> silenceableStack;
   unsigned expectedNumResults = transformOp->getNumResults();
@@ -1230,8 +1358,9 @@ applyTransformToEach(TransformOpTy transformOp, Range &&targets,
     ApplyToEachResultList partialResults;
     partialResults.reserve(expectedNumResults);
     Location specificOpLoc = specificOp->getLoc();
+    rewriter.setInsertionPoint(specificOp);
     DiagnosedSilenceableFailure res =
-        transformOp.applyToOne(specificOp, partialResults, state);
+        transformOp.applyToOne(rewriter, specificOp, partialResults, state);
     if (res.isDefiniteFailure())
       return DiagnosedSilenceableFailure::definiteFailure();
 
@@ -1253,13 +1382,11 @@ applyTransformToEach(TransformOpTy transformOp, Range &&targets,
   return DiagnosedSilenceableFailure::success();
 }
 
-/// Applies patterns configured by `populatePatterns` greedily to the contents
-/// of `target`. Reports (definite) errors at the location of `transformOp`.
-/// Sets up `results` to point to `target` after pattern application on success.
-DiagnosedSilenceableFailure transformWithPatternsApply(
-    Operation *transformOp, Operation *target, ApplyToEachResultList &results,
-    TransformState &state,
-    function_ref<void(RewritePatternSet &)> populatePatterns);
+/// Reports an error and returns failure if `targets` contains an ancestor
+/// operation before its descendant (or a copy of itself). Implementation detail
+/// for expensive checks during `TransformEachOpTrait::apply`.
+LogicalResult checkNestedConsumption(Location loc,
+                                     ArrayRef<Operation *> targets);
 
 } // namespace detail
 } // namespace transform
@@ -1268,8 +1395,20 @@ DiagnosedSilenceableFailure transformWithPatternsApply(
 template <typename OpTy>
 mlir::DiagnosedSilenceableFailure
 mlir::transform::TransformEachOpTrait<OpTy>::apply(
-    TransformResults &transformResults, TransformState &state) {
-  auto targets = state.getPayloadOps(this->getOperation()->getOperand(0));
+    TransformRewriter &rewriter, TransformResults &transformResults,
+    TransformState &state) {
+  Value handle = this->getOperation()->getOperand(0);
+  auto targets = state.getPayloadOps(handle);
+
+  // If the operand is consumed, check if it is associated with operations that
+  // may be erased before their nested operations are.
+  if (state.getOptions().getExpensiveChecksEnabled() &&
+      isHandleConsumed(handle, cast<transform::TransformOpInterface>(
+                                   this->getOperation())) &&
+      failed(detail::checkNestedConsumption(this->getOperation()->getLoc(),
+                                            llvm::to_vector(targets)))) {
+    return DiagnosedSilenceableFailure::definiteFailure();
+  }
 
   // Step 1. Handle the corner case where no target is specified.
   // This is typically the case when the matcher fails to apply and we need to
@@ -1293,7 +1432,7 @@ mlir::transform::TransformEachOpTrait<OpTy>::apply(
   // corresponding results entry.
   SmallVector<ApplyToEachResultList, 1> results;
   DiagnosedSilenceableFailure result = detail::applyTransformToEach(
-      cast<OpTy>(this->getOperation()), targets, results, state);
+      cast<OpTy>(this->getOperation()), rewriter, targets, results, state);
 
   // Step 3. Propagate the definite failure if any and bail out.
   if (result.isDefiniteFailure())
@@ -1319,28 +1458,6 @@ mlir::transform::TransformEachOpTrait<OpTy>::verifyTrait(Operation *op) {
                               "ops that implement TransformOpInterface";
   }
 
-  return success();
-}
-
-template <typename OpTy>
-mlir::DiagnosedSilenceableFailure
-mlir::transform::TransformWithPatternsOpTrait<OpTy>::applyToOne(
-    Operation *target, ApplyToEachResultList &results, TransformState &state) {
-  return detail::transformWithPatternsApply(
-      this->getOperation(), target, results, state,
-      [this](RewritePatternSet &patterns) {
-        cast<OpTy>(this->getOperation()).populatePatterns(patterns);
-      });
-}
-
-template <typename OpTy>
-mlir::LogicalResult
-mlir::transform::TransformWithPatternsOpTrait<OpTy>::verifyTrait(
-    Operation *op) {
-  if (!op->hasTrait<mlir::transform::TransformEachOpTrait>()) {
-    return op->emitOpError()
-           << "TransformWithPatternsOpTrait requires TransformEachOpTrait";
-  }
   return success();
 }
 

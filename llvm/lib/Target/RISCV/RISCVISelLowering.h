@@ -129,6 +129,10 @@ enum NodeType : unsigned {
   ZIP,
   UNZIP,
   // Vector Extension
+  // VMV_V_V_VL matches the semantics of vmv.v.v but includes an extra operand
+  // for the VL value to be used for the operation. The first operand is
+  // passthru operand.
+  VMV_V_V_VL,
   // VMV_V_X_VL matches the semantics of vmv.v.x but includes an extra operand
   // for the VL value to be used for the operation. The first operand is
   // passthru operand.
@@ -285,6 +289,16 @@ enum NodeType : unsigned {
   VWSUBU_W_VL,
 
   VFWMUL_VL,
+  VFWADD_VL,
+  VFWSUB_VL,
+  VFWADD_W_VL,
+  VFWSUB_W_VL,
+
+  // Widening ternary operations with a mask as the fourth operand and VL as the
+  // fifth operand.
+  VWMACC_VL,
+  VWMACCU_VL,
+  VWMACCSU_VL,
 
   // Narrowing logical shift right.
   // Operands are (source, shift, passthru, mask, vl)
@@ -670,7 +684,7 @@ public:
       std::optional<CallingConv::ID> CC) const override;
 
   // Return the value of VLMax for the given vector type (i.e. SEW and LMUL)
-  SDValue computeVLMax(MVT VecVT, SDLoc DL, SelectionDAG &DAG) const;
+  SDValue computeVLMax(MVT VecVT, const SDLoc &DL, SelectionDAG &DAG) const;
 
   static RISCVII::VLMUL getLMUL(MVT VT);
   inline static unsigned computeVLMAX(unsigned VectorBits, unsigned EltSize,
@@ -744,6 +758,12 @@ public:
 
   bool lowerInterleavedStore(StoreInst *SI, ShuffleVectorInst *SVI,
                              unsigned Factor) const override;
+
+  bool supportKCFIBundles() const override { return true; }
+
+  MachineInstr *EmitKCFICheck(MachineBasicBlock &MBB,
+                              MachineBasicBlock::instr_iterator &MBBI,
+                              const TargetInstrInfo *TII) const override;
 
   /// RISCVCCAssignFn - This target-specific function extends the default
   /// CCValAssign with additional information used to lower RISC-V calling
@@ -865,6 +885,9 @@ private:
   bool useRVVForFixedLengthVectorVT(MVT VT) const;
 
   MVT getVPExplicitVectorLengthTy() const override;
+
+  bool shouldExpandGetVectorLength(EVT TripCountVT, unsigned VF,
+                                   bool IsScalable) const override;
 
   /// RVV code generation for fixed length vectors does not lower all
   /// BUILD_VECTORs. This makes BUILD_VECTOR legalisation a source of stores to

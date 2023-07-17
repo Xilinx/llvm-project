@@ -86,6 +86,7 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicsAArch64.h"
+#include "llvm/IR/IntrinsicsAMDGPU.h"
 #include "llvm/IR/IntrinsicsARM.h"
 #include "llvm/IR/IntrinsicsWebAssembly.h"
 #include "llvm/IR/LLVMContext.h"
@@ -1383,9 +1384,11 @@ void Verifier::visitDISubprogram(const DISubprogram &N) {
     auto *Node = dyn_cast<MDTuple>(RawNode);
     CheckDI(Node, "invalid retained nodes list", &N, RawNode);
     for (Metadata *Op : Node->operands()) {
-      CheckDI(Op && (isa<DILocalVariable>(Op) || isa<DILabel>(Op)),
-              "invalid retained nodes, expected DILocalVariable or DILabel", &N,
-              Node, Op);
+      CheckDI(Op && (isa<DILocalVariable>(Op) || isa<DILabel>(Op) ||
+                     isa<DIImportedEntity>(Op)),
+              "invalid retained nodes, expected DILocalVariable, DILabel or "
+              "DIImportedEntity",
+              &N, Node, Op);
     }
   }
   CheckDI(!hasConflictingReferenceFlags(N.getFlags()),
@@ -2579,6 +2582,8 @@ void Verifier::visitFunction(const Function &F) {
   }
   case CallingConv::AMDGPU_KERNEL:
   case CallingConv::SPIR_KERNEL:
+  case CallingConv::AMDGPU_CS_Chain:
+  case CallingConv::AMDGPU_CS_ChainPreserve:
     Check(F.getReturnType()->isVoidTy(),
           "Calling convention requires void return type", &F);
     [[fallthrough]];
@@ -3284,6 +3289,15 @@ void Verifier::visitCallBase(CallBase &Call) {
   if (IsIntrinsic)
     Check(Callee->getValueType() == FTy,
           "Intrinsic called with incompatible signature", Call);
+
+  // Disallow calls to functions with the amdgpu_cs_chain[_preserve] calling
+  // convention.
+  auto CC = Call.getCallingConv();
+  Check(CC != CallingConv::AMDGPU_CS_Chain &&
+            CC != CallingConv::AMDGPU_CS_ChainPreserve,
+        "Direct calls to amdgpu_cs_chain/amdgpu_cs_chain_preserve functions "
+        "not allowed. Please use the @llvm.amdgpu.cs.chain intrinsic instead.",
+        Call);
 
   auto VerifyTypeAlign = [&](Type *Ty, const Twine &Message) {
     if (!Ty->isSized())
@@ -5897,6 +5911,22 @@ void Verifier::visitIntrinsicCall(Intrinsic::ID ID, CallBase &Call) {
           &Call);
     break;
   }
+  case Intrinsic::amdgcn_cs_chain: {
+    auto CallerCC = Call.getCaller()->getCallingConv();
+    switch (CallerCC) {
+    case CallingConv::AMDGPU_CS:
+    case CallingConv::AMDGPU_CS_Chain:
+    case CallingConv::AMDGPU_CS_ChainPreserve:
+      break;
+    default:
+      CheckFailed("Intrinsic can only be used from functions with the "
+                  "amdgpu_cs, amdgpu_cs_chain or amdgpu_cs_chain_preserve "
+                  "calling conventions",
+                  &Call);
+      break;
+    }
+    break;
+  }
   };
 
   // Verify that there aren't any unmediated control transfers between funclets.
@@ -6824,6 +6854,9 @@ static bool isNewFormatTBAATypeNode(llvm::MDNode *Type) {
 }
 
 bool TBAAVerifier::visitTBAAMetadata(Instruction &I, const MDNode *MD) {
+  CheckTBAA(MD->getNumOperands() > 0, "TBAA metadata cannot have 0 operands",
+            &I, MD);
+
   CheckTBAA(isa<LoadInst>(I) || isa<StoreInst>(I) || isa<CallInst>(I) ||
                 isa<VAArgInst>(I) || isa<AtomicRMWInst>(I) ||
                 isa<AtomicCmpXchgInst>(I),

@@ -931,7 +931,7 @@ def LLVM_SwitchOp : LLVM_TerminatorOp<"switch",
     AnyInteger:$value,
     Variadic<AnyType>:$defaultOperands,
     VariadicOfVariadic<AnyType, "case_operand_segments">:$caseOperands,
-    OptionalAttr<ElementsAttr>:$case_values,
+    OptionalAttr<AnyIntElementsAttr>:$case_values,
     DenseI32ArrayAttr:$case_operand_segments,
     OptionalAttr<ElementsAttr>:$branch_weights
   );
@@ -953,7 +953,21 @@ def LLVM_SwitchOp : LLVM_TerminatorOp<"switch",
     OpBuilder<(ins "Value":$value,
       "Block *":$defaultDestination,
       "ValueRange":$defaultOperands,
+      CArg<"ArrayRef<APInt>", "{}">:$caseValues,
+      CArg<"BlockRange", "{}">:$caseDestinations,
+      CArg<"ArrayRef<ValueRange>", "{}">:$caseOperands,
+      CArg<"ArrayRef<int32_t>", "{}">:$branchWeights)>,
+    OpBuilder<(ins "Value":$value,
+      "Block *":$defaultDestination,
+      "ValueRange":$defaultOperands,
       CArg<"ArrayRef<int32_t>", "{}">:$caseValues,
+      CArg<"BlockRange", "{}">:$caseDestinations,
+      CArg<"ArrayRef<ValueRange>", "{}">:$caseOperands,
+      CArg<"ArrayRef<int32_t>", "{}">:$branchWeights)>,
+    OpBuilder<(ins "Value":$value,
+      "Block *":$defaultDestination,
+      "ValueRange":$defaultOperands,
+      CArg<"DenseIntElementsAttr", "{}">:$caseValues,
       CArg<"BlockRange", "{}">:$caseDestinations,
       CArg<"ArrayRef<ValueRange>", "{}">:$caseOperands,
       CArg<"ArrayRef<int32_t>", "{}">:$branchWeights)>,
@@ -1321,6 +1335,7 @@ def LLVM_GlobalOp : LLVM_Op<"mlir.global",
     DefaultValuedAttr<ConfinedAttr<I32Attr, [IntNonNegative]>, "0">:$addr_space,
     OptionalAttr<UnnamedAddr>:$unnamed_addr,
     OptionalAttr<StrAttr>:$section,
+    OptionalAttr<SymbolRefAttr>:$comdat,
     DefaultValuedAttr<Visibility, "mlir::LLVM::Visibility::Default">:$visibility_
   );
   let summary = "LLVM dialect global.";
@@ -1429,6 +1444,7 @@ def LLVM_GlobalOp : LLVM_Op<"mlir.global",
       CArg<"unsigned", "0">:$addrSpace,
       CArg<"bool", "false">:$dsoLocal,
       CArg<"bool", "false">:$thread_local_,
+      CArg<"SymbolRefAttr", "{}">:$comdat,
       CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>
   ];
 
@@ -1518,6 +1534,55 @@ def LLVM_GlobalDtorsOp : LLVM_Op<"mlir.global_dtors", [
   }];
   let assemblyFormat = "attr-dict";
   let hasVerifier = 1;
+}
+
+def LLVM_ComdatSelectorOp : LLVM_Op<"comdat_selector", [Symbol]> {
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    Comdat:$comdat
+  );
+
+  let summary = "LLVM dialect comdat selector declaration";
+
+  let description = [{
+    Provides access to object file COMDAT section/group functionality.
+
+    Examples:
+    ```mlir
+    llvm.comdat @__llvm_comdat {
+      llvm.comdat_selector @any any
+    }
+    llvm.mlir.global internal constant @has_any_comdat(1 : i64) comdat(@__llvm_comdat::@any) : i64
+    ```
+  }];
+  let assemblyFormat = "$sym_name $comdat attr-dict";
+}
+
+def LLVM_ComdatOp : LLVM_Op<"comdat", [NoTerminator, NoRegionArguments, SymbolTable, Symbol]> {
+  let arguments = (ins
+    SymbolNameAttr:$sym_name
+  );
+  let summary = "LLVM dialect comdat region";
+
+  let description = [{
+    Provides access to object file COMDAT section/group functionality.
+
+    Examples:
+    ```mlir
+    llvm.comdat @__llvm_comdat {
+      llvm.comdat_selector @any any
+    }
+    llvm.mlir.global internal constant @has_any_comdat(1 : i64) comdat(@__llvm_comdat::@any) : i64
+    ```
+  }];
+  let regions = (region SizedRegion<1>:$body);
+
+
+  let skipDefaultBuilders = 1;
+  let builders = [OpBuilder<(ins "StringRef":$symName)>];
+
+  let assemblyFormat = "$sym_name $body attr-dict";
+  let hasRegionVerifier = 1;
 }
 
 def LLVM_LLVMFuncOp : LLVM_Op<"func", [
@@ -1767,7 +1832,7 @@ def LLVM_ConstantOp
 // Atomic operations.
 //
 
-def LLVM_AtomicRMWType : AnyTypeOf<[LLVM_AnyFloat, AnyInteger]>;
+def LLVM_AtomicRMWType : AnyTypeOf<[LLVM_AnyFloat, LLVM_AnyPointer, AnyInteger]>;
 
 def LLVM_AtomicRMWOp : LLVM_MemAccessOpBase<"atomicrmw", [
       TypesMatchWith<"result #0 and operand #1 have the same type",

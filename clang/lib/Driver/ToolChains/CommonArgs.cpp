@@ -935,12 +935,6 @@ void tools::addFortranRuntimeLibs(const ToolChain &TC,
 void tools::addFortranRuntimeLibraryPath(const ToolChain &TC,
                                          const llvm::opt::ArgList &Args,
                                          ArgStringList &CmdArgs) {
-  // NOTE: Generating executables by Flang is considered an "experimental"
-  // feature and hence this is guarded with a command line option.
-  // TODO: Make this work unconditionally once Flang is mature enough.
-  if (!Args.hasArg(options::OPT_flang_experimental_exec))
-    return;
-
   // Default to the <driver-path>/../lib directory. This works fine on the
   // platforms that we have tested so far. We will probably have to re-fine
   // this in the future. In particular, on some platforms, we may need to use
@@ -1236,11 +1230,11 @@ bool tools::addXRayRuntime(const ToolChain&TC, const ArgList &Args, ArgStringLis
     return false;
 
   if (TC.getXRayArgs().needsXRayRt()) {
-    CmdArgs.push_back("-whole-archive");
+    CmdArgs.push_back("--whole-archive");
     CmdArgs.push_back(TC.getCompilerRTArgString(Args, "xray"));
     for (const auto &Mode : TC.getXRayArgs().modeList())
       CmdArgs.push_back(TC.getCompilerRTArgString(Args, Mode));
-    CmdArgs.push_back("-no-whole-archive");
+    CmdArgs.push_back("--no-whole-archive");
     return true;
   }
 
@@ -1284,7 +1278,7 @@ const char *tools::SplitDebugName(const JobAction &JA, const ArgList &Args,
   if (const Arg *A = Args.getLastArg(options::OPT_dumpdir)) {
     T = A->getValue();
   } else {
-    Arg *FinalOutput = Args.getLastArg(options::OPT_o);
+    Arg *FinalOutput = Args.getLastArg(options::OPT_o, options::OPT__SLASH_o);
     if (FinalOutput && Args.hasArg(options::OPT_c)) {
       T = FinalOutput->getValue();
       llvm::sys::path::remove_filename(T);
@@ -1905,9 +1899,14 @@ SmallString<128> tools::getStatsFileName(const llvm::opt::ArgList &Args,
   return StatsFile;
 }
 
-void tools::addMultilibFlag(bool Enabled, const char *const Flag,
+void tools::addMultilibFlag(bool Enabled, const StringRef Flag,
                             Multilib::flags_list &Flags) {
-  Flags.push_back(std::string(Enabled ? "+" : "-") + Flag);
+  assert(Flag.front() == '-');
+  if (Enabled) {
+    Flags.push_back(Flag.str());
+  } else {
+    Flags.push_back(("!" + Flag.substr(1)).str());
+  }
 }
 
 void tools::addX86AlignBranchArgs(const Driver &D, const ArgList &Args,

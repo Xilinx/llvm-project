@@ -88,7 +88,8 @@ namespace {
             CGF.Int8Ty, VoidPtrAddr, OffsetInChars.getQuantity());
         llvm::Type *IntTy = CGF.Builder.getIntNTy(AtomicSizeInBits);
         auto Addr = CGF.Builder.CreatePointerBitCastOrAddrSpaceCast(
-            VoidPtrAddr, IntTy->getPointerTo(), "atomic_bitfield_base");
+            VoidPtrAddr, llvm::PointerType::getUnqual(CGF.getLLVMContext()),
+            "atomic_bitfield_base");
         BFI = OrigBFI;
         BFI.Offset = Offset;
         BFI.StorageSize = AtomicSizeInBits;
@@ -796,8 +797,7 @@ AddDirectArgument(CodeGenFunction &CGF, CallArgList &Args,
     ValTy =
         CGF.getContext().getIntTypeForBitwidth(SizeInBits, /*Signed=*/false);
     llvm::Type *ITy = llvm::IntegerType::get(CGF.getLLVMContext(), SizeInBits);
-    Address Ptr = Address(CGF.Builder.CreateBitCast(Val, ITy->getPointerTo()),
-                          ITy, Align);
+    Address Ptr = Address(Val, ITy, Align);
     Val = CGF.EmitLoadOfScalar(Ptr, false,
                                CGF.getContext().getPointerType(ValTy),
                                Loc);
@@ -1097,8 +1097,7 @@ RValue CodeGenFunction::EmitAtomicExpr(AtomicExpr *E) {
       if (AS == LangAS::opencl_generic)
         return V;
       auto DestAS = getContext().getTargetAddressSpace(LangAS::opencl_generic);
-      auto T = llvm::cast<llvm::PointerType>(V->getType());
-      auto *DestType = llvm::PointerType::getWithSamePointeeType(T, DestAS);
+      auto *DestType = llvm::PointerType::get(getLLVMContext(), DestAS);
 
       return getTargetHooks().performAddrSpaceCast(
           *this, V, AS, LangAS::opencl_generic, DestType, false);

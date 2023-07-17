@@ -2882,7 +2882,7 @@ bool SIInstrInfo::canInsertSelect(const MachineBasicBlock &MBB,
     if (MRI.getRegClass(FalseReg) != RC)
       return false;
 
-    int NumInsts = AMDGPU::getRegBitWidth(RC->getID()) / 32;
+    int NumInsts = AMDGPU::getRegBitWidth(*RC) / 32;
     CondCycles = TrueCycles = FalseCycles = NumInsts; // ???
 
     // Limit to equal cost for branch vs. N v_cndmask_b32s.
@@ -2897,7 +2897,7 @@ bool SIInstrInfo::canInsertSelect(const MachineBasicBlock &MBB,
     if (MRI.getRegClass(FalseReg) != RC)
       return false;
 
-    int NumInsts = AMDGPU::getRegBitWidth(RC->getID()) / 32;
+    int NumInsts = AMDGPU::getRegBitWidth(*RC) / 32;
 
     // Multiples of 8 can do s_cselect_b64
     if (NumInsts % 2 == 0)
@@ -5793,11 +5793,8 @@ loadMBUFScalarOperandsFromVGPR(const SIInstrInfo &TII, MachineInstr &MI,
   MachineBasicBlock::iterator AfterMI = MI;
   ++AfterMI;
   for (auto I = Begin; I != AfterMI; I++) {
-    for (auto &MO : I->uses()) {
-      if (MO.isReg() && MO.isUse()) {
-        MRI.clearKillFlags(MO.getReg());
-      }
-    }
+    for (auto &MO : I->all_uses())
+      MRI.clearKillFlags(MO.getReg());
   }
 
   // To insert the loop we need to split the block. Move everything after this
