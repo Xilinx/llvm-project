@@ -1013,6 +1013,68 @@ struct TosaFoldConstantGreater : public TosaFoldConstantBinary<TosaFoldConstantG
   }
 };
 
+struct TosaFoldConstantBitwiseNot
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantBitwiseNot,
+                                              BitwiseNotOp> {
+  using TosaFoldConstantUnaryElementwise<
+      TosaFoldConstantBitwiseNot,
+      BitwiseNotOp>::TosaFoldConstantUnaryElementwise;
+
+  DenseElementsAttr computeInteger(DenseElementsAttr values,
+                                   PatternRewriter &rewriter, TosaOp op) const {
+    return applyElementWise<APInt, APInt, IntegerType>(
+        values,
+        [](const APInt &val, IntegerType) {
+          return APInt(val.getBitWidth(), ~val.getZExtValue());
+        },
+        cast<IntegerType>(values.getElementType()));
+  }
+};
+
+struct TosaFoldConstantCeil
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantCeil, CeilOp> {
+  using TosaFoldConstantUnaryElementwise<
+      TosaFoldConstantCeil, CeilOp>::TosaFoldConstantUnaryElementwise;
+
+  DenseElementsAttr computeFloat(DenseElementsAttr values,
+                                 PatternRewriter &rewriter, TosaOp op) const {
+    return applyElementWise<APFloat, APFloat, FloatType>(
+        values,
+        [](const APFloat &val, FloatType) {
+          // Compute ceil (APFloat unfortunately does not provide this function,
+          // such that we need to unpack here)
+          auto res = APFloat(std::ceil(val.convertToFloat()));
+          bool lostPrecision;
+          res.convert(val.getSemantics(), APFloat::rmNearestTiesToEven,
+                      &lostPrecision);
+          return res;
+        },
+        cast<FloatType>(values.getElementType()));
+  }
+};
+
+struct TosaFoldConstantErf
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantErf, ErfOp> {
+  using TosaFoldConstantUnaryElementwise<
+      TosaFoldConstantErf, ErfOp>::TosaFoldConstantUnaryElementwise;
+
+  DenseElementsAttr computeFloat(DenseElementsAttr values,
+                                 PatternRewriter &rewriter, TosaOp op) const {
+    return applyElementWise<APFloat, APFloat, FloatType>(
+        values,
+        [](const APFloat &val, FloatType) {
+          // Compute ceil (APFloat unfortunately does not provide this function,
+          // such that we need to unpack here)
+          auto res = APFloat(std::erf(val.convertToFloat()));
+          bool lostPrecision;
+          res.convert(val.getSemantics(), APFloat::rmNearestTiesToEven,
+                      &lostPrecision);
+          return res;
+        },
+        cast<FloatType>(values.getElementType()));
+  }
+};
+
 } // namespace
 
 void mlir::tosa::populateTosaFoldConstantPatterns(
@@ -1033,4 +1095,7 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
   }
   patterns.add<TosaFoldConstantAdd>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantGreater>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantBitwiseNot>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantCeil>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantErf>(ctx, foldSplatOrSingleUseOnly);
 }
