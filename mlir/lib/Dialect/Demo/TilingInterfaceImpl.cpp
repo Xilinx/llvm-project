@@ -201,9 +201,7 @@ struct DemoOpTilingInterface
   /// Return the loop iterator type.
   SmallVector<utils::IteratorType> getLoopIteratorTypes(Operation *op) const {
     LLVM_DEBUG(llvm::dbgs() << "<<<<<<<<<<<< getLoopIteratorTypes\n");
-
-    return {utils::IteratorType::parallel, utils::IteratorType::parallel,
-            utils::IteratorType::reduction};
+    assert(false && "getLoopIteratorTypes: Method not implemented.");
   }
 
   /// Return the iteration domain range.
@@ -303,16 +301,14 @@ struct DemoOpTilingInterface
                           ArrayRef<OpFoldResult> offsets,
                           ArrayRef<OpFoldResult> sizes) const {
     LLVM_DEBUG(llvm::dbgs() << "<<<<<<<<<<<< generateResultTileValue\n");
-
-    assert(false && "Called method not implemented.");
+    assert(false && "generateResultTileValue: Method not implemented.");
   }
 
   LogicalResult generateScalarImplementation(Operation *op, OpBuilder &builder,
                                              Location loc,
                                              ValueRange ivs) const {
     LLVM_DEBUG(llvm::dbgs() << "<<<<<<<<<<<< generateScalarImplementation\n");
-
-    assert(false && "Called method not implemented.");
+    assert(false && "generateScalarImplementation: Method not implemented.");
   }
 };
 } // namespace
