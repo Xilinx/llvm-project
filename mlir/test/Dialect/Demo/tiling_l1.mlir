@@ -1,9 +1,9 @@
-// RUN: mlir-opt --test-transform-dialect-interpreter --cse %s | FileCheck %s
+// RUN: mlir-opt --test-transform-dialect-interpreter --cse --split-input-file %s | FileCheck %s
 
 // CHECK:       #map = affine_map<(d0) -> (d0 * 4)>
 // CHECK-NEXT:  #map1 = affine_map<(d0) -> (d0 * 8)>
 // CHECK-NEXT:  module {
-// CHECK-NEXT:    func.func @bar(%arg0: tensor<128x256xf64>, %arg1: tensor<256x512xf64>, %arg2: tensor<128x512xf64>) -> tensor<128x512xf64> {
+// CHECK-NEXT:    func.func @fn(%arg0: tensor<128x256xf64>, %arg1: tensor<256x512xf64>, %arg2: tensor<128x512xf64>) -> tensor<128x512xf64> {
 // CHECK-NEXT:      %0 = tensor.empty() : tensor<128x512xf64>
 // CHECK-NEXT:      %1 = scf.forall (%arg3, %arg4) in (32, 64) shared_outs(%arg5 = %0) -> (tensor<128x512xf64>) {
 // CHECK-NEXT:        %2 = affine.apply #map(%arg3)
@@ -20,14 +20,48 @@
 // CHECK-NEXT:    }
 
 module {
-  func.func @bar(%arg0: tensor<128x256xf64>, %arg1: tensor<256x512xf64>, %output: tensor<128x512xf64>) -> tensor<128x512xf64> {
-      %res = demo.foo %arg0, %arg1, %output : tensor<128x256xf64>, tensor<256x512xf64>, tensor<128x512xf64> to tensor<128x512xf64>
-      return %res : tensor<128x512xf64>
+  func.func @fn(%arg0: tensor<128x256xf64>, %arg1: tensor<256x512xf64>, %output: tensor<128x512xf64>) -> tensor<128x512xf64> {
+    %res = demo.foo %arg0, %arg1, %output : tensor<128x256xf64>, tensor<256x512xf64>, tensor<128x512xf64> to tensor<128x512xf64>
+    return %res : tensor<128x512xf64>
   }
 
   transform.sequence failures(propagate) {
   ^bb0(%arg0: !transform.op<"demo.foo">):
     %loop_l1, %tiled_l1 = transform.structured.tile_to_forall_op %arg0 tile_sizes [4, 8]
       : (!transform.op<"demo.foo">) -> (!transform.any_op, !transform.any_op)
+  }
+}
+
+// -----
+
+// CHECK:       #map = affine_map<(d0) -> (d0 * 4)>
+// CHECK-NEXT:  #map1 = affine_map<(d0) -> (d0 * 8)>
+// CHECK-NEXT:  module {
+// CHECK-NEXT:    func.func @fn_linalg(%arg0: tensor<128x256xf32>, %arg1: tensor<256x512xf32>, %arg2: tensor<128x512xf32>) -> tensor<128x512xf32> {
+// CHECK-NEXT:      %0 = scf.forall (%arg3, %arg4) in (32, 64) shared_outs(%arg5 = %arg2) -> (tensor<128x512xf32>) {
+// CHECK-NEXT:        %1 = affine.apply #map(%arg3)
+// CHECK-NEXT:        %2 = affine.apply #map1(%arg4)
+// CHECK-NEXT:        %extracted_slice = tensor.extract_slice %arg0[%1, 0] [4, 256] [1, 1] : tensor<128x256xf32> to tensor<4x256xf32>
+// CHECK-NEXT:        %extracted_slice_0 = tensor.extract_slice %arg1[0, %2] [256, 8] [1, 1] : tensor<256x512xf32> to tensor<256x8xf32>
+// CHECK-NEXT:        %extracted_slice_1 = tensor.extract_slice %arg5[%1, %2] [4, 8] [1, 1] : tensor<128x512xf32> to tensor<4x8xf32>
+// CHECK-NEXT:        %3 = linalg.matmul ins(%extracted_slice, %extracted_slice_0 : tensor<4x256xf32>, tensor<256x8xf32>) outs(%extracted_slice_1 : tensor<4x8xf32>) -> tensor<4x8xf32>
+// CHECK-NEXT:        scf.forall.in_parallel {
+// CHECK-NEXT:          tensor.parallel_insert_slice %3 into %arg5[%1, %2] [4, 8] [1, 1] : tensor<4x8xf32> into tensor<128x512xf32>
+// CHECK-NEXT:        }
+// CHECK-NEXT:      }
+// CHECK-NEXT:      return %0 : tensor<128x512xf32>
+// CHECK-NEXT:    }
+
+module {
+  func.func @fn_linalg(%lhs: tensor<128x256xf32>, %rhs: tensor<256x512xf32>, %output: tensor<128x512xf32>) -> tensor<128x512xf32> {
+    %matmul = linalg.matmul ins(%lhs, %rhs: tensor<128x256xf32>, tensor<256x512xf32>)
+                            outs(%output: tensor<128x512xf32>) -> tensor<128x512xf32>
+    func.return %matmul: tensor<128x512xf32>
+  }
+
+  transform.sequence failures(propagate) {
+  ^bb0(%arg0: !transform.op<"linalg.matmul">):
+    %loop_l1, %tiled_l1 = transform.structured.tile_to_forall_op %arg0 tile_sizes [4, 8]
+      : (!transform.op<"linalg.matmul">) -> (!transform.any_op, !transform.any_op)
   }
 }
