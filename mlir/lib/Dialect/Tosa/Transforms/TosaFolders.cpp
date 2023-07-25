@@ -362,6 +362,13 @@ struct TosaFoldConstantUnaryElementwise : public TosaFoldConstantBase<TosaOp> {
               "tensor has a single user");
     }
 
+    TensorType opType = dyn_cast<TensorType>(op.getType());
+    if (opType == nullptr ||
+        !static_cast<const BaseClass *>(this)->isSupportedElementType(
+            opType.getElementType())) {
+      return rewriter.notifyMatchFailure(op, "Type is not supported.");
+    }
+
     DenseElementsAttr newTensor = static_cast<const BaseClass *>(this)->compute(
         inputValues, rewriter, op);
     if (!newTensor) {
@@ -394,6 +401,9 @@ struct TosaFoldConstantUnaryElementwise : public TosaFoldConstantBase<TosaOp> {
                                  PatternRewriter &rewriter, TosaOp op) const {
     return {};
   }
+
+  /// Return true if the \p elementType is supported by the folder.
+  bool isSupportedElementType(Type type) const { return true; }
 };
 
 template<typename BaseClass, typename TosaOp>
@@ -559,6 +569,10 @@ struct TosaFoldConstantRSQRT
     return applyElementWise<APFloat, APFloat, FloatType>(
         values, &computeRSQRT, cast<FloatType>(values.getElementType()));
   }
+
+  bool isSupportedElementType(Type type) const {
+    return type.isBF16() || type.isF16() || type.isF32();
+  }
 };
 
 struct TosaFoldConstantLogicalNot
@@ -617,6 +631,10 @@ struct TosaFoldConstantPow
                                  PatternRewriter &rewriter, PowOp op) const {
     return applyElementWise<APFloat, APFloat>(lhsValues, rhsValues,
                                               op.getType(), computePower);
+  }
+
+  bool isSupportedElementType(Type type) const {
+    return type.isBF16() || type.isF16() || type.isF32();
   }
 };
 
@@ -1013,6 +1031,65 @@ struct TosaFoldConstantGreater : public TosaFoldConstantBinary<TosaFoldConstantG
   }
 };
 
+struct TosaFoldConstantBitwiseNot
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantBitwiseNot,
+                                              BitwiseNotOp> {
+  using TosaFoldConstantUnaryElementwise<
+      TosaFoldConstantBitwiseNot,
+      BitwiseNotOp>::TosaFoldConstantUnaryElementwise;
+
+  DenseElementsAttr computeInteger(DenseElementsAttr values,
+                                   PatternRewriter &rewriter, TosaOp op) const {
+    return applyElementWise<APInt, APInt, IntegerType>(
+        values, [](const APInt &val, IntegerType) { return ~val; },
+        cast<IntegerType>(values.getElementType()));
+  }
+};
+
+struct TosaFoldConstantCeil
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantCeil, CeilOp> {
+  using TosaFoldConstantUnaryElementwise<
+      TosaFoldConstantCeil, CeilOp>::TosaFoldConstantUnaryElementwise;
+
+  DenseElementsAttr computeFloat(DenseElementsAttr values,
+                                 PatternRewriter &rewriter, TosaOp op) const {
+    return applyElementWise<APFloat, APFloat, FloatType>(
+        values,
+        [](const APFloat &val, FloatType) {
+          auto res = val;
+          res.roundToIntegral(llvm::RoundingMode::TowardPositive);
+          return res;
+        },
+        cast<FloatType>(values.getElementType()));
+  }
+};
+
+struct TosaFoldConstantErf
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantErf, ErfOp> {
+  using TosaFoldConstantUnaryElementwise<
+      TosaFoldConstantErf, ErfOp>::TosaFoldConstantUnaryElementwise;
+
+  DenseElementsAttr computeFloat(DenseElementsAttr values,
+                                 PatternRewriter &rewriter, TosaOp op) const {
+    return applyElementWise<APFloat, APFloat, FloatType>(
+        values,
+        [](const APFloat &val, FloatType) {
+          auto res = APFloat(std::erf(val.convertToFloat()));
+          bool lostPrecision;
+          res.convert(val.getSemantics(), APFloat::rmNearestTiesToEven,
+                      &lostPrecision);
+          return res;
+        },
+        cast<FloatType>(values.getElementType()));
+  }
+
+  bool isSupportedElementType(Type type) const {
+    // Note: For now, we only support BF16 and F32 as std::erf may
+    // have an impact on the accuracy of the returned value.
+    return type.isBF16() || type.isF32();
+  }
+};
+
 } // namespace
 
 void mlir::tosa::populateTosaFoldConstantPatterns(
@@ -1033,4 +1110,7 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
   }
   patterns.add<TosaFoldConstantAdd>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantGreater>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantBitwiseNot>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantCeil>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantErf>(ctx, foldSplatOrSingleUseOnly);
 }
