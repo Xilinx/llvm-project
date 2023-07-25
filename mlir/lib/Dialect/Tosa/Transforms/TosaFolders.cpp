@@ -362,6 +362,13 @@ struct TosaFoldConstantUnaryElementwise : public TosaFoldConstantBase<TosaOp> {
               "tensor has a single user");
     }
 
+    TensorType opType = dyn_cast<TensorType>(op.getType());
+    if (opType == nullptr ||
+        !static_cast<const BaseClass *>(this)->isSupportedElementType(
+            opType.getElementType())) {
+      return rewriter.notifyMatchFailure(op, "Type is not supported.");
+    }
+
     DenseElementsAttr newTensor = static_cast<const BaseClass *>(this)->compute(
         inputValues, rewriter, op);
     if (!newTensor) {
@@ -394,6 +401,9 @@ struct TosaFoldConstantUnaryElementwise : public TosaFoldConstantBase<TosaOp> {
                                  PatternRewriter &rewriter, TosaOp op) const {
     return {};
   }
+
+  /// Return true if the \p elementType is supported by the folder.
+  bool isSupportedElementType(Type type) const { return true; }
 };
 
 template<typename BaseClass, typename TosaOp>
@@ -559,6 +569,10 @@ struct TosaFoldConstantRSQRT
     return applyElementWise<APFloat, APFloat, FloatType>(
         values, &computeRSQRT, cast<FloatType>(values.getElementType()));
   }
+
+  bool isSupportedElementType(Type type) const {
+    return type.isBF16() || type.isF16() || type.isF32();
+  }
 };
 
 struct TosaFoldConstantLogicalNot
@@ -617,6 +631,10 @@ struct TosaFoldConstantPow
                                  PatternRewriter &rewriter, PowOp op) const {
     return applyElementWise<APFloat, APFloat>(lhsValues, rhsValues,
                                               op.getType(), computePower);
+  }
+
+  bool isSupportedElementType(Type type) const {
+    return type.isBF16() || type.isF16() || type.isF32();
   }
 };
 
@@ -1023,10 +1041,7 @@ struct TosaFoldConstantBitwiseNot
   DenseElementsAttr computeInteger(DenseElementsAttr values,
                                    PatternRewriter &rewriter, TosaOp op) const {
     return applyElementWise<APInt, APInt, IntegerType>(
-        values,
-        [](const APInt &val, IntegerType) {
-          return APInt(val.getBitWidth(), ~val.getZExtValue());
-        },
+        values, [](const APInt &val, IntegerType) { return ~val; },
         cast<IntegerType>(values.getElementType()));
   }
 };
@@ -1041,12 +1056,8 @@ struct TosaFoldConstantCeil
     return applyElementWise<APFloat, APFloat, FloatType>(
         values,
         [](const APFloat &val, FloatType) {
-          // Compute ceil (APFloat unfortunately does not provide this function,
-          // such that we need to unpack here)
-          auto res = APFloat(std::ceil(val.convertToFloat()));
-          bool lostPrecision;
-          res.convert(val.getSemantics(), APFloat::rmNearestTiesToEven,
-                      &lostPrecision);
+          auto res = val;
+          res.roundToIntegral(llvm::RoundingMode::TowardPositive);
           return res;
         },
         cast<FloatType>(values.getElementType()));
@@ -1063,8 +1074,6 @@ struct TosaFoldConstantErf
     return applyElementWise<APFloat, APFloat, FloatType>(
         values,
         [](const APFloat &val, FloatType) {
-          // Compute ceil (APFloat unfortunately does not provide this function,
-          // such that we need to unpack here)
           auto res = APFloat(std::erf(val.convertToFloat()));
           bool lostPrecision;
           res.convert(val.getSemantics(), APFloat::rmNearestTiesToEven,
@@ -1072,6 +1081,12 @@ struct TosaFoldConstantErf
           return res;
         },
         cast<FloatType>(values.getElementType()));
+  }
+
+  bool isSupportedElementType(Type type) const {
+    // Note: For now, we only support BF16 and F32 as std::erf may
+    // have an impact on the accuracy of the returned value.
+    return type.isBF16() || type.isF32();
   }
 };
 

@@ -30,6 +30,26 @@ func.func @ceil_fold_splat() -> tensor<12x7xf32> {
   return %1 : tensor<12x7xf32>
 }
 
+// CHECK-LABEL: @ceil_fold_bf16
+func.func @ceil_fold_bf16() -> tensor<12x7xbf16> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}5.000000e+00
+  // CHECK-NOT: tosa.ceil
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value = dense<4.2> : tensor<12x7xbf16>} : () -> tensor<12x7xbf16>
+  %1 = "tosa.ceil"(%0) : (tensor<12x7xbf16>) -> tensor<12x7xbf16>
+  return %1 : tensor<12x7xbf16>
+}
+
+// CHECK-LABEL: @ceil_fold_f16
+func.func @ceil_fold_f16() -> tensor<12x7xf16> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}5.000000e+00
+  // CHECK-NOT: tosa.ceil
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value = dense<4.2> : tensor<12x7xf16>} : () -> tensor<12x7xf16>
+  %1 = "tosa.ceil"(%0) : (tensor<12x7xf16>) -> tensor<12x7xf16>
+  return %1 : tensor<12x7xf16>
+}
+
 // CHECK-LABEL: @ceil_nan
 func.func @ceil_nan() -> tensor<f32> {
   // 0x7FC00000 is the value for NAN

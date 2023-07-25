@@ -30,6 +30,16 @@ func.func @erf_fold_splat() -> tensor<12x7xf32> {
   return %1 : tensor<12x7xf32>
 }
 
+// CHECK-LABEL: @erf_fold_bf16
+func.func @erf_fold_bf16() -> tensor<12x7xbf16> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}7.031250e-02
+  // CHECK-NOT: tosa.erf
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value = dense<0.0625> : tensor<12x7xbf16>} : () -> tensor<12x7xbf16>
+  %1 = "tosa.erf"(%0) : (tensor<12x7xbf16>) -> tensor<12x7xbf16>
+  return %1 : tensor<12x7xbf16>
+}
+
 // CHECK-LABEL: @erf_zero
 func.func @erf_zero() -> tensor<f32> {
   // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}0.000000e+00
@@ -99,6 +109,16 @@ func.func @erf_no_fold(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK-NEXT: return
   %0 = "tosa.erf"(%arg0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
   return %0 : tensor<?x?xf32>
+}
+
+// CHECK-LABEL: @erf_no_fold_f16
+func.func @erf_no_fold_f16() -> tensor<12x7xf16> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}6.250000e-02
+  // CHECK: tosa.erf
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value = dense<6.250000e-02> : tensor<12x7xf16>} : () -> tensor<12x7xf16>
+  %1 = "tosa.erf"(%0) : (tensor<12x7xf16>) -> tensor<12x7xf16>
+  return %1 : tensor<12x7xf16>
 }
 
 // CHECK-LABEL: @erf_fold
