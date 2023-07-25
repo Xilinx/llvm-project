@@ -48,14 +48,28 @@ SmallVector<std::optional<linalg::SliceParameters>> computeAllSliceParameters(
          "more value to tile than operands.");
   SmallVector<std::optional<linalg::SliceParameters>> allSliceParams;
   allSliceParams.reserve(valuesToTile.size());
+
+  LLVM_DEBUG({
+    llvm::dbgs() << "computeAllSliceParameters\n";
+    for (auto [opOperand, map, val] :
+         llvm::zip(opOperands, indexingMaps, valuesToTile)) {
+      llvm::dbgs() << "  opOperand: ";
+      opOperand.get().dump();
+
+      llvm::dbgs() << "  indexingMap: ";
+      map.dump();
+
+      llvm::dbgs() << "  valuesToTile:\n";
+      for (auto vtt : valuesToTile) {
+        llvm::dbgs() << "    ";
+        vtt.dump();
+      }
+    }
+  });
+
   for (auto [opOperand, map, val] :
        llvm::zip(opOperands, indexingMaps, valuesToTile)) {
     Value shapedOp = val;
-    LLVM_DEBUG({
-      llvm::dbgs() << "MatchingIndexingMap\n";
-      map.dump();
-    });
-
     // Use `opOperand` as is if it is not tiled and not an output tensor. Having
     // an extract/insert slice pair for all output tensors simplifies follow up
     // transformations such as padding and bufferization since the
@@ -108,6 +122,27 @@ makeTiledShapes(OpBuilder &builder, Location loc,
       computeAllSliceParameters(builder, loc, opOperands, indexingMaps,
                                 valuesToTile, ivs, tileSizes, sizeBounds,
                                 omitPartialTileCheck);
+  LLVM_DEBUG({
+    llvm::dbgs() << "AllSliceParameter\n";
+    for (auto &sp : allSliceParameter) {
+      llvm::dbgs() << "  SliceParameter\n";
+      llvm::dbgs() << "    offsets:\n";
+      for (auto &off : sp->offsets) {
+        llvm::dbgs() << "      " << off << "\n";
+      }
+
+      llvm::dbgs() << "    sizes:\n";
+      for (auto &si : sp->sizes) {
+        llvm::dbgs() << "      " << si << "\n";
+      }
+
+      llvm::dbgs() << "    strides:\n";
+      for (auto &st : sp->strides) {
+        llvm::dbgs() << "      " << st << "\n";
+      }
+    }
+  });
+
   SmallVector<Value> tiledShapes;
   for (auto item : llvm::zip(valuesToTile, allSliceParameter)) {
     Value valueToTile = std::get<0>(item);
@@ -148,7 +183,6 @@ struct DemoOpTilingInterface
       "affine_map<(d0, d1, d2) -> (d0, d2)>",
       "affine_map<(d0, d1, d2) -> (d2, d1)>",
       "affine_map<(d0, d1, d2) -> (d0, d1)>"};
-  SmallVector<int> iterationSizes = {512, 512, 512};
   int resultIdx = 2;
 
   SmallVector<AffineMap> getIndexingMaps(MLIRContext *context) const {
@@ -176,12 +210,28 @@ struct DemoOpTilingInterface
   SmallVector<Range> getIterationDomain(Operation *op, OpBuilder &b) const {
     LLVM_DEBUG(llvm::dbgs() << "<<<<<<<<<<<< getIterationDomain\n");
 
-    SmallVector<Range> ranges;
-    for (auto &iterationSize : iterationSizes) {
-      ranges.push_back(Range{b.getIndexAttr(0), b.getIndexAttr(iterationSize),
-                             b.getIndexAttr(1)});
+    MLIRContext *context = op->getContext();
+    Location loc = op->getLoc();
+
+    SmallVector<AffineMap> indexingAffMaps = getIndexingMaps(context);
+    AffineMap shapeToLoopsMap =
+        inversePermutation(concatAffineMaps(indexingAffMaps));
+
+    SmallVector<OpFoldResult> allShapesSizes;
+    for (auto &operand : op->getOpOperands()) {
+      auto shapedType = llvm::cast<ShapedType>(operand.get().getType());
+      for (int64_t dim = 0; dim < shapedType.getRank(); ++dim) {
+        allShapesSizes.push_back(
+            linalg::createFoldedDimOp(b, loc, operand.get(), dim));
+      }
     }
-    return ranges;
+
+    return llvm::to_vector(
+        llvm::map_range(shapeToLoopsMap.getResults(), [&](AffineExpr loopExpr) {
+          OpFoldResult ofr = affine::makeComposedFoldedAffineApply(
+              b, loc, loopExpr, allShapesSizes);
+          return Range{b.getIndexAttr(0), ofr, b.getIndexAttr(1)};
+        }));
   }
 
   // Instantiate the tiled implementation of the operation.
@@ -200,6 +250,13 @@ struct DemoOpTilingInterface
     SmallVector<Value> tiledOperands =
         makeTiledShapes(b, loc, op->getOpOperands(), indexingAffMaps,
                         valuesToTile, offsets, sizes, {}, true);
+    LLVM_DEBUG({
+      llvm::dbgs() << "Tiled Operands\n";
+      for (auto &tiledOperand : tiledOperands) {
+        llvm::dbgs() << "  ";
+        tiledOperand.dump();
+      }
+    });
 
     SmallVector<Type> resultTensorTypes =
         getTensorOutputTypes(tiledOperands, resultIdx);
