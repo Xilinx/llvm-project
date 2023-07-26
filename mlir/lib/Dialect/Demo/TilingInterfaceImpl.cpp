@@ -15,12 +15,40 @@
 #include "mlir/Interfaces/TilingInterface.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/TypeSwitch.h"
-#include <optional>
 
 using namespace mlir;
 using namespace mlir::demo;
 
 #define DEBUG_TYPE "demo-tilinginterface"
+
+//===----------------------------------------------------------------------===//
+// Kernel Schema definitions.
+//===----------------------------------------------------------------------===//
+
+struct KernelSchema {
+  std::string name;
+  std::vector<std::string> indexingMaps;
+  int resultIdx;
+};
+
+std::map<std::string, KernelSchema> createKernelSchemas() {
+  std::map<std::string, KernelSchema> kernelSchemas;
+
+  kernelSchemas["gemm"] =
+      KernelSchema({"gemm",
+                    {"affine_map<(d0, d1, d2) -> (d0, d2)>",
+                     "affine_map<(d0, d1, d2) -> (d2, d1)>",
+                     "affine_map<(d0, d1, d2) -> (d0, d1)>"},
+                    2});
+  kernelSchemas["conv_2d"] = KernelSchema(
+      {"conv_2d",
+       {"affine_map<(d0, d1, d2, d3)[s0, s1, s2, s3] -> (d0 + d2, d1 + d3)>",
+        "affine_map<(d0, d1, d2, d3)[s0, s1, s2, s3] -> (d2, d3)>",
+        "affine_map<(d0, d1, d2, d3)[s0, s1, s2, s3] -> (d0, d1)>"},
+       2});
+
+  return kernelSchemas;
+}
 
 //===----------------------------------------------------------------------===//
 // Below functions are from LinAlg's utility library, changed to pass-through
@@ -155,11 +183,11 @@ makeTiledShapes(OpBuilder &builder, Location loc,
   return tiledShapes;
 }
 
-SmallVector<AffineExpr> getSymbolBindings(MLIRContext *context) {
+SmallVector<AffineExpr> getSymbolBindings(MLIRContext *context, int numDims) {
   SmallVector<AffineExpr> exprs;
-  exprs.push_back(getAffineSymbolExpr(0, context));
-  exprs.push_back(getAffineSymbolExpr(1, context));
-  exprs.push_back(getAffineSymbolExpr(2, context));
+  for (int i = 0; i < numDims; i++) {
+    exprs.push_back(getAffineSymbolExpr(i, context));
+  }
   return exprs;
 }
 
@@ -179,21 +207,39 @@ struct DemoOpTilingInterface
     : public TilingInterface::ExternalModel<DemoOpTilingInterface<DemoOpTy>,
                                             DemoOpTy> {
 
-  SmallVector<std::string> indexingMaps = {
-      "affine_map<(d0, d1, d2) -> (d0, d2)>",
-      "affine_map<(d0, d1, d2) -> (d2, d1)>",
-      "affine_map<(d0, d1, d2) -> (d0, d1)>"};
-  int resultIdx = 2;
+  std::map<std::string, KernelSchema> kernelSchemas;
 
-  SmallVector<AffineMap> getIndexingMaps(MLIRContext *context) const {
+  DemoOpTilingInterface() { kernelSchemas = createKernelSchemas(); };
+
+  KernelSchema getKernelSchema(Operation *op) const {
+    std::string kernelName = op->getAttrOfType<StringAttr>("opName").str();
+
+    auto it = kernelSchemas.find(kernelName);
+    if (it == kernelSchemas.end()) {
+      llvm::errs() << "No kernel schema found for " << kernelName << "\n";
+      assert(false);
+    }
+
+    return it->second;
+  }
+
+  SmallVector<AffineMap>
+  getIndexingMaps(MLIRContext *context,
+                  std::vector<std::string> &indexingMaps) const {
     SmallVector<AffineMap> maps;
-    auto symbolBindings = getSymbolBindings(context);
+
     for (auto &indexingMap : indexingMaps) {
-      maps.push_back(
+      AffineMap map =
           llvm::cast<AffineMapAttr>(mlir::parseAttribute(indexingMap, context))
-              .getValue());
-      maps.back() = simplifyAffineMap(
-          maps.back().replaceDimsAndSymbols({}, symbolBindings, 3, 0));
+              .getValue();
+
+      int numDims = map.getNumDims();
+      auto symbolBindings = getSymbolBindings(context, numDims);
+
+      map = simplifyAffineMap(
+          map.replaceDimsAndSymbols({}, symbolBindings, numDims, 0));
+
+      maps.push_back(map);
     }
     return maps;
   }
@@ -211,7 +257,9 @@ struct DemoOpTilingInterface
     MLIRContext *context = op->getContext();
     Location loc = op->getLoc();
 
-    SmallVector<AffineMap> indexingAffMaps = getIndexingMaps(context);
+    KernelSchema kernelSchema = getKernelSchema(op);
+    SmallVector<AffineMap> indexingAffMaps =
+        getIndexingMaps(context, kernelSchema.indexingMaps);
     AffineMap shapeToLoopsMap =
         inversePermutation(concatAffineMaps(indexingAffMaps));
 
@@ -243,7 +291,9 @@ struct DemoOpTilingInterface
     SmallVector<Value> valuesToTile = op->getOperands();
 
     MLIRContext *context = op->getContext();
-    SmallVector<AffineMap> indexingAffMaps = getIndexingMaps(context);
+    KernelSchema kernelSchema = getKernelSchema(op);
+    SmallVector<AffineMap> indexingAffMaps =
+        getIndexingMaps(context, kernelSchema.indexingMaps);
 
     SmallVector<Value> tiledOperands =
         makeTiledShapes(b, loc, op->getOpOperands(), indexingAffMaps,
@@ -257,7 +307,7 @@ struct DemoOpTilingInterface
     });
 
     SmallVector<Type> resultTensorTypes =
-        getTensorOutputTypes(tiledOperands, resultIdx);
+        getTensorOutputTypes(tiledOperands, kernelSchema.resultIdx);
 
     Operation *copiedOp = clone(b, op, resultTensorTypes, tiledOperands);
     return TilingResult{{copiedOp}, SmallVector<Value>(copiedOp->getResults())};
@@ -282,13 +332,16 @@ struct DemoOpTilingInterface
           return affine::makeComposedFoldedAffineApply(b, loc, d0 - 1, ofr);
         }));
 
-    OpOperand *outOperand = &op->getOpOperand(resultIdx);
+    KernelSchema kernelSchema = getKernelSchema(op);
+    OpOperand *outOperand = &op->getOpOperand(kernelSchema.resultIdx);
 
     MLIRContext *context = op->getContext();
-    SmallVector<AffineMap> indexingAffMaps = getIndexingMaps(context);
+    SmallVector<AffineMap> indexingAffMaps =
+        getIndexingMaps(context, kernelSchema.indexingMaps);
 
     linalg::SliceParameters sliceParams = linalg::computeSliceParameters(
-        b, loc, outOperand->get(), sizes, indexingAffMaps[resultIdx], offsets,
+        b, loc, outOperand->get(), sizes,
+        indexingAffMaps[kernelSchema.resultIdx], offsets,
         /*ubs*/ {}, subShapeSizes, true);
     resultOffsets = sliceParams.offsets;
     resultSizes = sliceParams.sizes;

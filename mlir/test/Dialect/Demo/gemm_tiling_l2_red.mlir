@@ -24,7 +24,7 @@
 // CHECK-NEXT:            %extracted_slice_5 = tensor.extract_slice %extracted_slice_2[0, %arg9] [4, 16] [1, 1] : tensor<4x256xf64> to tensor<4x16xf64>
 // CHECK-NEXT:            %extracted_slice_6 = tensor.extract_slice %extracted_slice_3[%arg9, 0] [16, 4] [1, 1] : tensor<256x4xf64> to tensor<16x4xf64>
 // CHECK-NEXT:            %extracted_slice_7 = tensor.extract_slice %extracted_slice_4[0, 0] [4, 4] [1, 1] : tensor<4x4xf64> to tensor<4x4xf64>
-// CHECK-NEXT:            %9 = demo.foo %extracted_slice_5, %extracted_slice_6, %extracted_slice_7 : tensor<4x16xf64>, tensor<16x4xf64>, tensor<4x4xf64> to tensor<4x4xf64>
+// CHECK-NEXT:            %9 = demo.foo %extracted_slice_5, %extracted_slice_6, %extracted_slice_7 {opName = "gemm"} : tensor<4x16xf64>, tensor<16x4xf64>, tensor<4x4xf64> to tensor<4x4xf64>
 // CHECK-NEXT:            %inserted_slice = tensor.insert_slice %9 into %arg10[0, 0] [4, 4] [1, 1] : tensor<4x4xf64> into tensor<4x4xf64>
 // CHECK-NEXT:            scf.yield %inserted_slice : tensor<4x4xf64>
 // CHECK-NEXT:          }
@@ -41,7 +41,7 @@
 
 module {
   func.func @fn(%arg0: tensor<128x256xf64>, %arg1: tensor<256x512xf64>, %output: tensor<128x512xf64>) -> tensor<128x512xf64> {
-    %res = demo.foo %arg0, %arg1, %output : tensor<128x256xf64>, tensor<256x512xf64>, tensor<128x512xf64> to tensor<128x512xf64>
+    %res = demo.foo %arg0, %arg1, %output {opName = "gemm"} : tensor<128x256xf64>, tensor<256x512xf64>, tensor<128x512xf64> to tensor<128x512xf64>
     return %res : tensor<128x512xf64>
   }
 
