@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/IR/PatternMatchAction.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -1458,6 +1459,7 @@ void ConversionPatternRewriter::replaceOp(Operation *op, ValueRange newValues) {
         << "** Replace : '" << op->getName() << "'(" << op << ")\n";
   });
   impl->notifyOpReplaced(op, newValues);
+  getContext()->executeAction<ReplaceOpAction>([]() {}, {op}, newValues);
 }
 
 void ConversionPatternRewriter::eraseOp(Operation *op) {
