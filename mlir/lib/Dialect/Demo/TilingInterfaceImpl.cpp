@@ -22,32 +22,32 @@ using namespace mlir::demo;
 #define DEBUG_TYPE "demo-tilinginterface"
 
 //===----------------------------------------------------------------------===//
-// Kernel Schema definitions.
+// Kernel Metadata definitions.
 //===----------------------------------------------------------------------===//
 
-struct KernelSchema {
+struct KernelMetadata {
   std::string name;
   std::vector<std::string> indexingMaps;
   int resultIdx;
 };
 
-std::map<std::string, KernelSchema> createKernelSchemas() {
-  std::map<std::string, KernelSchema> kernelSchemas;
+std::map<std::string, KernelMetadata> createKernelMetadatas() {
+  std::map<std::string, KernelMetadata> kernelMetadatas;
 
-  kernelSchemas["gemm"] =
-      KernelSchema({"gemm",
+  kernelMetadatas["gemm"] =
+      KernelMetadata({"gemm",
                     {"affine_map<(d0, d1, d2) -> (d0, d2)>",
                      "affine_map<(d0, d1, d2) -> (d2, d1)>",
                      "affine_map<(d0, d1, d2) -> (d0, d1)>"},
                     2});
-  kernelSchemas["conv_2d"] = KernelSchema(
+  kernelMetadatas["conv_2d"] = KernelMetadata(
       {"conv_2d",
        {"affine_map<(d0, d1, d2, d3)[s0, s1, s2, s3] -> (d0 + d2, d1 + d3)>",
         "affine_map<(d0, d1, d2, d3)[s0, s1, s2, s3] -> (d2, d3)>",
         "affine_map<(d0, d1, d2, d3)[s0, s1, s2, s3] -> (d0, d1)>"},
        2});
 
-  return kernelSchemas;
+  return kernelMetadatas;
 }
 
 //===----------------------------------------------------------------------===//
@@ -207,16 +207,16 @@ struct DemoOpTilingInterface
     : public TilingInterface::ExternalModel<DemoOpTilingInterface<DemoOpTy>,
                                             DemoOpTy> {
 
-  std::map<std::string, KernelSchema> kernelSchemas;
+  std::map<std::string, KernelMetadata> kernelMetadatas;
 
-  DemoOpTilingInterface() { kernelSchemas = createKernelSchemas(); };
+  DemoOpTilingInterface() { kernelMetadatas = createKernelMetadatas(); };
 
-  KernelSchema getKernelSchema(Operation *op) const {
+  KernelMetadata getKernelMetadata(Operation *op) const {
     std::string kernelName = op->getAttrOfType<StringAttr>("opName").str();
 
-    auto it = kernelSchemas.find(kernelName);
-    if (it == kernelSchemas.end()) {
-      llvm::errs() << "No kernel schema found for " << kernelName << "\n";
+    auto it = kernelMetadatas.find(kernelName);
+    if (it == kernelMetadatas.end()) {
+      llvm::errs() << "No kernel Metadata found for " << kernelName << "\n";
       assert(false);
     }
 
@@ -257,9 +257,9 @@ struct DemoOpTilingInterface
     MLIRContext *context = op->getContext();
     Location loc = op->getLoc();
 
-    KernelSchema kernelSchema = getKernelSchema(op);
+    KernelMetadata kernelMetadata = getKernelMetadata(op);
     SmallVector<AffineMap> indexingAffMaps =
-        getIndexingMaps(context, kernelSchema.indexingMaps);
+        getIndexingMaps(context, kernelMetadata.indexingMaps);
     AffineMap shapeToLoopsMap =
         inversePermutation(concatAffineMaps(indexingAffMaps));
 
@@ -291,9 +291,9 @@ struct DemoOpTilingInterface
     SmallVector<Value> valuesToTile = op->getOperands();
 
     MLIRContext *context = op->getContext();
-    KernelSchema kernelSchema = getKernelSchema(op);
+    KernelMetadata kernelMetadata = getKernelMetadata(op);
     SmallVector<AffineMap> indexingAffMaps =
-        getIndexingMaps(context, kernelSchema.indexingMaps);
+        getIndexingMaps(context, kernelMetadata.indexingMaps);
 
     SmallVector<Value> tiledOperands =
         makeTiledShapes(b, loc, op->getOpOperands(), indexingAffMaps,
@@ -307,7 +307,7 @@ struct DemoOpTilingInterface
     });
 
     SmallVector<Type> resultTensorTypes =
-        getTensorOutputTypes(tiledOperands, kernelSchema.resultIdx);
+        getTensorOutputTypes(tiledOperands, kernelMetadata.resultIdx);
 
     Operation *copiedOp = clone(b, op, resultTensorTypes, tiledOperands);
     return TilingResult{{copiedOp}, SmallVector<Value>(copiedOp->getResults())};
@@ -332,16 +332,16 @@ struct DemoOpTilingInterface
           return affine::makeComposedFoldedAffineApply(b, loc, d0 - 1, ofr);
         }));
 
-    KernelSchema kernelSchema = getKernelSchema(op);
-    OpOperand *outOperand = &op->getOpOperand(kernelSchema.resultIdx);
+    KernelMetadata kernelMetadata = getKernelMetadata(op);
+    OpOperand *outOperand = &op->getOpOperand(kernelMetadata.resultIdx);
 
     MLIRContext *context = op->getContext();
     SmallVector<AffineMap> indexingAffMaps =
-        getIndexingMaps(context, kernelSchema.indexingMaps);
+        getIndexingMaps(context, kernelMetadata.indexingMaps);
 
     linalg::SliceParameters sliceParams = linalg::computeSliceParameters(
         b, loc, outOperand->get(), sizes,
-        indexingAffMaps[kernelSchema.resultIdx], offsets,
+        indexingAffMaps[kernelMetadata.resultIdx], offsets,
         /*ubs*/ {}, subShapeSizes, true);
     resultOffsets = sliceParams.offsets;
     resultSizes = sliceParams.sizes;
