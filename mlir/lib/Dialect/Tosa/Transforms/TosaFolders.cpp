@@ -1090,6 +1090,174 @@ struct TosaFoldConstantErf
   }
 };
 
+struct TosaFoldConstantLog
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantLog, LogOp> {
+  using TosaFoldConstantUnaryElementwise<
+      TosaFoldConstantLog, LogOp>::TosaFoldConstantUnaryElementwise;
+
+  DenseElementsAttr computeFloat(DenseElementsAttr values,
+                                 PatternRewriter &rewriter, TosaOp op) const {
+    return applyElementWise<APFloat, APFloat, FloatType>(
+        values,
+        [](const APFloat &val, FloatType) {
+          auto res = APFloat(std::log(val.convertToFloat()));
+          bool lostPrecision;
+          res.convert(val.getSemantics(), APFloat::rmNearestTiesToEven,
+                      &lostPrecision);
+          return res;
+        },
+        cast<FloatType>(values.getElementType()));
+  }
+
+  bool isSupportedElementType(Type type) const {
+    // convertToFloat uses F32, so we specify the supported types to make sure
+    // to properly handle F64 if needed in the future.
+    return type.isBF16() || type.isF16() || type.isF32();
+  }
+};
+
+struct TosaFoldConstantBitwiseAnd
+    : public TosaFoldConstantBinary<TosaFoldConstantBitwiseAnd, BitwiseAndOp> {
+  using TosaFoldConstantBinary<TosaFoldConstantBitwiseAnd,
+                               BitwiseAndOp>::TosaFoldConstantBinary;
+
+  DenseElementsAttr computeInteger(DenseElementsAttr lhsValues,
+                                   DenseElementsAttr rhsValues,
+                                   PatternRewriter &rewriter,
+                                   BitwiseAndOp op) const {
+    return applyElementWise<APInt, APInt>(
+        lhsValues, rhsValues, op.getType(),
+        [](const APInt &lhs, const APInt &rhs) { return lhs & rhs; });
+  }
+};
+
+struct TosaFoldConstantBitwiseOr
+    : public TosaFoldConstantBinary<TosaFoldConstantBitwiseOr, BitwiseOrOp> {
+  using TosaFoldConstantBinary<TosaFoldConstantBitwiseOr,
+                               BitwiseOrOp>::TosaFoldConstantBinary;
+
+  DenseElementsAttr computeInteger(DenseElementsAttr lhsValues,
+                                   DenseElementsAttr rhsValues,
+                                   PatternRewriter &rewriter,
+                                   BitwiseOrOp op) const {
+    return applyElementWise<APInt, APInt>(
+        lhsValues, rhsValues, op.getType(),
+        [](const APInt &lhs, const APInt &rhs) { return lhs | rhs; });
+  }
+};
+
+struct TosaFoldConstantGreaterEqual
+    : public TosaFoldConstantBinary<TosaFoldConstantGreaterEqual,
+                                    GreaterEqualOp> {
+  using TosaFoldConstantBinary<TosaFoldConstantGreaterEqual,
+                               GreaterEqualOp>::TosaFoldConstantBinary;
+
+  DenseElementsAttr computeInteger(DenseElementsAttr lhsValues,
+                                   DenseElementsAttr rhsValues,
+                                   PatternRewriter &rewriter,
+                                   GreaterEqualOp op) const {
+    return applyElementWise<APInt, APInt>(
+        lhsValues, rhsValues, op.getType(),
+        [](const APInt &first, const APInt &second) {
+          return APInt(1, first.sge(second));
+        });
+  }
+
+  DenseElementsAttr computeFloat(DenseElementsAttr lhsValues,
+                                 DenseElementsAttr rhsValues,
+                                 PatternRewriter &rewriter,
+                                 GreaterEqualOp op) const {
+    return applyElementWise<APFloat, APInt>(
+        lhsValues, rhsValues, op.getType(),
+        [](const APFloat &first, const APFloat &second) {
+          return APInt(1, first >= second);
+        });
+  }
+};
+
+struct TosaFoldConstantEqual
+    : public TosaFoldConstantBinary<TosaFoldConstantEqual, EqualOp> {
+  using TosaFoldConstantBinary<TosaFoldConstantEqual,
+                               EqualOp>::TosaFoldConstantBinary;
+
+  DenseElementsAttr computeInteger(DenseElementsAttr lhsValues,
+                                   DenseElementsAttr rhsValues,
+                                   PatternRewriter &rewriter,
+                                   EqualOp op) const {
+    return applyElementWise<APInt, APInt>(
+        lhsValues, rhsValues, op.getType(),
+        [](const APInt &first, const APInt &second) {
+          return APInt(1, first.eq(second));
+        });
+  }
+
+  DenseElementsAttr computeFloat(DenseElementsAttr lhsValues,
+                                 DenseElementsAttr rhsValues,
+                                 PatternRewriter &rewriter, EqualOp op) const {
+    return applyElementWise<APFloat, APInt>(
+        lhsValues, rhsValues, op.getType(),
+        [](const APFloat &first, const APFloat &second) {
+          return APInt(1, first == second);
+        });
+  }
+};
+
+struct TosaFoldConstantMinimum
+    : public TosaFoldConstantBinary<TosaFoldConstantMinimum, MinimumOp> {
+  using TosaFoldConstantBinary<TosaFoldConstantMinimum,
+                               MinimumOp>::TosaFoldConstantBinary;
+
+  DenseElementsAttr computeInteger(DenseElementsAttr lhsValues,
+                                   DenseElementsAttr rhsValues,
+                                   PatternRewriter &rewriter,
+                                   MinimumOp op) const {
+    return applyElementWise<APInt, APInt>(
+        lhsValues, rhsValues, op.getType(),
+        [](const APInt &first, const APInt &second) {
+          return first.slt(second) ? first : second;
+        });
+  }
+
+  DenseElementsAttr computeFloat(DenseElementsAttr lhsValues,
+                                 DenseElementsAttr rhsValues,
+                                 PatternRewriter &rewriter,
+                                 MinimumOp op) const {
+    return applyElementWise<APFloat, APFloat>(
+        lhsValues, rhsValues, op.getType(),
+        [](const APFloat &first, const APFloat &second) {
+          return first < second ? first : second;
+        });
+  }
+};
+
+struct TosaFoldConstantMaximum
+    : public TosaFoldConstantBinary<TosaFoldConstantMaximum, MaximumOp> {
+  using TosaFoldConstantBinary<TosaFoldConstantMaximum,
+                               MaximumOp>::TosaFoldConstantBinary;
+
+  DenseElementsAttr computeInteger(DenseElementsAttr lhsValues,
+                                   DenseElementsAttr rhsValues,
+                                   PatternRewriter &rewriter,
+                                   MaximumOp op) const {
+    return applyElementWise<APInt, APInt>(
+        lhsValues, rhsValues, op.getType(),
+        [](const APInt &first, const APInt &second) {
+          return first.sgt(second) ? first : second;
+        });
+  }
+
+  DenseElementsAttr computeFloat(DenseElementsAttr lhsValues,
+                                 DenseElementsAttr rhsValues,
+                                 PatternRewriter &rewriter,
+                                 MaximumOp op) const {
+    return applyElementWise<APFloat, APFloat>(
+        lhsValues, rhsValues, op.getType(),
+        [](const APFloat &first, const APFloat &second) {
+          return first > second ? first : second;
+        });
+  }
+};
+
 } // namespace
 
 void mlir::tosa::populateTosaFoldConstantPatterns(
@@ -1113,4 +1281,11 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
   patterns.add<TosaFoldConstantBitwiseNot>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantCeil>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantErf>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantLog>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantBitwiseAnd>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantBitwiseOr>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantGreaterEqual>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantEqual>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantMinimum>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantMaximum>(ctx, foldSplatOrSingleUseOnly);
 }
