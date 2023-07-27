@@ -26,7 +26,6 @@ using namespace mlir::demo;
 //===----------------------------------------------------------------------===//
 
 struct KernelMetadata {
-  std::string name;
   std::vector<std::string> indexingMaps;
   int resultIdx;
 };
@@ -34,18 +33,23 @@ struct KernelMetadata {
 std::map<std::string, KernelMetadata> createKernelMetadatas() {
   std::map<std::string, KernelMetadata> kernelMetadatas;
 
-  kernelMetadatas["gemm"] =
-      KernelMetadata({"gemm",
-                    {"affine_map<(d0, d1, d2) -> (d0, d2)>",
-                     "affine_map<(d0, d1, d2) -> (d2, d1)>",
-                     "affine_map<(d0, d1, d2) -> (d0, d1)>"},
-                    2});
-  kernelMetadatas["conv_2d"] = KernelMetadata(
-      {"conv_2d",
-       {"affine_map<(d0, d1, d2, d3)[s0, s1, s2, s3] -> (d0 + d2, d1 + d3)>",
-        "affine_map<(d0, d1, d2, d3)[s0, s1, s2, s3] -> (d2, d3)>",
-        "affine_map<(d0, d1, d2, d3)[s0, s1, s2, s3] -> (d0, d1)>"},
-       2});
+  // clang-format off
+  kernelMetadatas["gemm"] = KernelMetadata({
+      {"affine_map<(m, n, k)[s0, s1, s2] -> (m, k)>",
+       "affine_map<(m, n, k)[s0, s1, s2] -> (k, n)>",
+       "affine_map<(m, n, k)[s0, s1, s2] -> (m, n)>"},
+      2});
+  kernelMetadatas["conv_2d"] = KernelMetadata({
+      {"affine_map<(oh, ow, kh, kw)[s0, s1, s2, s3] -> (oh + kh, ow + kw)>",
+       "affine_map<(oh, ow, kh, kw)[s0, s1, s2, s3] -> (kh, kw)>",
+       "affine_map<(oh, ow, kh, kw)[s0, s1, s2, s3] -> (oh , ow)>"},
+      2});
+  kernelMetadatas["conv_2d_nchw_fchw"] = KernelMetadata({
+      {"affine_map<(n, f, oh, ow, c, kh, kw)[s0, s1, s2, s3, s4, s5, s6] -> (n, c, oh + kh, ow + kw)>",
+       "affine_map<(n, f, oh, ow, c, kh, kw)[s0, s1, s2, s3, s4, s5, s6] -> (f, c, kh, kw)>",
+       "affine_map<(n, f, oh, ow, c, kh, kw)[s0, s1, s2, s3, s4, s5, s6] -> (n, f, oh, ow)>"},
+      2});
+  // clang-format on
 
   return kernelMetadatas;
 }
@@ -183,11 +187,14 @@ makeTiledShapes(OpBuilder &builder, Location loc,
   return tiledShapes;
 }
 
-SmallVector<AffineExpr> getSymbolBindings(MLIRContext *context, int numDims) {
+SmallVector<AffineExpr> getSymbolBindings(MLIRContext *context, AffineMap map) {
   SmallVector<AffineExpr> exprs;
-  for (int i = 0; i < numDims; i++) {
+
+  int numSymbols = map.getNumSymbols();
+  for (int i = 0; i < numSymbols; i++) {
     exprs.push_back(getAffineSymbolExpr(i, context));
   }
+
   return exprs;
 }
 
@@ -228,14 +235,18 @@ struct DemoOpTilingInterface
                   std::vector<std::string> &indexingMaps) const {
     SmallVector<AffineMap> maps;
 
+    AffineMap firstMap =
+        llvm::cast<AffineMapAttr>(
+            mlir::parseAttribute(indexingMaps.front(), context))
+            .getValue();
+    auto symbolBindings = getSymbolBindings(context, firstMap);
+
     for (auto &indexingMap : indexingMaps) {
-      AffineMap map =
-          llvm::cast<AffineMapAttr>(mlir::parseAttribute(indexingMap, context))
-              .getValue();
+    AffineMap map =
+        llvm::cast<AffineMapAttr>(mlir::parseAttribute(indexingMap, context))
+            .getValue();
 
       int numDims = map.getNumDims();
-      auto symbolBindings = getSymbolBindings(context, numDims);
-
       map = simplifyAffineMap(
           map.replaceDimsAndSymbols({}, symbolBindings, numDims, 0));
 
