@@ -21,15 +21,15 @@ func.func @greater_fold_float() -> tensor<4xi1> {
 
 // CHECK-LABEL: @greater_fold_float_infinity_nan
 func.func @greater_fold_float_infinity_nan() -> tensor<6xi1> {
-  // CHECK: [[RES:]] = "tosa.const"() <{value = dense<[true, false, true, false, false, true]>
+  // CHECK: [[RES:]] = "tosa.const"() <{value = dense<[true, false, true, false, false, false]>
   // CHECK-NOT: tosa.greater
   // CHECK: return [[RES]]
   %0 = "tosa.const"() {value =
-                        dense<[0x7F800000, 0xFF800000, 0x7F800000, 0xFF800000, 0x7FC00000, 0x7F800000]> :
+                        dense<[0x7F800000, 0xFF800000, 0x7F800000, 0xFF800000, 0x7FC00000, 0xFF800000]> :
                         tensor<6xf32>
                       } : () -> tensor<6xf32>
   %1 = "tosa.const"() {value =
-                        dense<[3.0, -3.0, -3.0, 3.0, 1.0, 0xFF800000]> :
+                        dense<[3.0, -3.0, -3.0, 3.0, 1.0, 0x7FC00000]> :
                         tensor<6xf32>
                       } : () -> tensor<6xf32>
   %2 = "tosa.greater"(%0, %1) : (tensor<6xf32>, tensor<6xf32>) -> tensor<6xi1>

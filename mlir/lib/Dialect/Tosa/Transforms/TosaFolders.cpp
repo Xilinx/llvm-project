@@ -1026,6 +1026,8 @@ struct TosaFoldConstantGreater : public TosaFoldConstantBinary<TosaFoldConstantG
       return applyElementWise<APFloat, APInt>(
           lhsValues, rhsValues, op.getType(),
           [](const APFloat &first, const APFloat &second) {
+            if (first.isNaN() || second.isNaN())
+              return APInt(1, false);
             return APInt(1, first > second);
           });
   }
@@ -1170,6 +1172,8 @@ struct TosaFoldConstantGreaterEqual
     return applyElementWise<APFloat, APInt>(
         lhsValues, rhsValues, op.getType(),
         [](const APFloat &first, const APFloat &second) {
+          if (first.isNaN() || second.isNaN())
+            return APInt(1, false);
           return APInt(1, first >= second);
         });
   }
@@ -1225,6 +1229,8 @@ struct TosaFoldConstantMinimum
     return applyElementWise<APFloat, APFloat>(
         lhsValues, rhsValues, op.getType(),
         [](const APFloat &first, const APFloat &second) {
+          if (first.isNaN() || second.isNaN())
+            return first.isNaN() ? first : second;
           return first < second ? first : second;
         });
   }
@@ -1253,6 +1259,8 @@ struct TosaFoldConstantMaximum
     return applyElementWise<APFloat, APFloat>(
         lhsValues, rhsValues, op.getType(),
         [](const APFloat &first, const APFloat &second) {
+          if (first.isNaN() || second.isNaN())
+            return first.isNaN() ? first : second;
           return first > second ? first : second;
         });
   }

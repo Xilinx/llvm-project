@@ -19,18 +19,19 @@ func.func @maximum_fold_float() -> tensor<4xf16> {
 
 // CHECK-LABEL: @maximum_fold_float_infinity_nan
 func.func @maximum_fold_float_infinity_nan() -> tensor<6xf32> {
+  // Any comparison with NAN results in NAN
+  // 0x7FC00000 is the value for NAN
   // 0x7F800000 is the value for Inf
   // 0xFF800000 is the value for -Inf
-  // 0x7FC00000 is the value for NAN
-  // CHECK: [[RES:]] = "tosa.const"() <{value = dense<[0x7F800000, -3.000000e+00, 0x7F800000, 3.000000e+00, 1.000000e+00, 0x7F800000]>
+  // CHECK: [[RES:]] = "tosa.const"() <{value = dense<[0x7F800000, -3.000000e+00, 0x7F800000, 3.000000e+00, 0x7FC00000, 0x7FC00000]>
   // CHECK-NOT: tosa.maximum
   // CHECK: return [[RES]]
   %0 = "tosa.const"() {value =
-                        dense<[0x7F800000, -3.000000e+00, 0x7F800000, 3.000000e+00, 1.000000e+00, 0x7F800000]> :
+                        dense<[0x7F800000, 0xFF800000, 0x7F800000, 0xFF800000, 0x7FC00000, 0xFF800000]> :
                         tensor<6xf32>
                       } : () -> tensor<6xf32>
   %1 = "tosa.const"() {value =
-                        dense<[3.0, -3.0, -3.0, 3.0, 1.0, 0xFF800000]> :
+                        dense<[3.0, -3.0, -3.0, 3.0, 1.0, 0x7FC00000]> :
                         tensor<6xf32>
                       } : () -> tensor<6xf32>
   %2 = "tosa.maximum"(%0, %1) : (tensor<6xf32>, tensor<6xf32>) -> tensor<6xf32>
