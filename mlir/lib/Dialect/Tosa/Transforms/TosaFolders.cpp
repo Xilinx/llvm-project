@@ -1266,6 +1266,121 @@ struct TosaFoldConstantMaximum
   }
 };
 
+template <typename BaseType>
+DenseElementsAttr padType(ShapedType inputType, ElementsAttr inputValues,
+                          DenseElementsAttr paddings,
+                          std::optional<DenseElementsAttr> padConstValue,
+                          ShapedType outputType, BaseType zero) {
+  BaseType padConst(zero);
+  if (padConstValue.has_value())
+    padConst = padConstValue.value().getSplatValue<BaseType>();
+
+  auto values = inputValues.getValues<BaseType>();
+  auto paddingVals = paddings.getValues<int64_t>();
+
+  auto outputShape = outputType.getShape();
+  auto inputShape = inputType.getShape();
+
+  // Implements the logic from
+  // https://www.mlplatform.org/tosa/tosa_spec.html#_pad
+  SmallVector<BaseType> outputValues(outputType.getNumElements(), padConst);
+  for (size_t outIndex = 0, e = outputValues.size(); outIndex < e; ++outIndex) {
+    auto indexInTarget = offsetToIndex(outputShape, outIndex);
+
+    bool isPad =
+        llvm::any_of(llvm::enumerate(indexInTarget), [&](const auto &dimInfo) {
+          auto index = dimInfo.index();
+          auto i = dimInfo.value() - paddingVals[index * 2];
+          return static_cast<bool>(i < 0 || i >= inputShape[index]);
+        });
+
+    auto inputIndexOffset = indexToOffset(outputShape, indexInTarget);
+    outputValues[outIndex] = isPad ? padConst : values[inputIndexOffset];
+  }
+  return DenseElementsAttr::get(outputType,
+                                llvm::ArrayRef<BaseType>(outputValues));
+}
+
+DenseElementsAttr pad(ShapedType inputType, ElementsAttr inputValues,
+                      DenseElementsAttr paddings,
+                      std::optional<DenseElementsAttr> padConstValue,
+                      ShapedType outputType) {
+
+  auto baseType = inputType.getElementType();
+
+  // Handle possible integer types
+  if (auto intType = dyn_cast<IntegerType>(baseType)) {
+    switch (intType.getWidth()) {
+    case 1:
+      return padType<bool>(inputType, inputValues, paddings, padConstValue,
+                           outputType, false);
+    case 8:
+      return padType<int8_t>(inputType, inputValues, paddings, padConstValue,
+                             outputType, 0);
+    case 16:
+      return padType<int16_t>(inputType, inputValues, paddings, padConstValue,
+                              outputType, 0);
+    case 32:
+      return padType<int32_t>(inputType, inputValues, paddings, padConstValue,
+                              outputType, 0);
+    case 64:
+      return padType<int64_t>(inputType, inputValues, paddings, padConstValue,
+                              outputType, 0);
+    default:
+      return padType<APInt>(inputType, inputValues, paddings, padConstValue,
+                            outputType,
+                            APInt(baseType.getIntOrFloatBitWidth(), 0));
+    }
+  }
+
+  assert(isa<FloatType>(baseType) && "Unknown element type.");
+  FloatType fpType = cast<FloatType>(baseType);
+
+  APFloat zero(fpType.getFloatSemantics(), APInt::getZero(fpType.getWidth()));
+  return padType<APFloat>(inputType, inputValues, paddings, padConstValue,
+                          outputType, zero);
+}
+
+struct TosaFoldConstantPad : public TosaFoldConstantBase<tosa::PadOp> {
+  using TosaFoldConstantBase::TosaFoldConstantBase;
+
+  LogicalResult matchAndRewrite(tosa::PadOp op,
+                                PatternRewriter &rewriter) const override {
+    auto outputType = cast<ShapedType>(op.getType());
+    // TOSA doesn't support quantized types.
+    if (!outputType.getElementType().isIntOrIndexOrFloat())
+      return failure();
+
+    auto input = op.getInput1();
+    ElementsAttr inputValues;
+    if (!matchPattern(input, m_Constant(&inputValues)))
+      return failure();
+
+    // Only fold op with multiple users if foldSplatOrSingleUseOnly == true.
+    if (!llvm::hasSingleElement(input.getDefiningOp()->getUsers()) &&
+        foldSplatOrSingleUseOnly)
+      return failure();
+
+    std::optional<DenseElementsAttr> padConstValue;
+    if (op.getPadConst()) {
+      DenseElementsAttr attr;
+      if (!matchPattern(op.getPadConst(), m_Constant(&attr)))
+        return failure();
+      padConstValue = attr;
+    }
+
+    DenseElementsAttr paddings;
+    if (!matchPattern(op.getPadding(), m_Constant(&paddings)))
+      return failure();
+
+    auto resultAttr =
+        pad(input.getType(), inputValues, paddings, padConstValue, outputType);
+    rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, outputType, resultAttr);
+
+    return success();
+  }
+};
+
 } // namespace
 
 void mlir::tosa::populateTosaFoldConstantPatterns(
@@ -1296,4 +1411,5 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
   patterns.add<TosaFoldConstantEqual>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantMinimum>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantMaximum>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantPad>(ctx, foldSplatOrSingleUseOnly);
 }
