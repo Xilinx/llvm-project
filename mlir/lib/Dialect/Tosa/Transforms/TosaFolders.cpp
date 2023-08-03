@@ -1308,34 +1308,16 @@ DenseElementsAttr pad(ShapedType inputType, ElementsAttr inputValues,
 
   auto baseType = inputType.getElementType();
 
-  // Handle possible integer types
-  if (auto intType = dyn_cast<IntegerType>(baseType)) {
-    switch (intType.getWidth()) {
-    case 1:
-      return padType<bool>(inputType, inputValues, paddings, padConstValue,
-                           outputType, false);
-    case 8:
-      return padType<int8_t>(inputType, inputValues, paddings, padConstValue,
-                             outputType, 0);
-    case 16:
-      return padType<int16_t>(inputType, inputValues, paddings, padConstValue,
-                              outputType, 0);
-    case 32:
-      return padType<int32_t>(inputType, inputValues, paddings, padConstValue,
-                              outputType, 0);
-    case 64:
-      return padType<int64_t>(inputType, inputValues, paddings, padConstValue,
-                              outputType, 0);
-    default:
-      return padType<APInt>(inputType, inputValues, paddings, padConstValue,
-                            outputType,
-                            APInt(baseType.getIntOrFloatBitWidth(), 0));
-    }
-  }
+  // Handle integer types with APInt
+  if (auto intType = dyn_cast<IntegerType>(baseType))
+    return padType<APInt>(inputType, inputValues, paddings, padConstValue,
+                          outputType,
+                          APInt(baseType.getIntOrFloatBitWidth(), 0));
 
   assert(isa<FloatType>(baseType) && "Unknown element type.");
   FloatType fpType = cast<FloatType>(baseType);
 
+  // Handle FP types with APFloat
   APFloat zero(fpType.getFloatSemantics(), APInt::getZero(fpType.getWidth()));
   return padType<APFloat>(inputType, inputValues, paddings, padConstValue,
                           outputType, zero);

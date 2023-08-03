@@ -12,14 +12,14 @@ func.func @pad_bool() -> (tensor<5x5xi1>) {
   return %3 : tensor<5x5xi1>
 }
 
-// CHECK-LABEL: @pad_apint
-func.func @pad_apint() -> (tensor<5x5xi4>) {
+// CHECK-LABEL: @pad_int8
+func.func @pad_int8() -> (tensor<5x5xi8>) {
   // CHECK: "tosa.const"() <{value = dense<{{\[\[}}1, 1, 1, 1, 1], [1, 2, 2, 1, 1], [1, 2, 2, 1, 1], [1, 1, 1, 1, 1], [1, 1, 1, 1, 1]]>
-  %0 = "tosa.const"() {value = dense<2> : tensor<2x2xi4>} : () -> tensor<2x2xi4>
+  %0 = "tosa.const"() {value = dense<2> : tensor<2x2xi8>} : () -> tensor<2x2xi8>
   %1 = "tosa.const"() {value = dense<[[1, 2], [1, 2]]> : tensor<2x2xi64>} : () -> tensor<2x2xi64>
-  %2 = "tosa.const"() {value = dense<1> : tensor<i4>} : () -> tensor<i4>
-  %3 = "tosa.pad"(%0, %1, %2) : (tensor<2x2xi4>, tensor<2x2xi64>, tensor<i4>) -> tensor<5x5xi4>
-  return %3 : tensor<5x5xi4>
+  %2 = "tosa.const"() {value = dense<1> : tensor<i8>} : () -> tensor<i8>
+  %3 = "tosa.pad"(%0, %1, %2) : (tensor<2x2xi8>, tensor<2x2xi64>, tensor<i8>) -> tensor<5x5xi8>
+  return %3 : tensor<5x5xi8>
 }
 
 // CHECK-LABEL: @pad_int32
