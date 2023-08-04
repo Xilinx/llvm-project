@@ -27,7 +27,12 @@ class AffineForOp;
 namespace tensor {
 class ExtractSliceOp;
 } // namespace tensor
+} // namespace mlir
 
+bool isTiled(mlir::AffineExpr expr, mlir::ArrayRef<mlir::OpFoldResult> tileSizes);
+bool isTiled(mlir::AffineMap map, mlir::ArrayRef<mlir::OpFoldResult> tileSizes);
+
+namespace mlir {
 namespace linalg {
 
 //===----------------------------------------------------------------------===//

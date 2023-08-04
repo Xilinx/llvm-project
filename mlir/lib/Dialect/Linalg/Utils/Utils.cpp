@@ -74,7 +74,7 @@ struct TileCheck : public AffineExprVisitor<TileCheck> {
 
 } // namespace
 
-static bool isTiled(AffineExpr expr, ArrayRef<OpFoldResult> tileSizes) {
+bool isTiled(AffineExpr expr, ArrayRef<OpFoldResult> tileSizes) {
   if (!expr)
     return false;
   TileCheck t(tileSizes);
@@ -83,7 +83,7 @@ static bool isTiled(AffineExpr expr, ArrayRef<OpFoldResult> tileSizes) {
 }
 
 // Checks whether the `map  varies with respect to a non-zero `tileSize`.
-static bool isTiled(AffineMap map, ArrayRef<OpFoldResult> tileSizes) {
+bool isTiled(AffineMap map, ArrayRef<OpFoldResult> tileSizes) {
   if (!map)
     return false;
   for (unsigned r = 0; r < map.getNumResults(); ++r)
