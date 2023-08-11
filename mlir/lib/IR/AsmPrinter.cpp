@@ -140,6 +140,11 @@ struct AsmPrinterOptions {
       llvm::cl::desc("Elide ElementsAttrs with \"...\" that have "
                      "more elements than the given upper limit")};
 
+  llvm::cl::opt<unsigned> newlineAfterAttr{
+      "mlir-newline-after-attr",
+      llvm::cl::desc("Break attributes on ops into multiple lines with more "
+                     "than the given upper limit")};
+
   llvm::cl::opt<bool> printDebugInfoOpt{
       "mlir-print-debuginfo", llvm::cl::init(false),
       llvm::cl::desc("Print debug info in MLIR output")};
@@ -191,6 +196,8 @@ OpPrintingFlags::OpPrintingFlags()
     return;
   if (clOptions->elideElementsAttrIfLarger.getNumOccurrences())
     elementsAttrElementLimit = clOptions->elideElementsAttrIfLarger;
+  if (clOptions->newlineAfterAttr.getNumOccurrences())
+    newlineAfterAttr = clOptions->newlineAfterAttr;
   printDebugInfoFlag = clOptions->printDebugInfoOpt;
   printDebugInfoPrettyFormFlag = clOptions->printPrettyDebugInfoOpt;
   printGenericOpFormFlag = clOptions->printGenericOpFormOpt;
@@ -206,6 +213,14 @@ OpPrintingFlags::OpPrintingFlags()
 OpPrintingFlags &
 OpPrintingFlags::elideLargeElementsAttrs(int64_t largeElementLimit) {
   elementsAttrElementLimit = largeElementLimit;
+  return *this;
+}
+
+/// Enables breaking attributes on individual lines when there are more than
+/// the given number of attributes on an operation.
+OpPrintingFlags &
+OpPrintingFlags::newlineAfterAttribute(int64_t attributeLimit) {
+  newlineAfterAttr = attributeLimit;
   return *this;
 }
 
@@ -260,6 +275,11 @@ bool OpPrintingFlags::shouldElideElementsAttr(ElementsAttr attr) const {
 /// Return the size limit for printing large ElementsAttr.
 std::optional<int64_t> OpPrintingFlags::getLargeElementsAttrLimit() const {
   return elementsAttrElementLimit;
+}
+
+/// Return the size limit for printing newlines after attributes.
+std::optional<unsigned> OpPrintingFlags::getNewlineAfterAttrLimit() const {
+  return newlineAfterAttr;
 }
 
 /// Return if debug information should be printed.
@@ -346,6 +366,12 @@ public:
     llvm::interleaveComma(c, os, eachFn);
   }
 
+  template <typename Container, typename UnaryFunctor>
+  inline void interleave(const Container &c, UnaryFunctor eachFn,
+                         StringRef separator) const {
+    llvm::interleave(c, os, eachFn, separator);
+  }
+
   /// This enum describes the different kinds of elision for the type of an
   /// attribute when printing it.
   enum class AttrTypeElision {
@@ -396,7 +422,7 @@ public:
 protected:
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<StringRef> elidedAttrs = {},
-                             bool withKeyword = false);
+                             unsigned currentIndent = 0, bool withKeyword = false);
   void printNamedAttribute(NamedAttribute attr);
   void printTrailingLocation(Location loc, bool allowAlias = true);
   void printLocationInternal(LocationAttr loc, bool pretty = false,
@@ -1916,7 +1942,7 @@ void AsmPrinter::Impl::printLocationInternal(LocationAttr loc, bool pretty,
           os << '>';
         }
         os << '[';
-        interleave(
+        llvm::interleave(
             loc.getLocations(),
             [&](Location loc) { printLocationInternal(loc, pretty); },
             [&]() { os << ", "; });
@@ -2546,6 +2572,7 @@ void AsmPrinter::Impl::printTypeImpl(Type type) {
 
 void AsmPrinter::Impl::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                                              ArrayRef<StringRef> elidedAttrs,
+                                             unsigned currentIndent,
                                              bool withKeyword) {
   // If there are no attributes, then there is nothing to be done.
   if (attrs.empty())
@@ -2556,11 +2583,30 @@ void AsmPrinter::Impl::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
     // Print the 'attributes' keyword if necessary.
     if (withKeyword)
       os << " attributes";
+    os << " {";
+
+    SmallString<16> separator = StringRef(", ");
+    if (printerFlags.getNewlineAfterAttrLimit() &&
+        attrs.size() > *printerFlags.getNewlineAfterAttrLimit()) {
+
+      // Increase indent to match the visually match the "{ " below.
+      //currentIndent += 2;
+
+      separator.clear();
+      separator.reserve(currentIndent + 2);
+      separator.append(",\n");
+      for (size_t i = 0; i < currentIndent; ++i)
+        separator.push_back(' ');
+
+      // Already put the first attribute on its own line.
+      os << "\n";
+      os.indent(currentIndent);
+    }
 
     // Otherwise, print them all out in braces.
-    os << " {";
-    interleaveComma(filteredAttrs,
-                    [&](NamedAttribute attr) { printNamedAttribute(attr); });
+    interleave(
+        filteredAttrs, [&](NamedAttribute attr) { printNamedAttribute(attr); },
+        separator);
     os << '}';
   };
 
@@ -2980,12 +3026,12 @@ public:
   /// Print an optional attribute dictionary with a given set of elided values.
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<StringRef> elidedAttrs = {}) override {
-    Impl::printOptionalAttrDict(attrs, elidedAttrs);
+    Impl::printOptionalAttrDict(attrs, elidedAttrs, currentIndent + indentWidth);
   }
   void printOptionalAttrDictWithKeyword(
       ArrayRef<NamedAttribute> attrs,
       ArrayRef<StringRef> elidedAttrs = {}) override {
-    Impl::printOptionalAttrDict(attrs, elidedAttrs,
+    Impl::printOptionalAttrDict(attrs, elidedAttrs, currentIndent + indentWidth,
                                 /*withKeyword=*/true);
   }
 
