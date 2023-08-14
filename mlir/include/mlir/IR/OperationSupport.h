@@ -1096,6 +1096,10 @@ public:
   /// elements.
   OpPrintingFlags &elideLargeElementsAttrs(int64_t largeElementLimit = 16);
 
+  /// Enables breaking attributes on individual lines when there are more than
+  /// the given number of attributes on an operation.
+  OpPrintingFlags& newlineAfterAttribute(int64_t attributeLimit = 2);
+
   /// Enable or disable printing of debug information (based on `enable`). If
   /// 'prettyForm' is set to true, debug information is printed in a more
   /// readable 'pretty' form. Note: The IR generated with 'prettyForm' is not
@@ -1126,6 +1130,9 @@ public:
   /// Return the size limit for printing large ElementsAttr.
   std::optional<int64_t> getLargeElementsAttrLimit() const;
 
+  /// Return the size limit for printing newlines after attributes.
+  std::optional<unsigned> getNewlineAfterAttrLimit() const;
+
   /// Return if debug information should be printed.
   bool shouldPrintDebugInfo() const;
 
@@ -1151,6 +1158,10 @@ private:
   /// Elide large elements attributes if the number of elements is larger than
   /// the upper limit.
   std::optional<int64_t> elementsAttrElementLimit;
+
+  /// Print newlines after each attribute when an operation has more than
+  /// the given number of attributes.
+  std::optional<unsigned> newlineAfterAttr;
 
   /// Print debug information.
   bool printDebugInfoFlag : 1;
