@@ -1427,3 +1427,4 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
   patterns.add<TosaFoldConstantMaximum>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantPad>(ctx, foldSplatOrSingleUseOnly);
 }
+
