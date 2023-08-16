@@ -1005,6 +1005,37 @@ struct TosaFoldConstantAdd : public TosaFoldConstantBinary<TosaFoldConstantAdd, 
   }
 };
 
+struct TosaFoldConstantSub : public TosaFoldConstantBinary<TosaFoldConstantSub, SubOp> {
+  using TosaFoldConstantBinary<TosaFoldConstantSub, SubOp>::TosaFoldConstantBinary;
+
+  DenseElementsAttr computeInteger(DenseElementsAttr lhsValues,
+                                   DenseElementsAttr rhsValues,
+                                   PatternRewriter &rewriter, SubOp op) const {
+    bool overflowed = false;
+    auto newTensor = applyElementWise<APInt, APInt>(lhsValues, rhsValues,
+                                                    op.getType(), [&overflowed](const APInt &first, const APInt &second) {
+      bool didOverflow;
+      auto res = first.ssub_ov(second, didOverflow);
+      overflowed |= didOverflow;
+      return res;
+    });
+
+    if (overflowed) {
+      op->emitWarning("Subtraction did overflow. The results are unspecified.");
+    }
+    return newTensor;
+  }
+
+  DenseElementsAttr computeFloat(DenseElementsAttr lhsValues,
+                                 DenseElementsAttr rhsValues,
+                                 PatternRewriter &rewriter, SubOp op) const {
+    return applyElementWise<APFloat, APFloat>(lhsValues, rhsValues,
+                                              op.getType(), [](const APFloat &first, const APFloat &second) {
+      return first - second;
+    });
+  }
+};
+
 struct TosaFoldConstantGreater : public TosaFoldConstantBinary<TosaFoldConstantGreater, GreaterOp> {
   using TosaFoldConstantBinary<TosaFoldConstantGreater, GreaterOp>::TosaFoldConstantBinary;
 
@@ -1382,6 +1413,7 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
     patterns.add<TosaFoldConstantFloatCasts>(ctx, foldSplatOrSingleUseOnly);
   }
   patterns.add<TosaFoldConstantAdd>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantSub>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantGreater>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantBitwiseNot>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantCeil>(ctx, foldSplatOrSingleUseOnly);
@@ -1395,3 +1427,4 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
   patterns.add<TosaFoldConstantMaximum>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantPad>(ctx, foldSplatOrSingleUseOnly);
 }
+
