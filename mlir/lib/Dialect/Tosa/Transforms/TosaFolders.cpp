@@ -1011,17 +1011,17 @@ struct TosaFoldConstantSub : public TosaFoldConstantBinary<TosaFoldConstantSub, 
   DenseElementsAttr computeInteger(DenseElementsAttr lhsValues,
                                    DenseElementsAttr rhsValues,
                                    PatternRewriter &rewriter, SubOp op) const {
-    bool addOverflowed = false;
-    auto intAdd = [&addOverflowed](const APInt &first, const APInt &second) {
+    bool overflowed = false;
+    auto newTensor = applyElementWise<APInt, APInt>(lhsValues, rhsValues,
+                                                    op.getType(), [&overflowed](const APInt &first, const APInt &second) {
       bool didOverflow;
       auto res = first.ssub_ov(second, didOverflow);
-      addOverflowed |= didOverflow;
+      overflowed |= didOverflow;
       return res;
-    };
-    auto newTensor = applyElementWise<APInt, APInt>(lhsValues, rhsValues,
-                                                    op.getType(), intAdd);
-    if (addOverflowed) {
-      op->emitWarning("Addition did overflow. The results are unspecified.");
+    });
+
+    if (overflowed) {
+      op->emitWarning("Subtraction did overflow. The results are unspecified.");
     }
     return newTensor;
   }
@@ -1029,11 +1029,10 @@ struct TosaFoldConstantSub : public TosaFoldConstantBinary<TosaFoldConstantSub, 
   DenseElementsAttr computeFloat(DenseElementsAttr lhsValues,
                                  DenseElementsAttr rhsValues,
                                  PatternRewriter &rewriter, SubOp op) const {
-    auto floatAdd = [](const APFloat &first, const APFloat &second) {
-      return first - second;
-    };
     return applyElementWise<APFloat, APFloat>(lhsValues, rhsValues,
-                                              op.getType(), floatAdd);
+                                              op.getType(), [](const APFloat &first, const APFloat &second) {
+      return first - second;
+    });
   }
 };
 
