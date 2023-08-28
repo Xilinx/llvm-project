@@ -367,6 +367,11 @@ public:
   }
 
   template <typename Container, typename UnaryFunctor>
+  inline void interleaveNewline(const Container &c, UnaryFunctor eachFn) const {
+    llvm::interleaveNewline(c, os, eachFn);
+  }
+
+  template <typename Container, typename UnaryFunctor>
   inline void interleave(const Container &c, UnaryFunctor eachFn,
                          StringRef separator) const {
     llvm::interleave(c, os, eachFn, separator);
@@ -422,7 +427,8 @@ public:
 protected:
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<StringRef> elidedAttrs = {},
-                             unsigned currentIndent = 0, bool withKeyword = false);
+                             unsigned currentIndent = 0,
+                             bool withKeyword = false);
   void printNamedAttribute(NamedAttribute attr);
   void printTrailingLocation(Location loc, bool allowAlias = true);
   void printLocationInternal(LocationAttr loc, bool pretty = false,
@@ -2134,8 +2140,8 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
     return;
   } else if (auto dictAttr = llvm::dyn_cast<DictionaryAttr>(attr)) {
     os << '{';
-    interleaveComma(dictAttr.getValue(),
-                    [&](NamedAttribute attr) { printNamedAttribute(attr); });
+    interleaveNewline(dictAttr.getValue(),
+                      [&](NamedAttribute attr) { printNamedAttribute(attr); });
     os << '}';
 
   } else if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attr)) {
@@ -2170,7 +2176,7 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
 
   } else if (auto arrayAttr = llvm::dyn_cast<ArrayAttr>(attr)) {
     os << '[';
-    interleaveComma(arrayAttr.getValue(), [&](Attribute attr) {
+    interleaveNewline(arrayAttr.getValue(), [&](Attribute attr) {
       printAttribute(attr, AttrTypeElision::May);
     });
     os << ']';
@@ -2590,7 +2596,7 @@ void AsmPrinter::Impl::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
         attrs.size() > *printerFlags.getNewlineAfterAttrLimit()) {
 
       // Increase indent to match the visually match the "{ " below.
-      //currentIndent += 2;
+      // currentIndent += 2;
 
       separator.clear();
       separator.reserve(currentIndent + 2);
@@ -3026,7 +3032,8 @@ public:
   /// Print an optional attribute dictionary with a given set of elided values.
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<StringRef> elidedAttrs = {}) override {
-    Impl::printOptionalAttrDict(attrs, elidedAttrs, currentIndent + indentWidth);
+    Impl::printOptionalAttrDict(attrs, elidedAttrs,
+                                currentIndent + indentWidth);
   }
   void printOptionalAttrDictWithKeyword(
       ArrayRef<NamedAttribute> attrs,
