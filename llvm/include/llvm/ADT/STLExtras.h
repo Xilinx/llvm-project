@@ -2213,18 +2213,6 @@ inline void interleaveComma(const Container &c, StreamT &os) {
   interleaveComma(c, os, [&](const T &a) { os << a; });
 }
 
-template <typename Container, typename UnaryFunctor, typename StreamT,
-          typename T = detail::ValueOfRange<Container>>
-inline void interleaveNewline(const Container &c, StreamT &os,
-                              UnaryFunctor each_fn) {
-  interleave(c, os, each_fn, ",\n ");
-}
-template <typename Container, typename StreamT,
-          typename T = detail::ValueOfRange<Container>>
-inline void interleaveNewline(const Container &c, StreamT &os) {
-  interleaveNewline(c, os, [&](const T &a) { os << a; });
-}
-
 //===----------------------------------------------------------------------===//
 //     Extra additions to <memory>
 //===----------------------------------------------------------------------===//

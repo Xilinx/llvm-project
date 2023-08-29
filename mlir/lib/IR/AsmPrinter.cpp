@@ -367,11 +367,6 @@ public:
   }
 
   template <typename Container, typename UnaryFunctor>
-  inline void interleaveNewline(const Container &c, UnaryFunctor eachFn) const {
-    llvm::interleaveNewline(c, os, eachFn);
-  }
-
-  template <typename Container, typename UnaryFunctor>
   inline void interleave(const Container &c, UnaryFunctor eachFn,
                          StringRef separator) const {
     llvm::interleave(c, os, eachFn, separator);
@@ -391,10 +386,12 @@ public:
 
   /// Print the given attribute or an alias.
   void printAttribute(Attribute attr,
-                      AttrTypeElision typeElision = AttrTypeElision::Never);
+                      AttrTypeElision typeElision = AttrTypeElision::Never,
+                      SmallString<16> separator = StringRef(", "));
   /// Print the given attribute without considering an alias.
   void printAttributeImpl(Attribute attr,
-                          AttrTypeElision typeElision = AttrTypeElision::Never);
+                          AttrTypeElision typeElision = AttrTypeElision::Never,
+                          SmallString<16> separator = StringRef(", "));
 
   /// Print the alias for the given attribute, return failure if no alias could
   /// be printed.
@@ -429,7 +426,8 @@ protected:
                              ArrayRef<StringRef> elidedAttrs = {},
                              unsigned currentIndent = 0,
                              bool withKeyword = false);
-  void printNamedAttribute(NamedAttribute attr);
+  void printNamedAttribute(NamedAttribute attr,
+                           SmallString<16> separator = StringRef(", "));
   void printTrailingLocation(Location loc, bool allowAlias = true);
   void printLocationInternal(LocationAttr loc, bool pretty = false,
                              bool isTopLevel = false);
@@ -2116,7 +2114,8 @@ LogicalResult AsmPrinter::Impl::printAlias(Type type) {
 }
 
 void AsmPrinter::Impl::printAttribute(Attribute attr,
-                                      AttrTypeElision typeElision) {
+                                      AttrTypeElision typeElision,
+                                      SmallString<16> separator) {
   if (!attr) {
     os << "<<NULL ATTRIBUTE>>";
     return;
@@ -2125,11 +2124,12 @@ void AsmPrinter::Impl::printAttribute(Attribute attr,
   // Try to print an alias for this attribute.
   if (succeeded(printAlias(attr)))
     return;
-  return printAttributeImpl(attr, typeElision);
+  return printAttributeImpl(attr, typeElision, separator);
 }
 
 void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
-                                          AttrTypeElision typeElision) {
+                                          AttrTypeElision typeElision,
+                                          SmallString<16> separator) {
   if (!isa<BuiltinDialect>(attr.getDialect())) {
     printDialectAttribute(attr);
   } else if (auto opaqueAttr = llvm::dyn_cast<OpaqueAttr>(attr)) {
@@ -2140,8 +2140,9 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
     return;
   } else if (auto dictAttr = llvm::dyn_cast<DictionaryAttr>(attr)) {
     os << '{';
-    interleaveNewline(dictAttr.getValue(),
-                      [&](NamedAttribute attr) { printNamedAttribute(attr); });
+    interleave(
+        dictAttr.getValue(),
+        [&](NamedAttribute attr) { printNamedAttribute(attr); }, separator);
     os << '}';
 
   } else if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attr)) {
@@ -2176,8 +2177,8 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
 
   } else if (auto arrayAttr = llvm::dyn_cast<ArrayAttr>(attr)) {
     os << '[';
-    interleaveNewline(arrayAttr.getValue(), [&](Attribute attr) {
-      printAttribute(attr, AttrTypeElision::May);
+    interleaveComma(arrayAttr.getValue(), [&](Attribute attr) {
+      printAttribute(attr, AttrTypeElision::May, separator);
     });
     os << ']';
 
@@ -2611,7 +2612,8 @@ void AsmPrinter::Impl::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
 
     // Otherwise, print them all out in braces.
     interleave(
-        filteredAttrs, [&](NamedAttribute attr) { printNamedAttribute(attr); },
+        filteredAttrs,
+        [&](NamedAttribute attr) { printNamedAttribute(attr, separator); },
         separator);
     os << '}';
   };
@@ -2629,7 +2631,8 @@ void AsmPrinter::Impl::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
   if (!filteredAttrs.empty())
     printFilteredAttributesFn(filteredAttrs);
 }
-void AsmPrinter::Impl::printNamedAttribute(NamedAttribute attr) {
+void AsmPrinter::Impl::printNamedAttribute(NamedAttribute attr,
+                                           SmallString<16> separator) {
   // Print the name without quotes if possible.
   ::printKeywordOrString(attr.getName().strref(), os);
 
@@ -2638,7 +2641,8 @@ void AsmPrinter::Impl::printNamedAttribute(NamedAttribute attr) {
     return;
 
   os << " = ";
-  printAttribute(attr.getValue());
+  printAttribute(attr.getValue(), /*typeElision*/ AttrTypeElision::Never,
+                 separator);
 }
 
 void AsmPrinter::Impl::printDialectAttribute(Attribute attr) {
