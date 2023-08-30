@@ -35,6 +35,18 @@ func.func @transpose_fold_splat() -> tensor<3x2xf32> {
   return %1 : tensor<3x2xf32>
 }
 
+// CHECK-LABEL: @transpose_fold_2d_bfloat16
+func.func @transpose_fold_2d_bfloat16() -> tensor<3x2xbf16> {
+  %input = "tosa.const"() {value = dense<[[0.0, 1.0, 2.0], [3.0, 4.0, 5.0]]> : tensor<2x3xbf16>} : () -> tensor<2x3xbf16>
+  %perms = "tosa.const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
+  //               CHECK: %[[CST:.+]] = "tosa.const"()
+  // CHECK-SAME{LITERAL}: value = dense<[[0.000000e+00, 3.000000e+00], [1.000000e+00, 4.000000e+00], [2.000000e+00, 5.000000e+00]]> : tensor<3x2xbf16>
+  %1 = "tosa.transpose"(%input, %perms) : (tensor<2x3xbf16>, tensor<2xi32>) -> tensor<3x2xbf16>
+  // CHECK: return %[[CST]]
+  return %1 : tensor<3x2xbf16>
+}
+
+
 // CHECK-LABEL: @transpose_fold_2d_float
 func.func @transpose_fold_2d_float() -> tensor<3x2xf32> {
   %input = "tosa.const"() {value = dense<[[0.0, 1.0, 2.0], [3.0, 4.0, 5.0]]> : tensor<2x3xf32>} : () -> tensor<2x3xf32>
