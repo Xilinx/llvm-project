@@ -64,11 +64,81 @@ func.func @test_pad_non_const(%arg0: tensor<13x21x3xf32>, %arg1: tensor<3x2xi32>
 
 // -----
 
-func.func @test_pad_non_const(%arg0: tensor<13x21x3xi8>, %arg1: tensor<i8>) -> tensor<13x21x3xi8> {
+func.func @test_pad_non_const(%arg0: tensor<13x21x3xi8>, %arg1: tensor<i8>) -> tensor<13x22x4xi8> {
   %0 = "tosa.const"() {value = dense<[[0, 0], [0, 1], [0, 1]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
   // expected-error@+1 {{'tosa.pad' op pad_const of pad is not constant}}
-  %1 = "tosa.pad"(%arg0, %0, %arg1) : (tensor<13x21x3xi8>, tensor<3x2xi32>, tensor<i8>) -> tensor<13x21x3xi8>
-  return %1 : tensor<13x21x3xi8>
+  %1 = "tosa.pad"(%arg0, %0, %arg1) : (tensor<13x21x3xi8>, tensor<3x2xi32>, tensor<i8>) -> tensor<13x22x4xi8>
+  return %1 : tensor<13x22x4xi8>
+}
+
+// -----
+
+func.func @test_pad_const_not_matched_element_type(%arg0: tensor<13x21x3xi8>) -> tensor<13x22x4xi8> {
+  %0 = "tosa.const"() {value = dense<[[0, 0], [0, 1], [0, 1]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
+  %1 = "tosa.const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
+  // expected-error@+1 {{'tosa.pad' op pad const has element type ('f32') while the input tensor has element type('i8')}}
+  %2 = "tosa.pad"(%arg0, %0, %1) : (tensor<13x21x3xi8>, tensor<3x2xi32>, tensor<f32>) -> tensor<13x22x4xi8>
+  return %2 : tensor<13x22x4xi8>
+}
+
+// -----
+
+func.func @test_pad_must_have_same_rank(%arg0: tensor<13x21x3xi8>) -> tensor<13x22x4x4xi8> {
+  %0 = "tosa.const"() {value = dense<[[0, 0], [0, 1], [0, 1]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
+  %1 = "tosa.const"() {value = dense<0> : tensor<i8>} : () -> tensor<i8>
+  // expected-error@+1 {{'tosa.pad' op input type ('tensor<13x21x3xi8>') must have the same rank as the output type ('tensor<13x22x4x4xi8>')}}
+  %2 = "tosa.pad"(%arg0, %0, %1) : (tensor<13x21x3xi8>, tensor<3x2xi32>, tensor<i8>) -> tensor<13x22x4x4xi8>
+  return %2 : tensor<13x22x4x4xi8>
+}
+
+// -----
+
+func.func @test_pad_padding_shape(%arg0: tensor<13x21x3xi8>) -> tensor<13x22x4xi8> {
+  %0 = "tosa.const"() {value = dense<[[[0, 0], [0, 1], [0, 1]]]> : tensor<1x3x2xi32>} : () -> tensor<1x3x2xi32>
+  %1 = "tosa.const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
+  // expected-error@+1 {{'tosa.pad' op padding shape must be in the form of Nx2 where N is the rank of input tensor but got ('tensor<1x3x2xi32>')}}
+  %2 = "tosa.pad"(%arg0, %0, %1) : (tensor<13x21x3xi8>, tensor<1x3x2xi32>, tensor<f32>) -> tensor<13x22x4xi8>
+  return %2 : tensor<13x22x4xi8>
+}
+
+// -----
+
+func.func @test_pad_if_padding_has_2_values(%arg0: tensor<2x2xi32>) -> tensor<5x5xi32> { 
+  %0 = "tosa.const"() {value = dense<[[1, 2, 3], [1, 2, 3]]> : tensor<2x3xi64>} : () -> tensor<2x3xi64>
+  %1 = "tosa.const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // expected-error@+1 {{'tosa.pad' op must only have a before-padding and an after-padding for each dimension of the input tensor}}
+  %2 = "tosa.pad"(%arg0, %0, %1) : (tensor<2x2xi32>, tensor<2x3xi64>, tensor<i32>) -> tensor<5x5xi32>
+  return %2 : tensor<5x5xi32>
+}
+
+// -----
+
+func.func @test_pad_if_padding_has_the_same_rank(%arg0: tensor<2x2xi32>) -> tensor<5x5xi32> { 
+  %0 = "tosa.const"() {value = dense<[[1, 2], [1, 2], [1, 2]]> : tensor<3x2xi64>} : () -> tensor<3x2xi64>
+  %1 = "tosa.const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // expected-error@+1 {{'tosa.pad' op padding array has (3) pad pairs while the rank of input tensor is 2}}
+  %2 = "tosa.pad"(%arg0, %0, %1) : (tensor<2x2xi32>, tensor<3x2xi64>, tensor<i32>) -> tensor<5x5xi32>
+  return %2 : tensor<5x5xi32>
+}
+
+// -----
+
+func.func @test_if_input_output_padding_are_matching_dim_1(%arg0: tensor<2x2xi32>) -> tensor<5x5xi32> { 
+  %0 = "tosa.const"() {value = dense<[[1, 3], [1, 2]]> : tensor<2x2xi64>} : () -> tensor<2x2xi64>
+  %1 = "tosa.const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // expected-error@+1 {{'tosa.pad' op output shape ('tensor<5x5xi32>') doesn't match with the input shape ('tensor<2x2xi32>') and the paddings (dense<[[1, 3], [1, 2]]> : tensor<2x2xi64>)}}
+  %2 = "tosa.pad"(%arg0, %0, %1) : (tensor<2x2xi32>, tensor<2x2xi64>, tensor<i32>) -> tensor<5x5xi32>
+  return %2 : tensor<5x5xi32>
+}
+
+// -----
+
+func.func @test_if_input_output_padding_are_matching_dim_2(%arg0: tensor<2x2xi32>) -> tensor<5x5xi32> { 
+  %0 = "tosa.const"() {value = dense<[[1, 2], [1, 3]]> : tensor<2x2xi64>} : () -> tensor<2x2xi64>
+  %1 = "tosa.const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // expected-error@+1 {{'tosa.pad' op output shape ('tensor<5x5xi32>') doesn't match with the input shape ('tensor<2x2xi32>') and the paddings (dense<[[1, 2], [1, 3]]> : tensor<2x2xi64>)}}
+  %2 = "tosa.pad"(%arg0, %0, %1) : (tensor<2x2xi32>, tensor<2x2xi64>, tensor<i32>) -> tensor<5x5xi32>
+  return %2 : tensor<5x5xi32>
 }
 
 // -----
