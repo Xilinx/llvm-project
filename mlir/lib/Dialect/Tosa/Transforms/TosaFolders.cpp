@@ -127,17 +127,6 @@ template DenseElementsAttr applyElementWise<APFloat, APFloat, FloatType>(
     const std::function<APFloat(const APFloat &, FloatType)> &toApply,
     FloatType targetType);
 
-/// Function that checks if the type contained in \p toCheck is float.
-LogicalResult notifyIfNotFloat(TypedValue<TensorType> toCheck, TosaOp location,
-                               PatternRewriter &rewriter) {
-  if (isa<FloatType>(toCheck.getType().getElementType())) {
-    return success();
-  }
-  return rewriter.notifyMatchFailure(location,
-                                     "Unexpected input tensor type: the "
-                                     "TOSA spec only allows floats");
-}
-
 template <class ElementType, class ResultType>
 DenseElementsAttr applyElementWise(
     const DenseElementsAttr &first, const DenseElementsAttr &second,
@@ -201,14 +190,10 @@ LogicalResult notifyIfNoTosaDenseConstantTensor(Value toCheck,
                                      "it operates on a TOSA constant");
 }
 
-template <typename BaseType>
-DenseElementsAttr transposeType(ElementsAttr attr, ShapedType inputType,
-                                ShapedType outputType,
-                                llvm::ArrayRef<int64_t> permValues) {
-  if (inputType.getNumElements() == 0)
-    return DenseElementsAttr::get(outputType, llvm::ArrayRef<BaseType>{});
-
-  auto attrValues = attr.getValues<BaseType>();
+template <typename BaseType, typename RangeT>
+void transposeArray(RangeT inputValues, ShapedType inputType,
+                    SmallVector<BaseType> &outputValues, ShapedType outputType,
+                    llvm::ArrayRef<int64_t> permValues) {
   auto inputShape = inputType.getShape();
 
   // The inverted permutation map and strides of the output are used to compute
@@ -217,13 +202,10 @@ DenseElementsAttr transposeType(ElementsAttr attr, ShapedType inputType,
   auto outputStrides = computeStrides(outputType.getShape());
   auto invertedPermValues = invertPermutationVector(permValues);
 
-  auto initialValue = *std::begin(attrValues);
-  SmallVector<BaseType> outputValues(inputType.getNumElements(), initialValue);
-
-  for (const auto &it : llvm::enumerate(attrValues)) {
+  for (auto it : llvm::enumerate(inputValues)) {
     auto srcLinearIndex = it.index();
-
     uint64_t dstLinearIndex = 0;
+
     for (int64_t dim = inputShape.size() - 1; dim >= 0; --dim) {
       // Compute the index into the current dimension of the source vector.
       auto sourceIndexForDim = srcLinearIndex % inputShape[dim];
@@ -237,7 +219,37 @@ DenseElementsAttr transposeType(ElementsAttr attr, ShapedType inputType,
 
     outputValues[dstLinearIndex] = it.value();
   }
+}
 
+template <typename BaseType>
+DenseElementsAttr transposeTypeRaw(DenseElementsAttr attr, ShapedType inputType,
+                                   ShapedType outputType,
+                                   llvm::ArrayRef<int64_t> permValues) {
+
+  ArrayRef inputValues(
+      reinterpret_cast<const BaseType *>(attr.getRawData().data()),
+      attr.getNumElements());
+
+  SmallVector<BaseType> outputValues;
+  outputValues.resize_for_overwrite(inputType.getNumElements());
+  transposeArray<BaseType>(inputValues, inputType, /*out*/ outputValues,
+                           outputType, permValues);
+
+  ArrayRef rawOutputValues(reinterpret_cast<const char *>(outputValues.data()),
+                           outputValues.size() * sizeof(BaseType));
+  return DenseElementsAttr::getFromRawBuffer(outputType, rawOutputValues);
+}
+
+template <typename BaseType>
+DenseElementsAttr transposeType(DenseElementsAttr attr, ShapedType inputType,
+                                ShapedType outputType,
+                                llvm::ArrayRef<int64_t> permValues) {
+
+  auto inputValues = attr.getValues<BaseType>();
+  SmallVector<BaseType> outputValues(inputType.getNumElements(),
+                                     *std::begin(inputValues));
+  transposeArray<BaseType>(inputValues, inputType, /*out*/ outputValues,
+                           outputType, permValues);
   return DenseElementsAttr::get(outputType,
                                 llvm::ArrayRef<BaseType>(outputValues));
 }
@@ -246,24 +258,32 @@ DenseElementsAttr transposeType(ElementsAttr attr, ShapedType inputType,
 // This implementation tries to operate on the underlying data in its raw
 // representation when possible to avoid allocating a large number of Attribute
 // objects.
-DenseElementsAttr transpose(ElementsAttr attr, ShapedType inputType,
+DenseElementsAttr transpose(DenseElementsAttr attr, ShapedType inputType,
                             ShapedType outputType,
                             llvm::ArrayRef<int64_t> permValues) {
+
+  assert(outputType.getNumElements() == inputType.getNumElements());
+  assert(outputType.getElementType() == inputType.getElementType());
+
   auto baseType = inputType.getElementType();
 
   // Handle possible integer types
   if (auto intType = dyn_cast<IntegerType>(baseType)) {
     switch (intType.getWidth()) {
     case 1:
+      // i1 has special alignment which is not handled by transposeTypeRaw.
       return transposeType<bool>(attr, inputType, outputType, permValues);
     case 8:
-      return transposeType<int8_t>(attr, inputType, outputType, permValues);
+      return transposeTypeRaw<uint8_t>(attr, inputType, outputType, permValues);
     case 16:
-      return transposeType<int16_t>(attr, inputType, outputType, permValues);
+      return transposeTypeRaw<uint16_t>(attr, inputType, outputType,
+                                        permValues);
     case 32:
-      return transposeType<int32_t>(attr, inputType, outputType, permValues);
+      return transposeTypeRaw<uint32_t>(attr, inputType, outputType,
+                                        permValues);
     case 64:
-      return transposeType<int64_t>(attr, inputType, outputType, permValues);
+      return transposeTypeRaw<uint64_t>(attr, inputType, outputType,
+                                        permValues);
     default:
       return transposeType<APInt>(attr, inputType, outputType, permValues);
     }
@@ -271,7 +291,13 @@ DenseElementsAttr transpose(ElementsAttr attr, ShapedType inputType,
 
   // Handle possible float types
   if (baseType.isF32()) {
-    return transposeType<float>(attr, inputType, outputType, permValues);
+    return transposeTypeRaw<uint32_t>(attr, inputType, outputType, permValues);
+  }
+  if (baseType.isF64()) {
+    return transposeTypeRaw<uint64_t>(attr, inputType, outputType, permValues);
+  }
+  if (baseType.isBF16()) {
+    return transposeTypeRaw<uint16_t>(attr, inputType, outputType, permValues);
   }
 
   return transposeType<APFloat>(attr, inputType, outputType, permValues);
@@ -501,8 +527,13 @@ struct TosaFoldConstantTranspose : public TosaFoldConstantBase<tosa::TransposeOp
     if (!outputType.getElementType().isIntOrIndexOrFloat())
       return failure();
 
-    ElementsAttr inputValues;
+    DenseElementsAttr inputValues;
     if (!matchPattern(op.getInput1(), m_Constant(&inputValues)))
+      return failure();
+    // Splats are already handled in the fold() method of each op.
+    // We cannot handle them here because the use of DenseElementsAttr::getRawData
+    // is invalid for them.
+    if (inputValues.isSplat())
       return failure();
     // Make sure the input is a constant that has a single user.
     if (!llvm::hasSingleElement(op.getInput1().getDefiningOp()->getUsers()))
