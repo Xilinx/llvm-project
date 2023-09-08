@@ -1349,14 +1349,23 @@ DenseElementsAttr padType(ShapedType inputType, ElementsAttr inputValues,
   for (size_t outIndex = 0, e = outputValues.size(); outIndex < e; ++outIndex) {
     auto indexInTarget = offsetToIndex(outputShape, outIndex);
 
+    llvm::for_each(llvm::enumerate(indexInTarget), [&](const auto &dimInfo) {
+      auto index = dimInfo.index();
+      auto i = dimInfo.value() - paddingVals[index * 2];
+
+      // Update index so it points to the right position
+      // when this is not a padConst value.
+      indexInTarget[index] = i;
+    });
+
     bool isPad =
         llvm::any_of(llvm::enumerate(indexInTarget), [&](const auto &dimInfo) {
           auto index = dimInfo.index();
-          auto i = dimInfo.value() - paddingVals[index * 2];
-          return static_cast<bool>(i < 0 || i >= inputShape[index]);
+          auto value = dimInfo.value();
+          return static_cast<bool>(value < 0 || value >= inputShape[index]);
         });
 
-    auto inputIndexOffset = indexToOffset(outputShape, indexInTarget);
+    auto inputIndexOffset = indexToOffset(inputShape, indexInTarget);
     outputValues[outIndex] = isPad ? padConst : values[inputIndexOffset];
   }
   return DenseElementsAttr::get(outputType,
