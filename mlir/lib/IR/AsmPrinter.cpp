@@ -2140,6 +2140,13 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
     return;
   } else if (auto dictAttr = llvm::dyn_cast<DictionaryAttr>(attr)) {
     os << '{';
+    if (printerFlags.getNewlineAfterAttrLimit() &&
+        llvm::dyn_cast<DictionaryAttr>(attr).getValue().vec().size() >
+            *printerFlags.getNewlineAfterAttrLimit() &&
+        separator.size() > 2) {
+      separator.reserve(separator.capacity() + 2);
+      separator.push_back('  ');
+    }
     interleave(
         dictAttr.getValue(),
         [&](NamedAttribute attr) { printNamedAttribute(attr); }, separator);
