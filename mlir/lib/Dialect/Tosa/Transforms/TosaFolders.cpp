@@ -225,10 +225,8 @@ template <typename BaseType>
 DenseElementsAttr transposeTypeRaw(DenseElementsAttr attr, ShapedType inputType,
                                    ShapedType outputType,
                                    llvm::ArrayRef<int64_t> permValues) {
-
-  ArrayRef inputValues(
-      reinterpret_cast<const BaseType *>(attr.getRawData().data()),
-      attr.getNumElements());
+  ArrayRef<BaseType> inputValues =
+      cast<DenseIntOrFPElementsAttr>(attr).getNonSplatRawData<BaseType>();
 
   SmallVector<BaseType> outputValues;
   outputValues.resize_for_overwrite(inputType.getNumElements());
