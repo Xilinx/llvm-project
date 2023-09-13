@@ -2141,8 +2141,7 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
   } else if (auto dictAttr = llvm::dyn_cast<DictionaryAttr>(attr)) {
     os << '{';
     if (printerFlags.getNewlineAfterAttrLimit() &&
-        llvm::dyn_cast<DictionaryAttr>(attr).getValue().vec().size() >
-            *printerFlags.getNewlineAfterAttrLimit() &&
+        dictAttr.size() > *printerFlags.getNewlineAfterAttrLimit() &&
         separator.size() > 2) {
       separator.reserve(separator.capacity() + 2);
       separator.push_back('  ');
@@ -2161,9 +2160,9 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
       return;
     }
 
-    // Only print attributes as unsigned if they are explicitly unsigned or are
-    // signless 1-bit values.  Indexes, signed values, and multi-bit signless
-    // values print as signed.
+    // Only print attributes as unsigned if they are explicitly unsigned or
+    // are signless 1-bit values.  Indexes, signed values, and multi-bit
+    // signless values print as signed.
     bool isUnsigned =
         intType.isUnsignedInteger() || intType.isSignlessInteger(1);
     intAttr.getValue().print(os, !isUnsigned);
@@ -2184,9 +2183,30 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
 
   } else if (auto arrayAttr = llvm::dyn_cast<ArrayAttr>(attr)) {
     os << '[';
-    interleaveComma(arrayAttr.getValue(), [&](Attribute attr) {
-      printAttribute(attr, AttrTypeElision::May, separator);
-    });
+    if (printerFlags.getNewlineAfterAttrLimit() &&
+        arrayAttr.size() > *printerFlags.getNewlineAfterAttrLimit() &&
+        separator.size() > 2) {
+      separator.reserve(separator.capacity() + 2);
+      separator.push_back('  ');
+    }
+    bool isDictAttrPresent = false;
+    for (auto attr : arrayAttr.getValue()) {
+      if (auto dictAttr = llvm::dyn_cast<DictionaryAttr>(attr)) {
+        isDictAttrPresent = true;
+      }
+    }
+    if (isDictAttrPresent) {
+      interleave(
+          arrayAttr.getValue(),
+          [&](Attribute attr) {
+            printAttribute(attr, AttrTypeElision::May, separator);
+          },
+          separator);
+    } else {
+      interleaveComma(arrayAttr.getValue(), [&](Attribute attr) {
+        printAttribute(attr, AttrTypeElision::May, separator);
+      });
+    }
     os << ']';
 
   } else if (auto affineMapAttr = llvm::dyn_cast<AffineMapAttr>(attr)) {
