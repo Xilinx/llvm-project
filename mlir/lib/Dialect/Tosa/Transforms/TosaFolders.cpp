@@ -590,6 +590,11 @@ struct TosaFoldConstantRSQRT
     auto floatVal = apFloatVal.convertToFloat();
     auto sqrtVal = std::sqrt(floatVal);
     APFloat apSqrtVal(sqrtVal);
+    // We fold only float32 and bfloat16, so we do not expect any precision loss
+    // for float32 and the tosa spec explicitly allows to implement bfloat16 as
+    // float32, so any precision loss on the conversion back is fine.
+    bool losesInfo = false;
+    apSqrtVal.convert(apFloatVal.getSemantics(), tosaRoundingMode, &losesInfo);
 
     // Compute the reciprocal
     return computeReciprocal(apSqrtVal, floatTy);
@@ -602,7 +607,7 @@ struct TosaFoldConstantRSQRT
   }
 
   bool isSupportedElementType(Type type) const {
-    return type.isBF16() || type.isF16() || type.isF32();
+    return type.isBF16() || type.isF32();
   }
 };
 
