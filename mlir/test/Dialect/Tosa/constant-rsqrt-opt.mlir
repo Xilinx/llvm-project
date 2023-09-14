@@ -123,6 +123,16 @@ func.func @rsqrt_fold() -> tensor<4x6xf32> {
   return %1 : tensor<4x6xf32>
 }
 
+// CHECK-LABEL: @rsqrt_fold_single_valued_bf16
+func.func @rsqrt_fold_single_valued_bf16() -> tensor<bf16> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}2.890630e-01{{.*}}tensor<bf16>
+  // CHECK-NOT: tosa.rsqrt
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value = dense<12.0> : tensor<bf16>} : () -> tensor<bf16>
+  %1 = "tosa.rsqrt"(%0) : (tensor<bf16>) -> tensor<bf16>
+  return %1 : tensor<bf16>
+}
+
 // CHECK-LABEL: @rsqrt_of_const_sparse
 // Sparse tensors are currently not supported
 func.func @rsqrt_of_const_sparse() -> tensor<32xbf16> {
