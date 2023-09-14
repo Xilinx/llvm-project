@@ -2140,17 +2140,27 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
     return;
   } else if (auto dictAttr = llvm::dyn_cast<DictionaryAttr>(attr)) {
     os << '{';
-    if (printerFlags.getNewlineAfterAttrLimit() &&
-        dictAttr.size() > *printerFlags.getNewlineAfterAttrLimit() &&
-        separator.size() > 2) {
+    SmallString<16> separatorBracket = StringRef("");
+    bool breakOnNewLine =
+        printerFlags.getNewlineAfterAttrLimit() && separator.size() > 2;
+    if (breakOnNewLine) {
       separator.reserve(separator.capacity() + 2);
-      separator.push_back('  ');
+      separator.append("  ");
+      separatorBracket.reserve(separator.size() + 2);
+      separatorBracket.push_back('\n');
+      for (size_t i = 0; i < separator.size() - 2; ++i) {
+        separatorBracket.push_back(' ');
+      }
+      os << separatorBracket;
     }
     interleave(
         dictAttr.getValue(),
         [&](NamedAttribute attr) { printNamedAttribute(attr); }, separator);
+    if (breakOnNewLine) {
+      separatorBracket.pop_back_n(2);
+      os << separatorBracket;
+    }
     os << '}';
-
   } else if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attr)) {
     Type intType = intAttr.getType();
     if (intType.isSignlessInteger(1)) {
@@ -2183,32 +2193,36 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
 
   } else if (auto arrayAttr = llvm::dyn_cast<ArrayAttr>(attr)) {
     os << '[';
-    if (printerFlags.getNewlineAfterAttrLimit() &&
-        arrayAttr.size() > *printerFlags.getNewlineAfterAttrLimit() &&
-        separator.size() > 2) {
-      separator.reserve(separator.capacity() + 2);
-      separator.push_back('  ');
-    }
+    bool breakOnNewLine =
+        printerFlags.getNewlineAfterAttrLimit() && separator.size() > 2;
     bool isDictAttrPresent = false;
-    for (auto attr : arrayAttr.getValue()) {
-      if (auto dictAttr = llvm::dyn_cast<DictionaryAttr>(attr)) {
+    for (auto attribute : arrayAttr.getValue()) {
+      if (auto dictAttr = llvm::dyn_cast<DictionaryAttr>(attribute))
         isDictAttrPresent = true;
-      }
     }
-    if (isDictAttrPresent) {
+    if (isDictAttrPresent && breakOnNewLine) {
+      separator.reserve(separator.capacity() + 2);
+      separator.append("  ");
+      SmallString<16> separatorBracket = StringRef("\n");
+      separatorBracket.reserve(separator.size() + 2);
+      for (size_t i = 0; i < separator.size() - 2; ++i) {
+        separatorBracket.push_back(' ');
+      }
+      os << separatorBracket;
       interleave(
           arrayAttr.getValue(),
           [&](Attribute attr) {
             printAttribute(attr, AttrTypeElision::May, separator);
           },
           separator);
+      separatorBracket.pop_back_n(2);
+      os << separatorBracket;
     } else {
       interleaveComma(arrayAttr.getValue(), [&](Attribute attr) {
         printAttribute(attr, AttrTypeElision::May, separator);
       });
     }
     os << ']';
-
   } else if (auto affineMapAttr = llvm::dyn_cast<AffineMapAttr>(attr)) {
     os << "affine_map<";
     affineMapAttr.getValue().print(os);
