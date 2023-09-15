@@ -2141,8 +2141,9 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
   } else if (auto dictAttr = llvm::dyn_cast<DictionaryAttr>(attr)) {
     os << '{';
     SmallString<16> separatorBracket = StringRef("");
-    bool breakOnNewLine =
-        printerFlags.getNewlineAfterAttrLimit() && separator.size() > 2;
+    bool breakOnNewLine = printerFlags.getNewlineAfterAttrLimit() &&
+                          separator.size() > 2 &&
+                          dictAttr.getValue().vec().size() > 0;
     if (breakOnNewLine) {
       separator.reserve(separator.capacity() + 2);
       separator.append("  ");
