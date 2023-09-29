@@ -239,6 +239,10 @@ Token Lexer::lexToken() {
       if (*curPtr == '/') {
         lexComment();
         continue;
+      } else if (*curPtr == '*') {
+        if (failed(lexBlockComment()))
+          return emitError(tokStart, "unterminated comment, expected '*/'");
+        continue;
       }
       return emitError(tokStart, "unexpected character");
 
@@ -293,6 +297,41 @@ void Lexer::lexComment() {
       break;
     }
   }
+}
+
+/// Skip multi-line comments that start with /* and end with */.
+LogicalResult Lexer::lexBlockComment() {
+  // Advance over the '*' in a '/*' comment.
+  assert(*curPtr == '*');
+  ++curPtr;
+
+  while (true) {
+    switch (*curPtr++) {
+    case '*':
+      // Block ends with '*/'.
+      if (*curPtr++ == '/')
+        return success();
+      // Roll back one character if another '*' is encountered.
+      if (*(curPtr - 1) == '*') {
+        --curPtr;
+        break;
+      }
+      // Otherwise, fall through so that we check for EOF.
+      [[fallthrough]];
+    case 0:
+      // If this is the end of the buffer, we unexpectedly end the block
+      // comment. So, report failure.
+      if (curPtr - 1 == curBuffer.end()) {
+        --curPtr;
+        return failure();
+      }
+      [[fallthrough]];
+    default:
+      // Skip over other characters.
+      break;
+    }
+  }
+  return failure();
 }
 
 Token Lexer::lexDirective(const char *tokStart) {

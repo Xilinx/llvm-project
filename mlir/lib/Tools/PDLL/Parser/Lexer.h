@@ -204,6 +204,7 @@ private:
 
   /// Lex methods.
   void lexComment();
+  LogicalResult lexBlockComment();
   Token lexDirective(const char *tokStart);
   Token lexIdentifier(const char *tokStart);
   Token lexNumber(const char *tokStart);
