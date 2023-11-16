@@ -404,6 +404,7 @@ public:
     return const_cast<CallExpr *>(this)->getArguments();
   }
 
+  /// Returns whether the result of this call is to be negated.
   bool getIsNegated() const { return isNegated; }
 
 private:
@@ -421,6 +422,7 @@ private:
   /// TrailingObject utilities.
   friend llvm::TrailingObjects<CallExpr, Expr *>;
 
+  // Is the result of this call to be negated.
   bool isNegated;
 };
 

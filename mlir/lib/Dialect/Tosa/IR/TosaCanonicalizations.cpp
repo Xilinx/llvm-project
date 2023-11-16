@@ -283,13 +283,12 @@ struct ClampIsNoOp : public OpRewritePattern<tosa::ClampOp> {
       return failure();
     }
 
-    if (inputElementType.isF32()) {
+    if (inputElementType.isa<FloatType>()) {
+      // Unlike integer types, floating point types can represent infinity.
       auto minClamp = op.getMinFp();
       auto maxClamp = op.getMaxFp();
-      bool isMin = (minClamp.isLargest() || minClamp.isInfinity()) &&
-                   minClamp.isNegative();
-      bool isMax = (maxClamp.isLargest() || maxClamp.isInfinity()) &&
-                   !maxClamp.isNegative();
+      bool isMin = minClamp.isInfinity() && minClamp.isNegative();
+      bool isMax = maxClamp.isInfinity() && !maxClamp.isNegative();
 
       if (isMin && isMax) {
         rewriter.replaceOp(op, input);
@@ -407,13 +406,12 @@ struct ConcatSliceOptimization : public OpRewritePattern<tosa::SliceOp> {
 
       if (sliceStart[axis] >= 0 &&
           (sliceStart[axis] + sliceSize[axis]) <= inputType.getDimSize(axis)) {
-        replaceWithSlice =
-            rewriter
-                .create<tosa::SliceOp>(
-                    sliceOp.getLoc(), sliceOp.getType(), input,
-                    rewriter.getDenseI64ArrayAttr(sliceOp.getStart()),
-                    rewriter.getDenseI64ArrayAttr(sliceSize))
-                .getResult();
+        replaceWithSlice = rewriter
+                               .create<tosa::SliceOp>(
+                                   sliceOp.getLoc(), sliceOp.getType(), input,
+                                   rewriter.getDenseI64ArrayAttr(sliceStart),
+                                   rewriter.getDenseI64ArrayAttr(sliceSize))
+                               .getResult();
         break;
       }
       sliceStart[axis] -= inputType.getDimSize(axis);
@@ -607,7 +605,7 @@ OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
 }
 
 OpFoldResult ReciprocalOp::fold(FoldAdaptor adaptor) {
-  
+
   auto constantAttr = dyn_cast_or_null<DenseElementsAttr>(adaptor.getOperands()[0]);
   auto lhsTy = dyn_cast<RankedTensorType>(getInput1().getType());
 
@@ -841,12 +839,13 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
 
   // reshape(const(x)) -> const(reshape-attr(x))
   if (auto operand = llvm::dyn_cast_if_present<DenseElementsAttr>(adaptor.getInput1())) {
+    // Constants must have static shape.
     if (!outputTy.hasStaticShape())
       return {};
 
-    if (operand.isSplat()) {
+    // Okay to duplicate splat constants.
+    if (operand.isSplat())
       return SplatElementsAttr::get(outputTy, operand.getSplatValue<Attribute>());
-    }
 
     // Don't duplicate other constants.
     if (!getInput1().hasOneUse())

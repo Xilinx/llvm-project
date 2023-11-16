@@ -235,18 +235,12 @@ class CommandLineCompletionTestCase(TestBase):
     def test_log_dir(self):
         # Complete our source directory.
         src_dir = os.path.dirname(os.path.realpath(__file__))
-        self.complete_from_to(
-            "log enable lldb expr -f " + src_dir,
-            [src_dir + os.sep],
-            turn_off_re_match=True,
-        )
+        self.complete_from_to("log enable lldb expr -f " + src_dir, [src_dir + os.sep])
 
     # <rdar://problem/11052829>
     def test_infinite_loop_while_completing(self):
         """Test that 'process print hello\' completes to itself and does not infinite loop."""
-        self.complete_from_to(
-            "process print hello\\", "process print hello\\", turn_off_re_match=True
-        )
+        self.complete_from_to("process print hello\\", "process print hello\\")
 
     def test_watchpoint_co(self):
         """Test that 'watchpoint co' completes to 'watchpoint command '."""
@@ -436,6 +430,61 @@ class CommandLineCompletionTestCase(TestBase):
         self.dbg.CreateTarget(self.getBuildArtifact("a.out"))
         self.complete_from_to("target modules dump line-table main.cp", ["main.cpp"])
 
+    def test_custom_command_completion(self):
+        """Tests completion in custom user provided commands."""
+        completion_types = [
+            "none",
+            "source-file",
+            "disk-file",
+            "disk-directory",
+            "symbol",
+            "module",
+            "settings-name",
+            "platform-plugin",
+            "architecture",
+            "variable-path",
+            "register",
+            "breakpoint",
+            "process-plugin",
+            "disassembly-flavor",
+            "type-language",
+            "frame-index",
+            "module-uuid",
+            "stophook-id",
+            "thread-index",
+            "watchpoint-id",
+            "breakpoint-name",
+            "process-id",
+            "process-name",
+            "remote-disk-file",
+            "remote-disk-directory",
+            "type-category-name",
+            "custom",
+        ]
+        self.completions_contain("command script add -C ", completion_types)
+
+        source_path = os.path.join(self.getSourceDir(), "my_test_cmd.py")
+        self.runCmd("command script import '%s'" % (source_path))
+        self.runCmd(
+            "command script add -C disk-file -f my_test_cmd.my_test_cmd my_test_cmd"
+        )
+        self.complete_from_to("my_test_cmd main.cp", ["main.cpp"])
+        self.expect("my_test_cmd main.cpp", substrs=["main.cpp"])
+
+    @skipIfWindows
+    def test_completion_target_create_from_root_dir(self):
+        """Tests source file completion by completing ."""
+        root_dir = os.path.abspath(os.sep)
+        self.completions_contain(
+            "target create " + root_dir,
+            list(
+                filter(
+                    lambda x: os.path.exists(x) and os.path.isdir(x),
+                    map(lambda x: root_dir + x + os.sep, os.listdir(root_dir)),
+                )
+            ),
+        )
+
     def test_target_modules_load_aout(self):
         """Tests modules completion by completing the target modules load argument."""
         self.build()
@@ -567,6 +616,21 @@ class CommandLineCompletionTestCase(TestBase):
     def test_command_unalias(self):
         self.complete_from_to("command unalias ima", "command unalias image")
 
+    def test_command_aliases(self):
+        self.runCmd("command alias brkpt breakpoint")
+        # Exact matches are chosen if possible, even if there are longer
+        # completions we could use.
+        self.complete_from_to("b", "b ")
+        # Aliases are included in possible completions.
+        self.complete_from_to("br", ["breakpoint", "brkpt"])
+        # An alias can be the chosen completion.
+        self.complete_from_to("brk", "brkpt")
+
+        # The list can contain only aliases if there's no built-ins to match.
+        self.runCmd("command alias test_1 breakpoint")
+        self.runCmd("command alias test_2 breakpoint")
+        self.complete_from_to("test_", ["test_1", "test_2"])
+
     def test_completion_description_commands(self):
         """Test descriptions of top-level command completions"""
         self.check_completion_with_desc(
@@ -652,9 +716,7 @@ class CommandLineCompletionTestCase(TestBase):
         self.build()
         self.dbg.CreateTarget(self.getBuildArtifact("a.out"))
         self.complete_from_to(
-            "breakpoint set -n Fo",
-            "breakpoint set -n Foo::Bar(int,\\ int)",
-            turn_off_re_match=True,
+            "breakpoint set -n Fo", "breakpoint set -n Foo::Bar(int,\\ int)"
         )
         # No completion for Qu because the candidate is
         # (anonymous namespace)::Quux().
@@ -681,13 +743,25 @@ class CommandLineCompletionTestCase(TestBase):
         self.runCmd("type synthetic add -x Hoo -l test")
         self.complete_from_to("type synthetic delete ", ["Hoo"])
 
-    @skipIf(archs=no_match(["x86_64"]))
-    def test_register_read_and_write_on_x86(self):
-        """Test the completion of the commands register read and write on x86"""
-
+    def test_register_no_complete(self):
         # The tab completion for "register read/write"  won't work without a running process.
         self.complete_from_to("register read ", "register read ")
         self.complete_from_to("register write ", "register write ")
+        self.complete_from_to("register info ", "register info ")
+
+        self.build()
+        self.runCmd("target create {}".format(self.getBuildArtifact("a.out")))
+        self.runCmd("run")
+
+        # Once a program has finished you have an execution context but no register
+        # context so completion cannot work.
+        self.complete_from_to("register read ", "register read ")
+        self.complete_from_to("register write ", "register write ")
+        self.complete_from_to("register info ", "register info ")
+
+    @skipIf(archs=no_match(["x86_64"]))
+    def test_register_read_and_write_on_x86(self):
+        """Test the completion of the commands register read and write on x86"""
 
         self.build()
         self.main_source_spec = lldb.SBFileSpec("main.cpp")
@@ -702,7 +776,7 @@ class CommandLineCompletionTestCase(TestBase):
         # complete with prefix '$'
         self.completions_match("register read $rb", ["$rbx", "$rbp"])
         self.completions_match("register read $ra", ["$rax"])
-        self.complete_from_to("register read rax $", ["\$rax", "\$rbx", "\$rcx"])
+        self.complete_from_to("register read rax $", ["$rax", "$rbx", "$rcx"])
         self.complete_from_to("register read $rax ", ["rax", "rbx", "rcx"])
 
         # test cases for register write
@@ -813,3 +887,11 @@ class CommandLineCompletionTestCase(TestBase):
         self.complete_from_to("breakpoint set -N n", "breakpoint set -N n")
         self.assertTrue(bp1.AddNameWithErrorHandling("nn"))
         self.complete_from_to("breakpoint set -N ", "breakpoint set -N nn")
+
+    def test_ambiguous_command(self):
+        """Test completing an ambiguous commands"""
+        self.complete_from_to("settings s", ["set", "show"])
+
+    def test_ambiguous_subcommand(self):
+        """Test completing a subcommand of an ambiguous command"""
+        self.complete_from_to("settings s ta", [])

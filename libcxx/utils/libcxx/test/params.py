@@ -24,6 +24,9 @@ _warningFlags = [
     "-Wno-noexcept-type",
     "-Wno-aligned-allocation-unavailable",
     "-Wno-atomic-alignment",
+    "-Wno-reserved-module-identifier",
+    '-Wdeprecated-copy',
+    '-Wdeprecated-copy-dtor',
     # GCC warns about places where we might want to add sized allocation/deallocation
     # functions, but we know better what we're doing/testing in the test suite.
     "-Wno-sized-deallocation",
@@ -50,29 +53,41 @@ _warningFlags = [
     # Disable warnings for extensions used in C++03
     "-Wno-local-type-template-args",
     "-Wno-c++11-extensions",
+
+    # TODO(philnik) This fails with the PSTL.
+    "-Wno-unknown-pragmas",
+    # Don't fail compilation in case the compiler fails to perform the requested
+    # loop vectorization.
+    "-Wno-pass-failed",
+
+    # TODO: Find out why GCC warns in lots of places (is this a problem with always_inline?)
+    "-Wno-dangling-reference",
+    "-Wno-mismatched-new-delete",
+    "-Wno-redundant-move",
+
+    # This doesn't make sense in real code, but we have to test it because the standard requires us to not break
+    "-Wno-self-move",
 ]
 
 _allStandards = ["c++03", "c++11", "c++14", "c++17", "c++20", "c++23", "c++26"]
 
 
 def getStdFlag(cfg, std):
-    fallbacks = {
-        "c++11": "c++0x",
-        "c++14": "c++1y",
-        "c++17": "c++1z",
-        "c++20": "c++2a",
-        "c++23": "c++2b",
-    }
     # TODO(LLVM-17) Remove this clang-tidy-16 work-around
     if std == "c++23":
         std = "c++2b"
     if hasCompileFlag(cfg, "-std=" + std):
         return "-std=" + std
+    # TODO(LLVM-19) Remove the fallbacks needed for Clang 16.
+    fallbacks = {
+        "c++23": "c++2b",
+    }
     if std in fallbacks and hasCompileFlag(cfg, "-std=" + fallbacks[std]):
         return "-std=" + fallbacks[std]
     return None
 
 
+# fmt: off
 DEFAULT_PARAMETERS = [
     Parameter(
         name="target_triple",
@@ -104,31 +119,25 @@ DEFAULT_PARAMETERS = [
     ),
     Parameter(
         name="enable_modules",
-        choices=[True, False],
-        type=bool,
-        default=False,
-        help="Whether to build the test suite with Clang modules enabled.",
-        actions=lambda modules: [
-            AddFeature("modules-build"),
-            AddCompileFlag("-fmodules"),
-            AddCompileFlag(
-                "-fcxx-modules"
-            ),  # AppleClang disregards -fmodules entirely when compiling C++. This enables modules for C++.
-        ]
-        if modules
-        else [],
-    ),
-    Parameter(
-        name="enable_modules_lsv",
-        choices=[True, False],
-        type=bool,
-        default=False,
-        help="Whether to enable Local Submodule Visibility in the Modules build.",
-        actions=lambda lsv: [
-            AddCompileFlag("-Xclang -fmodules-local-submodule-visibility"),
-        ]
-        if lsv
-        else [],
+        choices=["none", "clang", "clang-lsv"],
+        type=str,
+        help="Whether to build the test suite with modules enabled. "
+             "Select `clang` for Clang modules, and 'clang-lsv' for Clang modules with Local Submodule Visibility.",
+        default="none",
+        actions=lambda modules: filter(None, [
+            AddFeature("clang-modules-build")           if modules in ("clang", "clang-lsv") else None,
+
+            # Note: AppleClang disregards -fmodules entirely when compiling C++, so we also pass -fcxx-modules
+            #       to enable modules for C++.
+            AddCompileFlag("-fmodules -fcxx-modules")   if modules in ("clang", "clang-lsv") else None,
+
+            # Note: We use a custom modules cache path to make sure that we don't reuse
+            #       the default one, which can be shared across CI builds with different
+            #       configurations.
+            AddCompileFlag(lambda cfg: f"-fmodules-cache-path={cfg.test_exec_root}/ModuleCache") if modules in ("clang", "clang-lsv") else None,
+
+            AddCompileFlag("-Xclang -fmodules-local-submodule-visibility") if modules == "clang-lsv" else None,
+        ])
     ),
     Parameter(
         name="enable_exceptions",
@@ -136,9 +145,10 @@ DEFAULT_PARAMETERS = [
         type=bool,
         default=True,
         help="Whether to enable exceptions when compiling the test suite.",
-        actions=lambda exceptions: []
-        if exceptions
-        else [AddFeature("no-exceptions"), AddCompileFlag("-fno-exceptions")],
+        actions=lambda exceptions: [] if exceptions else [
+            AddFeature("no-exceptions"),
+            AddCompileFlag("-fno-exceptions")
+        ],
     ),
     Parameter(
         name="enable_rtti",
@@ -146,9 +156,10 @@ DEFAULT_PARAMETERS = [
         type=bool,
         default=True,
         help="Whether to enable RTTI when compiling the test suite.",
-        actions=lambda rtti: []
-        if rtti
-        else [AddFeature("no-rtti"), AddCompileFlag("-fno-rtti")],
+        actions=lambda rtti: [] if rtti else [
+            AddFeature("no-rtti"),
+            AddCompileFlag("-fno-rtti")
+        ],
     ),
     Parameter(
         name="stdlib",
@@ -175,9 +186,7 @@ DEFAULT_PARAMETERS = [
                 AddFeature("stdlib={}".format(stdlib)),
                 # Also add an umbrella feature 'stdlib=libc++' for all flavors of libc++, to simplify
                 # the test suite.
-                AddFeature("stdlib=libc++")
-                if re.match(".+-libc\+\+", stdlib)
-                else None,
+                AddFeature("stdlib=libc++") if re.match(".+-libc\+\+", stdlib) else None,
             ],
         ),
     ),
@@ -187,10 +196,9 @@ DEFAULT_PARAMETERS = [
         type=bool,
         default=True,
         help="Whether to enable warnings when compiling the test suite.",
-        actions=lambda warnings: []
-        if not warnings
-        else [AddOptionalWarningFlag(w) for w in _warningFlags]
-        + [AddCompileFlag("-D_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER")],
+        actions=lambda warnings: [] if not warnings else
+            [AddOptionalWarningFlag(w) for w in _warningFlags] +
+            [AddCompileFlag("-D_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER")],
     ),
     Parameter(
         name="use_sanitizer",
@@ -212,35 +220,29 @@ DEFAULT_PARAMETERS = [
             None,
             [
                 AddFlag("-g -fno-omit-frame-pointer") if sanitizer else None,
-                AddFlag(
-                    "-fsanitize=undefined -fno-sanitize=float-divide-by-zero -fno-sanitize-recover=all"
-                )
-                if sanitizer == "Undefined"
-                else None,
-                AddFeature("ubsan") if sanitizer == "Undefined" else None,
+
+                AddFlag("-fsanitize=undefined -fno-sanitize=float-divide-by-zero -fno-sanitize-recover=all") if sanitizer == "Undefined" else None,
+                AddFeature("ubsan")                                                                          if sanitizer == "Undefined" else None,
+
                 AddFlag("-fsanitize=address") if sanitizer == "Address" else None,
-                AddFeature("asan") if sanitizer == "Address" else None,
+                AddFeature("asan")            if sanitizer == "Address" else None,
+
                 AddFlag("-fsanitize=hwaddress") if sanitizer == "HWAddress" else None,
-                AddFeature("hwasan") if sanitizer == "HWAddress" else None,
-                AddFlag("-fsanitize=memory")
-                if sanitizer in ["Memory", "MemoryWithOrigins"]
-                else None,
-                AddFeature("msan")
-                if sanitizer in ["Memory", "MemoryWithOrigins"]
-                else None,
-                AddFlag("-fsanitize-memory-track-origins")
-                if sanitizer == "MemoryWithOrigins"
-                else None,
+                AddFeature("hwasan")            if sanitizer == "HWAddress" else None,
+
+                AddFlag("-fsanitize=memory")               if sanitizer in ["Memory", "MemoryWithOrigins"] else None,
+                AddFeature("msan")                         if sanitizer in ["Memory", "MemoryWithOrigins"] else None,
+                AddFlag("-fsanitize-memory-track-origins") if sanitizer == "MemoryWithOrigins" else None,
+
                 AddFlag("-fsanitize=thread") if sanitizer == "Thread" else None,
-                AddFeature("tsan") if sanitizer == "Thread" else None,
+                AddFeature("tsan")           if sanitizer == "Thread" else None,
+
                 AddFlag("-fsanitize=dataflow") if sanitizer == "DataFlow" else None,
-                AddFlag("-fsanitize=leaks") if sanitizer == "Leaks" else None,
-                AddFeature("sanitizer-new-delete")
-                if sanitizer
-                in ["Address", "HWAddress", "Memory", "MemoryWithOrigins", "Thread"]
-                else None,
-            ],
-        ),
+                AddFlag("-fsanitize=leaks")    if sanitizer == "Leaks" else None,
+
+                AddFeature("sanitizer-new-delete") if sanitizer in ["Address", "HWAddress", "Memory", "MemoryWithOrigins", "Thread"] else None,
+            ]
+        )
     ),
     Parameter(
         name="enable_experimental",
@@ -255,16 +257,14 @@ DEFAULT_PARAMETERS = [
             # We can't check for the feature 'msvc' in available_features
             # as those features are added after processing parameters.
             AddFeature("c++experimental"),
-            PrependLinkFlag(
-                lambda cfg: "-llibc++experimental"
-                if _isMSVC(cfg)
-                else "-lc++experimental"
-            ),
+            PrependLinkFlag(lambda cfg: "-llibc++experimental" if _isMSVC(cfg) else "-lc++experimental"),
             AddCompileFlag("-D_LIBCPP_ENABLE_EXPERIMENTAL"),
         ]
         if experimental
         else [
             AddFeature("libcpp-has-no-incomplete-pstl"),
+            AddFeature("libcpp-has-no-experimental-stop_token"),
+            AddFeature("libcpp-has-no-incomplete-tzdb"),
         ],
     ),
     Parameter(
@@ -276,18 +276,21 @@ DEFAULT_PARAMETERS = [
         actions=lambda enabled: [] if not enabled else [AddFeature("long_tests")],
     ),
     Parameter(
-        name="enable_assertions",
-        choices=[True, False],
-        type=bool,
-        default=False,
-        help="Whether to enable assertions when compiling the test suite. This is only meaningful when "
-        "running the tests against libc++.",
-        actions=lambda assertions: [
-            AddCompileFlag("-D_LIBCPP_ENABLE_ASSERTIONS=1"),
-            AddFeature("libcpp-has-assertions"),
-        ]
-        if assertions
-        else [],
+        name="hardening_mode",
+        choices=["unchecked", "hardened", "safe", "debug"],
+        type=str,
+        default="unchecked",
+        help="Whether to enable one of the hardening modes when compiling the test suite. This is only "
+        "meaningful when running the tests against libc++.",
+        actions=lambda hardening_mode: filter(
+            None,
+            [
+                AddCompileFlag("-D_LIBCPP_ENABLE_HARDENED_MODE=1") if hardening_mode == "hardened" else None,
+                AddCompileFlag("-D_LIBCPP_ENABLE_SAFE_MODE=1")     if hardening_mode == "safe" else None,
+                AddCompileFlag("-D_LIBCPP_ENABLE_DEBUG_MODE=1")    if hardening_mode == "debug" else None,
+                AddFeature("libcpp-hardening-mode={}".format(hardening_mode)),
+            ],
+        ),
     ),
     Parameter(
         name="additional_features",
@@ -306,11 +309,10 @@ DEFAULT_PARAMETERS = [
         help="Whether to enable backwards-compatibility transitive includes when running the tests. This "
         "is provided to ensure that the trimmed-down version of libc++ does not bit-rot in between "
         "points at which we bulk-remove transitive includes.",
-        actions=lambda enabled: []
-        if enabled
-        else [
+        actions=lambda enabled: [] if enabled else [
             AddFeature("transitive-includes-disabled"),
             AddCompileFlag("-D_LIBCPP_REMOVE_TRANSITIVE_INCLUDES"),
         ],
     ),
 ]
+# fmt: on

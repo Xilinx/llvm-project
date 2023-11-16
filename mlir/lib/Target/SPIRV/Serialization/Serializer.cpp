@@ -594,6 +594,28 @@ LogicalResult Serializer::prepareBasicType(
   }
 
   if (auto cooperativeMatrixType =
+          dyn_cast<spirv::CooperativeMatrixType>(type)) {
+    uint32_t elementTypeID = 0;
+    if (failed(processTypeImpl(loc, cooperativeMatrixType.getElementType(),
+                               elementTypeID, serializationCtx))) {
+      return failure();
+    }
+    typeEnum = spirv::Opcode::OpTypeCooperativeMatrixKHR;
+    auto getConstantOp = [&](uint32_t id) {
+      auto attr = IntegerAttr::get(IntegerType::get(type.getContext(), 32), id);
+      return prepareConstantInt(loc, attr);
+    };
+    operands.push_back(elementTypeID);
+    operands.push_back(
+        getConstantOp(static_cast<uint32_t>(cooperativeMatrixType.getScope())));
+    operands.push_back(getConstantOp(cooperativeMatrixType.getRows()));
+    operands.push_back(getConstantOp(cooperativeMatrixType.getColumns()));
+    operands.push_back(
+        getConstantOp(static_cast<uint32_t>(cooperativeMatrixType.getUse())));
+    return success();
+  }
+
+  if (auto cooperativeMatrixType =
           dyn_cast<spirv::CooperativeMatrixNVType>(type)) {
     uint32_t elementTypeID = 0;
     if (failed(processTypeImpl(loc, cooperativeMatrixType.getElementType(),
@@ -846,8 +868,7 @@ uint32_t Serializer::prepareConstantInt(Location loc, IntegerAttr intAttr,
   auto resultID = getNextID();
   APInt value = intAttr.getValue();
   unsigned bitwidth = value.getBitWidth();
-  bool isSigned = value.isSignedIntN(bitwidth);
-
+  bool isSigned = intAttr.getType().isSignedInteger();
   auto opcode =
       isSpec ? spirv::Opcode::OpSpecConstant : spirv::Opcode::OpConstant;
 

@@ -84,10 +84,11 @@ lto::Config BitcodeCompiler::createConfig() {
   c.DisableVerify = true;
 #endif
   c.DiagHandler = diagnosticHandler;
+  c.DwoDir = ctx.config.dwoDir.str();
   c.OptLevel = ctx.config.ltoo;
   c.CPU = getCPUStr();
   c.MAttrs = getMAttrs();
-  std::optional<CodeGenOpt::Level> optLevelOrNone = CodeGenOpt::getLevel(
+  std::optional<CodeGenOptLevel> optLevelOrNone = CodeGenOpt::getLevel(
       ctx.config.ltoCgo.value_or(args::getCGOptLevel(ctx.config.ltoo)));
   assert(optLevelOrNone && "Invalid optimization level!");
   c.CGOptLevel = *optLevelOrNone;

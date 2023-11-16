@@ -42,9 +42,9 @@ Pattern TestExternalCall => replace root: Op with TestRewrite(root);
 // CHECK: rewrite %[[ROOT]]
 // CHECK: erase %[[ROOT]]
 Constraint TestConstraint(op: Op);
-Pattern TestExternalNegatedCall with benefit(1) {
+Pattern TestExternalNegatedCall {
     let root = op : Op;
-    !TestConstraint(root);
+    not TestConstraint(root);
     erase root;
 }
 
@@ -154,7 +154,7 @@ Pattern RangeExpr {
 
 // CHECK: pdl.pattern @TypeExpr
 // CHECK: %[[TYPE:.*]] = type : i32
-// CHECK: operation({{.*}}) -> (%[[TYPE]] : !pdl.type)
+// CHECK: operation({{.*}}) {} -> (%[[TYPE]] : !pdl.type)
 Pattern TypeExpr => erase op<> -> (type<"i32">);
 
 // -----

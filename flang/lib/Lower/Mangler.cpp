@@ -83,10 +83,9 @@ Fortran::lower::mangle::mangleName(std::string &name,
 }
 
 // Mangle the name of \p symbol to make it globally unique.
-std::string
-Fortran::lower::mangle::mangleName(const Fortran::semantics::Symbol &symbol,
-                                   ScopeBlockIdMap &scopeBlockIdMap,
-                                   bool keepExternalInScope) {
+std::string Fortran::lower::mangle::mangleName(
+    const Fortran::semantics::Symbol &symbol, ScopeBlockIdMap &scopeBlockIdMap,
+    bool keepExternalInScope, bool underscoring) {
   // Resolve module and host associations before mangling.
   const auto &ultimateSymbol = symbol.GetUltimate();
 
@@ -136,9 +135,8 @@ Fortran::lower::mangle::mangleName(const Fortran::semantics::Symbol &symbol,
             if (interface->attrs().test(Fortran::semantics::Attr::MODULE) &&
                 interface->owner().IsSubmodule() && !subpDetails.isInterface())
               interface = subpDetails.moduleInterface();
-            assert(interface && "Separate module procedure must be declared");
-            std::tie(modules, procs, blockId) =
-                ancestors(*interface, scopeBlockIdMap);
+            std::tie(modules, procs, blockId) = ancestors(
+                interface ? *interface : ultimateSymbol, scopeBlockIdMap);
             return fir::NameUniquer::doProcedure(modules, procs, symbolName);
           },
           [&](const Fortran::semantics::ProcEntityDetails &) {
@@ -168,11 +166,12 @@ Fortran::lower::mangle::mangleName(const Fortran::semantics::Symbol &symbol,
                                                      symbolName);
           },
           [&](const Fortran::semantics::CommonBlockDetails &) {
-            return fir::NameUniquer::doCommonBlock(symbolName);
+            return Fortran::semantics::GetCommonBlockObjectName(ultimateSymbol,
+                                                                underscoring);
           },
           [&](const Fortran::semantics::ProcBindingDetails &procBinding) {
             return mangleName(procBinding.symbol(), scopeBlockIdMap,
-                              keepExternalInScope);
+                              keepExternalInScope, underscoring);
           },
           [&](const Fortran::semantics::DerivedTypeDetails &) -> std::string {
             // Derived type mangling must use mangleName(DerivedTypeSpec) so
@@ -187,12 +186,14 @@ Fortran::lower::mangle::mangleName(const Fortran::semantics::Symbol &symbol,
 
 std::string
 Fortran::lower::mangle::mangleName(const Fortran::semantics::Symbol &symbol,
-                                   bool keepExternalInScope) {
-  assert(symbol.owner().kind() !=
-             Fortran::semantics::Scope::Kind::BlockConstruct &&
+                                   bool keepExternalInScope,
+                                   bool underscoring) {
+  assert((symbol.owner().kind() !=
+              Fortran::semantics::Scope::Kind::BlockConstruct ||
+          symbol.has<Fortran::semantics::SubprogramDetails>()) &&
          "block object mangling must specify a scopeBlockIdMap");
   ScopeBlockIdMap scopeBlockIdMap;
-  return mangleName(symbol, scopeBlockIdMap, keepExternalInScope);
+  return mangleName(symbol, scopeBlockIdMap, keepExternalInScope, underscoring);
 }
 
 std::string Fortran::lower::mangle::mangleName(
@@ -227,6 +228,25 @@ std::string Fortran::lower::mangle::mangleName(
     }
   }
   return fir::NameUniquer::doType(modules, procs, blockId, symbolName, kinds);
+}
+
+std::string Fortran::lower::mangle::getRecordTypeFieldName(
+    const Fortran::semantics::Symbol &component,
+    ScopeBlockIdMap &scopeBlockIdMap) {
+  if (!component.attrs().test(Fortran::semantics::Attr::PRIVATE))
+    return component.name().ToString();
+  const Fortran::semantics::DerivedTypeSpec *componentParentType =
+      component.owner().derivedTypeSpec();
+  assert(componentParentType &&
+         "failed to retrieve private component parent type");
+  // Do not mangle Iso C C_PTR and C_FUNPTR components. This type cannot be
+  // extended as per Fortran 2018 7.5.7.1, mangling them makes the IR unreadable
+  // when using ISO C modules, and lowering needs to know the component way
+  // without access to semantics::Symbol.
+  if (Fortran::semantics::IsIsoCType(componentParentType))
+    return component.name().ToString();
+  return mangleName(*componentParentType, scopeBlockIdMap) + "." +
+         component.name().ToString();
 }
 
 std::string Fortran::lower::mangle::demangleName(llvm::StringRef name) {
@@ -277,5 +297,5 @@ std::string Fortran::lower::mangle::mangleArrayLiteral(
 std::string Fortran::lower::mangle::globalNamelistDescriptorName(
     const Fortran::semantics::Symbol &sym) {
   std::string name = mangleName(sym);
-  return IsAllocatableOrPointer(sym) ? name : name + ".desc"s;
+  return IsAllocatableOrObjectPointer(&sym) ? name : name + ".desc"s;
 }

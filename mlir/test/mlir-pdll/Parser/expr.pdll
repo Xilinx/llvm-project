@@ -78,16 +78,16 @@ Pattern {
 // -----
 
 // CHECK: Module {{.*}}
-// CHECK:  -UserConstraintDecl {{.*}} Name<checkOp> ResultType<Tuple<>>
+// CHECK:  -UserConstraintDecl {{.*}} Name<TestConstraint> ResultType<Tuple<>>
 // CHECK: `-PatternDecl {{.*}}
-// CHECK:   -CallExpr {{.*}} Type<Tuple<>> negated
+// CHECK:   -CallExpr {{.*}} Type<Tuple<>> Negated
 // CHECK:     `-DeclRefExpr {{.*}} Type<Constraint>
-// CHECK:       `-UserConstraintDecl {{.*}} Name<checkOp> ResultType<Tuple<>>
-Constraint checkOp(op: Op);
+// CHECK:       `-UserConstraintDecl {{.*}} Name<TestConstraint> ResultType<Tuple<>>
+Constraint TestConstraint(op: Op);
 
 Pattern {
   let inputOp = op<my_dialect.bar>;
-  !checkOp(inputOp);
+  not TestConstraint(inputOp);
   erase inputOp;
 }
 
@@ -179,7 +179,7 @@ Pattern {
 
 // -----
 
-// Test explicitly empty operand/result/etc. lists, which are different from the 
+// Test explicitly empty operand/result/etc. lists, which are different from the
 // "unconstrained" examples above.
 
 // CHECK: Module

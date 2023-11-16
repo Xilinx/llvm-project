@@ -485,6 +485,7 @@ struct ConstraintQuestion
   /// Return the result types of the constraint.
   ArrayRef<Type> getResultTypes() const { return std::get<2>(key); }
 
+  /// Return the negation status of the constraint.
   bool getIsNegated() const { return std::get<3>(key); }
 
   /// Construct an instance with the given storage allocator.
@@ -496,7 +497,11 @@ struct ConstraintQuestion
                                         std::get<3>(key)});
   }
 
-  static unsigned hashKey(const KeyTy &key) { return llvm::hash_value(key); }
+  /// Returns a hash suitable for the given keytype.
+  static llvm::hash_code hashKey(const KeyTy &key) {
+    return llvm::hash_value(key);
+  }
+
 };
 
 /// Compare the equality of two values.

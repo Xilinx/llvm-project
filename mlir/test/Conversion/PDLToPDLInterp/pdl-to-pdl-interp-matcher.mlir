@@ -109,7 +109,7 @@ module @constraint_with_unused_result {
 
 // CHECK-LABEL: module @constraint_with_result_multiple
 module @constraint_with_result_multiple {
-  // check that native constraints work as expected even when multiple identical constraints are fused  
+  // check that native constraints work as expected even when multiple identical constraints are fused
 
   // CHECK: func @matcher(%[[ROOT:.*]]: !pdl.operation)
   // CHECK: %[[ATTR:.*]] = pdl_interp.apply_constraint "check_op_and_get_attr_constr"(%[[ROOT]]

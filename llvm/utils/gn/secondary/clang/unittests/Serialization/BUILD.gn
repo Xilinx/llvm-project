@@ -14,8 +14,10 @@ unittest("SerializationTests") {
     "//llvm/lib/Support",
   ]
   sources = [
+    "ForceCheckFileInputTest.cpp",
     "InMemoryModuleCacheTest.cpp",
     "ModuleCacheTest.cpp",
+    "NoCommentsTest.cpp",
     "SourceLocationEncodingTest.cpp",
     "VarDeclConstantInitTest.cpp",
   ]

@@ -1914,7 +1914,7 @@ void ByteCodeExecutor::executeGetOperands() {
   ByteCodeField rangeIndex = read();
 
   void *result = executeGetOperandsResults<OpTrait::AttrSizedOperandSegments>(
-      op->getOperands(), op, index, rangeIndex, "operand_segment_sizes",
+      op->getOperands(), op, index, rangeIndex, "operandSegmentSizes",
       valueRangeMemory);
   if (!result)
     LLVM_DEBUG(llvm::dbgs() << "  * Invalid operand range\n");
@@ -1940,7 +1940,7 @@ void ByteCodeExecutor::executeGetResults() {
   ByteCodeField rangeIndex = read();
 
   void *result = executeGetOperandsResults<OpTrait::AttrSizedResultSegments>(
-      op->getResults(), op, index, rangeIndex, "result_segment_sizes",
+      op->getResults(), op, index, rangeIndex, "resultSegmentSizes",
       valueRangeMemory);
   if (!result)
     LLVM_DEBUG(llvm::dbgs() << "  * Invalid result range\n");

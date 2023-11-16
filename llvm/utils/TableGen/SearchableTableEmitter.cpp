@@ -174,7 +174,7 @@ private:
                                      "' lookup method '" + Index.Name +
                                      "', key field '" + Field.Name +
                                      "' of type bits is too large");
-    } else if (BitRecTy *BI = dyn_cast<BitRecTy>(Field.RecType)) {
+    } else if (isa<BitRecTy>(Field.RecType)) {
       return "bool";
     } else if (Field.Enum || Field.IsIntrinsic || Field.IsInstruction)
       return "unsigned";
@@ -720,7 +720,23 @@ void SearchableTableEmitter::run(raw_ostream &OS) {
                       Twine("Table FilterClass '") +
                           FilterClass + "' does not exist");
 
-    collectTableEntries(*Table, Records.getAllDerivedDefinitions(FilterClass));
+    RecordVal *FilterClassFieldVal = TableRec->getValue("FilterClassField");
+    std::vector<Record *> Definitions =
+        Records.getAllDerivedDefinitions(FilterClass);
+    if (auto *FilterClassFieldInit =
+            dyn_cast<StringInit>(FilterClassFieldVal->getValue())) {
+      StringRef FilterClassField = FilterClassFieldInit->getValue();
+      llvm::erase_if(Definitions, [&](const Record *R) {
+        const RecordVal *Filter = R->getValue(FilterClassField);
+        if (auto *BitV = dyn_cast<BitInit>(Filter->getValue()))
+          return !BitV->getValue();
+
+        PrintFatalError(Filter, Twine("FilterClassField '") + FilterClass +
+                                    "' should be a bit value");
+        return true;
+      });
+    }
+    collectTableEntries(*Table, Definitions);
 
     if (!TableRec->isValueUnset("PrimaryKey")) {
       Table->PrimaryKey =

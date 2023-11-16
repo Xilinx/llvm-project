@@ -1,26 +1,32 @@
-// DEFINE: %{option} = enable-runtime-library=false
-// DEFINE: %{compile} = mlir-opt %s --sparse-compiler=%{option}
-// DEFINE: %{run} = mlir-cpu-runner \
-// DEFINE:  -e entry -entry-point-result=void  \
-// DEFINE:  -shared-libs=%mlir_c_runner_utils | \
-// DEFINE: FileCheck %s
+//--------------------------------------------------------------------------------------------------
+// WHEN CREATING A NEW TEST, PLEASE JUST COPY & PASTE WITHOUT EDITS.
 //
-// RUN: %{compile} | %{run}
+// Set-up that's shared across all tests in this directory. In principle, this
+// config could be moved to lit.local.cfg. However, there are downstream users that
+//  do not use these LIT config files. Hence why this is kept inline.
+//
+// DEFINE: %{sparse_compiler_opts} = enable-runtime-library=true
+// DEFINE: %{sparse_compiler_opts_sve} = enable-arm-sve=true %{sparse_compiler_opts}
+// DEFINE: %{compile} = mlir-opt %s --sparse-compiler="%{sparse_compiler_opts}"
+// DEFINE: %{compile_sve} = mlir-opt %s --sparse-compiler="%{sparse_compiler_opts_sve}"
+// DEFINE: %{run_libs} = -shared-libs=%mlir_c_runner_utils,%mlir_runner_utils
+// DEFINE: %{run_opts} = -e entry -entry-point-result=void
+// DEFINE: %{run} = mlir-cpu-runner %{run_opts} %{run_libs}
+// DEFINE: %{run_sve} = %mcr_aarch64_cmd --march=aarch64 --mattr="+sve" %{run_opts} %{run_libs}
+//
+// DEFINE: %{env} =
+//--------------------------------------------------------------------------------------------------
+
+// REDEFINE: %{sparse_compiler_opts} = enable-runtime-library=false
+
+// RUN: %{compile} | %{run} | FileCheck %s
 //
 // Do the same run, but now with vectorization.
-// REDEFINE: %{option} = "enable-runtime-library=false vl=2 reassociate-fp-reductions=true enable-index-optimizations=true"
-// RUN: %{compile} | %{run}
-
-// Do the same run, but now with direct IR generation and, if available, VLA
-// vectorization.
-// REDEFINE: %{option} = "enable-runtime-library=false vl=4 enable-arm-sve=%ENABLE_VLA"
-// REDEFINE: %{run} = %lli_host_or_aarch64_cmd \
-// REDEFINE:   --entry-function=entry_lli \
-// REDEFINE:   --extra-module=%S/Inputs/main_for_lli.ll \
-// REDEFINE:   %VLA_ARCH_ATTR_OPTIONS \
-// REDEFINE:   --dlopen=%mlir_native_utils_lib_dir/libmlir_c_runner_utils%shlibext | \
-// REDEFINE: FileCheck %s
-// RUN: %{compile} | mlir-translate -mlir-to-llvmir | %{run}
+// REDEFINE: %{sparse_compiler_opts} = enable-runtime-library=false vl=2 reassociate-fp-reductions=true enable-index-optimizations=true
+// RUN: %{compile} | %{run} | FileCheck %s
+//
+// Do the same run, but now with  VLA vectorization.
+// RUN: %if mlir_arm_sve_tests %{ %{compile_sve} | %{run_sve} | FileCheck %s %}
 
 module {
   // Stores 5 values to the memref buffer.
@@ -88,14 +94,14 @@ module {
     %y1 = memref.cast %y1s : memref<7xi32> to memref<?xi32>
 
     // Sort "parallel arrays".
-    // CHECK: ( 1, 1, 2, 5, 10 )
-    // CHECK: ( 3, 3, 1, 10, 1 )
-    // CHECK: ( 9, 9, 4, 7, 2 )
-    // CHECK: ( 7, 8, 10, 9, 6 )
-    // CHECK: ( 7, 4, 7, 9, 5 )
-    call @storeValuesToStrided(%x0, %c10, %c2, %c1, %c5, %c1)
+    // CHECK: ( 1, 1, 3, 3, 10 )
+    // CHECK: ( 2, 10, 1, 1, 5 )
+    // CHECK: ( 4, 2, 9, 9, 7 )
+    // CHECK: ( 10, 6, 7, 8, 9 )
+    // CHECK: ( 7, 5, 7, 4, 9 )
+    call @storeValuesToStrided(%x0, %c1, %c1, %c3, %c10, %c3)
       : (memref<?xi32, strided<[4], offset: ?>>, i32, i32, i32, i32, i32) -> ()
-    call @storeValuesToStrided(%x1, %c1, %c1, %c3, %c10, %c3)
+    call @storeValuesToStrided(%x1, %c10, %c2, %c1, %c5, %c1)
       : (memref<?xi32, strided<[4], offset: ?>>, i32, i32, i32, i32, i32) -> ()
     call @storeValuesToStrided(%x2, %c2, %c4, %c9, %c7, %c9)
       : (memref<?xi32, strided<[4], offset: ?>>, i32, i32, i32, i32, i32) -> ()
@@ -116,14 +122,14 @@ module {
     %y1v = vector.transfer_read %y1[%i0], %c100: memref<?xi32>, vector<5xi32>
     vector.print %y1v : vector<5xi32>
     // Stable sort.
-    // CHECK: ( 1, 1, 2, 5, 10 )
-    // CHECK: ( 3, 3, 1, 10, 1 )
-    // CHECK: ( 9, 9, 4, 7, 2 )
-    // CHECK: ( 8, 7, 10, 9, 6 )
-    // CHECK: ( 4, 7, 7, 9, 5 )
-    call @storeValuesToStrided(%x0, %c10, %c2, %c1, %c5, %c1)
+    // CHECK: ( 1, 1, 3, 3, 10 )
+    // CHECK: ( 2, 10, 1, 1, 5 )
+    // CHECK: ( 4, 2, 9, 9, 7 )
+    // CHECK: ( 10, 6, 8, 7, 9 )
+    // CHECK: ( 7, 5, 4, 7, 9 )
+    call @storeValuesToStrided(%x0, %c1, %c1, %c3, %c10, %c3)
       : (memref<?xi32, strided<[4], offset: ?>>, i32, i32, i32, i32, i32) -> ()
-    call @storeValuesToStrided(%x1, %c1, %c1, %c3, %c10, %c3)
+    call @storeValuesToStrided(%x1, %c10, %c2, %c1, %c5, %c1)
       : (memref<?xi32, strided<[4], offset: ?>>, i32, i32, i32, i32, i32) -> ()
     call @storeValuesToStrided(%x2, %c2, %c4, %c9, %c7, %c9)
       : (memref<?xi32, strided<[4], offset: ?>>, i32, i32, i32, i32, i32) -> ()
@@ -144,14 +150,14 @@ module {
     %y1v2 = vector.transfer_read %y1[%i0], %c100: memref<?xi32>, vector<5xi32>
     vector.print %y1v2 : vector<5xi32>
     // Heap sort.
-    // CHECK: ( 1, 1, 2, 5, 10 )
-    // CHECK: ( 3, 3, 1, 10, 1 )
-    // CHECK: ( 9, 9, 4, 7, 2 )
-    // CHECK: ( 7, 8, 10, 9, 6 )
-    // CHECK: ( 7, 4, 7, 9, 5 )
-    call @storeValuesToStrided(%x0, %c10, %c2, %c1, %c5, %c1)
+    // CHECK: ( 1, 1, 3, 3, 10 )
+    // CHECK: ( 2, 10, 1, 1, 5 )
+    // CHECK: ( 4, 2, 9, 9, 7 )
+    // CHECK: ( 10, 6, 8, 7, 9 )
+    // CHECK: ( 7, 5, 4, 7, 9 )
+    call @storeValuesToStrided(%x0, %c1, %c1, %c3, %c10, %c3)
       : (memref<?xi32, strided<[4], offset: ?>>, i32, i32, i32, i32, i32) -> ()
-    call @storeValuesToStrided(%x1, %c1, %c1, %c3, %c10, %c3)
+    call @storeValuesToStrided(%x1, %c10, %c2, %c1, %c5, %c1)
       : (memref<?xi32, strided<[4], offset: ?>>, i32, i32, i32, i32, i32) -> ()
     call @storeValuesToStrided(%x2, %c2, %c4, %c9, %c7, %c9)
       : (memref<?xi32, strided<[4], offset: ?>>, i32, i32, i32, i32, i32) -> ()

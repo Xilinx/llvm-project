@@ -7,17 +7,21 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/MemRef/TransformOps/MemRefTransformOps.h"
+
+#include "mlir/Analysis/DataLayoutAnalysis.h"
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Transforms.h"
+#include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Dialect/NVGPU/IR/NVGPUDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Transform/IR/TransformDialect.h"
 #include "mlir/Dialect/Transform/IR/TransformInterfaces.h"
-#include "mlir/Dialect/Transform/IR/TransformOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
+#include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
 #include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/Support/Debug.h"
@@ -28,14 +32,109 @@ using namespace mlir;
 #define DBGS() (llvm::dbgs() << '[' << DEBUG_TYPE << "] ")
 
 //===----------------------------------------------------------------------===//
+// Apply...ConversionPatternsOp
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<TypeConverter>
+transform::MemrefToLLVMTypeConverterOp::getTypeConverter() {
+  LowerToLLVMOptions options(getContext());
+  options.allocLowering =
+      (getUseAlignedAlloc() ? LowerToLLVMOptions::AllocLowering::AlignedAlloc
+                            : LowerToLLVMOptions::AllocLowering::Malloc);
+  options.useGenericFunctions = getUseGenericFunctions();
+  options.useOpaquePointers = getUseOpaquePointers();
+
+  if (getIndexBitwidth() != kDeriveIndexBitwidthFromDataLayout)
+    options.overrideIndexBitwidth(getIndexBitwidth());
+
+  // TODO: the following two options don't really make sense for
+  // memref_to_llvm_type_converter specifically but we should have a single
+  // to_llvm_type_converter.
+  if (getDataLayout().has_value())
+    options.dataLayout = llvm::DataLayout(getDataLayout().value());
+  options.useBarePtrCallConv = getUseBarePtrCallConv();
+
+  return std::make_unique<LLVMTypeConverter>(getContext(), options);
+}
+
+StringRef transform::MemrefToLLVMTypeConverterOp::getTypeConverterType() {
+  return "LLVMTypeConverter";
+}
+
+//===----------------------------------------------------------------------===//
+// Apply...PatternsOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+class AllocToAllocaPattern : public OpRewritePattern<memref::AllocOp> {
+public:
+  explicit AllocToAllocaPattern(Operation *analysisRoot, int64_t maxSize = 0)
+      : OpRewritePattern<memref::AllocOp>(analysisRoot->getContext()),
+        dataLayoutAnalysis(analysisRoot), maxSize(maxSize) {}
+
+  LogicalResult matchAndRewrite(memref::AllocOp op,
+                                PatternRewriter &rewriter) const override {
+    return success(memref::allocToAlloca(
+        rewriter, op, [this](memref::AllocOp alloc, memref::DeallocOp dealloc) {
+          MemRefType type = alloc.getMemref().getType();
+          if (!type.hasStaticShape())
+            return false;
+
+          const DataLayout &dataLayout = dataLayoutAnalysis.getAtOrAbove(alloc);
+          int64_t elementSize = dataLayout.getTypeSize(type.getElementType());
+          return maxSize == 0 || type.getNumElements() * elementSize < maxSize;
+        }));
+  }
+
+private:
+  DataLayoutAnalysis dataLayoutAnalysis;
+  int64_t maxSize;
+};
+} // namespace
+
+void transform::ApplyAllocToAllocaOp::populatePatterns(
+    RewritePatternSet &patterns) {}
+
+void transform::ApplyAllocToAllocaOp::populatePatternsWithState(
+    RewritePatternSet &patterns, transform::TransformState &state) {
+  patterns.insert<AllocToAllocaPattern>(
+      state.getTopLevel(), static_cast<int64_t>(getSizeLimit().value_or(0)));
+}
+
+void transform::ApplyExpandOpsPatternsOp::populatePatterns(
+    RewritePatternSet &patterns) {
+  memref::populateExpandOpsPatterns(patterns);
+}
+
+void transform::ApplyExpandStridedMetadataPatternsOp::populatePatterns(
+    RewritePatternSet &patterns) {
+  memref::populateExpandStridedMetadataPatterns(patterns);
+}
+
+void transform::ApplyExtractAddressComputationsPatternsOp::populatePatterns(
+    RewritePatternSet &patterns) {
+  memref::populateExtractAddressComputationsPatterns(patterns);
+}
+
+void transform::ApplyFoldMemrefAliasOpsPatternsOp::populatePatterns(
+    RewritePatternSet &patterns) {
+  memref::populateFoldMemRefAliasOpPatterns(patterns);
+}
+
+void transform::ApplyResolveRankedShapedTypeResultDimsPatternsOp::
+    populatePatterns(RewritePatternSet &patterns) {
+  memref::populateResolveRankedShapedTypeResultDimsPatterns(patterns);
+}
+
+//===----------------------------------------------------------------------===//
 // MemRefMultiBufferOp
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure transform::MemRefMultiBufferOp::apply(
+    transform::TransformRewriter &rewriter,
     transform::TransformResults &transformResults,
     transform::TransformState &state) {
   SmallVector<Operation *> results;
-  IRRewriter rewriter(getContext());
   for (Operation *op : state.getPayloadOps(getTarget())) {
     bool canApplyMultiBuffer = true;
     auto target = cast<memref::AllocOp>(op);
@@ -73,28 +172,29 @@ DiagnosedSilenceableFailure transform::MemRefMultiBufferOp::apply(
 }
 
 //===----------------------------------------------------------------------===//
-// MemRefExtractAddressComputationsOp
+// MemRefEraseDeadAllocAndStoresOp
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure
-transform::MemRefExtractAddressComputationsOp::applyToOne(
-    Operation *target, transform::ApplyToEachResultList &results,
+transform::MemRefEraseDeadAllocAndStoresOp::applyToOne(
+    transform::TransformRewriter &rewriter, Operation *target,
+    transform::ApplyToEachResultList &results,
     transform::TransformState &state) {
-  if (!target->hasTrait<OpTrait::IsIsolatedFromAbove>()) {
-    auto diag = this->emitOpError("requires isolated-from-above targets");
-    diag.attachNote(target->getLoc()) << "non-isolated target";
-    return DiagnosedSilenceableFailure::definiteFailure();
-  }
-
-  MLIRContext *ctx = getContext();
-  RewritePatternSet patterns(ctx);
-  memref::populateExtractAddressComputationsPatterns(patterns);
-
-  if (failed(applyPatternsAndFoldGreedily(target, std::move(patterns))))
-    return emitDefaultDefiniteFailure(target);
-
-  results.push_back(target);
+  // Apply store to load forwarding and dead store elimination.
+  vector::transferOpflowOpt(rewriter, target);
+  memref::eraseDeadAllocAndStores(rewriter, target);
   return DiagnosedSilenceableFailure::success();
+}
+
+void transform::MemRefEraseDeadAllocAndStoresOp::getEffects(
+    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  transform::onlyReadsHandle(getTarget(), effects);
+  transform::modifiesPayload(effects);
+}
+void transform::MemRefEraseDeadAllocAndStoresOp::build(OpBuilder &builder,
+                                                       OperationState &result,
+                                                       Value target) {
+  result.addOperands(target);
 }
 
 //===----------------------------------------------------------------------===//
@@ -102,7 +202,8 @@ transform::MemRefExtractAddressComputationsOp::applyToOne(
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure transform::MemRefMakeLoopIndependentOp::applyToOne(
-    Operation *target, transform::ApplyToEachResultList &results,
+    transform::TransformRewriter &rewriter, Operation *target,
+    transform::ApplyToEachResultList &results,
     transform::TransformState &state) {
   // Gather IVs.
   SmallVector<Value> ivs;
@@ -120,7 +221,6 @@ DiagnosedSilenceableFailure transform::MemRefMakeLoopIndependentOp::applyToOne(
   }
 
   // Rewrite IR.
-  IRRewriter rewriter(target->getContext());
   FailureOr<Value> replacement = failure();
   if (auto allocaOp = dyn_cast<memref::AllocaOp>(target)) {
     replacement = memref::replaceWithIndependentOp(rewriter, allocaOp, ivs);
@@ -162,23 +262,6 @@ public:
 #define GET_OP_LIST
 #include "mlir/Dialect/MemRef/TransformOps/MemRefTransformOps.cpp.inc"
         >();
-
-    addDialectDataInitializer<transform::PatternRegistry>(
-        [&](transform::PatternRegistry &registry) {
-          registry.registerPatterns("memref.expand_ops",
-                                    memref::populateExpandOpsPatterns);
-          registry.registerPatterns("memref.fold_memref_alias_ops",
-                                    memref::populateFoldMemRefAliasOpPatterns);
-          registry.registerPatterns(
-              "memref.resolve_ranked_shaped_type_result_dims",
-              memref::populateResolveRankedShapedTypeResultDimsPatterns);
-          registry.registerPatterns(
-              "memref.expand_strided_metadata",
-              memref::populateExpandStridedMetadataPatterns);
-          registry.registerPatterns(
-              "memref.extract_address_computations",
-              memref::populateExtractAddressComputationsPatterns);
-        });
   }
 };
 } // namespace
