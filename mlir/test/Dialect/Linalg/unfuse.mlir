@@ -387,36 +387,6 @@ func.func @unfuse_conv_2d_relu_maxpool(%ifm : tensor<1x1024x15x15xf32>) -> tenso
 
 // -----
 
-// CHECK-DAG: #[[sumIn:.+]] = affine_map<(d0, d1, d2) -> (d0, d2, d1)>
-// CHECK-DAG: #[[sumOut:.+]] = affine_map<(d0, d1, d2) -> (d0, 0, d1)>
-// CHECK-DAG: #[[divIn:.+]] = affine_map<(d0, d1, d2) -> (d0, 0, d2)>
-// CHECK-DAG: #[[divOut:.+]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
-
-// CHECK: func @unfuse_softmax(
-// CHECK-SAME: %[[ifm:.+]]: tensor<4x3x2xf32>
-func.func @unfuse_softmax(%ifm : tensor<4x3x2xf32>) -> tensor<4x3x2xf32> {
-    // BUG: linalg.softmax does not have a proper assembly format with $dim!
-    %result = "linalg.softmax" (%ifm) {dim = -2 : i64} : (tensor<4x3x2xf32>) -> (tensor<4x3x2xf32>)
-
-    // CHECK: %[[exp:.+]] = math.exp %[[ifm]]
-
-    // CHECK: %[[sum:.+]] = linalg.generic
-    // CHECK: indexing_maps = [#[[sumIn]], #[[sumOut]]]
-    // CHECK: iterator_types = ["parallel", "parallel", "reduction"]
-    // CHECK: ins(%[[exp]] :
-
-    // CHECK: %[[out:.+]] = linalg.generic
-    // CHECK: indexing_maps = [#[[divIn]], #[[divOut]]]
-    // CHECK: iterator_types = ["parallel", "parallel", "parallel"]
-    // CHECK: ins(%[[sum]]
-    // CHECK: outs(%[[exp]]
-
-    // CHECK: return %[[out]]
-    return %result : tensor<4x3x2xf32>
-}
-
-// -----
-
 // CHECK: func @unfuse_globalaveragepool2d(
 // CHECK-SAME: %[[ifm:.+]]: tensor<1x2048x7x7xf32>
 func.func @unfuse_globalaveragepool2d(%ifm : tensor<1x2048x7x7xf32>) -> tensor<1x2048x1x1xf32> {

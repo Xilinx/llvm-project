@@ -26,7 +26,6 @@ add_mlir_dialect_library(MLIRLinalgTransforms
   Promotion.cpp
   Split.cpp
   SplitReduction.cpp
-  StructuralFusion.cpp
   SubsetHoisting.cpp
   SwapExtractSliceWithFillPatterns.cpp
   Tiling.cpp
