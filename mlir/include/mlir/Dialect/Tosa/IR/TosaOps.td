@@ -1224,12 +1224,12 @@ def Tosa_ReduceAllOp : Tosa_Op<"reduce_all", [
   }];
 
   let arguments = (ins
-    Tosa_Tensor1Dto4D:$input,
+    Tosa_Tensor:$input,
     I64Attr:$axis
   );
 
   let results = (outs
-    Tosa_Tensor1Dto4D:$output
+    Tosa_Tensor:$output
   );
 
   let hasFolder = 1;
@@ -1253,12 +1253,12 @@ def Tosa_ReduceAnyOp : Tosa_Op<"reduce_any", [
   }];
 
   let arguments = (ins
-    Tosa_Tensor1Dto4D:$input,
+    Tosa_Tensor:$input,
     I64Attr:$axis
   );
 
   let results = (outs
-    Tosa_Tensor1Dto4D:$output
+    Tosa_Tensor:$output
   );
 
   let hasFolder = 1;
@@ -1282,12 +1282,12 @@ def Tosa_ReduceMaxOp : Tosa_Op<"reduce_max", [
   }];
 
   let arguments = (ins
-    Tosa_Tensor1Dto4D:$input,
+    Tosa_Tensor:$input,
     I64Attr:$axis
   );
 
   let results = (outs
-    Tosa_Tensor1Dto4D:$output
+    Tosa_Tensor:$output
   );
 
   let hasFolder = 1;
@@ -1311,12 +1311,12 @@ def Tosa_ReduceMinOp : Tosa_Op<"reduce_min", [
   }];
 
   let arguments = (ins
-    Tosa_Tensor1Dto4D:$input,
+    Tosa_Tensor:$input,
     I64Attr:$axis
   );
 
   let results = (outs
-    Tosa_Tensor1Dto4D:$output
+    Tosa_Tensor:$output
   );
 
   let hasFolder = 1;
@@ -1340,12 +1340,12 @@ def Tosa_ReduceProdOp : Tosa_Op<"reduce_prod", [
   }];
 
   let arguments = (ins
-    Tosa_Tensor1Dto4D:$input,
+    Tosa_Tensor:$input,
     I64Attr:$axis
   );
 
   let results = (outs
-    Tosa_Tensor1Dto4D:$output
+    Tosa_Tensor:$output
   );
 
   let hasFolder = 1;
@@ -1369,12 +1369,12 @@ def Tosa_ReduceSumOp : Tosa_Op<"reduce_sum", [
   }];
 
   let arguments = (ins
-    Tosa_Tensor1Dto4D:$input,
+    Tosa_Tensor:$input,
     I64Attr:$axis
   );
 
   let results = (outs
-    Tosa_Tensor1Dto4D:$output
+    Tosa_Tensor:$output
   );
 
   let hasFolder = 1;
