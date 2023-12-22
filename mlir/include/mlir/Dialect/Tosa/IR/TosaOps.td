@@ -305,6 +305,7 @@ def Tosa_MaxPool2dOp : Tosa_Op<"max_pool2d", [
   );
 
   let hasCanonicalizer = 1;
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

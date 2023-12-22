@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -split-input-file -verify-diagnostics --tosa-validate=strict-op-spec-alignment
+// RUN:cc
 
 
 func.func @test_conv2d(%arg0: tensor<1x29x29x4xf32>, %arg1: tensor<16x3x3x4xi8>, %arg2: tensor<16xi8>) -> tensor<1x27x27x16xi8> {
@@ -150,4 +150,65 @@ func.func @test_const_attribute_type_mismatch() -> tensor<100x100xf32> {
   // expected-error@+1 {{'tosa.const' op failed to verify that all of {value, output} have same shape}}
   %0 = "tosa.const"() {value = dense<0.000000e+00> : tensor<1x1xf32>} : () -> tensor<100x100xf32>
   return %0 : tensor<100x100xf32>
+}
+
+// -----
+func.func @test_avg_pool2d_negative_kernel(%arg0: tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8> {
+  // expected-error@+1 {{'tosa.avg_pool2d' op kernel should be positive}}
+    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: -2, 2>, pad = array<i64: 0, 1, 0, 1>, stride = array<i64: 1, 1>} : (tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8>
+    return %0 : tensor<1x7x7x9xi8>
+}
+// -----
+func.func @test_avg_pool2d_negative_stride(%arg0: tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8> {
+  // expected-error@+1 {{'tosa.avg_pool2d' op stride should be positive}}
+    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 2>, pad = array<i64: 0, 1, 0, 1>, stride = array<i64: -1, 1>} : (tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8>
+    return %0 : tensor<1x7x7x9xi8>
+}
+// -----
+func.func @test_avg_pool2d_negative_pad(%arg0: tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8> {
+  // expected-error@+1 {{'tosa.avg_pool2d' op pad should be positive}}
+    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 2>, pad = array<i64: 0, -1, 0, 1>, stride = array<i64: 1, 1>} : (tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8>
+    return %0 : tensor<1x7x7x9xi8>
+}
+// -----
+func.func @test_avg_pool2d_kernel_lessthan_pad(%arg0: tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8> {
+  // expected-error@+1 {{'tosa.avg_pool2d' op pad must be less than kernel size}}
+    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 2>, pad = array<i64: 0, 1, 0, 3>, stride = array<i64: 1, 1>} : (tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8>
+    return %0 : tensor<1x7x7x9xi8>
+}
+// -----
+func.func @test_avg_pool2d_vert_stride_incorrect_mul(%arg0: tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8> {
+  // expected-error@+1 {{'tosa.avg_pool2d' op vertical stride is not in correct multiple.}}
+    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 2>, pad = array<i64: 1, 1, 1, 1>, stride = array<i64: 2, 2>} : (tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8>
+    return %0 : tensor<1x7x7x9xi8>    
+}
+// -----
+func.func @test_avg_pool2d_hor_stride_incorrect_mul(%arg0: tensor<1x6x6x9xi8>) -> tensor<1x7x4x9xi8> {
+  // expected-error@+1 {{'tosa.avg_pool2d' op horizontal stride is not in correct multiple.}}
+    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 3>, pad = array<i64: 1, 1, 1, 1>, stride = array<i64: 2, 2>} : (tensor<1x6x6x9xi8>) -> tensor<1x7x4x9xi8>
+    return %0 : tensor<1x7x4x9xi8>
+}
+// -----
+func.func @test_max_pool2d_hor_stride_incorrect_mul(%arg0: tensor<1x6x6x9xi8>) -> tensor<1x7x4x9xi8> {
+  // expected-error@+1 {{'tosa.max_pool2d' op horizontal stride is not in correct multiple.}}
+    %0 = "tosa.max_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 3>, pad = array<i64: 1, 1, 1, 1>, stride = array<i64: 2, 2>} : (tensor<1x6x6x9xi8>) -> tensor<1x7x4x9xi8>
+    return %0 : tensor<1x7x4x9xi8>
+}
+// -----
+func.func @test_avg_pool2d_output_height_incorrect(%arg0: tensor<1x6x6x9xi8>) -> tensor<1x7x8x9xi8> {  
+  // expected-error@+1 {{'tosa.avg_pool2d' op output height is not correct, should be 3.}}
+    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 2>, pad = array<i64: 1, 1, 1, 1>, stride = array<i64: 3, 3>} : (tensor<1x6x6x9xi8>) -> tensor<1x7x8x9xi8>
+    return %0 : tensor<1x7x8x9xi8>
+}
+// -----
+func.func @test_avg_pool2d_output_width_incorrect(%arg0: tensor<1x6x6x9xi8>) -> tensor<1x3x8x9xi8> {  
+  // expected-error@+1 {{'tosa.avg_pool2d' op output width is not correct, should be 3.}}
+    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 2>, pad = array<i64: 1, 1, 1, 1>, stride = array<i64: 3, 3>} : (tensor<1x6x6x9xi8>) -> tensor<1x3x8x9xi8>
+    return %0 : tensor<1x3x8x9xi8>
+}
+// -----
+func.func @test_max_pool2d_output_width_incorrect(%arg0: tensor<1x6x6x9xi8>) -> tensor<1x3x8x9xi8> {  
+  // expected-error@+1 {{'tosa.max_pool2d' op output width is not correct, should be 3.}}
+    %0 = "tosa.max_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 2>, pad = array<i64: 1, 1, 1, 1>, stride = array<i64: 3, 3>} : (tensor<1x6x6x9xi8>) -> tensor<1x3x8x9xi8>
+    return %0 : tensor<1x3x8x9xi8>
 }

@@ -37,6 +37,7 @@ func.func @test_avg_pool2d_q8(%arg0: tensor<1x7x7x9x!quant.uniform<i8:f32, 0.01>
     return %0 : tensor<1x7x7x9x!quant.uniform<i8:f32, 0.01>>
 }
 
+
 // -----
 // CHECK-LABEL: conv2d
 func.func @test_conv2d(%arg0: tensor<1x4x4x4xf32>, %arg1: tensor<8x1x1x4xf32>, %arg2: tensor<8xf32>) -> tensor<1x4x4x8xf32> {
