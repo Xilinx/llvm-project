@@ -153,6 +153,9 @@ static LogicalResult verifyConvOp(T op) {
 
 template <typename T>
 static LogicalResult verifyPoolOp(T op) {
+  auto inputETy = llvm::cast<ShapedType>(getInput().getType()).getElementType();
+  auto resultETy = llvm::cast<ShapedType>(getType()).getElementType();
+
   // 	[kernel_y, kernel_x] <-> [0,1]
   auto kernel = op.getKernel();
   // [stride_y, stride_x]
@@ -225,26 +228,16 @@ static LogicalResult verifyPoolOp(T op) {
              << (width / stride[1]) + 1 << ".";
     }
   }
-  return success();
-}
-LogicalResult tosa::MaxPool2dOp::verify() {
+  if (inputETy.isF32() && resultETy.isF32())
+    return success();
+  if (inputETy.isInteger(8) && resultETy.isInteger(8))
+    return success();
+  if (inputETy.isInteger(16) && resultETy.isInteger(16))
+    return success();
 
-  auto inputETy = llvm::cast<ShapedType>(getInput().getType()).getElementType();
-  auto resultETy = llvm::cast<ShapedType>(getType()).getElementType();
-  auto result = verifyPoolOp(*this);
-  if (result.succeeded()) {
-
-    if (inputETy.isF32() && resultETy.isF32())
-      return success();
-    if (inputETy.isInteger(8) && resultETy.isInteger(8))
-      return success();
-    if (inputETy.isInteger(16) && resultETy.isInteger(16))
-      return success();
-  } else {
-    return result;
-  }
-  return emitOpError("input/output element types are incompatible.");
+  return op.emitOpError("input/output element types are incompatible.");
 }
+LogicalResult tosa::MaxPool2dOp::verify() { return verifyPoolOp(*this); }
 LogicalResult tosa::AvgPool2dOp::verify() {
   auto inputETy = llvm::cast<ShapedType>(getInput().getType()).getElementType();
   auto resultETy = llvm::cast<ShapedType>(getType()).getElementType();
@@ -268,17 +261,9 @@ LogicalResult tosa::AvgPool2dOp::verify() {
       return emitOpError("accumulator type for bf16 tensor is not f32");
     if (inputETy.isF32() && !accType.isF32())
       return emitOpError("accumulator type for f32 tensor is not f32");
-
-    if (inputETy.isF32() && resultETy.isF32())
-      return success();
-    if (inputETy.isInteger(8) && resultETy.isInteger(8))
-      return success();
-    if (inputETy.isInteger(16) && resultETy.isInteger(16))
-      return success();
   } else {
     return result;
   }
-  return emitOpError("input/output element types are incompatible.");
 }
 
 //===----------------------------------------------------------------------===//
