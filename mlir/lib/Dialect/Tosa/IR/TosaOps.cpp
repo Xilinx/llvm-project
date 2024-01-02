@@ -153,8 +153,9 @@ static LogicalResult verifyConvOp(T op) {
 
 template <typename T>
 static LogicalResult verifyPoolOp(T op) {
-  auto inputETy = llvm::cast<ShapedType>(getInput().getType()).getElementType();
-  auto resultETy = llvm::cast<ShapedType>(getType()).getElementType();
+  auto inputETy =
+      llvm::cast<ShapedType>(op.getInput().getType()).getElementType();
+  auto resultETy = llvm::cast<ShapedType>(op.getType()).getElementType();
 
   // 	[kernel_y, kernel_x] <-> [0,1]
   auto kernel = op.getKernel();
