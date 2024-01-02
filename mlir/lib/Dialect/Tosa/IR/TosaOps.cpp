@@ -159,12 +159,15 @@ static LogicalResult verifyPoolOp(T op) {
   auto stride = op.getStride();
   // 	[pad_top, pad_bottom, pad_left, pad_right]
   auto pad = op.getPad();
-  if (kernel[0] < 0 || kernel[1] < 0) {
-    return op.emitOpError("kernel should be positive.");
+  // ERROR_IF(kernel_y < 1 || kernel_x < 1); // kernel size must be >= 1
+  if (kernel[0] < 1 || kernel[1] < 1) {
+    return op.emitOpError("kernel should be greater than one.");
   }
+  // ERROR_IF(stride_y < 1 || stride_x < 1);
   if (stride[0] < 0 || stride[1] < 0) {
-    return op.emitOpError("stride should be positive.");
+    return op.emitOpError("stride should be greater than one.");
   }
+  // ERROR_IF(pad_top < 0 || pad_bottom < 0 || pad_left < 0 || pad_right < 0);
   if (pad[0] < 0 || pad[1] < 0 || pad[2] < 0 || pad[3] < 0) {
     return op.emitOpError("pad should be positive.");
   }
