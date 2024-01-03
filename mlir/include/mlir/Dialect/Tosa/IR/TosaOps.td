@@ -1423,6 +1423,7 @@ def Tosa_ConcatOp : Tosa_Op<"concat", [
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
   }];
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
