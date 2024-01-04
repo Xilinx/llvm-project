@@ -636,27 +636,6 @@ LogicalResult emitc::YieldOp::verify() {
 #define GET_ATTRDEF_CLASSES
 #include "mlir/Dialect/EmitC/IR/EmitCAttributes.cpp.inc"
 
-Attribute emitc::OpaqueAttr::parse(AsmParser &parser, Type type) {
-  if (parser.parseLess())
-    return Attribute();
-  std::string value;
-  SMLoc loc = parser.getCurrentLocation();
-  if (parser.parseOptionalString(&value)) {
-    parser.emitError(loc) << "expected string";
-    return Attribute();
-  }
-  if (parser.parseGreater())
-    return Attribute();
-
-  return get(parser.getContext(), value);
-}
-
-void emitc::OpaqueAttr::print(AsmPrinter &printer) const {
-  printer << "<\"";
-  llvm::printEscapedString(getValue(), printer.getStream());
-  printer << "\">";
-}
-
 //===----------------------------------------------------------------------===//
 // EmitC Types
 //===----------------------------------------------------------------------===//
@@ -731,27 +710,15 @@ emitc::ArrayType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
 // OpaqueType
 //===----------------------------------------------------------------------===//
 
-Type emitc::OpaqueType::parse(AsmParser &parser) {
-  if (parser.parseLess())
-    return Type();
-  std::string value;
-  SMLoc loc = parser.getCurrentLocation();
-  if (parser.parseOptionalString(&value) || value.empty()) {
-    parser.emitError(loc) << "expected non empty string in !emitc.opaque type";
-    return Type();
+LogicalResult mlir::emitc::OpaqueType::verify(
+    llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
+    llvm::StringRef value) {
+  if (value.empty()) {
+    return emitError() << "expected non empty string in !emitc.opaque type";
   }
   if (value.back() == '*') {
-    parser.emitError(loc) << "pointer not allowed as outer type with "
-                             "!emitc.opaque, use !emitc.ptr instead";
-    return Type();
+    return emitError() << "pointer not allowed as outer type with "
+                          "!emitc.opaque, use !emitc.ptr instead";
   }
-  if (parser.parseGreater())
-    return Type();
-  return get(parser.getContext(), value);
-}
-
-void emitc::OpaqueType::print(AsmPrinter &printer) const {
-  printer << "<\"";
-  llvm::printEscapedString(getValue(), printer.getStream());
-  printer << "\">";
+  return success();
 }
