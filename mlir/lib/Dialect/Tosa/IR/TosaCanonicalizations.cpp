@@ -433,6 +433,92 @@ void SliceOp::getCanonicalizationPatterns(RewritePatternSet &results,
   results.add<ConcatSliceOptimization>(context);
 }
 
+struct MinToClampOptimization : public OpRewritePattern<tosa::MinimumOp> {
+  using OpRewritePattern<tosa::MinimumOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tosa::MinimumOp op,
+                                PatternRewriter &rewriter) const override {
+
+    DenseElementsAttr constant;
+    if (!matchPattern(op.getInput2(), m_Constant(&constant)) ||
+        !constant.isSplat())
+      return failure();
+
+    Value input = op.getInput1();
+    auto elementTy = llvm::cast<ShapedType>(input.getType()).getElementType();
+
+    int64_t minInt = std::numeric_limits<int32_t>::min();
+    float minFp = std::numeric_limits<float>::lowest();
+
+    int64_t maxInt;
+    float maxFp;
+    if (isa<FloatType>(elementTy)) {
+      auto constMin = constant.getSplatValue<llvm::APFloat>();
+      maxFp = constMin.convertToFloat();
+      maxInt = constMin.convertToFloat();
+    } else {
+      auto constMin = constant.getSplatValue<llvm::APInt>();
+      maxFp = constMin.getSExtValue();
+      maxInt = constMin.getSExtValue();
+    }
+
+    rewriter.replaceOpWithNewOp<tosa::ClampOp>(
+        op, op.getType(), input, rewriter.getI64IntegerAttr(minInt),
+        rewriter.getI64IntegerAttr(maxInt), rewriter.getF32FloatAttr(minFp),
+        rewriter.getF32FloatAttr(maxFp));
+
+    return success();
+  }
+};
+
+void MinimumOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                            MLIRContext *context) {
+  results.add<MinToClampOptimization>(context);
+}
+
+struct MaxToClampOptimization : public OpRewritePattern<tosa::MaximumOp> {
+  using OpRewritePattern<tosa::MaximumOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tosa::MaximumOp op,
+                                PatternRewriter &rewriter) const override {
+
+    DenseElementsAttr constant;
+    if (!matchPattern(op.getInput2(), m_Constant(&constant)) ||
+        !constant.isSplat())
+      return failure();
+
+    Value input = op.getInput1();
+    auto elementTy = llvm::cast<ShapedType>(input.getType()).getElementType();
+
+    int64_t maxInt = std::numeric_limits<int64_t>::max();
+    float maxFp = std::numeric_limits<float>::max();
+
+    int64_t minInt;
+    float minFp;
+    if (isa<FloatType>(elementTy)) {
+      auto constMax = constant.getSplatValue<llvm::APFloat>();
+      minFp = constMax.convertToFloat();
+      minInt = constMax.convertToFloat();
+    } else {
+      auto constMax = constant.getSplatValue<llvm::APInt>();
+      minFp = constMax.getSExtValue();
+      minInt = constMax.getSExtValue();
+    }
+
+    rewriter.replaceOpWithNewOp<tosa::ClampOp>(
+        op, op.getType(), input, rewriter.getI64IntegerAttr(minInt),
+        rewriter.getI64IntegerAttr(maxInt), rewriter.getF32FloatAttr(minFp),
+        rewriter.getF32FloatAttr(maxFp));
+
+    return success();
+  }
+};
+
+void MaximumOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                            MLIRContext *context) {
+  results.add<MaxToClampOptimization>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // Operator Folders.
 //===----------------------------------------------------------------------===//
