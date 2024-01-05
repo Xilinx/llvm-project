@@ -324,7 +324,12 @@ func.func @test_select(%arg0: tensor<1x1x1xi1>, %arg1: tensor<13x21x3xf32>, %arg
   %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<1x1x1xi1>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   return %0 : tensor<13x21x3xf32>
 }
-
+// -----
+// CHECK-LABEL: select
+func.func @test_select_boardcastable(%arg0: tensor<1x2xi1>, %arg1: tensor<3x2xf32>, %arg2: tensor<3x2xf32>) -> tensor<3x2xf32> {
+  %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<1x2xi1>, tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf32>
+  return %0 : tensor<3x2xf32>
+}
 
 // -----
 // CHECK-LABEL: equal

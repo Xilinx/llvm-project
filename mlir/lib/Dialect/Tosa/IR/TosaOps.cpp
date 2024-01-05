@@ -141,16 +141,6 @@ static LogicalResult verifyConvOp(T op) {
 
   return success();
 }
-// Integer division that checks input1 is a multiple of input2
-
-// int32_t idiv_check(int32_t input1, int32_t input2) {
-//   // input1 must be a multiple of input2
-//   if (input1 % input2 != 0) {
-//     emitOpError("accumulator type for integer tensor is not i32");
-//   }
-//   return input1 / input2; // exact quotient without rounding
-// }
-
 template <typename T>
 static LogicalResult verifyPoolOp(T op) {
   auto inputETy =
@@ -238,6 +228,23 @@ static LogicalResult verifyPoolOp(T op) {
 
   return op.emitOpError("input/output element types are incompatible.");
 }
+// LogicalResult tosa::AddOp::verify() {
+
+//   auto input1ShapedType = llvm::cast<ShapedType>(getInput1().getType());
+//   auto input2ShapedType = llvm::cast<ShapedType>(getInput2().getType());
+//   auto resultShapedType = llvm::cast<ShapedType>(getType());
+
+//   if (input1ShapedType.hasStaticShape() && input2ShapedType.hasStaticShape()
+//   &&
+//       resultShapedType.hasStaticShape()) {
+//     if (input1ShapedType.getRank() != input2ShapedType.getRank()) {
+//       return emitOpError("input tensors must be of equal rank.");
+//     }
+//     return success();
+//   }
+//   return success();
+// }
+
 LogicalResult tosa::MaxPool2dOp::verify() { return verifyPoolOp(*this); }
 LogicalResult tosa::AvgPool2dOp::verify() {
   auto inputETy = llvm::cast<ShapedType>(getInput().getType()).getElementType();
@@ -262,9 +269,8 @@ LogicalResult tosa::AvgPool2dOp::verify() {
       return emitOpError("accumulator type for bf16 tensor is not f32");
     if (inputETy.isF32() && !accType.isF32())
       return emitOpError("accumulator type for f32 tensor is not f32");
-  } else {
-    return result;
   }
+  return result;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1317,6 +1323,56 @@ LogicalResult Conv2DOp::inferReturnTypeComponents(
   }
 
   inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+  return success();
+}
+
+template <typename T>
+static LogicalResult verifyBinaryOpWithEqualRank(T op) {
+  auto input1ShapeType = llvm::cast<ShapedType>(op.getInput1().getType());
+  auto input2ShapeType = llvm::cast<ShapedType>(op.getInput2().getType());
+
+  if (input1ShapeType.hasRank() && input2ShapeType.hasRank()) {
+    auto input1Rank = input1ShapeType.getRank();
+    auto input2Rank = input2ShapeType.getRank();
+    if (input1Rank != input2Rank) {
+      return op.emitOpError("both operands must have same rank.");
+    }
+  }
+  return success();
+}
+LogicalResult tosa::MulOp::verify() {
+  return verifyBinaryOpWithEqualRank(*this);
+}
+LogicalResult tosa::AddOp::verify() {
+  return verifyBinaryOpWithEqualRank(*this);
+}
+LogicalResult tosa::GreaterEqualOp::verify() {
+  return verifyBinaryOpWithEqualRank(*this);
+}
+LogicalResult verifyForSameRank(ShapedType inputShape1,
+                                ShapedType inputShape2) {
+  return success();
+}
+LogicalResult tosa::SelectOp::verify() {
+  return success();
+  auto result = OpTrait::impl::verifyCompatibleOperandBroadcast(getOperation());
+  if (result.failed()) {
+    return result;
+  }
+
+  auto input1ShapeType = llvm::cast<ShapedType>(getOperand(1).getType());
+  auto input2ShapeType = llvm::cast<ShapedType>(getOperand(2).getType());
+  auto input3ShapeType = llvm::cast<ShapedType>(getOperand(3).getType());
+  auto outputShapeType = llvm::cast<ShapedType>(getResult().getType());
+
+  if (input1ShapeType.hasRank() && input2ShapeType.hasRank()) {
+    auto input1Rank = input1ShapeType.getRank();
+    auto input2Rank = input2ShapeType.getRank();
+    if (input1Rank != input2Rank) {
+      return emitOpError("both operands must have same rank.");
+    }
+  }
+
   return success();
 }
 
