@@ -733,6 +733,8 @@ def Tosa_MaximumOp : Tosa_ElemWiseBinaryOp<"maximum", [Commutative]> {
   let results = (outs
     Tosa_Tensor:$output
   );
+
+  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -754,6 +756,8 @@ def Tosa_MinimumOp : Tosa_ElemWiseBinaryOp<"minimum", [Commutative]> {
   let results = (outs
     Tosa_Tensor:$output
   );
+
+  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//
