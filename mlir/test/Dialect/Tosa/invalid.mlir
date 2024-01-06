@@ -256,6 +256,12 @@ func.func @test_greater_equal(%arg0: tensor<13x1x3xf32>, %arg1: tensor<13x21x3xf
   return %0 : tensor<13x21x3xf32>
 }
 // -----
+func.func @test_mul_incompabitble_type(%arg0: tensor<13x21xf32>, %arg1: tensor<13x21xi8>) -> tensor<13x21xf32> {
+  // expected-error@+1 {{'tosa.mul' op requires the same element type for all operands and results}}
+  %0 = "tosa.mul"(%arg0, %arg1) { shift = 1 : i32 }: (tensor<13x21xf32>, tensor<13x21xi8>) -> tensor<13x21xf32>
+  return %0 : tensor<13x21xf32>
+}
+// -----
 func.func @test_mul_unequal_rank(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x1x21x3xf32>) -> tensor<?x?x?x?xf32> {
   // expected-error@+1{{'tosa.mul' op both operands must have same rank.}}
   %0 = "tosa.mul"(%arg0, %arg1)  { shift = 1 : i32 } : (tensor<13x21x3xf32>, tensor<13x1x21x3xf32>) -> tensor<?x?x?x?xf32>
@@ -276,21 +282,55 @@ func.func @test_mul_incompatible(%arg0: tensor<3x4x8400xf32>, %arg1: tensor<3x84
 } 
 // -----
 func.func @test_select_unequal_rank_inputs(%arg0: tensor<2xi1>, %arg1: tensor<3x2xf32>, %arg2: tensor<3x2xf32>) -> tensor<3x2xf32> {
+  // expected-error@+1{{'tosa.select' op both operands must have same rank.}}
   %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf32>
   return %0 : tensor<3x2xf32>
 }
 // -----
-func.func @test_select_not_boardcastable(%arg0: tensor<2x2xi1>, %arg1: tensor<3x2xf32>, %arg2: tensor<3x2xf32>) -> tensor<3x2xf32> {
+func.func @test_select_unequal_rank_inputs2(%arg0: tensor<1x2xi1>, %arg1: tensor<1x3x2xf32>, %arg2: tensor<3x2xf32>) -> tensor<3x2xf32> {
+  // expected-error@+1{{'tosa.select' op both operands must have same rank.}}
+  %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<1x2xi1>, tensor<1x3x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf32>
+  return %0 : tensor<3x2xf32>
+}
+// -----
+func.func @test_select_unequal_rank_inputs3(%arg0: tensor<1x2xi1>, %arg1: tensor<3x2xf32>, %arg2: tensor<1x3x2xf32>) -> tensor<3x2xf32> {
+  // expected-error@+1{{'tosa.select' op both operands must have same rank.}}
+  %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<1x2xi1>, tensor<3x2xf32>, tensor<1x3x2xf32>) -> tensor<3x2xf32>
+  return %0 : tensor<3x2xf32>
+} 
+// -----
+func.func @test_select_not_boardcastable_arg1(%arg0: tensor<2x2xi1>, %arg1: tensor<3x2xf32>, %arg2: tensor<3x2xf32>) -> tensor<3x2xf32> {
+  // expected-error@+1{{'tosa.select' op operands don't have broadcast-compatible shapes}}
   %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<2x2xi1>, tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf32>
   return %0 : tensor<3x2xf32>
 }
 // -----
-func.func @test_select_not_boardcastable2(%arg0: tensor<2x2xi1>, %arg1: tensor<3x2xf32>, %arg2: tensor<3x2xf32>) -> tensor<4x2xf32> {
-  %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<2x2xi1>, tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<4x2xf32>
+func.func @test_select_not_boardcastable_result(%arg0: tensor<1x2xi1>, %arg1: tensor<3x2xf32>, %arg2: tensor<3x2xf32>) -> tensor<4x2xf32> {
+  // expected-error@+1{{'tosa.select' op result type '4x2' not broadcast compatible with broadcasted operands's shapes '3x2'}}
+  %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<1x2xi1>, tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<4x2xf32>
   return %0 : tensor<4x2xf32>
 }
 // -----
-func.func @test_select_incompatible_two(%arg0: tensor<1x1x1xi1>, %arg1: tensor<13x21x3xf32>, %arg2: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
-  %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<1x1x1xi1>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+func.func @test_select_not_boardcastable_arg3(%arg0: tensor<1x2xi1>, %arg1: tensor<2x2xf32>, %arg2: tensor<3x2xf32>) -> tensor<3x2xf32> {
+  // expected-error@+1{{'tosa.select' op operands don't have broadcast-compatible shapes}}
+  %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<1x2xi1>, tensor<2x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf32>
+  return %0 : tensor<3x2xf32>
+}
+// -----
+func.func @test_select_incompatible_1(%arg0: tensor<1x1x1xi1>, %arg1: tensor<13x21x3xf32>, %arg2: tensor<13x21x3xf32>) -> tensor<13x21x3xi8> {
+  // expected-error@+1{{'tosa.select' op inputs and result should be of same type.}}
+  %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<1x1x1xi1>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xi8>
+  return %0 : tensor<13x21x3xi8>
+}
+// -----
+func.func @test_select_incompatible_2(%arg0: tensor<1x1x1xi1>, %arg1: tensor<13x21x3xf32>, %arg2: tensor<13x21x3xi8>) -> tensor<13x21x3xf32> {
+  // expected-error@+1{{'tosa.select' op inputs should be of same type.}}
+  %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<1x1x1xi1>, tensor<13x21x3xf32>, tensor<13x21x3xi8>) -> tensor<13x21x3xf32>
+  return %0 : tensor<13x21x3xf32>
+}
+// -----
+func.func @test_select_incompatible_3(%arg0: tensor<1x1x1xi8>, %arg1: tensor<13x21x3xf32>, %arg2: tensor<13x21x3xi8>) -> tensor<13x21x3xf32> {
+  // expected-error@+1{{'tosa.select' op operand #0 must be tensor of 1-bit signless integer values, but got 'tensor<1x1x1xi8>'}}
+  %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<1x1x1xi8>, tensor<13x21x3xf32>, tensor<13x21x3xi8>) -> tensor<13x21x3xf32>
   return %0 : tensor<13x21x3xf32>
 }

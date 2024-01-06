@@ -1349,30 +1349,55 @@ LogicalResult tosa::AddOp::verify() {
 LogicalResult tosa::GreaterEqualOp::verify() {
   return verifyBinaryOpWithEqualRank(*this);
 }
-LogicalResult verifyForSameRank(ShapedType inputShape1,
+template <typename T>
+LogicalResult verifyForSameRank(T op, ShapedType inputShape1,
                                 ShapedType inputShape2) {
+  if (inputShape1.hasRank() && inputShape2.hasRank()) {
+    auto input1Rank = inputShape1.getRank();
+    auto input2Rank = inputShape2.getRank();
+    if (input1Rank != input2Rank) {
+      return op.emitOpError("both operands must have same rank.");
+    }
+  }
   return success();
 }
 LogicalResult tosa::SelectOp::verify() {
-  return success();
+
+  auto input1ShapeType = llvm::cast<ShapedType>(getOperand(0).getType());
+  auto input2ShapeType = llvm::cast<ShapedType>(getOperand(1).getType());
+  auto input3ShapeType = llvm::cast<ShapedType>(getOperand(2).getType());
+  auto outputShapeType = llvm::cast<ShapedType>(getResult().getType());
+
+  auto input2ETy =
+      llvm::cast<ShapedType>(getOperand(1).getType()).getElementType();
+  auto input3ETy =
+      llvm::cast<ShapedType>(getOperand(2).getType()).getElementType();
+  auto resultETy = getElementTypeOrSelf(getResult());
+  // auto resultETy = llvm::cast<ShapedType>(getResult()).getElementType();
+
+  auto result1 = verifyForSameRank(*this, input1ShapeType, input2ShapeType);
+  if (result1.failed()) {
+    return result1;
+  }
+  auto result2 = verifyForSameRank(*this, input1ShapeType, input3ShapeType);
+  if (result2.failed()) {
+    return result2;
+  }
+  auto result3 = verifyForSameRank(*this, input1ShapeType, outputShapeType);
+  if (result3.failed()) {
+    return result3;
+  }
+  if (input2ETy != input3ETy) {
+    return emitOpError("inputs should be of same type.");
+  }
+  if ((input2ETy != resultETy) || (input3ETy != resultETy)) {
+    return emitOpError("inputs and result should be of same type.");
+  }
+
   auto result = OpTrait::impl::verifyCompatibleOperandBroadcast(getOperation());
   if (result.failed()) {
     return result;
   }
-
-  auto input1ShapeType = llvm::cast<ShapedType>(getOperand(1).getType());
-  auto input2ShapeType = llvm::cast<ShapedType>(getOperand(2).getType());
-  auto input3ShapeType = llvm::cast<ShapedType>(getOperand(3).getType());
-  auto outputShapeType = llvm::cast<ShapedType>(getResult().getType());
-
-  if (input1ShapeType.hasRank() && input2ShapeType.hasRank()) {
-    auto input1Rank = input1ShapeType.getRank();
-    auto input2Rank = input2ShapeType.getRank();
-    if (input1Rank != input2Rank) {
-      return emitOpError("both operands must have same rank.");
-    }
-  }
-
   return success();
 }
 
