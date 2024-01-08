@@ -626,6 +626,7 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
     ValueShapeRange operands, DictionaryAttr attributes,
     OpaqueProperties properties, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+  Type inputType = getElementTypeOrSelf(operands[0]);
   ShapeAdaptor inputShape = operands.getShape(0);
   ShapeAdaptor paddingShape = operands.getShape(1);
   SmallVector<int64_t> outputShape;
@@ -646,7 +647,8 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
     }
 
     outputShape.resize(paddingShape.getDimSize(0), ShapedType::kDynamic);
-    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+    inferredReturnShapes.push_back(
+        ShapedTypeComponents(outputShape, inputType));
     return success();
   }
 
@@ -654,7 +656,8 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
   // If the paddings value is not a constant, all dimensions must be dynamic.
   if (!matchPattern(operands[1], m_Constant(&paddings))) {
     outputShape.resize(inputShape.getRank(), ShapedType::kDynamic);
-    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+    inferredReturnShapes.push_back(
+        ShapedTypeComponents(outputShape, inputType));
     return success();
   }
 
@@ -674,7 +677,35 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
                           paddingValues[i * 2 + 1]);
   }
 
-  inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+  inferredReturnShapes.push_back(ShapedTypeComponents(outputShape, inputType));
+  return success();
+}
+
+LogicalResult PadOp::verify() {
+  ShapedType inputType = llvm::cast<ShapedType>(getInput1().getType());
+  ShapedType paddingType = llvm::cast<ShapedType>(getPadding().getType());
+  if (paddingType.hasRank()) {
+    if (paddingType.getRank() != 2) {
+      return emitOpError() << "paddings must be a tensor of rank 2";
+    }
+    if (inputType.hasRank() && !paddingType.isDynamicDim(0) &&
+        inputType.getRank() != paddingType.getDimSize(0)) {
+      return emitOpError() << "paddings must be a tensor of shape ["
+                           << inputType.getRank() << ", 2]";
+    }
+    if (!paddingType.isDynamicDim(1) && paddingType.getDimSize(1) != 2) {
+      return emitOpError() << "paddings must be a tensor of shape ["
+                           << inputType.getRank() << ", 2]";
+    }
+
+    DenseIntElementsAttr paddings;
+    if (matchPattern(getPadding(), m_Constant(&paddings))) {
+      if (llvm::any_of(paddings,
+                       [](auto val) { return val.getSExtValue() < 0; })) {
+        return emitOpError() << "number of pad elements must be positive";
+      }
+    }
+  }
   return success();
 }
 
@@ -1101,6 +1132,7 @@ REDUCE_SHAPE_INFER(tosa::ReduceProdOp)
 REDUCE_SHAPE_INFER(tosa::ReduceSumOp)
 #undef REDUCE_SHAPE_INFER
 COMPATIBLE_RETURN_TYPES(tosa::ConcatOp)
+COMPATIBLE_RETURN_TYPES(tosa::PadOp)
 #undef COMPATIBLE_RETURN_TYPES
 
 static LogicalResult NAryInferReturnTypes(
