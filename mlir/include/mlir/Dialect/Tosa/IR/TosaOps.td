@@ -422,6 +422,8 @@ def Tosa_SigmoidOp : Tosa_ElemWiseUnaryOp<"sigmoid"> {
   let results = (outs
     Tosa_Tensor:$output
   );
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

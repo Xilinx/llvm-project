@@ -169,6 +169,21 @@ func.func @test_pad_negative_padding(%arg0: tensor<13x21xf32>) -> tensor<?x?xf32
   return %1 : tensor<?x?xf32>
 }
 
+// -----
+
+func.func @test_sigmoid_type_mismatch(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xi8> {
+  // expected-error@+1 {{'tosa.sigmoid' op requires the same element type for all operands and results}}
+  %0 = "tosa.sigmoid"(%arg0) : (tensor<13x21x3xf32>) -> tensor<13x21x4xi8>
+  return %0 : tensor<13x21x4xi8>
+}
+
+// -----
+
+func.func @test_sigmoid(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x4xf32> {
+  // expected-error@+1 {{'tosa.sigmoid' op input type 'tensor<13x21x3xf32>' and output type 'tensor<13x21x4xf32>' are not compatible}}
+  %0 = "tosa.sigmoid"(%arg0) : (tensor<13x21x3xf32>) -> tensor<13x21x4xf32>
+  return %0 : tensor<13x21x4xf32>
+}
 
 // -----
 
