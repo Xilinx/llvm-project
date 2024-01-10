@@ -147,6 +147,14 @@ static LogicalResult verifyPoolOp(T op) {
       llvm::cast<ShapedType>(op.getInput().getType()).getElementType();
   auto resultETy = llvm::cast<ShapedType>(op.getType()).getElementType();
 
+  if (auto quantType =
+          llvm::dyn_cast<mlir::quant::UniformQuantizedType>(inputETy))
+    inputETy = quantType.getStorageType();
+
+  if (auto quantType =
+          llvm::dyn_cast<mlir::quant::UniformQuantizedType>(resultETy))
+    resultETy = quantType.getStorageType();
+
   // 	[kernel_y, kernel_x] <-> [0,1]
   auto kernel = op.getKernel();
   // [stride_y, stride_x]
@@ -956,6 +964,7 @@ LogicalResult tosa::TransposeOp::inferReturnTypeComponents(
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   ShapeAdaptor inputShape = operands.getShape(0);
   ShapeAdaptor permsShape = operands.getShape(1);
+  auto inputType = getElementTypeOrSelf(operands[0]);
 
   // If input rank and permutation length is unknown, the output rank is
   // unknown.
@@ -976,13 +985,15 @@ LogicalResult tosa::TransposeOp::inferReturnTypeComponents(
   SmallVector<int64_t> outputShape;
   if (!inputShape.hasRank()) {
     outputShape.resize(permsShape.getDimSize(0), ShapedType::kDynamic);
-    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+    inferredReturnShapes.push_back(
+        ShapedTypeComponents(outputShape, inputType));
     return success();
   }
 
   // Rank-0 means no permutations matter.
   if (inputShape.getRank() == 0) {
-    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+    inferredReturnShapes.push_back(
+        ShapedTypeComponents(outputShape, inputType));
     return success();
   }
 
@@ -999,7 +1010,8 @@ LogicalResult tosa::TransposeOp::inferReturnTypeComponents(
   // permutation.
   if (allTheSame) {
     outputShape.resize(inputShape.getRank(), inputShape.getDimSize(0));
-    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+    inferredReturnShapes.push_back(
+        ShapedTypeComponents(outputShape, inputType));
     return success();
   }
 
@@ -1013,7 +1025,7 @@ LogicalResult tosa::TransposeOp::inferReturnTypeComponents(
     }
   }
 
-  inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+  inferredReturnShapes.push_back(ShapedTypeComponents(outputShape, inputType));
   return success();
 }
 
@@ -1165,6 +1177,7 @@ REDUCE_SHAPE_INFER(tosa::ReduceProdOp)
 REDUCE_SHAPE_INFER(tosa::ReduceSumOp)
 #undef REDUCE_SHAPE_INFER
 COMPATIBLE_RETURN_TYPES(tosa::ConcatOp)
+COMPATIBLE_RETURN_TYPES(tosa::TransposeOp)
 #undef COMPATIBLE_RETURN_TYPES
 
 static LogicalResult NAryInferReturnTypes(
@@ -1341,7 +1354,20 @@ static LogicalResult verifyBinaryOpWithEqualRank(T op) {
   return success();
 }
 LogicalResult tosa::MulOp::verify() {
-  return verifyBinaryOpWithEqualRank(*this);
+  auto result = verifyBinaryOpWithEqualRank(*this);
+  if (result.failed()) {
+    return result;
+  }
+  auto shiftAttr = getShiftAttr().getInt();
+  auto input1ShapeType = llvm::cast<ShapedType>(getInput1().getType());
+  auto elementType = getElementTypeOrSelf(input1ShapeType);
+  if (!(elementType.isInteger(8) || elementType.isInteger(16))) {
+    if (shiftAttr != 0) {
+      return emitOpError(
+          "shift attribute should be 0 for non integer input types");
+    }
+  }
+  return success();
 }
 LogicalResult tosa::AddOp::verify() {
   return verifyBinaryOpWithEqualRank(*this);

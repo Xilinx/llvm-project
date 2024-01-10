@@ -281,6 +281,19 @@ func.func @test_mul_incompatible(%arg0: tensor<3x4x8400xf32>, %arg1: tensor<3x84
   return %0 : tensor<1x4x8400xf32>
 } 
 // -----
+func.func @test_mul_need_shift(%arg0: tensor<3x4x8400xf32>, %arg1: tensor<3x4x8400xf32>) -> tensor<3x4x8400xf32> {
+  // expected-error@+1{{'tosa.mul' op requires attribute 'shift'}}
+  %0 = "tosa.mul"(%arg0, %arg1) : (tensor<3x4x8400xf32>, tensor<3x4x8400xf32>) -> tensor<3x4x8400xf32>  
+  return %0 : tensor<3x4x8400xf32>
+}
+// -----
+func.func @test_mul_nonzero_shift(%arg0: tensor<3x4x8400xf32>, %arg1: tensor<3x4x8400xf32>) -> tensor<3x4x8400xf32> {
+  // expected-error@+1{{'tosa.mul' op shift attribute should be 0 for non integer input types}}
+  %0 = "tosa.mul"(%arg0, %arg1) {shift = 3 : i32}: (tensor<3x4x8400xf32>, tensor<3x4x8400xf32>) -> tensor<3x4x8400xf32>  
+  return %0 : tensor<3x4x8400xf32>
+}
+
+  // -----
 func.func @test_select_unequal_rank_inputs(%arg0: tensor<2xi1>, %arg1: tensor<3x2xf32>, %arg2: tensor<3x2xf32>) -> tensor<3x2xf32> {
   // expected-error@+1{{'tosa.select' op both operands must have same rank.}}
   %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf32>
@@ -333,4 +346,52 @@ func.func @test_select_incompatible_3(%arg0: tensor<1x1x1xi8>, %arg1: tensor<13x
   // expected-error@+1{{'tosa.select' op operand #0 must be tensor of 1-bit signless integer values, but got 'tensor<1x1x1xi8>'}}
   %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<1x1x1xi8>, tensor<13x21x3xf32>, tensor<13x21x3xi8>) -> tensor<13x21x3xf32>
   return %0 : tensor<13x21x3xf32>
+}
+// -----
+func.func @test_transpose_incorrect_result_shape(%arg0: tensor<13x21x3xf32>) -> tensor<3x13x20xf32> {  
+  %0 = "tosa.const"() {value = dense<[2, 0, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // expected-error@+2{{'tosa.transpose' op failed to infer returned types}}
+  // expected-error@+1{{'tosa.transpose' op inferred type(s) 'tensor<3x13x21xf32>' are incompatible with return type(s) of operation 'tensor<3x13x20xf32>'}}  
+  %1 = "tosa.transpose"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<3xi32>) -> tensor<3x13x20xf32>
+  return %1 : tensor<3x13x20xf32>
+}   
+// -----
+func.func @test_transpose_incorrect_result_rank(%arg0: tensor<13x21x3xf32>) -> tensor<3x13xf32> {  
+  %0 = "tosa.const"() {value = dense<[2, 0, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // expected-error@+2{{'tosa.transpose' op failed to infer returned types}}
+  // expected-error@+1{{'tosa.transpose' op inferred type(s) 'tensor<3x13x21xf32>' are incompatible with return type(s) of operation 'tensor<3x13xf32>'}}  
+  %1 = "tosa.transpose"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<3xi32>) -> tensor<3x13xf32>
+  return %1 : tensor<3x13xf32>
+}
+// -----
+func.func @test_transpose_incorrect_result_type(%arg0: tensor<13x21x3xf32>) -> tensor<3x13x21xi8> {  
+  %0 = "tosa.const"() {value = dense<[2, 0, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1{{'tosa.transpose' op inferred type(s) 'tensor<3x13x21xf32>' are incompatible with return type(s) of operation 'tensor<3x13x21xi8>'}}  
+  %1 = "tosa.transpose"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<3xi32>) -> tensor<3x13x21xi8>
+  return %1 : tensor<3x13x21xi8>
+}
+// -----
+func.func @test_transpose_high_rank_perm(%arg0: tensor<13x21x3xf32>) -> tensor<3x13x21x4xf32> {
+  %0 = "tosa.const"() {value = dense<[2, 0, 1, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // expected-error@+1 {{failed to infer returned types}}
+  %1 = "tosa.transpose"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<4xi32>) -> tensor<3x13x21x4xf32>
+  return %1 : tensor<3x13x21x4xf32>
+}
+// -----
+// CHECK-LABEL: transpose
+func.func @test_transpose_low_rank_perm(%arg0: tensor<13x21x3xf32>) -> tensor<3x13x21x4xf32> {
+  %0 = "tosa.const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // expected-error@+1 {{failed to infer returned types}}
+  %1 = "tosa.transpose"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<2xi32>) -> tensor<3x13x21x4xf32>
+  return %1 : tensor<3x13x21x4xf32>
+}
+// -----
+// CHECK-LABEL: transpose
+func.func @test_transpose_result_high_rank(%arg0: tensor<13x21x3xf32>) -> tensor<3x13x21x4xf32> {
+  %0 = "tosa.const"() {value = dense<[2, 0, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{'tosa.transpose' op inferred type(s) 'tensor<3x13x21xf32>' are incompatible with return type(s) of operation 'tensor<3x13x21x4xf32>'}}
+  %1 = "tosa.transpose"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<3xi32>) -> tensor<3x13x21x4xf32>
+  return %1 : tensor<3x13x21x4xf32>
 }

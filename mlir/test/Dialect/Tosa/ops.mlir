@@ -216,10 +216,16 @@ func.func @test_min(%arg0: tensor<13x21x3xf32>, %arg1: tensor<1x21x3xf32>) -> te
 // -----
 // CHECK-LABEL: mul
 func.func @test_mul(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x1x3xf32>) -> tensor<13x21x3xf32> {
-  %0 = "tosa.mul"(%arg0, %arg1)  { shift = 1 : i32 } : (tensor<13x21x3xf32>, tensor<13x1x3xf32>) -> tensor<13x21x3xf32>
+  %0 = "tosa.mul"(%arg0, %arg1)  { shift = 0 : i32 } : (tensor<13x21x3xf32>, tensor<13x1x3xf32>) -> tensor<13x21x3xf32>
   return %0 : tensor<13x21x3xf32>
 }
-
+// -----
+// CHECK-LABEL: mul
+func.func @test_mul_nonzero_shift(%arg0: tensor<3x4x8400xi8>, %arg1: tensor<3x4x8400xi8>) -> tensor<3x4x8400xi8> {
+  // expected-error@+1{{'tosa.mul' op shift attribute should be 0 for non integer input types}}
+  %0 = "tosa.mul"(%arg0, %arg1) {shift = 3 : i32}: (tensor<3x4x8400xi8>, tensor<3x4x8400xi8>) -> tensor<3x4x8400xi8>  
+  return %0 : tensor<3x4x8400xi8>
+}
 // -----
 // CHECK-LABEL: pow
 func.func @test_pow(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x1xf32>) -> tensor<13x21x3xf32> {
