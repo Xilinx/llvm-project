@@ -1474,6 +1474,7 @@ def Tosa_PadOp : Tosa_Op<"pad", [
 
   let hasCanonicalizer = 1;
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

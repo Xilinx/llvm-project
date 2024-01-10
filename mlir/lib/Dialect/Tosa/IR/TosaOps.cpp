@@ -642,6 +642,79 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
   return success();
 }
 
+LogicalResult tosa::PadOp::verify() {
+  auto inputType = llvm::cast<ShapedType>(getInput1().getType());
+  auto outputType = llvm::cast<ShapedType>(getOutput().getType());
+  auto paddingType = llvm::cast<ShapedType>(getPadding().getType());
+
+  if (!inputType.hasStaticShape() || !paddingType.hasStaticShape() ||
+      !outputType.hasStaticShape())
+    return success();
+
+  if (inputType.getRank() != outputType.getRank()) {
+    return emitOpError() << "input type (" << inputType
+                         << ") must have the same rank as the output type ("
+                         << outputType << ")";
+  }
+
+  llvm::ArrayRef<int64_t> inputShape = inputType.getShape();
+  llvm::ArrayRef<int64_t> outputShape = outputType.getShape();
+  llvm::ArrayRef<int64_t> paddingShape = paddingType.getShape();
+
+  if (paddingShape.size() != 2) {
+    return emitOpError() << "padding shape must be in the form of Nx2 where N "
+                            "is the rank of input tensor but got ("
+                         << paddingType << ")";
+  }
+
+  if (paddingShape[1] != 2) {
+    return emitOpError() << "must only have a before-padding and an "
+                            "after-padding for each "
+                            "dimension of the input tensor";
+  }
+
+  if (paddingShape[0] != inputType.getRank()) {
+    return emitOpError() << "padding array has (" << paddingShape[0]
+                         << ") pad pairs while the rank of input tensor is "
+                         << inputType.getRank();
+  }
+
+  auto padConst = getPadConst();
+  if (padConst) {
+    auto padConstType = llvm::cast<ShapedType>(getPadConst().getType());
+    if (inputType.getElementType() != padConstType.getElementType()) {
+      return emitOpError() << "pad const has element type ("
+                           << padConstType.getElementType()
+                           << ") while the input tensor has element type("
+                           << inputType.getElementType() << ")";
+    }
+  }
+
+  DenseIntElementsAttr paddingsAttr;
+  if (!matchPattern(getPadding(), m_Constant(&paddingsAttr))) {
+    return success();
+  }
+
+  SmallVector<int64_t> paddings;
+  for (auto val : paddingsAttr) {
+    paddings.push_back(val.getSExtValue());
+  }
+
+  for (int64_t dimIdx = 0; dimIdx < inputType.getRank(); dimIdx++) {
+    int64_t beforePad = paddings[dimIdx * 2];
+    int64_t afterPad = paddings[dimIdx * 2 + 1];
+
+    if (inputShape[dimIdx] + beforePad + afterPad != outputShape[dimIdx]) {
+      return emitOpError() << "output shape (" << outputType
+                           << ") doesn't match with the input shape ("
+                           << inputType << ") and the paddings ("
+                           << paddingsAttr << ")";
+    }
+  }
+
+  return success();
+}
+
 static SmallVector<int64_t> convertToMlirShape(ArrayRef<int64_t> shape) {
   return to_vector(llvm::map_range(shape, [](int64_t dim) {
     return dim == -1 ? ShapedType::kDynamic : dim;
