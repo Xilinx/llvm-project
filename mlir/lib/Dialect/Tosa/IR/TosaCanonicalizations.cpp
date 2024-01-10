@@ -62,6 +62,43 @@ void ConcatOp::getCanonicalizationPatterns(RewritePatternSet &results,
   results.add<ConcatOptimization>(context);
 }
 
+struct SqrtReciprocalOptimization : public OpRewritePattern<tosa::PowOp> {
+  using OpRewritePattern<tosa::PowOp>::OpRewritePattern;
+  // Pattern that matches a Sqrt + Reciprocal to make it into a rsqrt.
+  // Sqrt is represented in tosa by a Pow so we check for Pow + reciprocal.
+  LogicalResult matchAndRewrite(tosa::PowOp op,
+                                PatternRewriter &rewriter) const override {
+    // Check that the PowOp has a single user
+    if (!op->hasOneUse())
+      return failure();
+
+    Operation* user = *op->user_begin();
+    // Check that this user is a reciprocal
+    if (!isa<tosa::ReciprocalOp>(user))
+      return failure();
+
+    // Check that the Pow op is an Sqrt - its second input should be the scale, 0.5 for Sqrt.
+    Operation* powScale = op.getInput2().getDefiningOp();
+    if (!powScale || !isa<tosa::ConstOp>(powScale))
+      return failure();
+
+    auto scale = cast<tosa::ConstOp>(powScale).getValue().cast<DenseElementsAttr>();
+    auto scaleValue = scale.getSplatValue<float>();
+    if(scaleValue != 0.5)
+      return failure();
+
+    auto outputType = cast<ShapedType>(op.getType());
+    rewriter.replaceOpWithNewOp<tosa::RsqrtOp>(user, outputType, op.getInput1());
+
+    return success();
+  }
+};
+
+void PowOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                           MLIRContext *context) {
+  results.add<SqrtReciprocalOptimization>(context);
+}
+
 LogicalResult SelectOp::canonicalize(SelectOp op, PatternRewriter &rewriter) {
   auto notOp = op.getPred().getDefiningOp<tosa::LogicalNotOp>();
   if (!notOp)

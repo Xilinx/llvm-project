@@ -622,3 +622,24 @@ func.func @fold_abs_abs(%arg0: tensor<?x1xf32>) -> tensor<?x1xf32> {
   %1 = "tosa.abs"(%0) : (tensor<?x1xf32>) -> tensor<?x1xf32>
   return %1 : tensor<?x1xf32>
 }
+
+// -----
+// CHECK-LABEL: @optimize_sqrt_reciprocal
+func.func @optimize_sqrt_reciprocal(%arg0: tensor<1x5x1x1xf32>) -> tensor<1x5x1x1xf32> {
+  // CHECK: %[[RSQRT:.*]] = "tosa.rsqrt"(%arg{{.*}}) : (tensor<1x5x1x1xf32>) -> tensor<1x5x1x1xf32>
+  // CHECK: return %[[RSQRT]] : tensor<1x5x1x1xf32>
+  %0 = "tosa.const"() <{value = dense<5.000000e-01> : tensor<1x1x1x1xf32>}> : () -> tensor<1x1x1x1xf32>
+  %1 = "tosa.pow"(%arg0, %0) : (tensor<1x5x1x1xf32>, tensor<1x1x1x1xf32>) -> tensor<1x5x1x1xf32>
+  %2 = "tosa.reciprocal"(%1) : (tensor<1x5x1x1xf32>) -> tensor<1x5x1x1xf32>
+  return %2 : tensor<1x5x1x1xf32>
+}
+
+// -----
+// CHECK-LABEL: @optimize_sqrt_reciprocal_no_match
+func.func @optimize_sqrt_reciprocal_no_match(%arg0: tensor<1x5x1x1xf32>) -> tensor<1x5x1x1xf32> {
+  // CHECK-NOT: %[[RSQRT:.*]] = "tosa.rsqrt"(%arg{{.*}}) : (tensor<1x5x1x1xf32>) -> tensor<1x5x1x1xf32>
+  %0 = "tosa.const"() <{value = dense<4.000000e-01> : tensor<1x1x1x1xf32>}> : () -> tensor<1x1x1x1xf32>
+  %1 = "tosa.pow"(%arg0, %0) : (tensor<1x5x1x1xf32>, tensor<1x1x1x1xf32>) -> tensor<1x5x1x1xf32>
+  %2 = "tosa.reciprocal"(%1) : (tensor<1x5x1x1xf32>) -> tensor<1x5x1x1xf32>
+  return %2 : tensor<1x5x1x1xf32>
+}
