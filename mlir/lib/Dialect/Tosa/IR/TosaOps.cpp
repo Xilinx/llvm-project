@@ -100,7 +100,8 @@ Operation *TosaDialect::materializeConstant(OpBuilder &builder, Attribute value,
 // TOSA Operator Verifiers.
 //===----------------------------------------------------------------------===//
 
-template <typename T> static LogicalResult verifyConvOp(T op) {
+template <typename T>
+static LogicalResult verifyConvOp(T op) {
   // All TOSA conv ops have an input() and weight().
   auto inputType = llvm::dyn_cast<RankedTensorType>(op.getInput().getType());
   auto weightType = llvm::dyn_cast<RankedTensorType>(op.getWeight().getType());
@@ -140,7 +141,119 @@ template <typename T> static LogicalResult verifyConvOp(T op) {
 
   return success();
 }
+template <typename T>
+static LogicalResult verifyPoolOp(T op) {
+  auto inputETy =
+      llvm::cast<ShapedType>(op.getInput().getType()).getElementType();
+  auto resultETy = llvm::cast<ShapedType>(op.getType()).getElementType();
 
+  if (auto quantType =
+          llvm::dyn_cast<mlir::quant::UniformQuantizedType>(inputETy))
+    inputETy = quantType.getStorageType();
+
+  if (auto quantType =
+          llvm::dyn_cast<mlir::quant::UniformQuantizedType>(resultETy))
+    resultETy = quantType.getStorageType();
+
+  // 	[kernel_y, kernel_x] <-> [0,1]
+  auto kernel = op.getKernel();
+  // [stride_y, stride_x]
+  auto stride = op.getStride();
+  // 	[pad_top, pad_bottom, pad_left, pad_right]
+  auto pad = op.getPad();
+  // ERROR_IF(kernel_y < 1 || kernel_x < 1); // kernel size must be >= 1
+  if (kernel[0] < 1 || kernel[1] < 1) {
+    return op.emitOpError("kernel should be greater than one.");
+  }
+  // ERROR_IF(stride_y < 1 || stride_x < 1);
+  if (stride[0] < 0 || stride[1] < 0) {
+    return op.emitOpError("stride should be greater than one.");
+  }
+  // ERROR_IF(pad_top < 0 || pad_bottom < 0 || pad_left < 0 || pad_right < 0);
+  if (pad[0] < 0 || pad[1] < 0 || pad[2] < 0 || pad[3] < 0) {
+    return op.emitOpError("pad should be positive.");
+  }
+  // Padding must be less than kernel size to avoid
+  // a divide-by-zero.
+  /*
+  ERROR_IF(pad_right >= kernel_x || pad_left >= kernel_x);
+  ERROR_IF(pad_top >= kernel_y || pad_bottom >= kernel_y);
+  */
+
+  if (pad[3] >= kernel[1] || pad[2] >= kernel[1] || pad[0] >= kernel[0] ||
+      pad[1] >= kernel[0]) {
+    return op.emitOpError("pad must be less than kernel size.");
+  }
+
+  //[N,IH,IW,C]
+  auto inputShapeType = llvm::cast<ShapedType>(op.getInput().getType());
+  //[N,OH,OW,C]
+  auto outputShapeType = llvm::cast<ShapedType>(op.getOutput().getType());
+  if (inputShapeType.hasStaticShape() && outputShapeType.hasStaticShape()) {
+    auto inputShape = inputShapeType.getShape();
+    auto outputShape = outputShapeType.getShape();
+    auto inputHeight = inputShape[1];
+    auto inputWidth = inputShape[2];
+    auto outputHeight = outputShape[1];
+    auto outputWidth = outputShape[2];
+    // IH + pad_top + pad_bottom - kernel_y
+    auto height = inputHeight + pad[0] + pad[1] - kernel[0];
+    // IW + pad_left + pad_right - kernel_x
+    auto width = inputWidth + pad[2] + pad[3] - kernel[1];
+    // idiv_check(IH + pad_top + pad_bottom - kernel_y, stride_y)
+    if (height % stride[0] != 0) {
+      return op.emitOpError("vertical stride is not in correct multiple.");
+    }
+    // idiv_check(IW + pad_left + pad_right - kernel_x, stride_x)
+    if (width % stride[1] != 0) {
+      return op.emitOpError("horizontal stride is not in correct multiple.");
+    }
+    /*
+       ERROR_IF(OH != idiv_check(IH + pad_top + pad_bottom - kernel_y, stride_y)
+     + 1);
+        */
+
+    if ((outputHeight != (height / stride[0]) + 1)) {
+
+      return op.emitOpError("output height is not correct, should be ")
+             << (height / stride[0]) + 1 << ".";
+    }
+    /*
+  ERROR_IF(OW != idiv_check(IW + pad_left + pad_right - kernel_x, stride_x) +
+  1);
+  */
+    if (outputWidth != (width / stride[1]) + 1) {
+      return op.emitOpError("output width is not correct, should be ")
+             << (width / stride[1]) + 1 << ".";
+    }
+  }
+  if (inputETy.isF32() && resultETy.isF32())
+    return success();
+  if (inputETy.isInteger(8) && resultETy.isInteger(8))
+    return success();
+  if (inputETy.isInteger(16) && resultETy.isInteger(16))
+    return success();
+
+  return op.emitOpError("input/output element types are incompatible.");
+}
+// LogicalResult tosa::AddOp::verify() {
+
+//   auto input1ShapedType = llvm::cast<ShapedType>(getInput1().getType());
+//   auto input2ShapedType = llvm::cast<ShapedType>(getInput2().getType());
+//   auto resultShapedType = llvm::cast<ShapedType>(getType());
+
+//   if (input1ShapedType.hasStaticShape() && input2ShapedType.hasStaticShape()
+//   &&
+//       resultShapedType.hasStaticShape()) {
+//     if (input1ShapedType.getRank() != input2ShapedType.getRank()) {
+//       return emitOpError("input tensors must be of equal rank.");
+//     }
+//     return success();
+//   }
+//   return success();
+// }
+
+LogicalResult tosa::MaxPool2dOp::verify() { return verifyPoolOp(*this); }
 LogicalResult tosa::AvgPool2dOp::verify() {
   auto inputETy = llvm::cast<ShapedType>(getInput().getType()).getElementType();
   auto resultETy = llvm::cast<ShapedType>(getType()).getElementType();
@@ -156,22 +269,16 @@ LogicalResult tosa::AvgPool2dOp::verify() {
   auto accType = getAccType();
   if (llvm::isa<IntegerType>(inputETy) && !accType.isInteger(32))
     return emitOpError("accumulator type for integer tensor is not i32");
-
-  if ((inputETy.isBF16() || inputETy.isF16()) &&
-      !(accType.isF16() || accType.isF32()))
-    return emitOpError("accumulator type for f16/bf16 tensor is not f16/f32");
-
-  if (inputETy.isF32() && !accType.isF32())
-    return emitOpError("accumulator type for f32 tensor is not f32");
-
-  if (inputETy.isF32() && resultETy.isF32())
-    return success();
-  if (inputETy.isInteger(8) && resultETy.isInteger(8))
-    return success();
-  if (inputETy.isInteger(16) && resultETy.isInteger(16))
-    return success();
-
-  return emitOpError("input/output element types are incompatible.");
+  auto result = verifyPoolOp(*this);
+  if (result.succeeded()) {
+    if ((inputETy.isF16()) && !(accType.isF16() || accType.isF32()))
+      return emitOpError("accumulator type for f16 tensor is not f16/f32");
+    if ((inputETy.isBF16()) && !(accType.isF32()))
+      return emitOpError("accumulator type for bf16 tensor is not f32");
+    if (inputETy.isF32() && !accType.isF32())
+      return emitOpError("accumulator type for f32 tensor is not f32");
+  }
+  return result;
 }
 
 //===----------------------------------------------------------------------===//
@@ -202,7 +309,8 @@ static void buildConvOpWithQuantInfo(OpBuilder &builder, OperationState &result,
   }
 }
 
-/// Handles tosa.transpose_conv2d which has outpad and output shape attributes.
+/// Handles tosa.transpose_conv2d which has outpad and output shape
+/// attributes.
 static void buildTransConvOpWithQuantInfo(
     OpBuilder &builder, OperationState &result, Type outputType, Value input,
     Value weight, Value bias, DenseI64ArrayAttr outpad,
@@ -239,9 +347,9 @@ static void buildFCOpWithQuantInfo(OpBuilder &builder, OperationState &result,
   }
 }
 
-/// The tosa.matmul op is also intended to be generated where a fully_connected
-/// op must be constructed where the weight is not a constant. In this case,
-/// the fully_connected op must be expressed using matmul.
+/// The tosa.matmul op is also intended to be generated where a
+/// fully_connected op must be constructed where the weight is not a constant.
+/// In this case, the fully_connected op must be expressed using matmul.
 /// TODO: Add link to the leglization document explaining this.
 static void buildMatMulOpWithQuantInfo(OpBuilder &builder,
                                        OperationState &result, Type outputType,
@@ -276,9 +384,9 @@ static void buildMatMulOpWithQuantInfo(OpBuilder &builder,
   }
 }
 
-/// Both the tosa.avg_pool2d and unary ops use the same UnaruOpQuantizationAttr
-/// but avg_pool operator has its own builder as it has additional parameters
-/// not part of the unary ops.
+/// Both the tosa.avg_pool2d and unary ops use the same
+/// UnaruOpQuantizationAttr but avg_pool operator has its own builder as it
+/// has additional parameters not part of the unary ops.
 static void
 buildAvgPool2dOpWithQuantInfo(OpBuilder &builder, OperationState &result,
                               Type outputType, Value input,
@@ -345,8 +453,8 @@ static LogicalResult resolveBroadcastShape(const ValueShapeRange &operands,
   for (int i = 0, e = operands.size(); i != e; ++i) {
     auto shape = operands.getShape(i);
     if (!shape.hasRank()) {
-      // TODO(jennik): Update function to have better case handling for invalid
-      // operands and for ranked tensors.
+      // TODO(jennik): Update function to have better case handling for
+      // invalid operands and for ranked tensors.
       return failure();
     }
     outRank = std::max<int64_t>(outRank, shape.getRank());
@@ -601,8 +709,8 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
     return success();
   }
 
-  // If the input rank is unknown we can info the output rank using the padding
-  // shape's first dim.
+  // If the input rank is unknown we can info the output rank using the
+  // padding shape's first dim.
   if (!inputShape.hasRank()) {
     if (paddingShape.isDynamicDim(0)) {
       inferredReturnShapes.push_back(ShapedTypeComponents());
@@ -767,18 +875,18 @@ mlir::LogicalResult tosa::ReshapeOp::verify() {
     }
 
     if ((int64_t)getNewShape().size() != outputType.getRank()) {
-        return emitOpError() << "rank of newShape (" << getNewShape().size()
-                           << ") and output ("
-                           << outputType.getRank()
+      return emitOpError() << "rank of newShape (" << getNewShape().size()
+                           << ") and output (" << outputType.getRank()
                            << ") must match";
     }
 
-    for (int64_t dim=0; dim < outputType.getRank(); ++dim) {
-      if (getNewShape()[dim] != -1 && getNewShape()[dim] != outputType.getShape()[dim]) {
-        return emitOpError() << "newShape attribute (" << getNewShape()[dim]
-                            << ") does not match output type ("
-                            << outputType.getShape()[dim]
-                            << ") in dimension " << dim;
+    for (int64_t dim = 0; dim < outputType.getRank(); ++dim) {
+      if (getNewShape()[dim] != -1 &&
+          getNewShape()[dim] != outputType.getShape()[dim]) {
+        return emitOpError()
+               << "newShape attribute (" << getNewShape()[dim]
+               << ") does not match output type (" << outputType.getShape()[dim]
+               << ") in dimension " << dim;
       }
     }
   }
@@ -792,38 +900,34 @@ mlir::LogicalResult tosa::SliceOp::verify() {
 
   if (inputType.getRank() != outputType.getRank()) {
     return emitOpError() << "rank of input (" << inputType.getRank()
-                           << ") and output ("
-                           << outputType.getRank()
-                           << ") must match";
+                         << ") and output (" << outputType.getRank()
+                         << ") must match";
   }
 
   if ((int64_t)getSize().size() != outputType.getRank()) {
-        return emitOpError() << "rank of size (" << getSize().size()
-                           << ") and output ("
-                           << outputType.getRank()
-                           << ") must match";
+    return emitOpError() << "rank of size (" << getSize().size()
+                         << ") and output (" << outputType.getRank()
+                         << ") must match";
   }
-  for (int64_t dim=0; dim < outputType.getRank(); ++dim) {
-        if (getSize()[dim] != -1 && !outputType.isDynamicDim(dim) &&
-            getSize()[dim] != outputType.getShape()[dim]) {
+  for (int64_t dim = 0; dim < outputType.getRank(); ++dim) {
+    if (getSize()[dim] != -1 && !outputType.isDynamicDim(dim) &&
+        getSize()[dim] != outputType.getShape()[dim]) {
       return emitOpError() << "size attribute (" << getSize()[dim]
                            << ") does not match output type ("
                            << outputType.getShape()[dim] << ") in dimension "
                            << dim;
-        }
+    }
   }
 
   if ((int64_t)getStart().size() != inputType.getRank()) {
-        return emitOpError() << "rank of start (" << getStart().size()
-                           << ") and input ("
-                           << inputType.getRank()
-                           << ") must match";
+    return emitOpError() << "rank of start (" << getStart().size()
+                         << ") and input (" << inputType.getRank()
+                         << ") must match";
   }
   if ((int64_t)getSize().size() != inputType.getRank()) {
-        return emitOpError() << "rank of size (" << getSize().size()
-                           << ") and input ("
-                           << inputType.getRank()
-                           << ") must match";
+    return emitOpError() << "rank of size (" << getSize().size()
+                         << ") and input (" << inputType.getRank()
+                         << ") must match";
   }
 
   for (int i = 0; i < outputType.getRank(); ++i) {
@@ -860,6 +964,7 @@ LogicalResult tosa::TransposeOp::inferReturnTypeComponents(
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   ShapeAdaptor inputShape = operands.getShape(0);
   ShapeAdaptor permsShape = operands.getShape(1);
+  auto inputType = getElementTypeOrSelf(operands[0]);
 
   // If input rank and permutation length is unknown, the output rank is
   // unknown.
@@ -869,8 +974,8 @@ LogicalResult tosa::TransposeOp::inferReturnTypeComponents(
     return success();
   }
 
-  // This would imply the number of permutations does not match the rank of the
-  // input which is illegal.
+  // This would imply the number of permutations does not match the rank of
+  // the input which is illegal.
   if (permsShape.getDimSize(0) != inputShape.getRank()) {
     return failure();
   }
@@ -880,13 +985,15 @@ LogicalResult tosa::TransposeOp::inferReturnTypeComponents(
   SmallVector<int64_t> outputShape;
   if (!inputShape.hasRank()) {
     outputShape.resize(permsShape.getDimSize(0), ShapedType::kDynamic);
-    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+    inferredReturnShapes.push_back(
+        ShapedTypeComponents(outputShape, inputType));
     return success();
   }
 
   // Rank-0 means no permutations matter.
   if (inputShape.getRank() == 0) {
-    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+    inferredReturnShapes.push_back(
+        ShapedTypeComponents(outputShape, inputType));
     return success();
   }
 
@@ -903,7 +1010,8 @@ LogicalResult tosa::TransposeOp::inferReturnTypeComponents(
   // permutation.
   if (allTheSame) {
     outputShape.resize(inputShape.getRank(), inputShape.getDimSize(0));
-    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+    inferredReturnShapes.push_back(
+        ShapedTypeComponents(outputShape, inputType));
     return success();
   }
 
@@ -917,7 +1025,7 @@ LogicalResult tosa::TransposeOp::inferReturnTypeComponents(
     }
   }
 
-  inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+  inferredReturnShapes.push_back(ShapedTypeComponents(outputShape, inputType));
   return success();
 }
 
@@ -1069,6 +1177,7 @@ REDUCE_SHAPE_INFER(tosa::ReduceProdOp)
 REDUCE_SHAPE_INFER(tosa::ReduceSumOp)
 #undef REDUCE_SHAPE_INFER
 COMPATIBLE_RETURN_TYPES(tosa::ConcatOp)
+COMPATIBLE_RETURN_TYPES(tosa::TransposeOp)
 #undef COMPATIBLE_RETURN_TYPES
 
 static LogicalResult NAryInferReturnTypes(
@@ -1227,6 +1336,94 @@ LogicalResult Conv2DOp::inferReturnTypeComponents(
   }
 
   inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+  return success();
+}
+
+template <typename T>
+static LogicalResult verifyBinaryOpWithEqualRank(T op) {
+  auto input1ShapeType = llvm::cast<ShapedType>(op.getInput1().getType());
+  auto input2ShapeType = llvm::cast<ShapedType>(op.getInput2().getType());
+
+  if (input1ShapeType.hasRank() && input2ShapeType.hasRank()) {
+    auto input1Rank = input1ShapeType.getRank();
+    auto input2Rank = input2ShapeType.getRank();
+    if (input1Rank != input2Rank) {
+      return op.emitOpError("both operands must have same rank.");
+    }
+  }
+  return success();
+}
+LogicalResult tosa::MulOp::verify() {
+  auto result = verifyBinaryOpWithEqualRank(*this);
+  if (result.failed()) {
+    return result;
+  }
+  auto shiftAttr = getShiftAttr().getInt();
+  auto input1ShapeType = llvm::cast<ShapedType>(getInput1().getType());
+  auto elementType = getElementTypeOrSelf(input1ShapeType);
+  if (!(elementType.isInteger(8) || elementType.isInteger(16))) {
+    if (shiftAttr != 0) {
+      return emitOpError(
+          "shift attribute should be 0 for non integer input types");
+    }
+  }
+  return success();
+}
+LogicalResult tosa::AddOp::verify() {
+  return verifyBinaryOpWithEqualRank(*this);
+}
+LogicalResult tosa::GreaterEqualOp::verify() {
+  return verifyBinaryOpWithEqualRank(*this);
+}
+template <typename T>
+LogicalResult verifyForSameRank(T op, ShapedType inputShape1,
+                                ShapedType inputShape2) {
+  if (inputShape1.hasRank() && inputShape2.hasRank()) {
+    auto input1Rank = inputShape1.getRank();
+    auto input2Rank = inputShape2.getRank();
+    if (input1Rank != input2Rank) {
+      return op.emitOpError("both operands must have same rank.");
+    }
+  }
+  return success();
+}
+LogicalResult tosa::SelectOp::verify() {
+
+  auto input1ShapeType = llvm::cast<ShapedType>(getOperand(0).getType());
+  auto input2ShapeType = llvm::cast<ShapedType>(getOperand(1).getType());
+  auto input3ShapeType = llvm::cast<ShapedType>(getOperand(2).getType());
+  auto outputShapeType = llvm::cast<ShapedType>(getResult().getType());
+
+  auto input2ETy =
+      llvm::cast<ShapedType>(getOperand(1).getType()).getElementType();
+  auto input3ETy =
+      llvm::cast<ShapedType>(getOperand(2).getType()).getElementType();
+  auto resultETy = getElementTypeOrSelf(getResult());
+  // auto resultETy = llvm::cast<ShapedType>(getResult()).getElementType();
+
+  auto result1 = verifyForSameRank(*this, input1ShapeType, input2ShapeType);
+  if (result1.failed()) {
+    return result1;
+  }
+  auto result2 = verifyForSameRank(*this, input1ShapeType, input3ShapeType);
+  if (result2.failed()) {
+    return result2;
+  }
+  auto result3 = verifyForSameRank(*this, input1ShapeType, outputShapeType);
+  if (result3.failed()) {
+    return result3;
+  }
+  if (input2ETy != input3ETy) {
+    return emitOpError("inputs should be of same type.");
+  }
+  if ((input2ETy != resultETy) || (input3ETy != resultETy)) {
+    return emitOpError("inputs and result should be of same type.");
+  }
+
+  auto result = OpTrait::impl::verifyCompatibleOperandBroadcast(getOperation());
+  if (result.failed()) {
+    return result;
+  }
   return success();
 }
 

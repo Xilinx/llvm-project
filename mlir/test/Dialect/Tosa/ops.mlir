@@ -215,10 +215,15 @@ func.func @test_min(%arg0: tensor<13x21x3xf32>, %arg1: tensor<1x21x3xf32>) -> te
 // -----
 // CHECK-LABEL: mul
 func.func @test_mul(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x1x3xf32>) -> tensor<13x21x3xf32> {
-  %0 = "tosa.mul"(%arg0, %arg1)  { shift = 1 : i32 } : (tensor<13x21x3xf32>, tensor<13x1x3xf32>) -> tensor<13x21x3xf32>
+  %0 = "tosa.mul"(%arg0, %arg1)  { shift = 0 : i32 } : (tensor<13x21x3xf32>, tensor<13x1x3xf32>) -> tensor<13x21x3xf32>
   return %0 : tensor<13x21x3xf32>
 }
-
+// -----
+// CHECK-LABEL: mul
+func.func @test_mul_nonzero_shift(%arg0: tensor<3x4x8400xi8>, %arg1: tensor<3x4x8400xi8>) -> tensor<3x4x8400xi8> {  
+  %0 = "tosa.mul"(%arg0, %arg1) {shift = 3 : i32}: (tensor<3x4x8400xi8>, tensor<3x4x8400xi8>) -> tensor<3x4x8400xi8>  
+  return %0 : tensor<3x4x8400xi8>
+}
 // -----
 // CHECK-LABEL: pow
 func.func @test_pow(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x1xf32>) -> tensor<13x21x3xf32> {
@@ -323,7 +328,12 @@ func.func @test_select(%arg0: tensor<1x1x1xi1>, %arg1: tensor<13x21x3xf32>, %arg
   %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<1x1x1xi1>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   return %0 : tensor<13x21x3xf32>
 }
-
+// -----
+// CHECK-LABEL: select
+func.func @test_select_boardcastable(%arg0: tensor<1x2xi1>, %arg1: tensor<3x2xf32>, %arg2: tensor<3x2xf32>) -> tensor<3x2xf32> {
+  %0 = "tosa.select"(%arg0, %arg1, %arg2) : (tensor<1x2xi1>, tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<3x2xf32>
+  return %0 : tensor<3x2xf32>
+}
 
 // -----
 // CHECK-LABEL: equal

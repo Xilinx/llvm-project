@@ -305,6 +305,7 @@ def Tosa_MaxPool2dOp : Tosa_Op<"max_pool2d", [
   );
 
   let hasCanonicalizer = 1;
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -498,7 +499,8 @@ def Tosa_AddOp : Tosa_ElemWiseBinaryOp<"add", [Commutative]> {
     Tosa_Tensor:$output
   );
 
-  let hasFolder = 1;
+  let hasFolder = 1;  
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -783,6 +785,9 @@ def Tosa_MulOp : Tosa_ElemWiseBinaryOp<"mul", [Commutative]> {
   );
 
   let hasFolder = 1;
+
+  let hasVerifier = 1;
+  
 }
 
 //===----------------------------------------------------------------------===//
@@ -1125,6 +1130,7 @@ def Tosa_SelectOp : Tosa_Op<"select", [
   );
   let hasCanonicalizeMethod = 1;
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1209,6 +1215,7 @@ def Tosa_GreaterEqualOp : Tosa_Op<"greater_equal", [
   );
 
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1591,8 +1598,7 @@ def Tosa_TileOp: Tosa_Op<"tile", [
 // Operator: transpose
 //===----------------------------------------------------------------------===//
 def Tosa_TransposeOp : Tosa_Op<"transpose", [
-      DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-                              ["inferReturnTypeComponents"]>,
+  InferTensorType,
       Pure]> {
   let summary = "Transpose operator";
 
@@ -1611,11 +1617,13 @@ def Tosa_TransposeOp : Tosa_Op<"transpose", [
 
   let extraClassDeclaration = [{
     LogicalResult getConstantPerms(llvm::SmallVector<int64_t> &perms);
+    /// Returns true when two result types are compatible for this op;
+    /// Method used by InferTypeOpInterface.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
   }];
 
   let hasCanonicalizer = 1;
-  let hasFolder = 1;
-}
+  let hasFolder = 1;}
 
 //===----------------------------------------------------------------------===//
 // TOSA Spec Section 2.10
