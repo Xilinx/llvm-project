@@ -374,6 +374,19 @@ void ClampOp::getCanonicalizationPatterns(RewritePatternSet &results,
   results.add<ClampClampOptimization>(context);
 }
 
+OpFoldResult ClampOp::fold(FoldAdaptor adaptor) {
+  // TODO: This can generalize to any cast (or other operation)
+  // where the output values are within a computable range.
+  if (auto cast = llvm::dyn_cast_or_null<CastOp>(getInput().getDefiningOp())) {
+    if (cast.getType().getElementType().isF32() &&
+        cast.getInput().getType().getElementType().isInteger(8) &&
+        getMinFp().convertToFloat() <= -128.0 &&
+        getMaxFp().convertToFloat() >= 127.0)
+      return getInput();
+  }
+  return {};
+}
+
 struct ConcatSliceOptimization : public OpRewritePattern<tosa::SliceOp> {
   using OpRewritePattern<tosa::SliceOp>::OpRewritePattern;
 

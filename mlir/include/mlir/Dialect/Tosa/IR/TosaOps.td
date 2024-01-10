@@ -399,6 +399,7 @@ def Tosa_ClampOp : Tosa_ElemWiseUnaryOp<"clamp"> {
   );
 
   let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//

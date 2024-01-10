@@ -140,6 +140,31 @@ func.func @clamp_maximum_f32(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   return %1 : tensor<4xf32>
 }
 
+// CHECK-LABEL: @cast_clamp
+func.func @cast_clamp(%arg0: tensor<4xi8>) -> tensor<4xf32> {
+  // CHECK-NOT: tosa.clamp
+  %0 = "tosa.cast"(%arg0) : (tensor<4xi8>) -> tensor<4xf32>
+  %1 = "tosa.clamp"(%0) {min_fp = -129.0 : f32, max_fp = 200.0 : f32, min_int = -2 : i64, max_int = 4 : i64} :  (tensor<4xf32>) -> tensor<4xf32>
+  return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: @cast_clamp2
+func.func @cast_clamp2(%arg0: tensor<4xi8>) -> tensor<4xf32> {
+  // CHECK-NOT: tosa.clamp
+  %0 = "tosa.cast"(%arg0) : (tensor<4xi8>) -> tensor<4xf32>
+  %1 = "tosa.clamp"(%0) {min_fp = -128.0 : f32, max_fp = 127.0 : f32, min_int = -2 : i64, max_int = 4 : i64} :  (tensor<4xf32>) -> tensor<4xf32>
+  return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: @cast_clamp_negative
+func.func @cast_clamp_negative(%arg0: tensor<4xi8>) -> tensor<4xf32> {
+  // CHECK: tosa.clamp
+  %0 = "tosa.cast"(%arg0) : (tensor<4xi8>) -> tensor<4xf32>
+  %1 = "tosa.clamp"(%0) {min_fp = -5.0 : f32, max_fp = 3.0 : f32, min_int = -2 : i64, max_int = 4 : i64} :  (tensor<4xf32>) -> tensor<4xf32>
+  return %1 : tensor<4xf32>
+}
+
+
 // CHECK-LABEL: @concat_fold_zero
 func.func @concat_fold_zero(%arg0: tensor<?x0xf32>, %arg1: tensor<?x1xf32>, %arg2: tensor<?x2xf32>) -> tensor<?x3xf32> {
   // CHECK: "tosa.concat"(%arg1, %arg2) <{axis = 1 : i64}>
