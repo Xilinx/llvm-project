@@ -422,6 +422,8 @@ def Tosa_SigmoidOp : Tosa_ElemWiseUnaryOp<"sigmoid"> {
   let results = (outs
     Tosa_Tensor:$output
   );
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1423,15 +1425,14 @@ def Tosa_ConcatOp : Tosa_Op<"concat", [
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
   }];
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
 // Operator: pad
 //===----------------------------------------------------------------------===//
 def Tosa_PadOp : Tosa_Op<"pad", [
-    DeclareOpInterfaceMethods<InferShapedTypeOpInterface,
-                              ["inferReturnTypeComponents"]>,
-    Pure]> {
+    InferTensorType, Pure]> {
   let summary = "Pads a tensor with value specified.";
 
   let description = [{
@@ -1470,6 +1471,14 @@ def Tosa_PadOp : Tosa_Op<"pad", [
 
   let hasCanonicalizer = 1;
   let hasFolder = 1;
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    /// Returns true when two result types are compatible for this op;
+    /// Method used by InferTypeOpInterface.
+    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+  }];
+
 }
 
 //===----------------------------------------------------------------------===//

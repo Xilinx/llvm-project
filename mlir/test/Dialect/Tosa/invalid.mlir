@@ -56,6 +56,48 @@ func.func @test_concat_element_type_mismatch(%arg0 : tensor<1x2xf32>, %arg1 : te
 
 // -----
 
+func.func @test_concat_output_shape_mismatch(%arg0 : tensor<2x1xf32>, %arg1 : tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{inferred type(s) 'tensor<2x3xf32>' are incompatible with return type(s) of operation 'tensor<2x2xf32>}}
+  %0 = "tosa.concat"(%arg0, %arg1) {axis = 1 : i64} : (tensor<2x1xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+func.func @test_concat_output_rank_mismatch(%arg0 : tensor<2x1xf32>, %arg1 : tensor<2x2xf32>) -> tensor<?x?x?xf32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{inferred type(s) 'tensor<2x3xf32>' are incompatible with return type(s) of operation 'tensor<?x?x?xf32>}}
+  %0 = "tosa.concat"(%arg0, %arg1) {axis = 1 : i64} : (tensor<2x1xf32>, tensor<2x2xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
+// -----
+
+func.func @test_concat_input_rank_mismatch(%arg0 : tensor<1x2xf32>, %arg1 : tensor<2x2x2xf32>) -> tensor<?x?xf32> {
+  // expected-error@+1 {{'tosa.concat' op rank of input 'tensor<2x2x2xf32>' does not match other input rank(s) (2)}}
+  %0 = "tosa.concat"(%arg0, %arg1) {axis = 0 : i64} : (tensor<1x2xf32>, tensor<2x2x2xf32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
+}
+
+// -----
+
+func.func @test_concat_axis_out_of_range(%arg0 : tensor<1x2xf32>, %arg1 : tensor<2x2xf32>) -> tensor<?x?xf32> {
+  // expected-error@+1 {{'tosa.concat' op axis must be in range 0 to 1}}
+  %0 = "tosa.concat"(%arg0, %arg1) {axis = -1 : i64} : (tensor<1x2xf32>, tensor<2x2xf32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
+}
+
+// -----
+
+func.func @test_concat_axis_out_of_range(%arg0 : tensor<10x11x12xf32>, %arg1 : tensor<10x11x21xf32>) -> tensor<?x?x?xf32> {
+  // expected-error@+1 {{'tosa.concat' op axis must be in range 0 to 2}}
+  %0 = "tosa.concat"(%arg0, %arg1) {axis = 3 : i64} : (tensor<10x11x12xf32>, tensor<10x11x21xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
+// -----
+
 func.func @test_pad_non_const(%arg0: tensor<13x21x3xf32>, %arg1: tensor<3x2xi32>) -> tensor<13x21x3xf32> {
   // expected-error@+1 {{'tosa.pad' op padding of pad is not constant}}
   %0 = "tosa.pad"(%arg0, %arg1) : (tensor<13x21x3xf32>, tensor<3x2xi32>) -> tensor<13x21x3xf32>
@@ -64,11 +106,83 @@ func.func @test_pad_non_const(%arg0: tensor<13x21x3xf32>, %arg1: tensor<3x2xi32>
 
 // -----
 
-func.func @test_pad_non_const(%arg0: tensor<13x21x3xi8>, %arg1: tensor<i8>) -> tensor<13x21x3xi8> {
+func.func @test_pad_non_const(%arg0: tensor<13x21x3xi8>, %arg1: tensor<i8>) -> tensor<?x?x?xi8> {
   %0 = "tosa.const"() {value = dense<[[0, 0], [0, 1], [0, 1]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
   // expected-error@+1 {{'tosa.pad' op pad_const of pad is not constant}}
-  %1 = "tosa.pad"(%arg0, %0, %arg1) : (tensor<13x21x3xi8>, tensor<3x2xi32>, tensor<i8>) -> tensor<13x21x3xi8>
-  return %1 : tensor<13x21x3xi8>
+  %1 = "tosa.pad"(%arg0, %0, %arg1) : (tensor<13x21x3xi8>, tensor<3x2xi32>, tensor<i8>) -> tensor<?x?x?xi8>
+  return %1 : tensor<?x?x?xi8>
+}
+
+// -----
+
+func.func @test_pad_output_shape_mismatch(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
+  %0 = "tosa.const"() {value = dense<[[1, 1], [1, 1], [1, 1]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
+  // expected-error@+2 {{'tosa.pad' op failed to infer returned types}}
+  // expected-error@+1 {{'tosa.pad' op inferred type(s) 'tensor<15x23x5xf32>' are incompatible with return type(s) of operation 'tensor<13x21x3xf32>}}
+  %1 = "tosa.pad"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<3x2xi32>) -> tensor<13x21x3xf32>
+  return %1 : tensor<13x21x3xf32>
+}
+
+// -----
+
+func.func @test_pad_type_mismatch(%arg0: tensor<13x21x3xf32>) -> tensor<15x23x5xi32> {
+  %0 = "tosa.const"() {value = dense<[[1, 1], [1, 1], [1, 1]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
+  // expected-error@+2 {{'tosa.pad' op failed to infer returned types}}
+  // expected-error@+1 {{'tosa.pad' op inferred type(s) 'tensor<15x23x5xf32>' are incompatible with return type(s) of operation 'tensor<15x23x5xi32>}}
+  %1 = "tosa.pad"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<3x2xi32>) -> tensor<15x23x5xi32>
+  return %1 : tensor<15x23x5xi32>
+}
+
+// -----
+
+func.func @test_pad_incorret_padding_rank(%arg0: tensor<13x21xf32>) -> tensor<13x21xf32> {
+  %0 = "tosa.const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // expected-error@+1 {{'tosa.pad' op paddings must be a tensor of rank 2}}
+  %1 = "tosa.pad"(%arg0, %0) : (tensor<13x21xf32>, tensor<2xi32>) -> tensor<13x21xf32>
+  return %1 : tensor<13x21xf32>
+}
+
+// -----
+
+func.func @test_pad_incorret_padding_shape(%arg0: tensor<13x21xf32>) -> tensor<13x21xf32> {
+  %0 = "tosa.const"() {value = dense<[[0, 0], [0, 1], [0, 1], [1, 1]]> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
+  // expected-error@+1 {{'tosa.pad' op paddings must be a tensor of shape [2, 2]}}
+  %1 = "tosa.pad"(%arg0, %0) : (tensor<13x21xf32>, tensor<4x2xi32>) -> tensor<13x21xf32>
+  return %1 : tensor<13x21xf32>
+}
+
+// -----
+
+func.func @test_pad_incorret_padding_shape(%arg0: tensor<13x21xf32>) -> tensor<13x21xf32> {
+  %0 = "tosa.const"() {value = dense<[[0, 0, 0, 1], [0, 1, 1, 1]]> : tensor<2x4xi32>} : () -> tensor<2x4xi32>
+  // expected-error@+1 {{'tosa.pad' op paddings must be a tensor of shape [2, 2]}}
+  %1 = "tosa.pad"(%arg0, %0) : (tensor<13x21xf32>, tensor<2x4xi32>) -> tensor<13x21xf32>
+  return %1 : tensor<13x21xf32>
+}
+
+// -----
+
+func.func @test_pad_negative_padding(%arg0: tensor<13x21xf32>) -> tensor<?x?xf32> {
+  %0 = "tosa.const"() {value = dense<[[0, 0], [0, -1]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  // expected-error@+1 {{'tosa.pad' op number of pad elements must be positive}}
+  %1 = "tosa.pad"(%arg0, %0) : (tensor<13x21xf32>, tensor<2x2xi32>) -> tensor<?x?xf32>
+  return %1 : tensor<?x?xf32>
+}
+
+// -----
+
+func.func @test_sigmoid_type_mismatch(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xi8> {
+  // expected-error@+1 {{'tosa.sigmoid' op requires the same element type for all operands and results}}
+  %0 = "tosa.sigmoid"(%arg0) : (tensor<13x21x3xf32>) -> tensor<13x21x4xi8>
+  return %0 : tensor<13x21x4xi8>
+}
+
+// -----
+
+func.func @test_sigmoid(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x4xf32> {
+  // expected-error@+1 {{'tosa.sigmoid' op input type 'tensor<13x21x3xf32>' and output type 'tensor<13x21x4xf32>' are not compatible}}
+  %0 = "tosa.sigmoid"(%arg0) : (tensor<13x21x3xf32>) -> tensor<13x21x4xf32>
+  return %0 : tensor<13x21x4xf32>
 }
 
 // -----
