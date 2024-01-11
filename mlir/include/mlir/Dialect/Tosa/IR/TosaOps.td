@@ -751,6 +751,8 @@ def Tosa_MaximumOp : Tosa_ElementwiseOp<"maximum", [
   let results = (outs
     Tosa_Tensor:$output
   );
+
+  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -774,6 +776,8 @@ def Tosa_MinimumOp : Tosa_ElementwiseOp<"minimum", [
   let results = (outs
     Tosa_Tensor:$output
   );
+
+  let hasCanonicalizer = 1;
 }
 
 def MulOperandsAndResultElementType :
