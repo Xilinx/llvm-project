@@ -17,6 +17,7 @@
 #include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"
 #include "mlir/Dialect/Tosa/Utils/ShapeUtils.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Matchers.h"
@@ -64,30 +65,44 @@ void ConcatOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 struct SqrtReciprocalOptimization : public OpRewritePattern<tosa::PowOp> {
   using OpRewritePattern<tosa::PowOp>::OpRewritePattern;
-  // Pattern that matches a Sqrt + Reciprocal to make it into a rsqrt.
+  // Pattern that matches a Sqrt + Reciprocal to replace them by a rsqrt.
   // Sqrt is represented in tosa by a Pow so we check for Pow + reciprocal.
   LogicalResult matchAndRewrite(tosa::PowOp op,
                                 PatternRewriter &rewriter) const override {
     // Check that the PowOp has a single user
     if (!op->hasOneUse())
-      return failure();
+      return rewriter.notifyMatchFailure(op, "pow operator has more than one user");
 
     Operation* user = *op->user_begin();
     // Check that this user is a reciprocal
     if (!isa<tosa::ReciprocalOp>(user))
-      return failure();
+      return rewriter.notifyMatchFailure(op, "expected a pow + reciprocal pattern");
 
     // Check that the Pow op is an Sqrt - its second input should be the scale, 0.5 for Sqrt.
     Operation* powScale = op.getInput2().getDefiningOp();
     if (!powScale || !isa<tosa::ConstOp>(powScale))
-      return failure();
+      return rewriter.notifyMatchFailure(op, "expected the pow to have a constant scale input");
 
-    auto scale = cast<tosa::ConstOp>(powScale).getValue().cast<DenseElementsAttr>();
-    auto scaleValue = scale.getSplatValue<float>();
+    auto scale = cast<DenseElementsAttr>(cast<tosa::ConstOp>(powScale).getValue());
+    if (!scale.isSplat())
+      return rewriter.notifyMatchFailure(op, "expected the pow scale to be a splat tensor");
+
+    auto constantType = scale.getElementType();
+    float scaleValue = 0.;
+    if (constantType.isF32())
+      scaleValue = scale.getSplatValue<float>();
+    else
+      return rewriter.notifyMatchFailure(op, "unexpected type for scale value of the pow op");
     if(scaleValue != 0.5)
-      return failure();
+      return rewriter.notifyMatchFailure(op, "expected the pow to have a scale of 0.5 to be a sqrt");
 
+    auto inputType = cast<ShapedType>(op.getOperand(0).getType());
     auto outputType = cast<ShapedType>(op.getType());
+    // If the operator needs tiling, fail to match
+    // An improvement for the future would be to generate a tile operator here instead
+    if (inputType != outputType)
+      return rewriter.notifyMatchFailure(op, "input type and output type are different, tiling is not supported for this canonicalization");
+      
     rewriter.replaceOpWithNewOp<tosa::RsqrtOp>(user, outputType, op.getInput1());
 
     return success();
