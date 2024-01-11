@@ -137,30 +137,30 @@ func.func @clamp_twice_is_single_clamp(%arg0: tensor<4xi8>) -> tensor<4xi8> {
 }
 
 func.func @clamp_minimum_i32(%arg0: tensor<4xi32>) -> tensor<4xi32> {
-  // CHECK: "tosa.clamp"(%arg0) <{max_fp = 6.000000e+00 : f32, max_int = 6 : i64, min_fp = -3.40282347E+38 : f32, min_int = -2147483648 : i64}
+  // CHECK: tosa.clamp %arg0 {max_fp = 6.000000e+00 : f32, max_int = 6 : i64, min_fp = -3.40282347E+38 : f32, min_int = -2147483648 : i64}
   %0 = "tosa.const"() <{value = dense<6> : tensor<1xi32>}> : () -> tensor<1xi32>
-  %1 = "tosa.minimum"(%arg0, %0) : (tensor<4xi32>, tensor<1xi32>) -> tensor<4xi32>
+  %1 = tosa.minimum %arg0, %0 : (tensor<4xi32>, tensor<1xi32>) -> tensor<4xi32>
   return %1 : tensor<4xi32>
 }
 
 func.func @clamp_minimum_f32(%arg0: tensor<4xf32>) -> tensor<4xf32> {
-    // CHECK: "tosa.clamp"(%arg0) <{max_fp = 6.000000e+00 : f32, max_int = 6 : i64, min_fp = -3.40282347E+38 : f32, min_int = -2147483648 : i64}
+    // CHECK: tosa.clamp %arg0 {max_fp = 6.000000e+00 : f32, max_int = 6 : i64, min_fp = -3.40282347E+38 : f32, min_int = -2147483648 : i64}
   %0 = "tosa.const"() <{value = dense<6.0> : tensor<1xf32>}> : () -> tensor<1xf32>
-  %1 = "tosa.minimum"(%arg0, %0) : (tensor<4xf32>, tensor<1xf32>) -> tensor<4xf32>
+  %1 = tosa.minimum %arg0, %0 : (tensor<4xf32>, tensor<1xf32>) -> tensor<4xf32>
   return %1 : tensor<4xf32>
 }
 
 func.func @clamp_maximum_i32(%arg0: tensor<4xi32>) -> tensor<4xi32> {
-  // CHECK: "tosa.clamp"(%arg0) <{max_fp = 3.40282347E+38 : f32, max_int = 9223372036854775807 : i64, min_fp = -6.000000e+00 : f32, min_int = -6 : i64}
+  // CHECK: tosa.clamp %arg0 {max_fp = 3.40282347E+38 : f32, max_int = 9223372036854775807 : i64, min_fp = -6.000000e+00 : f32, min_int = -6 : i64}
   %0 = "tosa.const"() <{value = dense<-6> : tensor<1xi32>}> : () -> tensor<1xi32>
-  %1 = "tosa.maximum"(%arg0, %0) : (tensor<4xi32>, tensor<1xi32>) -> tensor<4xi32>
+  %1 = tosa.maximum %arg0, %0 : (tensor<4xi32>, tensor<1xi32>) -> tensor<4xi32>
   return %1 : tensor<4xi32>
 }
 
 func.func @clamp_maximum_f32(%arg0: tensor<4xf32>) -> tensor<4xf32> {
-    // CHECK: "tosa.clamp"(%arg0) <{max_fp = 3.40282347E+38 : f32, max_int = 9223372036854775807 : i64, min_fp = -6.000000e+00 : f32, min_int = -6 : i64}
+    // CHECK: tosa.clamp %arg0 {max_fp = 3.40282347E+38 : f32, max_int = 9223372036854775807 : i64, min_fp = -6.000000e+00 : f32, min_int = -6 : i64}
   %0 = "tosa.const"() <{value = dense<-6.0> : tensor<1xf32>}> : () -> tensor<1xf32>
-  %1 = "tosa.maximum"(%arg0, %0) : (tensor<4xf32>, tensor<1xf32>) -> tensor<4xf32>
+  %1 = tosa.maximum %arg0, %0 : (tensor<4xf32>, tensor<1xf32>) -> tensor<4xf32>
   return %1 : tensor<4xf32>
 }
 
