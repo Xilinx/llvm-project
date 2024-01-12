@@ -858,10 +858,10 @@ mlir::LogicalResult tosa::ReshapeOp::verify() {
     }
 
     if ((int64_t)getNewShape().size() != outputType.getRank()) {
-      return emitOpError() << "rank of newShape (" << getNewShape().size()
-                          << ") and output ("
-                          << outputType.getRank()
-                          << ") must match";
+        return emitOpError() << "rank of newShape (" << getNewShape().size()
+                           << ") and output ("
+                           << outputType.getRank()
+                           << ") must match";
     }
 
     for (int64_t dim=0; dim < outputType.getRank(); ++dim) {
@@ -889,19 +889,19 @@ mlir::LogicalResult tosa::SliceOp::verify() {
   }
 
   if ((int64_t)getSize().size() != outputType.getRank()) {
-    return emitOpError() << "rank of size (" << getSize().size()
-                       << ") and output ("
-                       << outputType.getRank()
-                       << ") must match";
+        return emitOpError() << "rank of size (" << getSize().size()
+                           << ") and output ("
+                           << outputType.getRank()
+                           << ") must match";
   }
   for (int64_t dim=0; dim < outputType.getRank(); ++dim) {
-    if (getSize()[dim] != -1 && !outputType.isDynamicDim(dim) &&
-        getSize()[dim] != outputType.getShape()[dim]) {
+        if (getSize()[dim] != -1 && !outputType.isDynamicDim(dim) &&
+            getSize()[dim] != outputType.getShape()[dim]) {
       return emitOpError() << "size attribute (" << getSize()[dim]
                            << ") does not match output type ("
                            << outputType.getShape()[dim] << ") in dimension "
                            << dim;
-    }
+        }
   }
 
   if ((int64_t)getStart().size() != inputType.getRank()) {
@@ -916,7 +916,6 @@ mlir::LogicalResult tosa::SliceOp::verify() {
                            << inputType.getRank()
                            << ") must match";
   }
-
 
   for (int i = 0; i < outputType.getRank(); ++i) {
     auto dimSize = inputType.getShape()[i];
