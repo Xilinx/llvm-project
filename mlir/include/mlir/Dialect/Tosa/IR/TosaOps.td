@@ -499,7 +499,7 @@ def Tosa_AddOp : Tosa_ElemWiseBinaryOp<"add", [Commutative]> {
     Tosa_Tensor:$output
   );
 
-  let hasFolder = 1;  
+  let hasFolder = 1;
   let hasVerifier = 1;
 }
 
@@ -781,7 +781,7 @@ def Tosa_MulOp : Tosa_ElemWiseBinaryOp<"mul", [Commutative]> {
   );
 
   let results = (outs
-    Tosa_Tensor:$output 
+    Tosa_Tensor:$output
   );
 
   let hasFolder = 1;

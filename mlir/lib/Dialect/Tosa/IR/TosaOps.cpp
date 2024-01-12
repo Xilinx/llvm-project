@@ -905,15 +905,18 @@ mlir::LogicalResult tosa::SliceOp::verify() {
   }
 
   if ((int64_t)getStart().size() != inputType.getRank()) {
-    return emitOpError() << "rank of start (" << getStart().size()
-                         << ") and input (" << inputType.getRank()
-                         << ") must match";
+        return emitOpError() << "rank of start (" << getStart().size()
+                           << ") and input ("
+                           << inputType.getRank()
+                           << ") must match";
   }
   if ((int64_t)getSize().size() != inputType.getRank()) {
-    return emitOpError() << "rank of size (" << getSize().size()
-                         << ") and input (" << inputType.getRank()
-                         << ") must match";
+        return emitOpError() << "rank of size (" << getSize().size()
+                           << ") and input ("
+                           << inputType.getRank()
+                           << ") must match";
   }
+
 
   for (int i = 0; i < outputType.getRank(); ++i) {
     auto dimSize = inputType.getShape()[i];
