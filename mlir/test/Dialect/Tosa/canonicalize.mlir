@@ -584,6 +584,40 @@ func.func @canonicalize_cross_concat_inputs(%arg0 : tensor<1x12x12xf32>, %arg1 :
 
 // -----
 
+// CHECK-LABEL: @canonicalize_optimize_sqrt_reciprocal
+func.func @canonicalize_optimize_sqrt_reciprocal(%arg0: tensor<1x5x1x1xf32>) -> tensor<1x5x1x1xf32> {
+  // CHECK: %[[RSQRT:.*]] = "tosa.rsqrt"(%arg{{.*}}) : (tensor<1x5x1x1xf32>) -> tensor<1x5x1x1xf32>
+  // CHECK: return %[[RSQRT]] : tensor<1x5x1x1xf32>
+  %0 = "tosa.const"() <{value = dense<5.000000e-01> : tensor<1x1x1x1xf32>}> : () -> tensor<1x1x1x1xf32>
+  %1 = "tosa.pow"(%arg0, %0) : (tensor<1x5x1x1xf32>, tensor<1x1x1x1xf32>) -> tensor<1x5x1x1xf32>
+  %2 = "tosa.reciprocal"(%1) : (tensor<1x5x1x1xf32>) -> tensor<1x5x1x1xf32>
+  return %2 : tensor<1x5x1x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @canonicalize_optimize_sqrt_reciprocal_no_match
+func.func @canonicalize_optimize_sqrt_reciprocal_no_match(%arg0: tensor<1x5x1x1xf32>) -> tensor<1x5x1x1xf32> {
+  // CHECK-NOT: tosa.rsqrt"(%arg{{.*}})
+  %0 = "tosa.const"() <{value = dense<4.000000e-01> : tensor<1x1x1x1xf32>}> : () -> tensor<1x1x1x1xf32>
+  %1 = "tosa.pow"(%arg0, %0) : (tensor<1x5x1x1xf32>, tensor<1x1x1x1xf32>) -> tensor<1x5x1x1xf32>
+  %2 = "tosa.reciprocal"(%1) : (tensor<1x5x1x1xf32>) -> tensor<1x5x1x1xf32>
+  return %2 : tensor<1x5x1x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @canonicalize_optimize_sqrt_reciprocal_tile_no_match
+func.func @canonicalize_optimize_sqrt_reciprocal_tile_no_match(%arg0: tensor<1x5x1x1xf32>) -> tensor<1x5x7x1xf32> {
+  // CHECK-NOT: tosa.rsqrt"(%arg{{.*}})
+  %0 = "tosa.const"() <{value = dense<5.000000e-01> : tensor<1x1x7x1xf32>}> : () -> tensor<1x1x7x1xf32>
+  %1 = "tosa.pow"(%arg0, %0) : (tensor<1x5x1x1xf32>, tensor<1x1x7x1xf32>) -> tensor<1x5x7x1xf32>
+  %2 = "tosa.reciprocal"(%1) : (tensor<1x5x7x1xf32>) -> tensor<1x5x7x1xf32>
+  return %2 : tensor<1x5x7x1xf32>
+}
+
+// -----
+
 // CHECK-LABEL
 func.func @fold_log_exp(%arg0: tensor<?x1xf32>) -> tensor<?x1xf32> {
   // CHECK: return %arg{{.*}} : tensor<?x1xf32>

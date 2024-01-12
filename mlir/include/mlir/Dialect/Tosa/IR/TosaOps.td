@@ -804,6 +804,8 @@ def Tosa_PowOp : Tosa_ElemWiseBinaryOp<"pow"> {
   let results = (outs
     Tosa_Tensor:$z
   );
+
+  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//
