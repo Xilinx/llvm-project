@@ -100,8 +100,7 @@ Operation *TosaDialect::materializeConstant(OpBuilder &builder, Attribute value,
 // TOSA Operator Verifiers.
 //===----------------------------------------------------------------------===//
 
-template <typename T>
-static LogicalResult verifyConvOp(T op) {
+template <typename T> static LogicalResult verifyConvOp(T op) {
   // All TOSA conv ops have an input() and weight().
   auto inputType = llvm::dyn_cast<RankedTensorType>(op.getInput().getType());
   auto weightType = llvm::dyn_cast<RankedTensorType>(op.getWeight().getType());
@@ -141,10 +140,8 @@ static LogicalResult verifyConvOp(T op) {
 
   return success();
 }
-template <typename T>
-static LogicalResult verifyPoolOp(T op) {
-  auto inputETy =
-      llvm::cast<ShapedType>(op.getInput().getType()).getElementType();
+template <typename T> static LogicalResult verifyPoolOp(T op) {
+  auto inputETy = llvm::cast<ShapedType>(op.getInput().getType()).getElementType();
   auto resultETy = llvm::cast<ShapedType>(op.getType()).getElementType();
 
   if (auto quantType =
@@ -214,7 +211,6 @@ static LogicalResult verifyPoolOp(T op) {
         */
 
     if ((outputHeight != (height / stride[0]) + 1)) {
-
       return op.emitOpError("output height is not correct, should be ")
              << (height / stride[0]) + 1 << ".";
     }
@@ -236,22 +232,6 @@ static LogicalResult verifyPoolOp(T op) {
 
   return op.emitOpError("input/output element types are incompatible.");
 }
-// LogicalResult tosa::AddOp::verify() {
-
-//   auto input1ShapedType = llvm::cast<ShapedType>(getInput1().getType());
-//   auto input2ShapedType = llvm::cast<ShapedType>(getInput2().getType());
-//   auto resultShapedType = llvm::cast<ShapedType>(getType());
-
-//   if (input1ShapedType.hasStaticShape() && input2ShapedType.hasStaticShape()
-//   &&
-//       resultShapedType.hasStaticShape()) {
-//     if (input1ShapedType.getRank() != input2ShapedType.getRank()) {
-//       return emitOpError("input tensors must be of equal rank.");
-//     }
-//     return success();
-//   }
-//   return success();
-// }
 
 LogicalResult tosa::MaxPool2dOp::verify() { return verifyPoolOp(*this); }
 LogicalResult tosa::AvgPool2dOp::verify() {
@@ -269,14 +249,18 @@ LogicalResult tosa::AvgPool2dOp::verify() {
   auto accType = getAccType();
   if (llvm::isa<IntegerType>(inputETy) && !accType.isInteger(32))
     return emitOpError("accumulator type for integer tensor is not i32");
+
   auto result = verifyPoolOp(*this);
   if (result.succeeded()) {
     if ((inputETy.isF16()) && !(accType.isF16() || accType.isF32()))
       return emitOpError("accumulator type for f16 tensor is not f16/f32");
+
     if ((inputETy.isBF16()) && !(accType.isF32()))
       return emitOpError("accumulator type for bf16 tensor is not f32");
+
     if (inputETy.isF32() && !accType.isF32())
       return emitOpError("accumulator type for f32 tensor is not f32");
+
   }
   return result;
 }
@@ -309,8 +293,7 @@ static void buildConvOpWithQuantInfo(OpBuilder &builder, OperationState &result,
   }
 }
 
-/// Handles tosa.transpose_conv2d which has outpad and output shape
-/// attributes.
+/// Handles tosa.transpose_conv2d which has outpad and output shape attributes.
 static void buildTransConvOpWithQuantInfo(
     OpBuilder &builder, OperationState &result, Type outputType, Value input,
     Value weight, Value bias, DenseI64ArrayAttr outpad,
@@ -347,9 +330,9 @@ static void buildFCOpWithQuantInfo(OpBuilder &builder, OperationState &result,
   }
 }
 
-/// The tosa.matmul op is also intended to be generated where a
-/// fully_connected op must be constructed where the weight is not a constant.
-/// In this case, the fully_connected op must be expressed using matmul.
+/// The tosa.matmul op is also intended to be generated where a fully_connected
+/// op must be constructed where the weight is not a constant. In this case,
+/// the fully_connected op must be expressed using matmul.
 /// TODO: Add link to the leglization document explaining this.
 static void buildMatMulOpWithQuantInfo(OpBuilder &builder,
                                        OperationState &result, Type outputType,
@@ -384,9 +367,9 @@ static void buildMatMulOpWithQuantInfo(OpBuilder &builder,
   }
 }
 
-/// Both the tosa.avg_pool2d and unary ops use the same
-/// UnaruOpQuantizationAttr but avg_pool operator has its own builder as it
-/// has additional parameters not part of the unary ops.
+/// Both the tosa.avg_pool2d and unary ops use the same UnaruOpQuantizationAttr
+/// but avg_pool operator has its own builder as it has additional parameters
+/// not part of the unary ops.
 static void
 buildAvgPool2dOpWithQuantInfo(OpBuilder &builder, OperationState &result,
                               Type outputType, Value input,
@@ -453,8 +436,8 @@ static LogicalResult resolveBroadcastShape(const ValueShapeRange &operands,
   for (int i = 0, e = operands.size(); i != e; ++i) {
     auto shape = operands.getShape(i);
     if (!shape.hasRank()) {
-      // TODO(jennik): Update function to have better case handling for
-      // invalid operands and for ranked tensors.
+      // TODO(jennik): Update function to have better case handling for invalid
+      // operands and for ranked tensors.
       return failure();
     }
     outRank = std::max<int64_t>(outRank, shape.getRank());
@@ -709,8 +692,8 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
     return success();
   }
 
-  // If the input rank is unknown we can info the output rank using the
-  // padding shape's first dim.
+  // If the input rank is unknown we can info the output rank using the padding
+  // shape's first dim.
   if (!inputShape.hasRank()) {
     if (paddingShape.isDynamicDim(0)) {
       inferredReturnShapes.push_back(ShapedTypeComponents());
@@ -876,17 +859,17 @@ mlir::LogicalResult tosa::ReshapeOp::verify() {
 
     if ((int64_t)getNewShape().size() != outputType.getRank()) {
       return emitOpError() << "rank of newShape (" << getNewShape().size()
-                           << ") and output (" << outputType.getRank()
-                           << ") must match";
+                          << ") and output ("
+                          << outputType.getRank()
+                          << ") must match";
     }
 
-    for (int64_t dim = 0; dim < outputType.getRank(); ++dim) {
-      if (getNewShape()[dim] != -1 &&
-          getNewShape()[dim] != outputType.getShape()[dim]) {
-        return emitOpError()
-               << "newShape attribute (" << getNewShape()[dim]
-               << ") does not match output type (" << outputType.getShape()[dim]
-               << ") in dimension " << dim;
+    for (int64_t dim=0; dim < outputType.getRank(); ++dim) {
+      if (getNewShape()[dim] != -1 && getNewShape()[dim] != outputType.getShape()[dim]) {
+        return emitOpError() << "newShape attribute (" << getNewShape()[dim]
+                            << ") does not match output type ("
+                            << outputType.getShape()[dim]
+                            << ") in dimension " << dim;
       }
     }
   }
@@ -900,16 +883,18 @@ mlir::LogicalResult tosa::SliceOp::verify() {
 
   if (inputType.getRank() != outputType.getRank()) {
     return emitOpError() << "rank of input (" << inputType.getRank()
-                         << ") and output (" << outputType.getRank()
-                         << ") must match";
+                           << ") and output ("
+                           << outputType.getRank()
+                           << ") must match";
   }
 
   if ((int64_t)getSize().size() != outputType.getRank()) {
     return emitOpError() << "rank of size (" << getSize().size()
-                         << ") and output (" << outputType.getRank()
-                         << ") must match";
+                       << ") and output ("
+                       << outputType.getRank()
+                       << ") must match";
   }
-  for (int64_t dim = 0; dim < outputType.getRank(); ++dim) {
+  for (int64_t dim=0; dim < outputType.getRank(); ++dim) {
     if (getSize()[dim] != -1 && !outputType.isDynamicDim(dim) &&
         getSize()[dim] != outputType.getShape()[dim]) {
       return emitOpError() << "size attribute (" << getSize()[dim]
@@ -974,8 +959,8 @@ LogicalResult tosa::TransposeOp::inferReturnTypeComponents(
     return success();
   }
 
-  // This would imply the number of permutations does not match the rank of
-  // the input which is illegal.
+  // This would imply the number of permutations does not match the rank of the
+  // input which is illegal.
   if (permsShape.getDimSize(0) != inputShape.getRank()) {
     return failure();
   }
@@ -985,15 +970,13 @@ LogicalResult tosa::TransposeOp::inferReturnTypeComponents(
   SmallVector<int64_t> outputShape;
   if (!inputShape.hasRank()) {
     outputShape.resize(permsShape.getDimSize(0), ShapedType::kDynamic);
-    inferredReturnShapes.push_back(
-        ShapedTypeComponents(outputShape, inputType));
+    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape, inputType));
     return success();
   }
 
   // Rank-0 means no permutations matter.
   if (inputShape.getRank() == 0) {
-    inferredReturnShapes.push_back(
-        ShapedTypeComponents(outputShape, inputType));
+    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape, inputType));
     return success();
   }
 
@@ -1010,8 +993,7 @@ LogicalResult tosa::TransposeOp::inferReturnTypeComponents(
   // permutation.
   if (allTheSame) {
     outputShape.resize(inputShape.getRank(), inputShape.getDimSize(0));
-    inferredReturnShapes.push_back(
-        ShapedTypeComponents(outputShape, inputType));
+    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape, inputType));
     return success();
   }
 
@@ -1339,8 +1321,7 @@ LogicalResult Conv2DOp::inferReturnTypeComponents(
   return success();
 }
 
-template <typename T>
-static LogicalResult verifyBinaryOpWithEqualRank(T op) {
+template <typename T> static LogicalResult verifyBinaryOpWithEqualRank(T op) {
   auto input1ShapeType = llvm::cast<ShapedType>(op.getInput1().getType());
   auto input2ShapeType = llvm::cast<ShapedType>(op.getInput2().getType());
 
@@ -1353,28 +1334,15 @@ static LogicalResult verifyBinaryOpWithEqualRank(T op) {
   }
   return success();
 }
-LogicalResult tosa::MulOp::verify() {
-  auto result = verifyBinaryOpWithEqualRank(*this);
-  if (result.failed()) {
-    return result;
-  }
-  auto shiftAttr = getShiftAttr().getInt();
-  auto input1ShapeType = llvm::cast<ShapedType>(getInput1().getType());
-  auto elementType = getElementTypeOrSelf(input1ShapeType);
-  if (!(elementType.isInteger(8) || elementType.isInteger(16))) {
-    if (shiftAttr != 0) {
-      return emitOpError(
-          "shift attribute should be 0 for non integer input types");
-    }
-  }
-  return success();
-}
+
 LogicalResult tosa::AddOp::verify() {
   return verifyBinaryOpWithEqualRank(*this);
 }
+
 LogicalResult tosa::GreaterEqualOp::verify() {
   return verifyBinaryOpWithEqualRank(*this);
 }
+
 template <typename T>
 LogicalResult verifyForSameRank(T op, ShapedType inputShape1,
                                 ShapedType inputShape2) {
@@ -1387,6 +1355,7 @@ LogicalResult verifyForSameRank(T op, ShapedType inputShape1,
   }
   return success();
 }
+
 LogicalResult tosa::SelectOp::verify() {
 
   auto input1ShapeType = llvm::cast<ShapedType>(getOperand(0).getType());
@@ -1398,8 +1367,7 @@ LogicalResult tosa::SelectOp::verify() {
       llvm::cast<ShapedType>(getOperand(1).getType()).getElementType();
   auto input3ETy =
       llvm::cast<ShapedType>(getOperand(2).getType()).getElementType();
-  auto resultETy = getElementTypeOrSelf(getResult());
-  // auto resultETy = llvm::cast<ShapedType>(getResult()).getElementType();
+  auto resultETy = getElementTypeOrSelf(getResult());  
 
   auto result1 = verifyForSameRank(*this, input1ShapeType, input2ShapeType);
   if (result1.failed()) {

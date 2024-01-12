@@ -781,13 +781,10 @@ def Tosa_MulOp : Tosa_ElemWiseBinaryOp<"mul", [Commutative]> {
   );
 
   let results = (outs
-    Tosa_Tensor:$output
+    Tosa_Tensor:$output 
   );
 
   let hasFolder = 1;
-
-  let hasVerifier = 1;
-  
 }
 
 //===----------------------------------------------------------------------===//
@@ -1623,7 +1620,8 @@ def Tosa_TransposeOp : Tosa_Op<"transpose", [
   }];
 
   let hasCanonicalizer = 1;
-  let hasFolder = 1;}
+  let hasFolder = 1;
+}
 
 //===----------------------------------------------------------------------===//
 // TOSA Spec Section 2.10
