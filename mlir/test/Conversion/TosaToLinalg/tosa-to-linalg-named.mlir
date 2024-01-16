@@ -193,14 +193,6 @@ func.func @max_pool_i16(%arg0: tensor<1x6x34x62xi16>) -> () {
   return
 }
 
-// CHECK-LABEL: @max_pool_i32
-func.func @max_pool_i32(%arg0: tensor<1x6x34x62xi16>) -> () {
-  // CHECK: arith.constant -2147483648
-  // CHECK: linalg.pooling_nhwc_max
-  %0 = "tosa.max_pool2d"(%arg0) {pad = array<i64: 0, 0, 0, 0>, kernel = array<i64: 3, 3>, stride = array<i64: 1, 1>} : (tensor<1x6x34x62xi16>)  -> (tensor<1x4x32x62xi16>)
-  return
-}
-
 // -----
 
 // CHECK-LABEL: @avg_pool_f32
