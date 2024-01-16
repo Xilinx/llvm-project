@@ -870,8 +870,8 @@ mlir::LogicalResult tosa::SliceOp::verify() {
                            << ") must match";
   }
   for (int64_t dim=0; dim < outputType.getRank(); ++dim) {
-    if (getSize()[dim] != -1 && !outputType.isDynamicDim(dim) &&
-        getSize()[dim] != outputType.getShape()[dim]) {
+        if (getSize()[dim] != -1 && !outputType.isDynamicDim(dim) &&
+            getSize()[dim] != outputType.getShape()[dim]) {
       return emitOpError() << "size attribute (" << getSize()[dim]
                            << ") does not match output type ("
                            << outputType.getShape()[dim] << ") in dimension "
