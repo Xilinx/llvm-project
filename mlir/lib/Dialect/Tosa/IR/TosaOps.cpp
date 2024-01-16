@@ -876,7 +876,7 @@ mlir::LogicalResult tosa::SliceOp::verify() {
                            << ") does not match output type ("
                            << outputType.getShape()[dim] << ") in dimension "
                            << dim;
-    }
+        }
   }
 
   if ((int64_t)getStart().size() != inputType.getRank()) {
