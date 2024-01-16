@@ -100,8 +100,7 @@ Operation *TosaDialect::materializeConstant(OpBuilder &builder, Attribute value,
 // TOSA Operator Verifiers.
 //===----------------------------------------------------------------------===//
 
-template <typename T>
-static LogicalResult verifyConvOp(T op) {
+template <typename T> static LogicalResult verifyConvOp(T op) {
   // All TOSA conv ops have an input() and weight().
   auto inputType = llvm::dyn_cast<RankedTensorType>(op.getInput().getType());
   auto weightType = llvm::dyn_cast<RankedTensorType>(op.getWeight().getType());
@@ -508,7 +507,7 @@ LogicalResult ConcatOp::verify() {
   OperandRange inputs = getInput1();
 
   auto inputRank = ShapedType::kDynamic;
-  bool hasRankedInputs;
+  bool hasRankedInputs = false;
   for (auto input : inputs) {
     auto inputType = llvm::cast<ShapedType>(input.getType());
     if (inputType.hasRank()) {
@@ -834,18 +833,18 @@ mlir::LogicalResult tosa::ReshapeOp::verify() {
     }
 
     if ((int64_t)getNewShape().size() != outputType.getRank()) {
-      return emitOpError() << "rank of newShape (" << getNewShape().size()
-                           << ") and output (" << outputType.getRank()
+        return emitOpError() << "rank of newShape (" << getNewShape().size()
+                           << ") and output ("
+                           << outputType.getRank()
                            << ") must match";
     }
 
-    for (int64_t dim = 0; dim < outputType.getRank(); ++dim) {
-      if (getNewShape()[dim] != -1 &&
-          getNewShape()[dim] != outputType.getShape()[dim]) {
-        return emitOpError()
-               << "newShape attribute (" << getNewShape()[dim]
-               << ") does not match output type (" << outputType.getShape()[dim]
-               << ") in dimension " << dim;
+    for (int64_t dim=0; dim < outputType.getRank(); ++dim) {
+      if (getNewShape()[dim] != -1 && getNewShape()[dim] != outputType.getShape()[dim]) {
+        return emitOpError() << "newShape attribute (" << getNewShape()[dim]
+                            << ") does not match output type ("
+                            << outputType.getShape()[dim]
+                            << ") in dimension " << dim;
       }
     }
   }
@@ -859,16 +858,18 @@ mlir::LogicalResult tosa::SliceOp::verify() {
 
   if (inputType.getRank() != outputType.getRank()) {
     return emitOpError() << "rank of input (" << inputType.getRank()
-                         << ") and output (" << outputType.getRank()
-                         << ") must match";
+                           << ") and output ("
+                           << outputType.getRank()
+                           << ") must match";
   }
 
   if ((int64_t)getSize().size() != outputType.getRank()) {
-    return emitOpError() << "rank of size (" << getSize().size()
-                         << ") and output (" << outputType.getRank()
-                         << ") must match";
+        return emitOpError() << "rank of size (" << getSize().size()
+                           << ") and output ("
+                           << outputType.getRank()
+                           << ") must match";
   }
-  for (int64_t dim = 0; dim < outputType.getRank(); ++dim) {
+  for (int64_t dim=0; dim < outputType.getRank(); ++dim) {
     if (getSize()[dim] != -1 && !outputType.isDynamicDim(dim) &&
         getSize()[dim] != outputType.getShape()[dim]) {
       return emitOpError() << "size attribute (" << getSize()[dim]
@@ -879,14 +880,16 @@ mlir::LogicalResult tosa::SliceOp::verify() {
   }
 
   if ((int64_t)getStart().size() != inputType.getRank()) {
-    return emitOpError() << "rank of start (" << getStart().size()
-                         << ") and input (" << inputType.getRank()
-                         << ") must match";
+        return emitOpError() << "rank of start (" << getStart().size()
+                           << ") and input ("
+                           << inputType.getRank()
+                           << ") must match";
   }
   if ((int64_t)getSize().size() != inputType.getRank()) {
-    return emitOpError() << "rank of size (" << getSize().size()
-                         << ") and input (" << inputType.getRank()
-                         << ") must match";
+        return emitOpError() << "rank of size (" << getSize().size()
+                           << ") and input ("
+                           << inputType.getRank()
+                           << ") must match";
   }
 
   for (int i = 0; i < outputType.getRank(); ++i) {
