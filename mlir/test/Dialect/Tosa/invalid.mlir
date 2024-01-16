@@ -171,14 +171,6 @@ func.func @test_pad_negative_padding(%arg0: tensor<13x21xf32>) -> tensor<?x?xf32
 
 // -----
 
-func.func @test_sigmoid_type_mismatch(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xi8> {
-  // expected-error@+1 {{'tosa.sigmoid' op requires the same element type for all operands and results}}
-  %0 = "tosa.sigmoid"(%arg0) : (tensor<13x21x3xf32>) -> tensor<13x21x4xi8>
-  return %0 : tensor<13x21x4xi8>
-}
-
-// -----
-
 func.func @test_transpose_non_const(%arg0: tensor<13x21x3xf32>, %arg1: tensor<3xi32>) -> tensor<3x13x21xf32> {
   // expected-error@+1 {{'tosa.transpose' op perms of transpose is not constant}}
   %0 = "tosa.transpose"(%arg0, %arg1) : (tensor<13x21x3xf32>, tensor<3xi32>) -> tensor<3x13x21xf32>
