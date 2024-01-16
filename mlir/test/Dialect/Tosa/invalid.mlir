@@ -179,14 +179,6 @@ func.func @test_sigmoid_type_mismatch(%arg0: tensor<13x21x3xf32>) -> tensor<13x2
 
 // -----
 
-func.func @test_sigmoid(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x4xf32> {
-  // expected-error@+1 {{'tosa.sigmoid' op input type 'tensor<13x21x3xf32>' and output type 'tensor<13x21x4xf32>' are not compatible}}
-  %0 = "tosa.sigmoid"(%arg0) : (tensor<13x21x3xf32>) -> tensor<13x21x4xf32>
-  return %0 : tensor<13x21x4xf32>
-}
-
-// -----
-
 func.func @test_transpose_non_const(%arg0: tensor<13x21x3xf32>, %arg1: tensor<3xi32>) -> tensor<3x13x21xf32> {
   // expected-error@+1 {{'tosa.transpose' op perms of transpose is not constant}}
   %0 = "tosa.transpose"(%arg0, %arg1) : (tensor<13x21x3xf32>, tensor<3xi32>) -> tensor<3x13x21xf32>

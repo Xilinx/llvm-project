@@ -1628,17 +1628,6 @@ LogicalResult WhileOp::inferReturnTypeComponents(
   return success();
 }
 
-LogicalResult SigmoidOp::verify() {
-  auto inputType = llvm::cast<ShapedType>(getInput().getType());
-  auto outputType = llvm::cast<ShapedType>(getOutput().getType());
-  auto result = verifyCompatibleShapes(inputType, outputType);
-  if (result.failed()) {
-    return emitOpError() << "input type " << inputType << " and output type "
-                         << outputType << " are not compatible";
-  }
-  return success();
-}
-
 std::optional<SmallVector<int64_t, 4>> ApplyScaleOp::getShapeForUnroll() {
   if (auto vt = llvm::dyn_cast<VectorType>(getType()))
     return llvm::to_vector<4>(vt.getShape());
