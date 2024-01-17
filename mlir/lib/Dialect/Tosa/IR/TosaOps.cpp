@@ -229,6 +229,8 @@ template <typename T> static LogicalResult verifyPoolOp(T op) {
     return success();
   if (inputETy.isInteger(16) && resultETy.isInteger(16))
     return success();
+  if (inputETy.isInteger(32) && resultETy.isInteger(32))
+    return success();
 
   return op.emitOpError("input/output element types are incompatible.");
 }
@@ -260,7 +262,6 @@ LogicalResult tosa::AvgPool2dOp::verify() {
 
     if (inputETy.isF32() && !accType.isF32())
       return emitOpError("accumulator type for f32 tensor is not f32");
-
   }
   return result;
 }
@@ -803,6 +804,33 @@ bool tosa::ReshapeOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
   return getElementTypeOrSelf(l[0]) == getElementTypeOrSelf(r[0]);
 }
 
+bool tosa::TransposeOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
+
+  if (l.size() != r.size() || l.size() != 1)
+    return false;
+
+  auto left = getElementTypeOrSelf(l[0]);
+  auto right = getElementTypeOrSelf(r[0]);
+  
+  if (auto quantType = llvm::dyn_cast<mlir::quant::UniformQuantizedType>(left))
+    left = quantType.getStorageType();
+
+  if (auto quantType = llvm::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(left))
+    left = quantType.getStorageType();
+
+  if (auto quantType = llvm::dyn_cast<mlir::quant::UniformQuantizedType>(right)){    
+    right = quantType.getStorageType();
+  }
+  
+  if (auto quantType = llvm::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(right)){
+    right = quantType.getStorageType();
+  }
+
+  if (left != right)
+    return false;
+  return succeeded(verifyCompatibleShape(l[0], r[0]));
+}
+
 LogicalResult tosa::ReshapeOp::inferReturnTypeComponents(
     MLIRContext *context, ::std::optional<Location> location,
     ValueShapeRange operands, DictionaryAttr attributes,
@@ -952,6 +980,15 @@ LogicalResult tosa::TransposeOp::inferReturnTypeComponents(
   ShapeAdaptor inputShape = operands.getShape(0);
   ShapeAdaptor permsShape = operands.getShape(1);
   auto inputType = getElementTypeOrSelf(operands[0]);
+
+  if (auto quantType =
+          llvm::dyn_cast<mlir::quant::UniformQuantizedType>(inputType))
+    inputType = quantType.getStorageType();
+
+  if (auto quantType =
+          llvm::dyn_cast<mlir::quant::UniformQuantizedPerAxisType>(inputType))
+    inputType = quantType.getStorageType();  
+  
 
   // If input rank and permutation length is unknown, the output rank is
   // unknown.
@@ -1161,7 +1198,6 @@ REDUCE_SHAPE_INFER(tosa::ReduceProdOp)
 REDUCE_SHAPE_INFER(tosa::ReduceSumOp)
 #undef REDUCE_SHAPE_INFER
 COMPATIBLE_RETURN_TYPES(tosa::ConcatOp)
-COMPATIBLE_RETURN_TYPES(tosa::TransposeOp)
 #undef COMPATIBLE_RETURN_TYPES
 
 static LogicalResult NAryInferReturnTypes(
@@ -1369,7 +1405,7 @@ LogicalResult tosa::SelectOp::verify() {
       llvm::cast<ShapedType>(getOperand(1).getType()).getElementType();
   auto input3ETy =
       llvm::cast<ShapedType>(getOperand(2).getType()).getElementType();
-  auto resultETy = getElementTypeOrSelf(getResult());  
+  auto resultETy = getElementTypeOrSelf(getResult());
 
   auto result1 = verifyForSameRank(*this, input1ShapeType, input2ShapeType);
   if (result1.failed()) {
