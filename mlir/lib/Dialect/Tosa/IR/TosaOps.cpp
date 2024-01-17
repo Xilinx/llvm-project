@@ -682,6 +682,10 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
 
 LogicalResult PadOp::verify() {
   ShapedType inputType = llvm::cast<ShapedType>(getInput1().getType());
+  if (inputType.hasRank() && inputType.getRank() == 0) {
+    return emitOpError() << "input tensor rank must not be 0";
+  }
+
   ShapedType paddingType = llvm::cast<ShapedType>(getPadding().getType());
   if (paddingType.hasRank()) {
     if (paddingType.getRank() != 2) {

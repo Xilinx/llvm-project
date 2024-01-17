@@ -171,6 +171,22 @@ func.func @test_pad_negative_padding(%arg0: tensor<13x21xf32>) -> tensor<?x?xf32
 
 // -----
 
+func.func @test_pad_incorrect_input(%arg0: f32, %arg1: i32) -> f32 {
+  // expected-error@+1 {{'tosa.pad' op operand #0 must be ranked tensor of number values, but got 'f32'}}
+  %1 = "tosa.pad"(%arg0, %arg1) : (f32, i32) -> f32
+  return %1 : f32
+}
+
+// -----
+
+func.func @test_pad_zero_rank_input(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<f32> {
+  // expected-error@+1 {{'tosa.pad' op input tensor rank must not be 0}}
+  %1 = "tosa.pad"(%arg0, %arg1) : (tensor<f32>, tensor<i32>) -> tensor<f32>
+  return %1 : tensor<f32>
+}
+
+// -----
+
 func.func @test_transpose_non_const(%arg0: tensor<13x21x3xf32>, %arg1: tensor<3xi32>) -> tensor<3x13x21xf32> {
   // expected-error@+1 {{'tosa.transpose' op perms of transpose is not constant}}
   %0 = "tosa.transpose"(%arg0, %arg1) : (tensor<13x21x3xf32>, tensor<3xi32>) -> tensor<3x13x21xf32>
