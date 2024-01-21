@@ -38,7 +38,8 @@ void addTosaToLinalgPasses(OpPassManager &pm,
 void populateTosaToLinalgConversionPatterns(RewritePatternSet *patterns);
 
 /// Populates conversion passes from TOSA dialect to Linalg named operations.
-void populateTosaToLinalgNamedConversionPatterns(RewritePatternSet *patterns);
+void populateTosaToLinalgNamedConversionPatterns(
+    RewritePatternSet *patterns, bool useMatmulForSingleBatch = false);
 
 } // namespace tosa
 } // namespace mlir
