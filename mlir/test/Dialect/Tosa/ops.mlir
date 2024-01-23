@@ -324,6 +324,7 @@ func.func @test_select(%arg0: tensor<1x1x1xi1>, %arg1: tensor<13x21x3xf32>, %arg
   return %0 : tensor<13x21x3xf32>
 }
 
+
 // -----
 // CHECK-LABEL: equal
 func.func @test_equal(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x1x3xf32>) -> tensor<13x21x3xi1> {
