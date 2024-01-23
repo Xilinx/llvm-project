@@ -499,8 +499,7 @@ def Tosa_AddOp : Tosa_ElemWiseBinaryOp<"add", [Commutative]> {
     Tosa_Tensor:$output
   );
 
-  let hasFolder = 1;
-  let hasVerifier = 1;
+  let hasFolder = 1;  
 }
 
 //===----------------------------------------------------------------------===//
@@ -1126,8 +1125,7 @@ def Tosa_SelectOp : Tosa_Op<"select", [
     Tosa_Tensor:$output
   );
   let hasCanonicalizeMethod = 1;
-  let hasFolder = 1;
-  let hasVerifier = 1;
+  let hasFolder = 1;  
 }
 
 //===----------------------------------------------------------------------===//
@@ -1211,8 +1209,7 @@ def Tosa_GreaterEqualOp : Tosa_Op<"greater_equal", [
     I1Tensor:$output
   );
 
-  let hasFolder = 1;
-  let hasVerifier = 1;
+  let hasFolder = 1;  
 }
 
 //===----------------------------------------------------------------------===//
