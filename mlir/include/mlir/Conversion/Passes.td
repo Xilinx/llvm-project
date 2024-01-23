@@ -974,7 +974,10 @@ def TosaToLinalgNamed
     Pass that converts TOSA operations to the equivalent operations using the
     Linalg named operations.
   }];
-
+  let options = [
+    Option<"useMatmulForSingleBatch", "use-matmul-for-single-batch", "bool", /*default=*/"false",
+      "Use linalg.matmul for 1x batch size instead of linalg.batch_matmul.">
+  ];
   let constructor = "tosa::createTosaToLinalgNamed()";
 }
 
