@@ -326,6 +326,7 @@ private:
   FailureOr<ast::Expr *> parseMemberAccessExpr(ast::Expr *parentExpr);
   FailureOr<ast::Expr *> parseNegatedExpr();
   FailureOr<ast::Expr *> parseIntegerExpr();
+  FailureOr<ast::Expr *> parseStringExpr();
   FailureOr<ast::OpNameDecl *> parseOperationName(bool allowEmptyName = false);
   FailureOr<ast::OpNameDecl *> parseWrappedOperationName(bool allowEmptyName);
   FailureOr<ast::Expr *>
@@ -1838,6 +1839,9 @@ FailureOr<ast::Expr *> Parser::parseExpr() {
   case Token::integer:
     lhsExpr = parseIntegerExpr();
     break;
+  case Token::string:
+    lhsExpr = parseStringExpr();
+    break;
   case Token::string_block:
     return emitError("expected expression. If you are trying to create an "
                      "ArrayAttr, use a space between `[` and `{`.");
@@ -2098,6 +2102,13 @@ FailureOr<ast::Expr *> Parser::parseIntegerExpr() {
 
   auto allocated = copyStringWithNull(ctx, (Twine(value) + ":" + type).str());
   return ast::AttributeExpr::create(ctx, loc, allocated);
+}
+
+FailureOr<ast::Expr *> Parser::parseStringExpr() {
+  SMRange loc = curToken.getLoc();
+  StringRef value = curToken.getSpelling();
+  consumeToken();
+  return ast::AttributeExpr::create(ctx, loc, value);
 }
 
 FailureOr<ast::OpNameDecl *> Parser::parseOperationName(bool allowEmptyName) {
