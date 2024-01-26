@@ -182,7 +182,7 @@ func.func @pad_dyn_input(%arg0 : tensor<?x2xf32>) -> (tensor<?x9xf32>) {
 }
 
 func.func @pad_dyn_padding(%arg0 : tensor<1x2xf32>) -> (tensor<?x9xf32>) {
-  %0 = arith.constant dense<[[-1, 2], [3, 4]]> : tensor<2x2xi32>
+  %0 = arith.constant dense<[[1, 2], [3, 4]]> : tensor<2x2xi32>
   // TODO: Output contains multiple "arith.constant 1 : index".
   // CHECK-DAG: [[INDEX1:%.+]] = arith.constant 1 : index
   // CHECK-DAG: [[INDEX2:%.+]] = arith.constant 2 : index

@@ -55,6 +55,48 @@ func.func @test_concat_element_type_mismatch(%arg0 : tensor<1x2xf32>, %arg1 : te
 
 // -----
 
+func.func @test_concat_output_shape_mismatch(%arg0 : tensor<2x1xf32>, %arg1 : tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{inferred type(s) 'tensor<2x3xf32>' are incompatible with return type(s) of operation 'tensor<2x2xf32>}}
+  %0 = tosa.concat %arg0, %arg1 {axis = 1 : i32} : (tensor<2x1xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+func.func @test_concat_output_rank_mismatch(%arg0 : tensor<2x1xf32>, %arg1 : tensor<2x2xf32>) -> tensor<?x?x?xf32> {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{inferred type(s) 'tensor<2x3xf32>' are incompatible with return type(s) of operation 'tensor<?x?x?xf32>}}
+  %0 = tosa.concat %arg0, %arg1 {axis = 1 : i32} : (tensor<2x1xf32>, tensor<2x2xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
+// -----
+
+func.func @test_concat_input_rank_mismatch(%arg0 : tensor<1x2xf32>, %arg1 : tensor<2x2x2xf32>) -> tensor<?x?xf32> {
+  // expected-error@+1 {{'tosa.concat' op rank of input 'tensor<2x2x2xf32>' does not match other input rank(s) (2)}}
+  %0 = tosa.concat %arg0, %arg1 {axis = 0 : i32} : (tensor<1x2xf32>, tensor<2x2x2xf32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
+}
+
+// -----
+
+func.func @test_concat_axis_out_of_range(%arg0 : tensor<1x2xf32>, %arg1 : tensor<2x2xf32>) -> tensor<?x?xf32> {
+  // expected-error@+1 {{'tosa.concat' op axis must be in range 0 to 1}}
+  %0 = tosa.concat %arg0, %arg1 {axis = -1 : i32} : (tensor<1x2xf32>, tensor<2x2xf32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
+}
+
+// -----
+
+func.func @test_concat_axis_out_of_range(%arg0 : tensor<10x11x12xf32>, %arg1 : tensor<10x11x21xf32>) -> tensor<?x?x?xf32> {
+  // expected-error@+1 {{'tosa.concat' op axis must be in range 0 to 2}}
+  %0 = tosa.concat %arg0, %arg1 {axis = 3 : i32} : (tensor<10x11x12xf32>, tensor<10x11x21xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+
+// -----
+
 func.func @test_pad_non_const(%arg0: tensor<13x21x3xf32>, %arg1: tensor<3x2xi32>) -> tensor<13x21x3xf32> {
   // expected-error@+1 {{'tosa.pad' op padding of pad is not constant}}
   %0 = tosa.pad %arg0, %arg1 : (tensor<13x21x3xf32>, tensor<3x2xi32>) -> tensor<13x21x3xf32>
@@ -63,11 +105,83 @@ func.func @test_pad_non_const(%arg0: tensor<13x21x3xf32>, %arg1: tensor<3x2xi32>
 
 // -----
 
-func.func @test_pad_non_const(%arg0: tensor<13x21x3xi8>, %arg1: tensor<i8>) -> tensor<13x21x3xi8> {
+func.func @test_pad_non_const(%arg0: tensor<13x21x3xi8>, %arg1: tensor<i8>) -> tensor<?x?x?xi8> {
   %0 = "tosa.const"() {value = dense<[[0, 0], [0, 1], [0, 1]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
   // expected-error@+1 {{'tosa.pad' op pad_const of pad is not constant}}
-  %1 = tosa.pad %arg0, %0, %arg1 : (tensor<13x21x3xi8>, tensor<3x2xi32>, tensor<i8>) -> tensor<13x21x3xi8>
-  return %1 : tensor<13x21x3xi8>
+  %1 = tosa.pad %arg0, %0, %arg1 : (tensor<13x21x3xi8>, tensor<3x2xi32>, tensor<i8>) -> tensor<?x?x?xi8>
+  return %1 : tensor<?x?x?xi8>
+}
+
+// -----
+
+func.func @test_pad_output_shape_mismatch(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
+  %0 = "tosa.const"() {value = dense<[[1, 1], [1, 1], [1, 1]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
+  // expected-error@+2 {{'tosa.pad' op failed to infer returned types}}
+  // expected-error@+1 {{'tosa.pad' op inferred type(s) 'tensor<15x23x5xf32>' are incompatible with return type(s) of operation 'tensor<13x21x3xf32>}}
+  %1 = tosa.pad %arg0, %0 : (tensor<13x21x3xf32>, tensor<3x2xi32>) -> tensor<13x21x3xf32>
+  return %1 : tensor<13x21x3xf32>
+}
+
+// -----
+
+func.func @test_pad_type_mismatch(%arg0: tensor<13x21x3xf32>) -> tensor<15x23x5xi32> {
+  %0 = "tosa.const"() {value = dense<[[1, 1], [1, 1], [1, 1]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
+  // expected-error@+2 {{'tosa.pad' op failed to infer returned types}}
+  // expected-error@+1 {{'tosa.pad' op inferred type(s) 'tensor<15x23x5xf32>' are incompatible with return type(s) of operation 'tensor<15x23x5xi32>}}
+  %1 = tosa.pad %arg0, %0 : (tensor<13x21x3xf32>, tensor<3x2xi32>) -> tensor<15x23x5xi32>
+  return %1 : tensor<15x23x5xi32>
+}
+
+// -----
+
+func.func @test_pad_incorret_padding_rank(%arg0: tensor<13x21xf32>) -> tensor<13x21xf32> {
+  %0 = "tosa.const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // expected-error@+1 {{'tosa.pad' op paddings must be a tensor of rank 2}}
+  %1 = tosa.pad %arg0, %0 : (tensor<13x21xf32>, tensor<2xi32>) -> tensor<13x21xf32>
+  return %1 : tensor<13x21xf32>
+}
+
+// -----
+
+func.func @test_pad_incorret_padding_shape(%arg0: tensor<13x21xf32>) -> tensor<13x21xf32> {
+  %0 = "tosa.const"() {value = dense<[[0, 0], [0, 1], [0, 1], [1, 1]]> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
+  // expected-error@+1 {{'tosa.pad' op paddings must be a tensor of shape [2, 2]}}
+  %1 = tosa.pad %arg0, %0 : (tensor<13x21xf32>, tensor<4x2xi32>) -> tensor<13x21xf32>
+  return %1 : tensor<13x21xf32>
+}
+
+// -----
+
+func.func @test_pad_incorret_padding_shape(%arg0: tensor<13x21xf32>) -> tensor<13x21xf32> {
+  %0 = "tosa.const"() {value = dense<[[0, 0, 0, 1], [0, 1, 1, 1]]> : tensor<2x4xi32>} : () -> tensor<2x4xi32>
+  // expected-error@+1 {{'tosa.pad' op paddings must be a tensor of shape [2, 2]}}
+  %1 = tosa.pad %arg0, %0 : (tensor<13x21xf32>, tensor<2x4xi32>) -> tensor<13x21xf32>
+  return %1 : tensor<13x21xf32>
+}
+
+// -----
+
+func.func @test_pad_negative_padding(%arg0: tensor<13x21xf32>) -> tensor<?x?xf32> {
+  %0 = "tosa.const"() {value = dense<[[0, 0], [0, -1]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+  // expected-error@+1 {{'tosa.pad' op number of pad elements must be positive}}
+  %1 = tosa.pad %arg0, %0 : (tensor<13x21xf32>, tensor<2x2xi32>) -> tensor<?x?xf32>
+  return %1 : tensor<?x?xf32>
+}
+
+// -----
+
+func.func @test_pad_incorrect_input(%arg0: f32, %arg1: i32) -> f32 {
+  // expected-error@+1 {{'tosa.pad' op operand #0 must be ranked tensor of number values, but got 'f32'}}
+  %1 = tosa.pad %arg0, %arg1 : (f32, i32) -> f32
+  return %1 : f32
+}
+
+// -----
+
+func.func @test_pad_zero_rank_input(%arg0: tensor<f32>, %arg1: tensor<i32>) -> tensor<f32> {
+  // expected-error@+1 {{'tosa.pad' op input tensor rank must not be 0}}
+  %1 = tosa.pad %arg0, %arg1 : (tensor<f32>, tensor<i32>) -> tensor<f32>
+  return %1 : tensor<f32>
 }
 
 // -----
@@ -155,7 +269,7 @@ func.func @test_const_attribute_type_mismatch() -> tensor<100x100xf32> {
 
 func.func @test_reshape_static_zero_dim_input(%arg0 : tensor<13x0x3xf32>) -> () {
   // expected-error@+1 {{'tosa.reshape' op tensor has a dimension with size zero. Each dimension of a tensor must have size >= 1}}
-  %0 = "tosa.reshape"(%arg0) {new_shape = array<i64: 13, 21, 3>} : (tensor<13x0x3xf32>) -> tensor<13x0x3xf32>
+  %0 = tosa.reshape %arg0 {new_shape = array<i64: 13, 21, 3>} : (tensor<13x0x3xf32>) -> tensor<13x0x3xf32>
   return
 }
 
@@ -163,7 +277,7 @@ func.func @test_reshape_static_zero_dim_input(%arg0 : tensor<13x0x3xf32>) -> () 
 
 func.func @test_reshape_zero_dim_input(%arg0 : tensor<?x0x3xf32>) -> () {
   // expected-error@+1 {{'tosa.reshape' op tensor has a dimension with size zero. Each dimension of a tensor must have size >= 1}}
-  %0 = "tosa.reshape"(%arg0) {new_shape = array<i64: 13, 21, 3>} : (tensor<?x0x3xf32>) -> tensor<13x0x3xf32>
+  %0 = tosa.reshape %arg0 {new_shape = array<i64: 13, 21, 3>} : (tensor<?x0x3xf32>) -> tensor<13x0x3xf32>
   return
 }
 
@@ -171,7 +285,7 @@ func.func @test_reshape_zero_dim_input(%arg0 : tensor<?x0x3xf32>) -> () {
 
 func.func @test_conv2d_static_zero_dim_input(%arg0: tensor<1x29x0x4xf32>, %arg1: tensor<16x3x3x4xf32>, %arg2: tensor<16xf32>) -> tensor<1x27x27x16xf32> {
   // expected-error@+1 {{'tosa.conv2d' op tensor has a dimension with size zero. Each dimension of a tensor must have size >= 1}}
-  %0 = "tosa.conv2d"(%arg0, %arg1, %arg2) {dilation = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>}
+  %0 = tosa.conv2d %arg0, %arg1, %arg2 {dilation = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>}
            : (tensor<1x29x0x4xf32>, tensor<16x3x3x4xf32>, tensor<16xf32>) -> tensor<1x27x27x16xf32>
   return %0 : tensor<1x27x27x16xf32>
 }
@@ -180,7 +294,7 @@ func.func @test_conv2d_static_zero_dim_input(%arg0: tensor<1x29x0x4xf32>, %arg1:
 
 func.func @test_conv2d_zero_dim_input(%arg0: tensor<1x?x0x4xf32>, %arg1: tensor<16x3x3x4xf32>, %arg2: tensor<16xf32>) -> tensor<1x27x27x16xf32> {
   // expected-error@+1 {{'tosa.conv2d' op tensor has a dimension with size zero. Each dimension of a tensor must have size >= 1}}
-  %0 = "tosa.conv2d"(%arg0, %arg1, %arg2) {dilation = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>}
+  %0 = tosa.conv2d %arg0, %arg1, %arg2 {dilation = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>}
            : (tensor<1x?x0x4xf32>, tensor<16x3x3x4xf32>, tensor<16xf32>) -> tensor<1x27x27x16xf32>
   return %0 : tensor<1x27x27x16xf32>
 }
@@ -190,7 +304,7 @@ func.func @test_conv2d_zero_dim_input(%arg0: tensor<1x?x0x4xf32>, %arg1: tensor<
 
 func.func @test_avg_pool2d_static_zero_dim_input(%arg0: tensor<1x0x7x9xf32>) -> tensor<1x7x7x9xf32> {
   // expected-error@+1 {{'tosa.avg_pool2d' op tensor has a dimension with size zero. Each dimension of a tensor must have size >= 1}}
-    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = f32, kernel = array<i64: 2, 2>, pad = array<i64: 0, 1, 0, 1>, stride = array<i64: 1, 1>}
+    %0 = tosa.avg_pool2d %arg0 {acc_type = f32, kernel = array<i64: 2, 2>, pad = array<i64: 0, 1, 0, 1>, stride = array<i64: 1, 1>}
       : (tensor<1x0x7x9xf32>) -> tensor<1x7x7x9xf32>
     return %0 : tensor<1x7x7x9xf32>
 }
@@ -199,7 +313,7 @@ func.func @test_avg_pool2d_static_zero_dim_input(%arg0: tensor<1x0x7x9xf32>) -> 
 
 func.func @test_avg_pool2d_zero_dim_input(%arg0: tensor<1x0x?x9xf32>) -> tensor<1x7x7x9xf32> {
   // expected-error@+1 {{'tosa.avg_pool2d' op tensor has a dimension with size zero. Each dimension of a tensor must have size >= 1}}
-    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = f32, kernel = array<i64: 2, 2>, pad = array<i64: 0, 1, 0, 1>, stride = array<i64: 1, 1>}
+    %0 = tosa.avg_pool2d %arg0 {acc_type = f32, kernel = array<i64: 2, 2>, pad = array<i64: 0, 1, 0, 1>, stride = array<i64: 1, 1>}
       : (tensor<1x0x?x9xf32>) -> tensor<1x7x7x9xf32>
     return %0 : tensor<1x7x7x9xf32>
 }
