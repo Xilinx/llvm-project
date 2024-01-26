@@ -14,21 +14,17 @@ Pattern {
 
 // -----
 
-// CHECK: |-NamedAttributeDecl {{.*}}  Name<some_array>
-// CHECK: `-UserRewriteDecl {{.*}} Name<addElemToArrayAttr> ResultType<Attr>
+// CHECK: NamedAttributeDecl {{.*}}  Name<some_array>
+// CHECK: UserRewriteDecl {{.*}} Name<__builtin_addElemToArrayAttr> ResultType<Attr>
 // CHECK:   `Arguments`
-// CHECK:     `-CallExpr {{.*}} Type<Attr>
-// CHECK:       `-UserRewriteDecl {{.*}} Name<createArrayAttr> ResultType<Attr>
-// CHECK:     `-CallExpr {{.*}} Type<Attr>
-// CHECK:       `-UserRewriteDecl {{.*}} Name<addEntryToDictionaryAttr> ResultType<Attr>
+// CHECK:     CallExpr {{.*}} Type<Attr>
+// CHECK:       UserRewriteDecl {{.*}} Name<__builtin_createArrayAttr> ResultType<Attr>
+// CHECK:     CallExpr {{.*}} Type<Attr>
+// CHECK:       UserRewriteDecl {{.*}} Name<__builtin_addEntryToDictionaryAttr> ResultType<Attr>
 // CHECK:         `Arguments`
-// CHECK:           `-CallExpr {{.*}} Type<Attr>
-// CHECK:             `-UserRewriteDecl {{.*}} Name<createDictionaryAttr> ResultType<Attr>
-// CHECK:             `-AttributeExpr {{.*}} Value<""firstAttr"">
-Rewrite createDictionaryAttr() -> Attr;
-Rewrite addEntryToDictionaryAttr(dict: Attr, attrName: Attr, attr : Attr) -> Attr;
-Rewrite createArrayAttr() -> Attr;
-Rewrite addElemToArrayAttr(arrayAttr: Attr, newElement: Attr) -> Attr;
+// CHECK:           CallExpr {{.*}} Type<Attr>
+// CHECK:             UserRewriteDecl {{.*}} Name<__builtin_createDictionaryAttr> ResultType<Attr>
+// CHECK:             AttributeExpr {{.*}} Value<""firstAttr"">
 
 Pattern {
   let root = op<test.op> -> ();

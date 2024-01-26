@@ -253,20 +253,6 @@ Pattern {
 
 // -----
 
-Rewrite addElemToArrayAttr(arrayAttr: Attr, newElement: Attr) -> Attr;
-
-Pattern {
-  let root = op<test.op> -> ();
-  let attr = attr<"\"test\"">;
-  rewrite root with {
-      // CHECK: undefined reference to `createArrayAttr`
-      let newRoot = op<test.success>() { some_array =  [ attr<"\"test\""> ]} -> ();
-      replace root with newRoot;
-  };
-}
-
-// -----
-
 //===----------------------------------------------------------------------===//
 // `op` Expr
 //===----------------------------------------------------------------------===//
