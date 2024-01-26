@@ -884,6 +884,19 @@ static void insertExitNode(std::unique_ptr<MatcherNode> *root) {
   *root = std::make_unique<ExitNode>();
 }
 
+/// Sorts the range begin/end with the partial order given by cmp.
+/// cmp must be a partial ordering.
+template <typename Iterator, typename Compare>
+void stableTopologicalSort(Iterator begin, Iterator end, Compare cmp) {
+  while (begin != end) {
+    auto const next = std::stable_partition(begin, end, [&](auto const &a) {
+      return std::none_of(begin, end, [&](auto const &b) { return cmp(b, a); });
+    });
+    assert(next != begin && "not a partial ordering");
+    begin = next;
+  }
+}
+
 /// Given a module containing PDL pattern operations, generate a matcher tree
 /// using the patterns within the given module and return the root matcher node.
 std::unique_ptr<MatcherNode>
@@ -963,6 +976,24 @@ MatcherNode::generateMatcherTree(ModuleOp module, PredicateBuilder &builder,
   llvm::sort(ordered, [](OrderedPredicate *lhs, OrderedPredicate *rhs) {
     return *lhs < *rhs;
   });
+
+  // Mostly keep the now established order, but also ensure that
+  // ConstraintQuestions come after the results they use.
+  stableTopologicalSort(ordered.begin(), ordered.end(),
+                        [](OrderedPredicate *a, OrderedPredicate *b) {
+                          auto *cqa = dyn_cast<ConstraintQuestion>(a->question);
+                          auto *cqb = dyn_cast<ConstraintQuestion>(b->question);
+                          if (cqa && cqb) {
+                            // Does any argument of b use a? Then b must be
+                            // sorted after a.
+                            return llvm::any_of(
+                                cqb->getArgs(), [&](Position *p) {
+                                  auto *cp = dyn_cast<ConstraintPosition>(p);
+                                  return cp && cp->getQuestion() == cqa;
+                                });
+                          }
+                          return false;
+                        });
 
   // Build the matchers for each of the pattern predicate lists.
   std::unique_ptr<MatcherNode> root;
