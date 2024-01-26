@@ -114,6 +114,20 @@ Pattern {
 
 // -----
 
+// Implicitly convert single element Tuple<Attr> to Attr
+// CHECK: Module
+// CHECK: `-MemberAccessExpr {{.*}} Member<0> Type<Attr>
+// CHECK:   `-TupleExpr {{.*}} Type<Tuple<Attr>>
+// CHECK:     `-AttributeExpr {{.*}} Value<"10: i32">
+Constraint checkAttr(attr: Attr);
+Pattern {
+  let tuple = (attr<"10: i32">);
+  checkAttr(tuple);
+  erase _: Op;
+}
+
+// -----
+
 #include "include/ops.td"
 
 // CHECK: Module
