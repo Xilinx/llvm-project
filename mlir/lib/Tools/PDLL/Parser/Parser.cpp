@@ -323,6 +323,14 @@ private:
   // Exprs
 
   FailureOr<ast::Expr *> parseExpr();
+  FailureOr<ast::Expr *> parseLogicalOrExpr();
+  FailureOr<ast::Expr *> parseLogicalAndExpr();
+  FailureOr<ast::Expr *> parseEqualityExpr();
+  FailureOr<ast::Expr *> parseRelationExpr();
+  FailureOr<ast::Expr *> parseAddSubExpr();
+  FailureOr<ast::Expr *> parseMulDivExpr();
+  FailureOr<ast::Expr *> parseLogicalNotExpr();
+  FailureOr<ast::Expr *> parseOtherExpr();
 
   /// Identifier expressions.
   FailureOr<ast::Expr *> parseArrayAttrExpr();
@@ -1871,7 +1879,53 @@ FailureOr<ast::ConstraintRef> Parser::parseArgOrResultConstraint() {
 //===----------------------------------------------------------------------===//
 // Exprs
 
-FailureOr<ast::Expr *> Parser::parseExpr() {
+// Operator precedence follows C++:
+// When parsing an expression, an operator which is listed on some rows below
+// with a precedence will be bound tighter (as if by parentheses) to its
+// arguments than any operator that is listed on a row further below it with a
+// lower precedence. Operators that have the same precedence are bound to their
+// arguments left-to-right. Highest precedence first:
+// - call, member access
+// - logical not
+// - multipication, division, remainder
+// - addition, subtraction
+// - relation operators
+// - equality operators
+// - logical and
+// - logical or
+FailureOr<ast::Expr *> Parser::parseExpr() { return parseLogicalOrExpr(); }
+
+FailureOr<ast::Expr *> Parser::parseLogicalOrExpr() {
+  return parseLogicalAndExpr();
+}
+
+FailureOr<ast::Expr *> Parser::parseLogicalAndExpr() {
+  return parseEqualityExpr();
+}
+
+FailureOr<ast::Expr *> Parser::parseEqualityExpr() {
+  return parseRelationExpr();
+}
+
+FailureOr<ast::Expr *> Parser::parseRelationExpr() { return parseAddSubExpr(); }
+
+FailureOr<ast::Expr *> Parser::parseAddSubExpr() { return parseMulDivExpr(); }
+
+FailureOr<ast::Expr *> Parser::parseMulDivExpr() {
+  return parseLogicalNotExpr();
+}
+
+FailureOr<ast::Expr *> Parser::parseLogicalNotExpr() {
+  switch (curToken.getKind()) {
+  case Token::kw_not:
+    return parseNegatedExpr();
+    break;
+  default:
+    return parseOtherExpr();
+  }
+}
+
+FailureOr<ast::Expr *> Parser::parseOtherExpr() {
   if (curToken.is(Token::underscore))
     return parseUnderscoreExpr();
 
@@ -1883,9 +1937,6 @@ FailureOr<ast::Expr *> Parser::parseExpr() {
     break;
   case Token::kw_Constraint:
     lhsExpr = parseInlineConstraintLambdaExpr();
-    break;
-  case Token::kw_not:
-    lhsExpr = parseNegatedExpr();
     break;
   case Token::identifier:
     lhsExpr = parseIdentifierExpr();
@@ -2155,6 +2206,8 @@ FailureOr<ast::Expr *> Parser::parseNegatedExpr() {
   FailureOr<ast::Expr *> identifierExpr = parseIdentifierExpr();
   if (failed(identifierExpr))
     return failure();
+  if (!curToken.is(Token::l_paren))
+    return emitError("expected `(` after function name");
   return parseCallExpr(*identifierExpr, /*isNegated = */ true);
 }
 
