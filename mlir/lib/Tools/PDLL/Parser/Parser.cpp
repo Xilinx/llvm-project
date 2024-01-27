@@ -601,6 +601,7 @@ private:
     ast::UserRewriteDecl *addEntryToDictionaryAttr;
     ast::UserRewriteDecl *createArrayAttr;
     ast::UserRewriteDecl *addElemToArrayAttr;
+    ast::UserConstraintDecl *equals;
   } builtins{};
 };
 } // namespace
@@ -629,7 +630,7 @@ T *Parser::declareBuiltin(StringRef name, ArrayRef<StringRef> argNames,
   popDeclScope();
 
   auto *constraintDecl = T::createNative(ctx, ast::Name::create(ctx, name, loc),
-                                         args, results, {}, attrTy);
+                                         args, results, {}, createUserConstraintRewriteResultType(results));
   curDeclScope->add(constraintDecl);
   return constraintDecl;
 }
@@ -645,6 +646,10 @@ void Parser::declareBuiltins() {
   builtins.addElemToArrayAttr = declareBuiltin<ast::UserRewriteDecl>(
       "__builtin_addElemToArrayAttr", {"attr", "element"},
       /*returnsAttr=*/true);
+
+  builtins.equals = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_equals", {"lhs", "rhs"},
+      /*returnsAttr=*/false);
 }
 
 FailureOr<ast::Module *> Parser::parseModule() {
@@ -1892,7 +1897,22 @@ FailureOr<ast::Expr *> Parser::parseLogicalAndExpr() {
 }
 
 FailureOr<ast::Expr *> Parser::parseEqualityExpr() {
-  return parseRelationExpr();
+  auto lhs = parseRelationExpr();
+  if (failed(lhs))
+    return failure();
+
+  switch (curToken.getKind()) {
+  case Token::equal_equal: {
+    consumeToken();
+    auto rhs = parseRelationExpr();
+    if (failed(rhs))
+      return failure();
+    SmallVector<ast::Expr *> args{*lhs, *rhs};
+    return createBuiltinCall(curToken.getLoc(), builtins.equals, args);
+  }
+  default:
+    return lhs;
+  }
 }
 
 FailureOr<ast::Expr *> Parser::parseRelationExpr() { return parseAddSubExpr(); }

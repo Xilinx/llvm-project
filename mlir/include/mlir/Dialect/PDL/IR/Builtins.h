@@ -13,6 +13,8 @@
 #ifndef MLIR_DIALECT_PDL_IR_BUILTINS_H_
 #define MLIR_DIALECT_PDL_IR_BUILTINS_H_
 
+#include "mlir/Support/LogicalResult.h"
+
 namespace mlir {
 class PDLPatternModule;
 class Attribute;
@@ -29,6 +31,7 @@ Attribute addEntryToDictionaryAttr(PatternRewriter &rewriter,
 Attribute createArrayAttr(PatternRewriter &rewriter);
 Attribute addElemToArrayAttr(PatternRewriter &rewriter, Attribute attr,
                              Attribute element);
+LogicalResult equals(PatternRewriter &rewriter, Attribute lhs, Attribute rhs);
 } // namespace builtin
 } // namespace pdl
 } // namespace mlir
