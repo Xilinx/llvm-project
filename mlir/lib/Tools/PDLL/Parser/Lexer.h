@@ -80,6 +80,7 @@ public:
     dot,
     equal,
     equal_arrow,
+    equal_equal,
     semicolon,
 
     /// Arithmetic.

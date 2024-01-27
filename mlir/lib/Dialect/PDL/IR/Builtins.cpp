@@ -331,6 +331,22 @@ LogicalResult abs(PatternRewriter &rewriter, PDLResultList &results,
                   llvm::ArrayRef<PDLValue> args) {
   return unaryOp<UnaryOpKind::abs>(rewriter, results, args);
 }
+
+LogicalResult equals(mlir::PatternRewriter &, mlir::Attribute lhs,
+                     mlir::Attribute rhs) {
+  // Attribute::operator== considers 0.0f and -0.0f to be not equal.
+  // We use APFloat to get the natural comparison result.
+  if (auto lhsAttr = dyn_cast_or_null<FloatAttr>(lhs)) {
+    auto rhsAttr = dyn_cast_or_null<FloatAttr>(rhs);
+    if (!rhsAttr || lhsAttr.getType() != rhsAttr.getType())
+      return failure();
+
+    APFloat lhsVal = lhsAttr.getValue();
+    APFloat rhsVal = rhsAttr.getValue();
+    return success(lhsVal.compare(rhsVal) == llvm::APFloatBase::cmpEqual);
+  }
+  return success(lhs == rhs);
+}
 } // namespace builtin
 
 void registerBuiltins(PDLPatternModule &pdlPattern) {
@@ -373,5 +389,6 @@ void registerBuiltins(PDLPatternModule &pdlPattern) {
                                                    exp2);
   pdlPattern.registerConstraintFunctionWithResults("__builtin_absConstraint",
                                                    abs);
+  pdlPattern.registerConstraintFunction("__builtin_equals", equals);
 }
 } // namespace mlir::pdl
