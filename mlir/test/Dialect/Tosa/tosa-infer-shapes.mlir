@@ -703,11 +703,11 @@ func.func @test_pool_dynamic_input(%arg0: tensor<?x?x?x?xf32>) {
 
 // CHECK-LABEL: @test_pool_padded
 func.func @test_pool_padded(%arg0: tensor<3x5x6x7xf32>) {
-  // CHECK: -> tensor<3x5x11x7xf32>
-  %0 = "tosa.avg_pool2d"(%arg0) {acc_type = f32, kernel = array<i64: 4, 3>, pad = array<i64: 1, 2, 3, 4>, stride = array<i64: 1, 1>} : (tensor<3x5x6x7xf32>) -> tensor<?x?x?x?xf32>
+  // CHECK: -> tensor<3x5x8x7xf32>
+  %0 = "tosa.avg_pool2d"(%arg0) {acc_type = f32, kernel = array<i64: 4, 3>, pad = array<i64: 1, 2, 2, 2>, stride = array<i64: 1, 1>} : (tensor<3x5x6x7xf32>) -> tensor<?x?x?x?xf32>
 
-  // CHECK: -> tensor<3x5x11x7xf32>
-  %1 = "tosa.max_pool2d"(%arg0) {kernel = array<i64: 4, 3>, pad = array<i64: 1, 2, 3, 4>, stride = array<i64: 1, 1>} : (tensor<3x5x6x7xf32>) -> tensor<?x?x?x?xf32>
+  // CHECK: -> tensor<3x5x8x7xf32>
+  %1 = "tosa.max_pool2d"(%arg0) {kernel = array<i64: 4, 3>, pad = array<i64: 1, 2, 2, 2>, stride = array<i64: 1, 1>} : (tensor<3x5x6x7xf32>) -> tensor<?x?x?x?xf32>
   return
 }
 
@@ -733,11 +733,11 @@ func.func @conv2d_dynamic_bias(%input: tensor<2x8x9x3xf32>, %weights: tensor<5x3
 
 // CHECK-LABEL: @test_pool_stride
 func.func @test_pool_stride(%arg0: tensor<3x11x12x7xf32>) {
-  // CHECK: -> tensor<3x4x4x7xf32>
-  %0 = "tosa.avg_pool2d"(%arg0) {acc_type = f32, kernel = array<i64: 4, 3>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 2, 3>} : (tensor<3x11x12x7xf32>) -> tensor<?x?x?x?xf32>
+  // CHECK: -> tensor<3x5x4x7xf32>
+  %0 = "tosa.avg_pool2d"(%arg0) {acc_type = f32, kernel = array<i64: 4, 3>, pad = array<i64: 1, 0, 0, 0>, stride = array<i64: 2, 3>} : (tensor<3x11x12x7xf32>) -> tensor<?x?x?x?xf32>
 
-  // CHECK: -> tensor<3x4x4x7xf32>
-  %1 = "tosa.max_pool2d"(%arg0) {kernel = array<i64: 4, 3>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 2, 3>} : (tensor<3x11x12x7xf32>) -> tensor<?x?x?x?xf32>
+  // CHECK: -> tensor<3x5x4x7xf32>
+  %1 = "tosa.max_pool2d"(%arg0) {kernel = array<i64: 4, 3>, pad = array<i64: 1, 0, 0, 0>, stride = array<i64: 2, 3>} : (tensor<3x11x12x7xf32>) -> tensor<?x?x?x?xf32>
   return
 }
 

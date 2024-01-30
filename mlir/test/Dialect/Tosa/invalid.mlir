@@ -265,3 +265,148 @@ func.func @test_const_attribute_type_mismatch() -> tensor<100x100xf32> {
   %0 = "tosa.const"() {value = dense<0.000000e+00> : tensor<1x1xf32>} : () -> tensor<100x100xf32>
   return %0 : tensor<100x100xf32>
 }
+
+// -----
+
+func.func @test_avg_pool2d_negative_kernel(%arg0: tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8> {
+  // expected-error@+1 {{'tosa.avg_pool2d' op kernel should be greater than one.}}
+    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 0, 2>, pad = array<i64: 0, 1, 0, 1>, stride = array<i64: 1, 1>} : (tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8>
+    return %0 : tensor<1x7x7x9xi8>
+}
+
+// -----
+
+func.func @test_avg_pool2d_negative_stride(%arg0: tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8> {
+  // expected-error@+1 {{'tosa.avg_pool2d' op stride should be greater than one.}}
+    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 2>, pad = array<i64: 0, 1, 0, 1>, stride = array<i64: -1, 1>} : (tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8>
+    return %0 : tensor<1x7x7x9xi8>
+}
+
+// -----
+
+func.func @test_avg_pool2d_negative_pad(%arg0: tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8> {
+  // expected-error@+1 {{'tosa.avg_pool2d' op pad should be positive}}
+    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 2>, pad = array<i64: 0, -1, 0, 1>, stride = array<i64: 1, 1>} : (tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8>
+    return %0 : tensor<1x7x7x9xi8>
+}
+
+// -----
+
+func.func @test_avg_pool2d_kernel_lessthan_pad(%arg0: tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8> {
+  // expected-error@+1 {{'tosa.avg_pool2d' op pad must be less than kernel size}}
+    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 2>, pad = array<i64: 0, 1, 0, 3>, stride = array<i64: 1, 1>} : (tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8>
+    return %0 : tensor<1x7x7x9xi8>
+}
+
+// -----
+
+func.func @test_avg_pool2d_vert_stride_incorrect_multiple(%arg0: tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8> {
+  // expected-error@+1 {{'tosa.avg_pool2d' op vertical stride is not in correct multiple.}}
+    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 2>, pad = array<i64: 1, 1, 1, 1>, stride = array<i64: 2, 2>} : (tensor<1x7x7x9xi8>) -> tensor<1x7x7x9xi8>
+    return %0 : tensor<1x7x7x9xi8>    
+}
+
+// -----
+
+func.func @test_avg_pool2d_hor_stride_incorrect_multiple(%arg0: tensor<1x6x6x9xi8>) -> tensor<1x7x4x9xi8> {
+  // expected-error@+1 {{'tosa.avg_pool2d' op horizontal stride is not in correct multiple.}}
+    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 3>, pad = array<i64: 1, 1, 1, 1>, stride = array<i64: 2, 2>} : (tensor<1x6x6x9xi8>) -> tensor<1x7x4x9xi8>
+    return %0 : tensor<1x7x4x9xi8>
+}
+
+// -----
+
+func.func @test_max_pool2d_hor_stride_incorrect_multiple(%arg0: tensor<1x6x6x9xi8>) -> tensor<1x7x4x9xi8> {
+  // expected-error@+1 {{'tosa.max_pool2d' op horizontal stride is not in correct multiple.}}
+    %0 = "tosa.max_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 3>, pad = array<i64: 1, 1, 1, 1>, stride = array<i64: 2, 2>} : (tensor<1x6x6x9xi8>) -> tensor<1x7x4x9xi8>
+    return %0 : tensor<1x7x4x9xi8>
+}
+
+// -----
+
+func.func @test_avg_pool2d_output_height_incorrect(%arg0: tensor<1x6x6x9xi8>) -> tensor<1x7x8x9xi8> {  
+  // expected-error@+1 {{'tosa.avg_pool2d' op output height is not correct, should be 3.}}
+    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 2>, pad = array<i64: 1, 1, 1, 1>, stride = array<i64: 3, 3>} : (tensor<1x6x6x9xi8>) -> tensor<1x7x8x9xi8>
+    return %0 : tensor<1x7x8x9xi8>
+}
+
+// -----
+
+func.func @test_avg_pool2d_output_width_incorrect(%arg0: tensor<1x6x6x9xi8>) -> tensor<1x3x8x9xi8> {  
+  // expected-error@+1 {{'tosa.avg_pool2d' op output width is not correct, should be 3.}}
+    %0 = "tosa.avg_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 2>, pad = array<i64: 1, 1, 1, 1>, stride = array<i64: 3, 3>} : (tensor<1x6x6x9xi8>) -> tensor<1x3x8x9xi8>
+    return %0 : tensor<1x3x8x9xi8>
+}
+
+// -----
+
+func.func @test_max_pool2d_output_width_incorrect(%arg0: tensor<1x6x6x9xi8>) -> tensor<1x3x8x9xi8> {  
+  // expected-error@+1 {{'tosa.max_pool2d' op output width is not correct, should be 3.}}
+    %0 = "tosa.max_pool2d"(%arg0) {acc_type = i32, kernel = array<i64: 2, 2>, pad = array<i64: 1, 1, 1, 1>, stride = array<i64: 3, 3>} : (tensor<1x6x6x9xi8>) -> tensor<1x3x8x9xi8>
+    return %0 : tensor<1x3x8x9xi8>
+}
+
+// -----
+
+func.func @test_const_incorrect_output(%arg0 : index) -> tensor<4xi32> {
+  // expected-error@+1{{inferred shape of elements literal ([4]) does not match type ([3])}}
+    %0 = "tosa.const"() {value = dense<[3, 0, 1, 2]> : tensor<3xi32>} : () -> tensor<4xi32>
+    return %0 : tensor<4xi32>
+}
+
+// -----
+
+func.func @test_transpose_incorrect_result_shape(%arg0: tensor<13x21x3xf32>) -> tensor<3x13x20xf32> {  
+  %0 = "tosa.const"() {value = dense<[2, 0, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // expected-error@+2{{'tosa.transpose' op failed to infer returned types}}
+  // expected-error@+1{{'tosa.transpose' op inferred type(s) 'tensor<3x13x21xf32>' are incompatible with return type(s) of operation 'tensor<3x13x20xf32>'}}  
+  %1 = "tosa.transpose"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<3xi32>) -> tensor<3x13x20xf32>
+  return %1 : tensor<3x13x20xf32>
+}
+
+// -----
+
+func.func @test_transpose_incorrect_result_rank(%arg0: tensor<13x21x3xf32>) -> tensor<3x13xf32> {  
+  %0 = "tosa.const"() {value = dense<[2, 0, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // expected-error@+2{{'tosa.transpose' op failed to infer returned types}}
+  // expected-error@+1{{'tosa.transpose' op inferred type(s) 'tensor<3x13x21xf32>' are incompatible with return type(s) of operation 'tensor<3x13xf32>'}}  
+  %1 = "tosa.transpose"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<3xi32>) -> tensor<3x13xf32>
+  return %1 : tensor<3x13xf32>
+}
+
+// -----
+
+func.func @test_transpose_incorrect_result_type(%arg0: tensor<13x21x3xf32>) -> tensor<3x13x21xi8> {  
+  %0 = "tosa.const"() {value = dense<[2, 0, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1{{'tosa.transpose' op inferred type(s) 'tensor<3x13x21xf32>' are incompatible with return type(s) of operation 'tensor<3x13x21xi8>'}}  
+  %1 = "tosa.transpose"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<3xi32>) -> tensor<3x13x21xi8>
+  return %1 : tensor<3x13x21xi8>
+}
+
+// -----
+
+func.func @test_transpose_high_rank_perm(%arg0: tensor<13x21x3xf32>) -> tensor<3x13x21x4xf32> {
+  %0 = "tosa.const"() {value = dense<[2, 0, 1, 3]> : tensor<4xi32>} : () -> tensor<4xi32>
+  // expected-error@+1 {{failed to infer returned types}}
+  %1 = "tosa.transpose"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<4xi32>) -> tensor<3x13x21x4xf32>
+  return %1 : tensor<3x13x21x4xf32>
+}
+
+// -----
+
+func.func @test_transpose_low_rank_perm(%arg0: tensor<13x21x3xf32>) -> tensor<3x13x21x4xf32> {
+  %0 = "tosa.const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // expected-error@+1 {{failed to infer returned types}}
+  %1 = "tosa.transpose"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<2xi32>) -> tensor<3x13x21x4xf32>
+  return %1 : tensor<3x13x21x4xf32>
+}
+
+// -----
+func.func @test_transpose_result_high_rank(%arg0: tensor<13x21x3xf32>) -> tensor<3x13x21x4xf32> {
+  %0 = "tosa.const"() {value = dense<[2, 0, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{'tosa.transpose' op inferred type(s) 'tensor<3x13x21xf32>' are incompatible with return type(s) of operation 'tensor<3x13x21x4xf32>'}}
+  %1 = "tosa.transpose"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<3xi32>) -> tensor<3x13x21x4xf32>
+  return %1 : tensor<3x13x21x4xf32>
+}
