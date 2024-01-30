@@ -7,7 +7,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/PatternMatchAction.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/Action.h"
 
 using namespace mlir;
 
@@ -269,12 +271,42 @@ void RewriterBase::replaceOpWithinBlock(Operation *op, ValueRange newValues,
   });
 }
 
+ReplaceOpAction::ReplaceOpAction(ArrayRef<IRUnit> irUnits, ValueRange replacement)
+      : Base(irUnits), replacement(replacement) {
+    assert(irUnits.size() == 1);
+    assert(irUnits[0]);
+    assert(isa<Operation*>(irUnits[0]));
+}
+
+void ReplaceOpAction::print(raw_ostream &os) const {
+    OpPrintingFlags flags;
+    flags.elideLargeElementsAttrs(10);
+    os << "`" << tag << "` replacing operation `";
+    getOp()->print(os, flags);
+    os << "` by ";
+    bool first = true;
+    for(auto r : replacement) {
+      if (!first)
+        os << ", ";
+      os << "`";
+      r.print(os, flags);
+      os << "`";
+      first = false;
+    }
+}
+
+Operation *ReplaceOpAction::getOp() const {
+    return llvm::dyn_cast<Operation *>(getContextIRUnits()[0]);
+}
+
 /// This method replaces the results of the operation with the specified list of
 /// values. The number of provided values must match the number of results of
 /// the operation.
 void RewriterBase::replaceOp(Operation *op, ValueRange newValues) {
   assert(op->getNumResults() == newValues.size() &&
          "incorrect # of replacement values");
+
+  getContext()->executeAction<ReplaceOpAction>([]() {}, {op}, newValues);
 
   // Notify the listener that we're about to remove this op.
   if (auto *rewriteListener = dyn_cast_if_present<Listener>(listener))
