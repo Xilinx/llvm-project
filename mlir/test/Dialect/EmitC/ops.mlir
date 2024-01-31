@@ -174,3 +174,14 @@ func.func @test_subscript(%arg0: !emitc.array<4x8xf32>, %arg1: !emitc.array<3x5x
   emitc.assign %0 : f32 to %1 : f32
   return
 }
+
+emitc.verbatim "#ifdef __cplusplus"
+emitc.verbatim "extern \"C\" {"
+emitc.verbatim "#endif  // __cplusplus"
+
+emitc.verbatim "#ifdef __cplusplus"
+emitc.verbatim "}  // extern \"C\""
+emitc.verbatim "#endif  // __cplusplus"
+
+emitc.verbatim "typedef int32_t i32;"
+emitc.verbatim "typedef float f32;"
