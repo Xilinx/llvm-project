@@ -206,7 +206,7 @@ Pattern {
 // -----
 
 Pattern {
-  // CHECK: expected expression
+  // CHECK: expected colon after integer literal
   let tuple = (10 = _: Value);
   erase op<>;
 }
@@ -249,6 +249,23 @@ Pattern {
   };;
 }
 
+// -----
+
+Pattern {
+  let root = op<func.func> -> ();
+  3;
+  // CHECK: expected colon after integer literal
+  replace root with root;
+}
+
+// -----
+
+Pattern {
+  let root = op<func.func> -> ();
+  3 :;
+  // CHECK: expected integer type
+  replace root with root;
+}
 
 // -----
 

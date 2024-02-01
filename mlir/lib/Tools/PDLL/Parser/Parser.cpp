@@ -325,6 +325,7 @@ private:
   FailureOr<ast::Expr *> parseInlineRewriteLambdaExpr();
   FailureOr<ast::Expr *> parseMemberAccessExpr(ast::Expr *parentExpr);
   FailureOr<ast::Expr *> parseNegatedExpr();
+  FailureOr<ast::Expr *> parseIntegerExpr();
   FailureOr<ast::OpNameDecl *> parseOperationName(bool allowEmptyName = false);
   FailureOr<ast::OpNameDecl *> parseWrappedOperationName(bool allowEmptyName);
   FailureOr<ast::Expr *>
@@ -1835,6 +1836,9 @@ FailureOr<ast::Expr *> Parser::parseExpr() {
   case Token::l_square:
     lhsExpr = parseArrayAttrExpr();
     break;
+  case Token::integer:
+    lhsExpr = parseIntegerExpr();
+    break;
   case Token::string_block:
     return emitError("expected expression. If you are trying to create an "
                      "ArrayAttr, use a space between `[` and `{`.");
@@ -2077,6 +2081,25 @@ FailureOr<ast::Expr *> Parser::parseNegatedExpr() {
   if (failed(identifierExpr))
     return failure();
   return parseCallExpr(*identifierExpr, /*isNegated = */ true);
+}
+
+/// Parse
+///   integer : identifier
+/// into an AttributeExpr.
+/// Examples: '4 : i32', '0 : si1'
+FailureOr<ast::Expr *> Parser::parseIntegerExpr() {
+  SMRange loc = curToken.getLoc();
+  StringRef value = curToken.getSpelling();
+  consumeToken();
+  if (!consumeIf(Token::colon))
+    return emitError("expected colon after integer literal");
+  if (!curToken.is(Token::identifier))
+    return emitError("expected integer type");
+  StringRef type = curToken.getSpelling();
+  consumeToken();
+
+  auto allocated = copyStringWithNull(ctx, (Twine(value) + ":" + type).str());
+  return ast::AttributeExpr::create(ctx, loc, allocated);
 }
 
 FailureOr<ast::OpNameDecl *> Parser::parseOperationName(bool allowEmptyName) {

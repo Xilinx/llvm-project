@@ -14,6 +14,15 @@ Pattern {
 
 // -----
 
+// CHECK: Module
+// CHECK: `-AttributeExpr {{.*}} Value<"10:i32">
+Pattern {
+  let attr = 10 : i32;
+  erase _: Op;
+}
+
+// -----
+
 // CHECK: |-NamedAttributeDecl {{.*}}  Name<some_array>
 // CHECK: `-UserRewriteDecl {{.*}} Name<addElemToArrayAttr> ResultType<Attr>
 // CHECK:   `Arguments`

@@ -28,6 +28,8 @@ class NamedAttributeDecl;
 class OpNameDecl;
 class VariableDecl;
 
+StringRef copyStringWithNull(Context &ctx, StringRef str);
+
 //===----------------------------------------------------------------------===//
 // Name
 //===----------------------------------------------------------------------===//
