@@ -484,126 +484,6 @@ struct Conv2DActivationMaxpoolOpLowering : OpRewritePattern<T> {
   }
 };
 
-Value sumKeepDim(OpBuilder &builder, Location loc, Value in, unsigned dim) {
-  assert(in);
-  auto inTy = in.getType().dyn_cast<RankedTensorType>();
-  assert(inTy && "expected tensor operand");
-  const auto rank = static_cast<unsigned>(inTy.getRank());
-  assert(dim < rank && "expected valid dim index");
-
-  // Compute the result type.
-  auto sumShape = llvm::to_vector(inTy.getShape());
-  sumShape[dim] = 1;
-  auto sumTy = RankedTensorType::get(sumShape, inTy.getElementType());
-
-  // Initialize the reduction accumulator.
-  Value accu;
-  {
-    auto zero = builder.create<arith::ConstantOp>(
-        loc, builder.getZeroAttr(inTy.getElementType()));
-    accu = builder.create<tensor::SplatOp>(loc, zero, sumTy).getResult();
-  }
-
-  // Compute the indexing maps.
-  // inMap ::= (o_0, ..., o_r, r) -> (o_0, ..., r, ..., o_r)
-  // outMap ::= (o_0, ..., o_r, r) -> (o_0, ..., 0, ..., o_r)
-  AffineMap inMap, outMap;
-  {
-    SmallVector<AffineExpr> inBuilder, outBuilder;
-    for (auto [idx, inIdx] = std::make_pair(0U, 0U); idx < rank; ++idx) {
-      if (idx == dim) {
-        inBuilder.push_back(getAffineDimExpr(rank - 1, builder.getContext()));
-        outBuilder.push_back(getAffineConstantExpr(0, builder.getContext()));
-        continue;
-      }
-
-      auto inDim = getAffineDimExpr(inIdx++, builder.getContext());
-      inBuilder.push_back(inDim);
-      outBuilder.push_back(inDim);
-    }
-    inMap = AffineMap::get(rank, 0, inBuilder, builder.getContext());
-    outMap = AffineMap::get(rank, 0, outBuilder, builder.getContext());
-  }
-  AffineMap indexingMaps[] = {inMap, outMap};
-
-  // Compute the iterator types.
-  SmallVector<utils::IteratorType> iteratorTypes(rank,
-                                                 utils::IteratorType::parallel);
-  iteratorTypes.back() = utils::IteratorType::reduction;
-
-  return builder
-      .create<linalg::GenericOp>(
-          loc,
-          /*resultTensorTypes=*/sumTy,
-          /*inputs=*/in,
-          /*outputs=*/accu, indexingMaps, iteratorTypes,
-          [](OpBuilder &builder, Location loc, ValueRange args) {
-            auto add = builder.create<arith::AddFOp>(loc, args[0], args[1])
-                           .getResult();
-            builder.create<linalg::YieldOp>(loc, add);
-          })
-      .getResult(0);
-}
-
-struct SoftmaxLowering : OpRewritePattern<SoftmaxOp> {
-  using OpRewritePattern<SoftmaxOp>::OpRewritePattern;
-  LogicalResult matchAndRewrite(SoftmaxOp op,
-                                PatternRewriter &rewriter) const override {
-    auto in = op.getOperand();
-    auto inTy = in.getType().dyn_cast<RankedTensorType>();
-    assert(inTy && "expected tensor operand");
-
-    auto dim = op.getDimAttr().getValue().getSExtValue();
-    dim = dim < 0 ? dim + inTy.getRank() : dim;
-    assert(dim < inTy.getRank() && "expected valid dim index");
-
-    // exp(x)
-    auto exp = rewriter.create<math::ExpOp>(op.getLoc(), in).getResult();
-
-    // sum(exp(x), dim, keepDim=true)
-    auto sum =
-        sumKeepDim(rewriter, op.getLoc(), exp, static_cast<unsigned>(dim));
-
-    // exp(x) / sum(exp(x), dim, keepDim=true)
-    {
-      const auto rank = static_cast<unsigned>(inTy.getRank());
-      // Compute the indexing maps.
-      // inMap ::= (o_0, ..., r, ..., o_r) -> (o_0, ..., 0, ..., o_r)
-      // outMap ::= (o_0, ..., r, ..., o_r) -> (o_0, ..., r, ..., o_r)
-      AffineMap inMap;
-      {
-        SmallVector<AffineExpr> builder;
-        for (unsigned idx = 0; idx < rank; ++idx) {
-          builder.push_back(
-              idx == static_cast<unsigned>(dim)
-                  ? getAffineConstantExpr(0, rewriter.getContext())
-                  : getAffineDimExpr(idx, rewriter.getContext()));
-        }
-        inMap = AffineMap::get(rank, 0, builder, rewriter.getContext());
-      }
-      AffineMap indexingMaps[] = {inMap, AffineMap::getMultiDimIdentityMap(
-                                             rank, rewriter.getContext())};
-
-      // Compute the iterator types.
-      SmallVector<utils::IteratorType> iteratorTypes(
-          rank, utils::IteratorType::parallel);
-
-      rewriter.replaceOpWithNewOp<linalg::GenericOp>(
-          op,
-          /*resultTensorTypes=*/inTy,
-          /*inputs=*/sum,
-          /*outputs=*/exp, indexingMaps, iteratorTypes,
-          [](OpBuilder &builder, Location loc, ValueRange args) {
-            auto div = builder.create<arith::DivFOp>(loc, args[0], args[1])
-                           .getResult();
-            builder.create<linalg::YieldOp>(loc, div);
-          });
-    }
-
-    return success();
-  }
-};
-
 struct GlobalAveragePool2DLowering : OpRewritePattern<GlobalAveragePool2DOp> {
   using OpRewritePattern<GlobalAveragePool2DOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(GlobalAveragePool2DOp op,
@@ -656,7 +536,7 @@ struct GlobalAveragePool2DLowering : OpRewritePattern<GlobalAveragePool2DOp> {
 
 template <class Linear>
 static Value unfuseLinear(Linear &op, PatternRewriter &rewriter) {
-    
+
     Location loc = op.getLoc();
     Value input = op.getOperand(0);
     Value weights = op.getOperand(1);
@@ -737,7 +617,7 @@ struct LinalgUnfusePass : public impl::LinalgUnfuseBase<LinalgUnfusePass> {
                  Conv2DTensorAddLreluAveragePoolLowering,
                  Conv2DActivationMaxpoolOpLowering<Conv2DLreluMaxpoolOp>,
                  Conv2DActivationMaxpoolOpLowering<Conv2DReluMaxpoolOp>,
-                 SoftmaxLowering, GlobalAveragePool2DLowering, LinearLowering,
+                 GlobalAveragePool2DLowering, LinearLowering,
                  LinearReluLowering>(
         &getContext());
 

@@ -173,6 +173,16 @@ Pattern {
 
 // -----
 
+Constraint Foo(op: Op) {}
+
+Pattern {
+  // CHECK: unable to negate non native constraints
+  let root = op<>;
+  not Foo(root);
+}
+
+// -----
+
 Rewrite Foo();
 
 Pattern {
@@ -186,10 +196,10 @@ Pattern {
 Rewrite Foo(op: Op);
 
 Pattern {
-  // CHECK: negation of Rewrites is not supported
+  // CHECK: unable to negate a Rewrite
   let root = op<>;
   rewrite root with {
-    !Foo(root);
+     not Foo(root);
   }
 }
 

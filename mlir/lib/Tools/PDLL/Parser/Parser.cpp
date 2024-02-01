@@ -409,7 +409,8 @@ private:
 
   FailureOr<ast::CallExpr *>
   createCallExpr(SMRange loc, ast::Expr *parentExpr,
-                 MutableArrayRef<ast::Expr *> arguments, bool isNegated);
+                 MutableArrayRef<ast::Expr *> arguments,
+                 bool isNegated = false);
   FailureOr<ast::DeclRefExpr *> createDeclRefExpr(SMRange loc, ast::Decl *decl);
   FailureOr<ast::DeclRefExpr *>
   createInlineVariableExpr(ast::Type type, StringRef name, SMRange loc,
@@ -1811,6 +1812,9 @@ FailureOr<ast::Expr *> Parser::parseExpr() {
   case Token::kw_Constraint:
     lhsExpr = parseInlineConstraintLambdaExpr();
     break;
+  case Token::kw_not:
+    lhsExpr = parseNegatedExpr();
+    break;
   case Token::identifier:
     lhsExpr = parseIdentifierExpr();
     break;
@@ -1831,9 +1835,6 @@ FailureOr<ast::Expr *> Parser::parseExpr() {
     break;
   case Token::l_square:
     lhsExpr = parseArrayAttrExpr();
-    break;
-  case Token::exclam:
-    lhsExpr = parseNegatedExpr();
     break;
   case Token::integer:
     lhsExpr = parseIntegerExpr();
@@ -2072,7 +2073,8 @@ FailureOr<ast::Expr *> Parser::parseMemberAccessExpr(ast::Expr *parentExpr) {
 }
 
 FailureOr<ast::Expr *> Parser::parseNegatedExpr() {
-  consumeToken(Token::exclam);
+  consumeToken(Token::kw_not);
+  // Only native constraints are supported after negation
   if (!curToken.is(Token::identifier))
     return emitError("expected native constraint");
   FailureOr<ast::Expr *> identifierExpr = parseIdentifierExpr();
@@ -2498,7 +2500,7 @@ FailureOr<ast::LetStmt *> Parser::parseLetStmt() {
           TypeSwitch<const ast::Node *, LogicalResult>(constraint.constraint)
               .Case<ast::AttrConstraintDecl, ast::ValueConstraintDecl,
                     ast::ValueRangeConstraintDecl>([&](const auto *cst) {
-                if (auto *typeConstraintExpr = cst->getTypeExpr()) {
+                if (cst->getTypeExpr()) {
                   return this->emitError(
                       constraint.referenceLoc,
                       "type constraints are not permitted on variables with "
@@ -2828,8 +2830,7 @@ Parser::validateTypeRangeConstraintExpr(const ast::Expr *typeExpr) {
 
 FailureOr<ast::CallExpr *>
 Parser::createCallExpr(SMRange loc, ast::Expr *parentExpr,
-                       MutableArrayRef<ast::Expr *> arguments,
-                       bool isNegated = false) {
+                       MutableArrayRef<ast::Expr *> arguments, bool isNegated) {
   ast::Type parentType = parentExpr->getType();
 
   ast::CallableDecl *callableDecl = tryExtractCallableDecl(parentExpr);
@@ -2844,9 +2845,13 @@ Parser::createCallExpr(SMRange loc, ast::Expr *parentExpr,
       return emitError(
           loc, "unable to invoke `Constraint` within a rewrite section");
     if (isNegated)
-      return emitError(loc, "negation of Rewrites is not supported");
-  } else if (isa<ast::UserRewriteDecl>(callableDecl)) {
-    return emitError(loc, "unable to invoke `Rewrite` within a match section");
+      return emitError(loc, "unable to negate a Rewrite");
+  } else {
+    if (isa<ast::UserRewriteDecl>(callableDecl))
+      return emitError(loc,
+                       "unable to invoke `Rewrite` within a match section");
+    if (isNegated && cast<ast::UserConstraintDecl>(callableDecl)->getBody())
+      return emitError(loc, "unable to negate non native constraints");
   }
 
   // Verify the arguments of the call.

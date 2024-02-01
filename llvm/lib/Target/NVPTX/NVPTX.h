@@ -36,7 +36,7 @@ enum CondCodes {
 }
 
 FunctionPass *createNVPTXISelDag(NVPTXTargetMachine &TM,
-                                 llvm::CodeGenOpt::Level OptLevel);
+                                 llvm::CodeGenOptLevel OptLevel);
 ModulePass *createNVPTXAssignValidGlobalNamesPass();
 ModulePass *createGenericToNVVMLegacyPass();
 ModulePass *createNVPTXCtorDtorLoweringLegacyPass();
@@ -47,6 +47,7 @@ MachineFunctionPass *createNVPTXReplaceImageHandlesPass();
 FunctionPass *createNVPTXImageOptimizerPass();
 FunctionPass *createNVPTXLowerArgsPass();
 FunctionPass *createNVPTXLowerAllocaPass();
+FunctionPass *createNVPTXLowerUnreachablePass();
 MachineFunctionPass *createNVPTXPeephole();
 MachineFunctionPass *createNVPTXProxyRegErasurePass();
 

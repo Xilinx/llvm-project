@@ -18,6 +18,7 @@
 #include "DwarfUnit.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/DIE.h"
@@ -233,7 +234,15 @@ const DIType *DbgVariable::getType() const {
 /// Get .debug_loc entry for the instruction range starting at MI.
 static DbgValueLoc getDebugLocValue(const MachineInstr *MI) {
   const DIExpression *Expr = MI->getDebugExpression();
-  const bool IsVariadic = MI->isDebugValueList();
+  auto SingleLocExprOpt = DIExpression::convertToNonVariadicExpression(Expr);
+  const bool IsVariadic = !SingleLocExprOpt;
+  // If we have a variadic debug value instruction that is equivalent to a
+  // non-variadic instruction, then convert it to non-variadic form here.
+  if (!IsVariadic && !MI->isNonListDebugValue()) {
+    assert(MI->getNumDebugOperands() == 1 &&
+           "Mismatched DIExpression and debug operands for debug instruction.");
+    Expr = *SingleLocExprOpt;
+  }
   assert(MI->getNumOperands() >= 3);
   SmallVector<DbgValueLocEntry, 4> DbgValueLocEntries;
   for (const MachineOperand &Op : MI->debug_operands()) {
@@ -256,28 +265,23 @@ static DbgValueLoc getDebugLocValue(const MachineInstr *MI) {
   return DbgValueLoc(Expr, DbgValueLocEntries, IsVariadic);
 }
 
-void DbgVariable::initializeDbgValue(const MachineInstr *DbgValue) {
-  assert(FrameIndexExprs.empty() && "Already initialized?");
-  assert(!ValueLoc.get() && "Already initialized?");
-
-  assert(getVariable() == DbgValue->getDebugVariable() && "Wrong variable");
-  assert(getInlinedAt() == DbgValue->getDebugLoc()->getInlinedAt() &&
-         "Wrong inlined-at");
-
-  ValueLoc = std::make_unique<DbgValueLoc>(getDebugLocValue(DbgValue));
-  if (auto *E = DbgValue->getDebugExpression())
-    if (E->getNumElements())
-      FrameIndexExprs.push_back({0, E});
+Loc::Single::Single(DbgValueLoc ValueLoc)
+    : ValueLoc(std::make_unique<DbgValueLoc>(ValueLoc)),
+      Expr(ValueLoc.getExpression()) {
+  if (!Expr->getNumElements())
+    Expr = nullptr;
 }
 
-ArrayRef<DbgVariable::FrameIndexExpr> DbgVariable::getFrameIndexExprs() const {
+Loc::Single::Single(const MachineInstr *DbgValue)
+    : Single(getDebugLocValue(DbgValue)) {}
+
+ArrayRef<FrameIndexExpr> Loc::MMI::getFrameIndexExprs() const {
   if (FrameIndexExprs.size() == 1)
     return FrameIndexExprs;
 
-  assert(llvm::all_of(FrameIndexExprs,
-                      [](const FrameIndexExpr &A) {
-                        return A.Expr->isFragment();
-                      }) &&
+  assert(llvm::all_of(
+             FrameIndexExprs,
+             [](const FrameIndexExpr &A) { return A.Expr->isFragment(); }) &&
          "multiple FI expressions without DW_OP_LLVM_fragment");
   llvm::sort(FrameIndexExprs,
              [](const FrameIndexExpr &A, const FrameIndexExpr &B) -> bool {
@@ -288,15 +292,7 @@ ArrayRef<DbgVariable::FrameIndexExpr> DbgVariable::getFrameIndexExprs() const {
   return FrameIndexExprs;
 }
 
-void DbgVariable::addMMIEntry(const DbgVariable &V) {
-  assert(DebugLocListIndex == ~0U && !ValueLoc.get() && "not an MMI entry");
-  assert(V.DebugLocListIndex == ~0U && !V.ValueLoc.get() && "not an MMI entry");
-  assert(V.getVariable() == getVariable() && "conflicting variable");
-  assert(V.getInlinedAt() == getInlinedAt() && "conflicting inlined-at location");
-
-  assert(!FrameIndexExprs.empty() && "Expected an MMI entry");
-  assert(!V.FrameIndexExprs.empty() && "Expected an MMI entry");
-
+void Loc::MMI::addFrameIndexExpr(const DIExpression *Expr, int FI) {
   // FIXME: This logic should not be necessary anymore, as we now have proper
   // deduplication. However, without it, we currently run into the assertion
   // below, which means that we are likely dealing with broken input, i.e. two
@@ -307,12 +303,10 @@ void DbgVariable::addMMIEntry(const DbgVariable &V) {
       return;
   }
 
-  for (const auto &FIE : V.FrameIndexExprs)
-    // Ignore duplicate entries.
-    if (llvm::none_of(FrameIndexExprs, [&](const FrameIndexExpr &Other) {
-          return FIE.FI == Other.FI && FIE.Expr == Other.Expr;
-        }))
-      FrameIndexExprs.push_back(FIE);
+  if (llvm::none_of(FrameIndexExprs, [&](const FrameIndexExpr &Other) {
+        return FI == Other.FI && Expr == Other.Expr;
+      }))
+    FrameIndexExprs.push_back({FI, Expr});
 
   assert((FrameIndexExprs.size() == 1 ||
           llvm::all_of(FrameIndexExprs,
@@ -494,6 +488,7 @@ static StringRef getObjCMethodName(StringRef In) {
 void DwarfDebug::addSubprogramNames(const DICompileUnit &CU,
                                     const DISubprogram *SP, DIE &Die) {
   if (getAccelTableKind() != AccelTableKind::Apple &&
+      CU.getNameTableKind() != DICompileUnit::DebugNameTableKind::Apple &&
       CU.getNameTableKind() == DICompileUnit::DebugNameTableKind::None)
     return;
 
@@ -507,7 +502,7 @@ void DwarfDebug::addSubprogramNames(const DICompileUnit &CU,
   // well into the name table. Only do that if we are going to actually emit
   // that name.
   if (SP->getLinkageName() != "" && SP->getName() != SP->getLinkageName() &&
-      (useAllLinkageNames() || InfoHolder.getAbstractSPDies().lookup(SP)))
+      (useAllLinkageNames() || InfoHolder.getAbstractScopeDIEs().lookup(SP)))
     addAccelName(CU, SP->getLinkageName(), Die);
 
   // If this is an Objective-C selector name add it to the ObjC accelerator
@@ -709,8 +704,8 @@ static void interpretValues(const MachineInstr *CurMI,
         for (auto &FwdReg : ForwardedRegWorklist)
           if (TRI.regsOverlap(FwdReg.first, MO.getReg()))
             Defs.insert(FwdReg.first);
-        for (MCRegUnitIterator Units(MO.getReg(), &TRI); Units.isValid(); ++Units)
-          NewClobberedRegUnits.insert(*Units);
+        for (MCRegUnit Unit : TRI.regunits(MO.getReg()))
+          NewClobberedRegUnits.insert(Unit);
       }
     }
   };
@@ -1105,9 +1100,6 @@ DwarfDebug::getOrCreateDwarfCompileUnit(const DICompileUnit *DIUnit) {
   DwarfCompileUnit &NewCU = *OwnedUnit;
   InfoHolder.addUnit(std::move(OwnedUnit));
 
-  for (auto *IE : DIUnit->getImportedEntities())
-    NewCU.addImportedEntity(IE);
-
   // LTO with assembly output shares a single line table amongst multiple CUs.
   // To avoid the compilation directory being ambiguous, let the line table
   // explicitly describe the directory of all files, never relying on the
@@ -1128,14 +1120,6 @@ DwarfDebug::getOrCreateDwarfCompileUnit(const DICompileUnit *DIUnit) {
   CUMap.insert({DIUnit, &NewCU});
   CUDieMap.insert({&NewCU.getUnitDie(), &NewCU});
   return NewCU;
-}
-
-void DwarfDebug::constructAndAddImportedEntityDIE(DwarfCompileUnit &TheCU,
-                                                  const DIImportedEntity *N) {
-  if (isa<DILocalScope>(N->getScope()))
-    return;
-  if (DIE *D = TheCU.getOrCreateContextDIE(N->getScope()))
-    D->addChild(TheCU.constructImportedEntityDIE(N));
 }
 
 /// Sort and unique GVEs by comparing their fragment offset.
@@ -1215,16 +1199,8 @@ void DwarfDebug::beginModule(Module *M) {
   DebugLocs.setSym(Asm->createTempSymbol("loclists_table_base"));
 
   for (DICompileUnit *CUNode : M->debug_compile_units()) {
-    // FIXME: Move local imported entities into a list attached to the
-    // subprogram, then this search won't be needed and a
-    // getImportedEntities().empty() test should go below with the rest.
-    bool HasNonLocalImportedEntities = llvm::any_of(
-        CUNode->getImportedEntities(), [](const DIImportedEntity *IE) {
-          return !isa<DILocalScope>(IE->getScope());
-        });
-
-    if (!HasNonLocalImportedEntities && CUNode->getEnumTypes().empty() &&
-        CUNode->getRetainedTypes().empty() &&
+    if (CUNode->getImportedEntities().empty() &&
+        CUNode->getEnumTypes().empty() && CUNode->getRetainedTypes().empty() &&
         CUNode->getGlobalVariables().empty() && CUNode->getMacros().empty())
       continue;
 
@@ -1258,10 +1234,6 @@ void DwarfDebug::beginModule(Module *M) {
         // There is no point in force-emitting a forward declaration.
         CU.getOrCreateTypeDIE(RT);
     }
-    // Emit imported_modules last so that the relevant context is already
-    // available.
-    for (auto *IE : CUNode->getImportedEntities())
-      constructAndAddImportedEntityDIE(CU, IE);
   }
 }
 
@@ -1442,8 +1414,24 @@ void DwarfDebug::endModule() {
   assert(CurMI == nullptr);
 
   for (const auto &P : CUMap) {
-    auto &CU = *P.second;
-    CU.createBaseTypeDIEs();
+    const auto *CUNode = cast<DICompileUnit>(P.first);
+    DwarfCompileUnit *CU = &*P.second;
+
+    // Emit imported entities.
+    for (auto *IE : CUNode->getImportedEntities()) {
+      assert(!isa_and_nonnull<DILocalScope>(IE->getScope()) &&
+             "Unexpected function-local entity in 'imports' CU field.");
+      CU->getOrCreateImportedEntityDIE(IE);
+    }
+    for (const auto *D : CU->getDeferredLocalDecls()) {
+      if (auto *IE = dyn_cast<DIImportedEntity>(D))
+        CU->getOrCreateImportedEntityDIE(IE);
+      else
+        llvm_unreachable("Unexpected local retained node!");
+    }
+
+    // Emit base types.
+    CU->createBaseTypeDIEs();
   }
 
   // If we aren't actually generating debug info (check beginModule -
@@ -1517,16 +1505,6 @@ void DwarfDebug::endModule() {
   // FIXME: AbstractVariables.clear();
 }
 
-void DwarfDebug::ensureAbstractEntityIsCreated(DwarfCompileUnit &CU,
-                                               const DINode *Node,
-                                               const MDNode *ScopeNode) {
-  if (CU.getExistingAbstractEntity(Node))
-    return;
-
-  CU.createAbstractEntity(Node, LScopes.getOrCreateAbstractScope(
-                                       cast<DILocalScope>(ScopeNode)));
-}
-
 void DwarfDebug::ensureAbstractEntityIsCreatedIfScoped(DwarfCompileUnit &CU,
     const DINode *Node, const MDNode *ScopeNode) {
   if (CU.getExistingAbstractEntity(Node))
@@ -1535,6 +1513,21 @@ void DwarfDebug::ensureAbstractEntityIsCreatedIfScoped(DwarfCompileUnit &CU,
   if (LexicalScope *Scope =
           LScopes.findAbstractScope(cast_or_null<DILocalScope>(ScopeNode)))
     CU.createAbstractEntity(Node, Scope);
+}
+
+static const DILocalScope *getRetainedNodeScope(const MDNode *N) {
+  const DIScope *S;
+  if (const auto *LV = dyn_cast<DILocalVariable>(N))
+    S = LV->getScope();
+  else if (const auto *L = dyn_cast<DILabel>(N))
+    S = L->getScope();
+  else if (const auto *IE = dyn_cast<DIImportedEntity>(N))
+    S = IE->getScope();
+  else
+    llvm_unreachable("Unexpected retained node!");
+
+  // Ensure the scope is not a DILexicalBlockFile.
+  return cast<DILocalScope>(S)->getNonLexicalBlockFileScope();
 }
 
 // Collect variable information from side table maintained by MF.
@@ -1560,29 +1553,42 @@ void DwarfDebug::collectVariableInfoFromMFTable(
     }
 
     ensureAbstractEntityIsCreatedIfScoped(TheCU, Var.first, Scope->getScopeNode());
+
+    // If we have already seen information for this variable, add to what we
+    // already know.
+    if (DbgVariable *PreviousLoc = MFVars.lookup(Var)) {
+      auto *PreviousMMI = std::get_if<Loc::MMI>(PreviousLoc);
+      auto *PreviousEntryValue = std::get_if<Loc::EntryValue>(PreviousLoc);
+      // Previous and new locations are both stack slots (MMI).
+      if (PreviousMMI && VI.inStackSlot())
+        PreviousMMI->addFrameIndexExpr(VI.Expr, VI.getStackSlot());
+      // Previous and new locations are both entry values.
+      else if (PreviousEntryValue && VI.inEntryValueRegister())
+        PreviousEntryValue->addExpr(VI.getEntryValueRegister(), *VI.Expr);
+      else {
+        // Locations differ, this should (rarely) happen in optimized async
+        // coroutines.
+        // Prefer whichever location has an EntryValue.
+        if (PreviousLoc->holds<Loc::MMI>())
+          PreviousLoc->emplace<Loc::EntryValue>(VI.getEntryValueRegister(),
+                                                *VI.Expr);
+        LLVM_DEBUG(dbgs() << "Dropping debug info for " << VI.Var->getName()
+                          << ", conflicting fragment location types\n");
+      }
+      continue;
+    }
+
     auto RegVar = std::make_unique<DbgVariable>(
                     cast<DILocalVariable>(Var.first), Var.second);
     if (VI.inStackSlot())
-      RegVar->initializeMMI(VI.Expr, VI.getStackSlot());
-    else {
-      MachineLocation MLoc(VI.getEntryValueRegister(), /*IsIndirect*/ true);
-      auto LocEntry = DbgValueLocEntry(MLoc);
-      RegVar->initializeDbgValue(DbgValueLoc(VI.Expr, LocEntry));
-    }
+      RegVar->emplace<Loc::MMI>(VI.Expr, VI.getStackSlot());
+    else
+      RegVar->emplace<Loc::EntryValue>(VI.getEntryValueRegister(), *VI.Expr);
     LLVM_DEBUG(dbgs() << "Created DbgVariable for " << VI.Var->getName()
                       << "\n");
-
-    if (DbgVariable *DbgVar = MFVars.lookup(Var)) {
-      if (DbgVar->getValueLoc())
-        LLVM_DEBUG(dbgs() << "Dropping repeated entry value debug info for "
-                             "variable "
-                          << VI.Var->getName() << "\n");
-      else
-        DbgVar->addMMIEntry(*RegVar);
-    } else if (InfoHolder.addScopeVariable(Scope, RegVar.get())) {
-      MFVars.insert({Var, RegVar.get()});
-      ConcreteEntities.push_back(std::move(RegVar));
-    }
+    InfoHolder.addScopeVariable(Scope, RegVar.get());
+    MFVars.insert({Var, RegVar.get()});
+    ConcreteEntities.push_back(std::move(RegVar));
   }
 }
 
@@ -1916,7 +1922,7 @@ void DwarfDebug::collectEntityInfo(DwarfCompileUnit &TheCU,
       const auto *End =
           SingleValueWithClobber ? HistoryMapEntries[1].getInstr() : nullptr;
       if (validThroughout(LScopes, MInsn, End, getInstOrdering())) {
-        RegVar->initializeDbgValue(MInsn);
+        RegVar->emplace<Loc::Single>(MInsn);
         continue;
       }
     }
@@ -1926,7 +1932,7 @@ void DwarfDebug::collectEntityInfo(DwarfCompileUnit &TheCU,
       continue;
 
     // Handle multiple DBG_VALUE instructions describing one variable.
-    DebugLocStream::ListBuilder List(DebugLocs, TheCU, *Asm, *RegVar, *MInsn);
+    DebugLocStream::ListBuilder List(DebugLocs, TheCU, *Asm, *RegVar);
 
     // Build the location list for this variable.
     SmallVector<DebugLocEntry, 8> Entries;
@@ -1936,7 +1942,7 @@ void DwarfDebug::collectEntityInfo(DwarfCompileUnit &TheCU,
     // that is valid throughout the variable's scope. If so, produce single
     // value location.
     if (isValidSingleLocation) {
-      RegVar->initializeDbgValue(Entries[0].getValues()[0]);
+      RegVar->emplace<Loc::Single>(Entries[0].getValues()[0]);
       continue;
     }
 
@@ -1981,19 +1987,18 @@ void DwarfDebug::collectEntityInfo(DwarfCompileUnit &TheCU,
     createConcreteEntity(TheCU, *Scope, Label, IL.second, Sym);
   }
 
-  // Collect info for variables/labels that were optimized out.
+  // Collect info for retained nodes.
   for (const DINode *DN : SP->getRetainedNodes()) {
-    if (!Processed.insert(InlinedEntity(DN, nullptr)).second)
-      continue;
-    LexicalScope *Scope = nullptr;
-    if (auto *DV = dyn_cast<DILocalVariable>(DN)) {
-      Scope = LScopes.findLexicalScope(DV->getScope());
-    } else if (auto *DL = dyn_cast<DILabel>(DN)) {
-      Scope = LScopes.findLexicalScope(DL->getScope());
+    const auto *LS = getRetainedNodeScope(DN);
+    if (isa<DILocalVariable>(DN) || isa<DILabel>(DN)) {
+      if (!Processed.insert(InlinedEntity(DN, nullptr)).second)
+        continue;
+      LexicalScope *LexS = LScopes.findLexicalScope(LS);
+      if (LexS)
+        createConcreteEntity(TheCU, *LexS, DN, nullptr);
+    } else {
+      LocalDeclsPerLS[LS].insert(DN);
     }
-
-    if (Scope)
-      createConcreteEntity(TheCU, *Scope, DN, nullptr);
   }
 }
 
@@ -2308,27 +2313,28 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
   }
 
 #ifndef NDEBUG
-  size_t NumAbstractScopes = LScopes.getAbstractScopesList().size();
+  size_t NumAbstractSubprograms = LScopes.getAbstractScopesList().size();
 #endif
-  // Construct abstract scopes.
   for (LexicalScope *AScope : LScopes.getAbstractScopesList()) {
     const auto *SP = cast<DISubprogram>(AScope->getScopeNode());
     for (const DINode *DN : SP->getRetainedNodes()) {
-      if (!Processed.insert(InlinedEntity(DN, nullptr)).second)
-        continue;
-
-      const MDNode *Scope = nullptr;
-      if (auto *DV = dyn_cast<DILocalVariable>(DN))
-        Scope = DV->getScope();
-      else if (auto *DL = dyn_cast<DILabel>(DN))
-        Scope = DL->getScope();
-      else
-        llvm_unreachable("Unexpected DI type!");
-
-      // Collect info for variables/labels that were optimized out.
-      ensureAbstractEntityIsCreated(TheCU, DN, Scope);
-      assert(LScopes.getAbstractScopesList().size() == NumAbstractScopes
-             && "ensureAbstractEntityIsCreated inserted abstract scopes");
+      const auto *LS = getRetainedNodeScope(DN);
+      // Ensure LexicalScope is created for the scope of this node.
+      auto *LexS = LScopes.getOrCreateAbstractScope(LS);
+      assert(LexS && "Expected the LexicalScope to be created.");
+      if (isa<DILocalVariable>(DN) || isa<DILabel>(DN)) {
+        // Collect info for variables/labels that were optimized out.
+        if (!Processed.insert(InlinedEntity(DN, nullptr)).second ||
+            TheCU.getExistingAbstractEntity(DN))
+          continue;
+        TheCU.createAbstractEntity(DN, LexS);
+      } else {
+        // Remember the node if this is a local declarations.
+        LocalDeclsPerLS[LS].insert(DN);
+      }
+      assert(
+          LScopes.getAbstractScopesList().size() == NumAbstractSubprograms &&
+          "getOrCreateAbstractScope() inserted an abstract subprogram scope");
     }
     constructAbstractSubprogramScopeDIE(TheCU, AScope);
   }
@@ -2349,6 +2355,7 @@ void DwarfDebug::endFunctionImpl(const MachineFunction *MF) {
   // can be used cross-function)
   InfoHolder.getScopeVariables().clear();
   InfoHolder.getScopeLabels().clear();
+  LocalDeclsPerLS.clear();
   PrevLabel = nullptr;
   CurFn = nullptr;
 }
@@ -2548,10 +2555,13 @@ void DwarfDebug::emitDebugPubSection(bool GnuStyle, StringRef Name,
   Asm->emitDwarfLengthOrOffset(TheU->getLength());
 
   // Emit the pubnames for this compilation unit.
-  for (const auto &GI : Globals) {
-    const char *Name = GI.getKeyData();
-    const DIE *Entity = GI.second;
-
+  SmallVector<std::pair<StringRef, const DIE *>, 0> Vec;
+  for (const auto &GI : Globals)
+    Vec.emplace_back(GI.first(), GI.second);
+  llvm::sort(Vec, [](auto &A, auto &B) {
+    return A.second->getOffset() < B.second->getOffset();
+  });
+  for (const auto &[Name, Entity] : Vec) {
     Asm->OutStreamer->AddComment("DIE offset");
     Asm->emitDwarfLengthOrOffset(Entity->getOffset());
 
@@ -2564,7 +2574,7 @@ void DwarfDebug::emitDebugPubSection(bool GnuStyle, StringRef Name,
     }
 
     Asm->OutStreamer->AddComment("External Name");
-    Asm->OutStreamer->emitBytes(StringRef(Name, GI.getKeyLength() + 1));
+    Asm->OutStreamer->emitBytes(StringRef(Name.data(), Name.size() + 1));
   }
 
   Asm->OutStreamer->AddComment("End Mark");
@@ -2607,11 +2617,10 @@ void DwarfDebug::emitDebugLocEntry(ByteStreamer &Streamer,
   for (const auto &Op : Expr) {
     assert(Op.getCode() != dwarf::DW_OP_const_type &&
            "3 operand ops not yet supported");
+    assert(!Op.getSubCode() && "SubOps not yet supported");
     Streamer.emitInt8(Op.getCode(), Comment != End ? *(Comment++) : "");
     Offset++;
-    for (unsigned I = 0; I < 2; ++I) {
-      if (Op.getDescription().Op[I] == Encoding::SizeNA)
-        continue;
+    for (unsigned I = 0; I < Op.getDescription().Op.size(); ++I) {
       if (Op.getDescription().Op[I] == Encoding::BaseTypeRef) {
         unsigned Length =
           Streamer.emitDIERef(*CU->ExprRefedBaseTypes[Op.getRawOperand(I)].Die);
@@ -2636,7 +2645,7 @@ void DwarfDebug::emitDebugLocValue(const AsmPrinter &AP, const DIBasicType *BT,
   DIExpressionCursor ExprCursor(DIExpr);
   DwarfExpr.addFragmentOffset(DIExpr);
 
-  // If the DIExpr is is an Entry Value, we want to follow the same code path
+  // If the DIExpr is an Entry Value, we want to follow the same code path
   // regardless of whether the DBG_VALUE is variadic or not.
   if (DIExpr && DIExpr->isEntryValue()) {
     // Entry values can only be a single register with no additional DIExpr,
@@ -3536,10 +3545,11 @@ template <typename DataT>
 void DwarfDebug::addAccelNameImpl(const DICompileUnit &CU,
                                   AccelTable<DataT> &AppleAccel, StringRef Name,
                                   const DIE &Die) {
-  if (getAccelTableKind() == AccelTableKind::None)
+  if (getAccelTableKind() == AccelTableKind::None || Name.empty())
     return;
 
   if (getAccelTableKind() != AccelTableKind::Apple &&
+      CU.getNameTableKind() != DICompileUnit::DebugNameTableKind::Apple &&
       CU.getNameTableKind() != DICompileUnit::DebugNameTableKind::Default)
     return;
 
@@ -3596,11 +3606,9 @@ dwarf::Form DwarfDebug::getDwarfSectionOffsetForm() const {
 }
 
 const MCSymbol *DwarfDebug::getSectionLabel(const MCSection *S) {
-  auto I = SectionLabels.find(S);
-  if (I == SectionLabels.end())
-    return nullptr;
-  return I->second;
+  return SectionLabels.lookup(S);
 }
+
 void DwarfDebug::insertSectionLabel(const MCSymbol *S) {
   if (SectionLabels.insert(std::make_pair(&S->getSection(), S)).second)
     if (useSplitDwarf() || getDwarfVersion() >= 5)

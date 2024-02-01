@@ -74,9 +74,10 @@ std::unique_ptr<Pass> mlir::tosa::createTosaToLinalg() {
   return std::make_unique<TosaToLinalg>();
 }
 
-void mlir::tosa::addTosaToLinalgPasses(OpPassManager &pm,
-                                       bool disableTosaDecompositions,
-                                       bool useMatmulForSingleBatch) {
+void mlir::tosa::addTosaToLinalgPasses(
+    OpPassManager &pm, bool disableTosaDecompositions,
+    bool useMatmulForSingleBatch,
+    tosa::ValidationOptions const &validationOptions) {
   // Optional decompositions are designed to benefit linalg.
   if (!disableTosaDecompositions)
     pm.addNestedPass<func::FuncOp>(tosa::createTosaOptionalDecompositions());
@@ -90,6 +91,7 @@ void mlir::tosa::addTosaToLinalgPasses(OpPassManager &pm,
   // TODO: Remove pass that operates on const tensor and enable optionality
   pm.addNestedPass<func::FuncOp>(tosa::createTosaLayerwiseConstantFoldPass());
   pm.addNestedPass<func::FuncOp>(tosa::createTosaMakeBroadcastablePass());
-  pm.addNestedPass<func::FuncOp>(tosa::createTosaValidationPass());
+  pm.addNestedPass<func::FuncOp>(
+      tosa::createTosaValidationPass(validationOptions));
   pm.addNestedPass<func::FuncOp>(tosa::createTosaToLinalg());
 }

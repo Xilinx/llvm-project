@@ -133,7 +133,8 @@ public:
   getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
                                StringRef Constraint, MVT VT) const override;
 
-  unsigned getInlineAsmMemConstraint(StringRef ConstraintCode) const override;
+  InlineAsm::ConstraintCode
+  getInlineAsmMemConstraint(StringRef ConstraintCode) const override;
 
   void LowerAsmOperandForConstraint(SDValue Op, std::string &Constraint,
                                     std::vector<SDValue> &Ops,
@@ -194,7 +195,8 @@ protected:
   const AVRSubtarget &Subtarget;
 
 private:
-  MachineBasicBlock *insertShift(MachineInstr &MI, MachineBasicBlock *BB) const;
+  MachineBasicBlock *insertShift(MachineInstr &MI, MachineBasicBlock *BB,
+                                 bool Tiny) const;
   MachineBasicBlock *insertWideShift(MachineInstr &MI,
                                      MachineBasicBlock *BB) const;
   MachineBasicBlock *insertMul(MachineInstr &MI, MachineBasicBlock *BB) const;

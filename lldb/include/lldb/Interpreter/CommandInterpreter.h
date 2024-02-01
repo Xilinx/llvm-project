@@ -447,7 +447,7 @@ public:
 
   Debugger &GetDebugger() { return m_debugger; }
 
-  ExecutionContext GetExecutionContext() const;
+  ExecutionContext GetExecutionContext();
 
   lldb::PlatformSP GetPlatform(bool prefer_target_platform);
 
@@ -652,15 +652,16 @@ protected:
   void IOHandlerInputComplete(IOHandler &io_handler,
                               std::string &line) override;
 
-  ConstString IOHandlerGetControlSequence(char ch) override {
+  llvm::StringRef IOHandlerGetControlSequence(char ch) override {
+    static constexpr llvm::StringLiteral control_sequence("quit\n");
     if (ch == 'd')
-      return ConstString("quit\n");
-    return ConstString();
+      return control_sequence;
+    return {};
   }
 
   void GetProcessOutput();
 
-  bool DidProcessStopAbnormally() const;
+  bool DidProcessStopAbnormally();
 
   void SetSynchronous(bool value);
 

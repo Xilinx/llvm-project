@@ -5,11 +5,11 @@ func.func @test_cast(%arg0: tensor<1xf32>) -> tensor<1xf32> {
   // CHECK: arith.constant -2.000000e+00
   // CHECK: arith.constant 1.000000e+00
   // CHECK: math.roundeven
-  // CHECK: arith.minf
-  // CHECK: arith.maxf
+  // CHECK: arith.minimumf
+  // CHECK: arith.maximumf
   // CHECK: arith.fptosi
   %1 = "tosa.cast"(%arg0) : (tensor<1xf32>) -> tensor<1xi2>
-  
+
   // CHECK: linalg.generic
   // CHECK: arith.sitofp
   %2 = "tosa.cast"(%1) : (tensor<1xi2>) -> tensor<1xf32>

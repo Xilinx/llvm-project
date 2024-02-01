@@ -182,9 +182,10 @@ bool getObjectSize(const Value *Ptr, uint64_t &Size, const DataLayout &DL,
 /// argument of the call to objectsize.
 Value *lowerObjectSizeCall(IntrinsicInst *ObjectSize, const DataLayout &DL,
                            const TargetLibraryInfo *TLI, bool MustSucceed);
-Value *lowerObjectSizeCall(IntrinsicInst *ObjectSize, const DataLayout &DL,
-                           const TargetLibraryInfo *TLI, AAResults *AA,
-                           bool MustSucceed);
+Value *lowerObjectSizeCall(
+    IntrinsicInst *ObjectSize, const DataLayout &DL,
+    const TargetLibraryInfo *TLI, AAResults *AA, bool MustSucceed,
+    SmallVectorImpl<Instruction *> *InsertedInstructions = nullptr);
 
 using SizeOffsetType = std::pair<APInt, APInt>;
 
@@ -197,7 +198,7 @@ class ObjectSizeOffsetVisitor
   ObjectSizeOpts Options;
   unsigned IntTyBits;
   APInt Zero;
-  SmallPtrSet<Instruction *, 8> SeenInsts;
+  SmallDenseMap<Instruction *, SizeOffsetType, 8> SeenInsts;
 
   APInt align(APInt Size, MaybeAlign Align);
 

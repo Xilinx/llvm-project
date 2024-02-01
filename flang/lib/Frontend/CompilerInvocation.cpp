@@ -12,6 +12,7 @@
 
 #include "flang/Frontend/CompilerInvocation.h"
 #include "flang/Common/Fortran-features.h"
+#include "flang/Common/OpenMP-features.h"
 #include "flang/Common/Version.h"
 #include "flang/Frontend/CodeGenOptions.h"
 #include "flang/Frontend/PreprocessorOptions.h"
@@ -97,12 +98,12 @@ static bool parseShowColorsArgs(const llvm::opt::ArgList &args,
 /// Extracts the optimisation level from \a args.
 static unsigned getOptimizationLevel(llvm::opt::ArgList &args,
                                      clang::DiagnosticsEngine &diags) {
-  unsigned defaultOpt = llvm::CodeGenOpt::None;
+  unsigned defaultOpt = 0;
 
   if (llvm::opt::Arg *a =
           args.getLastArg(clang::driver::options::OPT_O_Group)) {
     if (a->getOption().matches(clang::driver::options::OPT_O0))
-      return llvm::CodeGenOpt::None;
+      return 0;
 
     assert(a->getOption().matches(clang::driver::options::OPT_O));
 
@@ -152,6 +153,50 @@ static bool parseDebugArgs(Fortran::frontend::CodeGenOptions &opts,
   return true;
 }
 
+// Generate an OptRemark object containing info on if the -Rgroup
+// specified is enabled or not.
+static CodeGenOptions::OptRemark
+parseOptimizationRemark(clang::DiagnosticsEngine &diags,
+                        llvm::opt::ArgList &args, llvm::opt::OptSpecifier optEq,
+                        llvm::StringRef remarkOptName) {
+  assert((remarkOptName == "pass" || remarkOptName == "pass-missed" ||
+          remarkOptName == "pass-analysis") &&
+         "Unsupported remark option name provided.");
+  CodeGenOptions::OptRemark result;
+
+  for (llvm::opt::Arg *a : args) {
+    if (a->getOption().matches(clang::driver::options::OPT_R_Joined)) {
+      llvm::StringRef value = a->getValue();
+
+      if (value == remarkOptName) {
+        result.Kind = CodeGenOptions::RemarkKind::RK_Enabled;
+        // Enable everything
+        result.Pattern = ".*";
+        result.Regex = std::make_shared<llvm::Regex>(result.Pattern);
+
+      } else if (value.split('-') ==
+                 std::make_pair(llvm::StringRef("no"), remarkOptName)) {
+        result.Kind = CodeGenOptions::RemarkKind::RK_Disabled;
+        // Disable everything
+        result.Pattern = "";
+        result.Regex = nullptr;
+      }
+    } else if (a->getOption().matches(optEq)) {
+      result.Kind = CodeGenOptions::RemarkKind::RK_WithPattern;
+      result.Pattern = a->getValue();
+      result.Regex = std::make_shared<llvm::Regex>(result.Pattern);
+      std::string regexError;
+
+      if (!result.Regex->isValid(regexError)) {
+        diags.Report(clang::diag::err_drv_optimization_remark_pattern)
+            << regexError << a->getAsString(args);
+        return CodeGenOptions::OptRemark();
+      }
+    }
+  }
+  return result;
+}
+
 static void parseCodeGenArgs(Fortran::frontend::CodeGenOptions &opts,
                              llvm::opt::ArgList &args,
                              clang::DiagnosticsEngine &diags) {
@@ -162,13 +207,12 @@ static void parseCodeGenArgs(Fortran::frontend::CodeGenOptions &opts,
     opts.DebugPassManager = 1;
 
   if (args.hasFlag(clang::driver::options::OPT_fstack_arrays,
-                   clang::driver::options::OPT_fno_stack_arrays, false)) {
+                   clang::driver::options::OPT_fno_stack_arrays, false))
     opts.StackArrays = 1;
-  }
+
   if (args.hasFlag(clang::driver::options::OPT_floop_versioning,
-                   clang::driver::options::OPT_fno_loop_versioning, false)) {
+                   clang::driver::options::OPT_fno_loop_versioning, false))
     opts.LoopVersioning = 1;
-  }
 
   for (auto *a : args.filtered(clang::driver::options::OPT_fpass_plugin_EQ))
     opts.LLVMPassPlugins.push_back(a->getValue());
@@ -187,6 +231,55 @@ static void parseCodeGenArgs(Fortran::frontend::CodeGenOptions &opts,
       opts.PrepareForFullLTO = true;
     else
       opts.PrepareForThinLTO = true;
+  }
+
+  // -f[no-]save-optimization-record[=<format>]
+  if (const llvm::opt::Arg *a =
+          args.getLastArg(clang::driver::options::OPT_opt_record_file))
+    opts.OptRecordFile = a->getValue();
+
+  // Optimization file format. Defaults to yaml
+  if (const llvm::opt::Arg *a =
+          args.getLastArg(clang::driver::options::OPT_opt_record_format))
+    opts.OptRecordFormat = a->getValue();
+
+  // Specifies, using a regex, which successful optimization passes(middle and
+  // backend), to include in the final optimization record file generated. If
+  // not provided -fsave-optimization-record will include all passes.
+  if (const llvm::opt::Arg *a =
+          args.getLastArg(clang::driver::options::OPT_opt_record_passes))
+    opts.OptRecordPasses = a->getValue();
+
+  // Create OptRemark that allows printing of all successful optimization
+  // passes applied.
+  opts.OptimizationRemark =
+      parseOptimizationRemark(diags, args, clang::driver::options::OPT_Rpass_EQ,
+                              /*remarkOptName=*/"pass");
+
+  // Create OptRemark that allows all missed optimization passes to be printed.
+  opts.OptimizationRemarkMissed = parseOptimizationRemark(
+      diags, args, clang::driver::options::OPT_Rpass_missed_EQ,
+      /*remarkOptName=*/"pass-missed");
+
+  // Create OptRemark that allows all optimization decisions made by LLVM
+  // to be printed.
+  opts.OptimizationRemarkAnalysis = parseOptimizationRemark(
+      diags, args, clang::driver::options::OPT_Rpass_analysis_EQ,
+      /*remarkOptName=*/"pass-analysis");
+
+  if (opts.getDebugInfo() == llvm::codegenoptions::NoDebugInfo) {
+    // If the user requested a flag that requires source locations available in
+    // the backend, make sure that the backend tracks source location
+    // information.
+    bool needLocTracking = !opts.OptRecordFile.empty() ||
+                           !opts.OptRecordPasses.empty() ||
+                           !opts.OptRecordFormat.empty() ||
+                           opts.OptimizationRemark.hasValidPattern() ||
+                           opts.OptimizationRemarkMissed.hasValidPattern() ||
+                           opts.OptimizationRemarkAnalysis.hasValidPattern();
+
+    if (needLocTracking)
+      opts.setDebugInfo(llvm::codegenoptions::LocTrackingOnly);
   }
 
   if (auto *a = args.getLastArg(clang::driver::options::OPT_save_temps_EQ))
@@ -685,6 +778,9 @@ static bool parseDiagArgs(CompilerInvocation &res, llvm::opt::ArgList &args,
   res.getFrontendOpts().showColors =
       parseShowColorsArgs(args, /*defaultDiagColor=*/false);
 
+  // Honor color diagnostics.
+  res.getDiagnosticOpts().ShowColors = res.getFrontendOpts().showColors;
+
   return diags.getNumErrors() == numErrorsBefore;
 }
 
@@ -703,6 +799,7 @@ static bool parseDialectArgs(CompilerInvocation &res, llvm::opt::ArgList &args,
     res.getDefaultKinds().set_defaultIntegerKind(8);
     res.getDefaultKinds().set_subscriptIntegerKind(8);
     res.getDefaultKinds().set_sizeIntegerKind(8);
+    res.getDefaultKinds().set_defaultLogicalKind(8);
   }
   if (args.hasArg(clang::driver::options::OPT_fdefault_double_8)) {
     if (!args.hasArg(clang::driver::options::OPT_fdefault_real_8)) {
@@ -734,8 +831,8 @@ static bool parseDialectArgs(CompilerInvocation &res, llvm::opt::ArgList &args,
             res.getLangOpts().OpenMPVersion, diags)) {
       res.getLangOpts().OpenMPVersion = Version;
     }
-    if (args.hasArg(clang::driver::options::OPT_fopenmp_is_device)) {
-      res.getLangOpts().OpenMPIsDevice = 1;
+    if (args.hasArg(clang::driver::options::OPT_fopenmp_is_target_device)) {
+      res.getLangOpts().OpenMPIsTargetDevice = 1;
 
       // Get OpenMP host file path if any and report if a non existent file is
       // found
@@ -779,6 +876,23 @@ static bool parseDialectArgs(CompilerInvocation &res, llvm::opt::ArgList &args,
             args.hasArg(clang::driver::options::OPT_fopenmp_target_debug))
           res.getLangOpts().OpenMPTargetDebug = 1;
       }
+    }
+
+    switch (llvm::Triple(res.getTargetOpts().triple).getArch()) {
+    case llvm::Triple::nvptx:
+    case llvm::Triple::nvptx64:
+    case llvm::Triple::amdgcn:
+      if (!res.getLangOpts().OpenMPIsTargetDevice) {
+        const unsigned diagID = diags.getCustomDiagID(
+            clang::DiagnosticsEngine::Error,
+            "OpenMP AMDGPU/NVPTX is only prepared to deal with device code.");
+        diags.Report(diagID);
+      }
+      res.getLangOpts().OpenMPIsGPU = 1;
+      break;
+    default:
+      res.getLangOpts().OpenMPIsGPU = 0;
+      break;
     }
   }
 
@@ -889,10 +1003,10 @@ bool CompilerInvocation::createFromArgs(
 
   // Parse the arguments
   const llvm::opt::OptTable &opts = clang::driver::getDriverOptTable();
-  const unsigned includedFlagsBitmask = clang::driver::options::FC1Option;
+  llvm::opt::Visibility visibilityMask(clang::driver::options::FC1Option);
   unsigned missingArgIndex, missingArgCount;
   llvm::opt::InputArgList args = opts.ParseArgs(
-      commandLineArgs, missingArgIndex, missingArgCount, includedFlagsBitmask);
+      commandLineArgs, missingArgIndex, missingArgCount, visibilityMask);
 
   // Check for missing argument error.
   if (missingArgCount) {
@@ -905,7 +1019,7 @@ bool CompilerInvocation::createFromArgs(
   for (const auto *a : args.filtered(clang::driver::options::OPT_UNKNOWN)) {
     auto argString = a->getAsString(args);
     std::string nearest;
-    if (opts.findNearest(argString, nearest, includedFlagsBitmask) > 1)
+    if (opts.findNearest(argString, nearest, visibilityMask) > 1)
       diags.Report(clang::diag::err_drv_unknown_argument) << argString;
     else
       diags.Report(clang::diag::err_drv_unknown_argument_with_suggestion)
@@ -919,6 +1033,31 @@ bool CompilerInvocation::createFromArgs(
     res.loweringOpts.setLowerToHighLevelFIR(true);
   }
 
+  if (args.hasArg(clang::driver::options::OPT_flang_experimental_polymorphism)) {
+    res.loweringOpts.setPolymorphicTypeImpl(true);
+  }
+
+  // -fno-ppc-native-vector-element-order
+  if (args.hasArg(clang::driver::options::OPT_fno_ppc_native_vec_elem_order)) {
+    res.loweringOpts.setNoPPCNativeVecElemOrder(true);
+  }
+
+  // Preserve all the remark options requested, i.e. -Rpass, -Rpass-missed or
+  // -Rpass-analysis. This will be used later when processing and outputting the
+  // remarks generated by LLVM in ExecuteCompilerInvocation.cpp.
+  for (auto *a : args.filtered(clang::driver::options::OPT_R_Group)) {
+    if (a->getOption().matches(clang::driver::options::OPT_R_value_Group))
+      // This is -Rfoo=, where foo is the name of the diagnostic
+      // group. Add only the remark option name to the diagnostics. e.g. for
+      // -Rpass= we will add the string "pass".
+      res.getDiagnosticOpts().Remarks.push_back(
+          std::string(a->getOption().getName().drop_front(1).rtrim("=-")));
+    else
+      // If no regex was provided, add the provided value, e.g. for -Rpass add
+      // the string "pass".
+      res.getDiagnosticOpts().Remarks.push_back(a->getValue());
+  }
+
   success &= parseFrontendArgs(res.getFrontendOpts(), args, diags);
   parseTargetArgs(res.getTargetOpts(), args);
   parsePreprocessorArgs(res.getPreprocessorOpts(), args);
@@ -927,9 +1066,14 @@ bool CompilerInvocation::createFromArgs(
   success &= parseSemaArgs(res, args, diags);
   success &= parseDialectArgs(res, args, diags);
   success &= parseDiagArgs(res, args, diags);
+
+  // Collect LLVM (-mllvm) and MLIR (-mmlir) options.
+  // NOTE: Try to avoid adding any options directly to `llvmArgs` or
+  // `mlirArgs`. Instead, you can use
+  //    * `-mllvm <your-llvm-option>`, or
+  //    * `-mmlir <your-mlir-option>`.
   res.frontendOpts.llvmArgs =
       args.getAllArgValues(clang::driver::options::OPT_mllvm);
-
   res.frontendOpts.mlirArgs =
       args.getAllArgValues(clang::driver::options::OPT_mmlir);
 
@@ -1005,7 +1149,6 @@ void CompilerInvocation::setDefaultFortranOpts() {
 void CompilerInvocation::setDefaultPredefinitions() {
   auto &fortranOptions = getFortranOpts();
   const auto &frontendOptions = getFrontendOpts();
-
   // Populate the macro list with version numbers and other predefinitions.
   fortranOptions.predefinitions.emplace_back("__flang__", "1");
   fortranOptions.predefinitions.emplace_back("__flang_major__",
@@ -1018,11 +1161,12 @@ void CompilerInvocation::setDefaultPredefinitions() {
   // Add predefinitions based on extensions enabled
   if (frontendOptions.features.IsEnabled(
           Fortran::common::LanguageFeature::OpenACC)) {
-    fortranOptions.predefinitions.emplace_back("_OPENACC", "202011");
+    fortranOptions.predefinitions.emplace_back("_OPENACC", "202211");
   }
   if (frontendOptions.features.IsEnabled(
           Fortran::common::LanguageFeature::OpenMP)) {
-    fortranOptions.predefinitions.emplace_back("_OPENMP", "201511");
+    Fortran::common::setOpenMPMacro(getLangOpts().OpenMPVersion,
+                                    fortranOptions.predefinitions);
   }
   llvm::Triple targetTriple{llvm::Triple(this->targetOpts.triple)};
   if (targetTriple.getArch() == llvm::Triple::ArchType::x86_64) {
@@ -1093,7 +1237,8 @@ void CompilerInvocation::setSemanticsOpts(
       .set_searchDirectories(fortranOptions.searchDirectories)
       .set_intrinsicModuleDirectories(fortranOptions.intrinsicModuleDirectories)
       .set_warningsAreErrors(getWarnAsErr())
-      .set_moduleFileSuffix(getModuleFileSuffix());
+      .set_moduleFileSuffix(getModuleFileSuffix())
+      .set_underscoring(getCodeGenOpts().Underscoring);
 
   llvm::Triple targetTriple{llvm::Triple(this->targetOpts.triple)};
   // FIXME: Handle real(3) ?
@@ -1106,6 +1251,9 @@ void CompilerInvocation::setSemanticsOpts(
   semanticsContext->targetCharacteristics()
       .set_compilerOptionsString(allCompilerInvocOpts)
       .set_compilerVersionString(version);
+
+  if (targetTriple.isPPC())
+    semanticsContext->targetCharacteristics().set_isPPC(true);
 }
 
 /// Set \p loweringOptions controlling lowering behavior based
@@ -1115,6 +1263,7 @@ void CompilerInvocation::setLoweringOptions() {
 
   // Lower TRANSPOSE as a runtime call under -O0.
   loweringOpts.setOptimizeTranspose(codegenOpts.OptimizationLevel > 0);
+  loweringOpts.setUnderscoring(codegenOpts.Underscoring);
 
   const LangOptions &langOptions = getLangOpts();
   Fortran::common::MathOptionsBase &mathOpts = loweringOpts.getMathOptions();

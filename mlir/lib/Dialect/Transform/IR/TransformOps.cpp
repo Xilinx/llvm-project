@@ -1,4 +1,4 @@
-//===- TransformDialect.cpp - Transform dialect operations ----------------===//
+//===- TransformOps.cpp - Transform dialect operations --------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -7,16 +7,28 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/Transform/IR/TransformOps.h"
+
+#include "mlir/Conversion/ConvertToLLVM/ToLLVMInterface.h"
+#include "mlir/Conversion/LLVMCommon/ConversionTarget.h"
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
 #include "mlir/Dialect/Transform/IR/MatchInterfaces.h"
 #include "mlir/Dialect/Transform/IR/TransformAttrs.h"
 #include "mlir/Dialect/Transform/IR/TransformDialect.h"
 #include "mlir/Dialect/Transform/IR/TransformInterfaces.h"
 #include "mlir/Dialect/Transform/IR/TransformTypes.h"
 #include "mlir/IR/Diagnostics.h"
-#include "mlir/IR/FunctionImplementation.h"
+#include "mlir/IR/Dominance.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Verifier.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
+#include "mlir/Interfaces/FunctionImplementation.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
+#include "mlir/Pass/PassRegistry.h"
+#include "mlir/Transforms/CSE.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -31,8 +43,6 @@
 #define DEBUG_MATCHER(x) DEBUG_WITH_TYPE(DEBUG_TYPE_MATCHER, x)
 
 using namespace mlir;
-
-MLIR_DEFINE_EXPLICIT_TYPE_ID(mlir::transform::PatternRegistry)
 
 static ParseResult parseSequenceOpOperands(
     OpAsmParser &parser, std::optional<OpAsmParser::UnresolvedOperand> &root,
@@ -49,222 +59,52 @@ static ParseResult parseForeachMatchSymbols(OpAsmParser &parser,
                                             ArrayAttr &matchers,
                                             ArrayAttr &actions);
 
+/// Helper function to check if the given transform op is contained in (or
+/// equal to) the given payload target op. In that case, an error is returned.
+/// Transforming transform IR that is currently executing is generally unsafe.
+static DiagnosedSilenceableFailure
+ensurePayloadIsSeparateFromTransform(transform::TransformOpInterface transform,
+                                     Operation *payload) {
+  Operation *transformAncestor = transform.getOperation();
+  while (transformAncestor) {
+    if (transformAncestor == payload) {
+      DiagnosedDefiniteFailure diag =
+          transform.emitDefiniteFailure()
+          << "cannot apply transform to itself (or one of its ancestors)";
+      diag.attachNote(payload->getLoc()) << "target payload op";
+      return diag;
+    }
+    transformAncestor = transformAncestor->getParentOp();
+  }
+  return DiagnosedSilenceableFailure::success();
+}
+
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Transform/IR/TransformOps.cpp.inc"
-
-//===----------------------------------------------------------------------===//
-// TrackingListener
-//===----------------------------------------------------------------------===//
-
-Operation *transform::TrackingListener::getCommonDefiningOp(ValueRange values) {
-  Operation *defOp = nullptr;
-  for (Value v : values) {
-    // Skip empty values.
-    if (!v)
-      continue;
-    if (!defOp) {
-      defOp = v.getDefiningOp();
-      continue;
-    }
-    if (defOp != v.getDefiningOp())
-      return nullptr;
-  }
-  return defOp;
-}
-
-Operation *
-transform::TrackingListener::findReplacementOp(Operation *op,
-                                               ValueRange newValues) const {
-  assert(op->getNumResults() == newValues.size() &&
-         "invalid number of replacement values");
-  SmallVector<Value> values(newValues.begin(), newValues.end());
-
-  do {
-    // If the replacement values belong to different ops, drop the mapping.
-    Operation *defOp = getCommonDefiningOp(values);
-    if (!defOp)
-      return nullptr;
-
-    // If the defining op has the same type, we take it as a replacement.
-    if (op->getName() == defOp->getName())
-      return defOp;
-
-    values.clear();
-
-    // Skip through ops that implement FindPayloadReplacementOpInterface.
-    if (auto findReplacementOpInterface =
-            dyn_cast<FindPayloadReplacementOpInterface>(defOp)) {
-      values.assign(findReplacementOpInterface.getNextOperands());
-      continue;
-    }
-
-    // Skip through ops that implement CastOpInterface.
-    if (isa<CastOpInterface>(defOp)) {
-      values.assign(defOp->getOperands().begin(), defOp->getOperands().end());
-      continue;
-    }
-  } while (!values.empty());
-
-  return nullptr;
-}
-
-LogicalResult transform::TrackingListener::notifyMatchFailure(
-    Location loc, function_ref<void(Diagnostic &)> reasonCallback) {
-  LLVM_DEBUG({
-    Diagnostic diag(loc, DiagnosticSeverity::Remark);
-    reasonCallback(diag);
-    DBGS() << "Match Failure : " << diag.str() << "\n";
-  });
-  return failure();
-}
-
-void transform::TrackingListener::notifyOperationRemoved(Operation *op) {
-  // TODO: Walk can be removed when D144193 has landed.
-  op->walk([&](Operation *op) {
-    // Remove mappings for result values.
-    for (OpResult value : op->getResults())
-      (void)replacePayloadValue(value, nullptr);
-    // Remove mapping for op.
-    (void)replacePayloadOp(op, nullptr);
-  });
-}
-
-/// Return true if `a` happens before `b`, i.e., `a` or one of its ancestors
-/// properly dominates `b` and `b` is not inside `a`.
-static bool happensBefore(Operation *a, Operation *b) {
-  do {
-    if (a->isProperAncestor(b))
-      return false;
-    if (Operation *bAncestor = a->getBlock()->findAncestorOpInBlock(*b)) {
-      return a->isBeforeInBlock(bAncestor);
-    }
-  } while ((a = a->getParentOp()));
-  return false;
-}
-
-void transform::TrackingListener::notifyOperationReplaced(
-    Operation *op, ValueRange newValues) {
-  assert(op->getNumResults() == newValues.size() &&
-         "invalid number of replacement values");
-
-  // Replace value handles.
-  for (auto [oldValue, newValue] : llvm::zip(op->getResults(), newValues))
-    (void)replacePayloadValue(oldValue, newValue);
-
-  // Replace op handle.
-  SmallVector<Value> opHandles;
-  if (failed(getTransformState().getHandlesForPayloadOp(op, opHandles))) {
-    // Op is not tracked.
-    return;
-  }
-  auto hasAliveUser = [&]() {
-    for (Value v : opHandles)
-      for (Operation *user : v.getUsers())
-        if (!happensBefore(user, transformOp))
-          return true;
-    return false;
-  };
-  if (!hasAliveUser()) {
-    // The op is tracked but the corresponding handles are dead.
-    (void)replacePayloadOp(op, nullptr);
-    return;
-  }
-
-  Operation *replacement = findReplacementOp(op, newValues);
-  // If the op is tracked but no replacement op was found, send a
-  // notification.
-  if (!replacement)
-    notifyPayloadReplacementNotFound(op, newValues);
-  (void)replacePayloadOp(op, replacement);
-}
-
-transform::ErrorCheckingTrackingListener::~ErrorCheckingTrackingListener() {
-  // The state of the ErrorCheckingTrackingListener must be checked and reset
-  // if there was an error. This is to prevent errors from accidentally being
-  // missed.
-  assert(status.succeeded() && "listener state was not checked");
-}
-
-DiagnosedSilenceableFailure
-transform::ErrorCheckingTrackingListener::checkAndResetError() {
-  DiagnosedSilenceableFailure s = std::move(status);
-  status = DiagnosedSilenceableFailure::success();
-  errorCounter = 0;
-  return s;
-}
-
-bool transform::ErrorCheckingTrackingListener::failed() const {
-  return !status.succeeded();
-}
-
-void transform::ErrorCheckingTrackingListener::notifyPayloadReplacementNotFound(
-    Operation *op, ValueRange values) {
-  if (status.succeeded()) {
-    status = emitSilenceableFailure(
-        getTransformOp(), "tracking listener failed to find replacement op");
-  }
-
-  status.attachNote(op->getLoc()) << "[" << errorCounter << "] replaced op";
-  for (auto &&[index, value] : llvm::enumerate(values))
-    status.attachNote(value.getLoc())
-        << "[" << errorCounter << "] replacement value " << index;
-
-  ++errorCounter;
-}
-
-//===----------------------------------------------------------------------===//
-// PatternRegistry
-//===----------------------------------------------------------------------===//
-
-void transform::PatternRegistry::registerPatterns(StringRef identifier,
-                                                  PopulatePatternsFn &&fn) {
-  StringAttr attr = builder.getStringAttr(identifier);
-  assert(!patterns.contains(attr) && "patterns identifier is already in use");
-  patterns.try_emplace(attr, std::move(fn));
-}
-
-void transform::PatternRegistry::registerPatterns(
-    StringRef identifier, PopulatePatternsWithBenefitFn &&fn) {
-  StringAttr attr = builder.getStringAttr(identifier);
-  assert(!patterns.contains(attr) && "patterns identifier is already in use");
-  patterns.try_emplace(attr, [f = std::move(fn)](RewritePatternSet &patternSet) {
-    f(patternSet, /*benefit=*/1);
-  });
-}
-
-void transform::PatternRegistry::populatePatterns(
-    StringAttr identifier, RewritePatternSet &patternSet) const {
-  auto it = patterns.find(identifier);
-  assert(it != patterns.end() && "patterns not registered in registry");
-  it->second(patternSet);
-}
-
-bool transform::PatternRegistry::hasPatterns(StringAttr identifier) const {
-  return patterns.contains(identifier);
-}
 
 //===----------------------------------------------------------------------===//
 // AlternativesOp
 //===----------------------------------------------------------------------===//
 
-OperandRange transform::AlternativesOp::getSuccessorEntryOperands(
-    std::optional<unsigned> index) {
-  if (index && getOperation()->getNumOperands() == 1)
+OperandRange
+transform::AlternativesOp::getEntrySuccessorOperands(RegionBranchPoint point) {
+  if (!point.isParent() && getOperation()->getNumOperands() == 1)
     return getOperation()->getOperands();
   return OperandRange(getOperation()->operand_end(),
                       getOperation()->operand_end());
 }
 
 void transform::AlternativesOp::getSuccessorRegions(
-    std::optional<unsigned> index, ArrayRef<Attribute> operands,
-    SmallVectorImpl<RegionSuccessor> &regions) {
+    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions) {
   for (Region &alternative : llvm::drop_begin(
-           getAlternatives(), index.has_value() ? *index + 1 : 0)) {
+           getAlternatives(),
+           point.isParent() ? 0
+                            : point.getRegionOrNull()->getRegionNumber() + 1)) {
     regions.emplace_back(&alternative, !getOperands().empty()
                                            ? alternative.getArguments()
                                            : Block::BlockArgListType());
   }
-  if (index.has_value())
+  if (!point.isParent())
     regions.emplace_back(getOperation()->getResults());
 }
 
@@ -285,7 +125,8 @@ static void forwardEmptyOperands(Block *block, transform::TransformState &state,
 }
 
 DiagnosedSilenceableFailure
-transform::AlternativesOp::apply(transform::TransformResults &results,
+transform::AlternativesOp::apply(transform::TransformRewriter &rewriter,
+                                 transform::TransformResults &results,
                                  transform::TransformState &state) {
   SmallVector<Operation *> originals;
   if (Value scopeHandle = getScope())
@@ -392,7 +233,8 @@ LogicalResult transform::AlternativesOp::verify() {
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure
-transform::AnnotateOp::apply(transform::TransformResults &results,
+transform::AnnotateOp::apply(transform::TransformRewriter &rewriter,
+                             transform::TransformResults &results,
                              transform::TransformState &state) {
   SmallVector<Operation *> targets =
       llvm::to_vector(state.getPayloadOps(getTarget()));
@@ -425,66 +267,187 @@ void transform::AnnotateOp::getEffects(
 }
 
 //===----------------------------------------------------------------------===//
-// ApplyPatternsOp
+// ApplyCommonSubexpressionEliminationOp
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure
-transform::ApplyPatternsOp::applyToOne(Operation *target,
-                                       ApplyToEachResultList &results,
-                                       transform::TransformState &state) {
-  // Gather all specified patterns.
-  MLIRContext *ctx = target->getContext();
-  RewritePatternSet patterns(ctx);
-  const auto &registry = getContext()
-                             ->getLoadedDialect<transform::TransformDialect>()
-                             ->getExtraData<transform::PatternRegistry>();
-  for (Attribute attr : getPatterns())
-    registry.populatePatterns(attr.cast<StringAttr>(), patterns);
+transform::ApplyCommonSubexpressionEliminationOp::applyToOne(
+    transform::TransformRewriter &rewriter, Operation *target,
+    ApplyToEachResultList &results, transform::TransformState &state) {
+  // Make sure that this transform is not applied to itself. Modifying the
+  // transform IR while it is being interpreted is generally dangerous.
+  DiagnosedSilenceableFailure payloadCheck =
+      ensurePayloadIsSeparateFromTransform(*this, target);
+  if (!payloadCheck.succeeded())
+    return payloadCheck;
 
-  // Configure the GreedyPatternRewriteDriver.
-  ErrorCheckingTrackingListener listener(state, *this);
-  GreedyRewriteConfig config;
-  config.listener = &listener;
+  DominanceInfo domInfo;
+  mlir::eliminateCommonSubExpressions(rewriter, domInfo, target);
+  return DiagnosedSilenceableFailure::success();
+}
 
-  // Manually gather list of ops because the other GreedyPatternRewriteDriver
-  // overloads only accepts ops that are isolated from above. This way, patterns
-  // can be applied to ops that are not isolated from above.
-  SmallVector<Operation *> ops;
-  target->walk([&](Operation *nestedOp) {
-    if (target != nestedOp)
-      ops.push_back(nestedOp);
+void transform::ApplyCommonSubexpressionEliminationOp::getEffects(
+    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  transform::onlyReadsHandle(getTarget(), effects);
+  transform::modifiesPayload(effects);
+}
+
+//===----------------------------------------------------------------------===//
+// ApplyDeadCodeEliminationOp
+//===----------------------------------------------------------------------===//
+
+DiagnosedSilenceableFailure transform::ApplyDeadCodeEliminationOp::applyToOne(
+    transform::TransformRewriter &rewriter, Operation *target,
+    ApplyToEachResultList &results, transform::TransformState &state) {
+  // Make sure that this transform is not applied to itself. Modifying the
+  // transform IR while it is being interpreted is generally dangerous.
+  DiagnosedSilenceableFailure payloadCheck =
+      ensurePayloadIsSeparateFromTransform(*this, target);
+  if (!payloadCheck.succeeded())
+    return payloadCheck;
+
+  // Maintain a worklist of potentially dead ops.
+  SetVector<Operation *> worklist;
+
+  // Helper function that adds all defining ops of used values (operands and
+  // operands of nested ops).
+  auto addDefiningOpsToWorklist = [&](Operation *op) {
+    op->walk([&](Operation *op) {
+      for (Value v : op->getOperands())
+        if (Operation *defOp = v.getDefiningOp())
+          if (target->isProperAncestor(defOp))
+            worklist.insert(defOp);
+    });
+  };
+
+  // Helper function that erases an op.
+  auto eraseOp = [&](Operation *op) {
+    // Remove op and nested ops from the worklist.
+    op->walk([&](Operation *op) {
+      auto it = llvm::find(worklist, op);
+      if (it != worklist.end())
+        worklist.erase(it);
+    });
+    rewriter.eraseOp(op);
+  };
+
+  // Initial walk over the IR.
+  target->walk<WalkOrder::PostOrder>([&](Operation *op) {
+    if (op != target && isOpTriviallyDead(op)) {
+      addDefiningOpsToWorklist(op);
+      eraseOp(op);
+    }
   });
-  LogicalResult result =
-      applyOpPatternsAndFold(ops, std::move(patterns), config);
-  // A failure typically indicates that the pattern application did not
-  // converge.
-  if (failed(result)) {
-    return emitSilenceableFailure(target)
-           << "greedy pattern application failed";
-  }
 
-  // Check listener state for tracking errors.
-  if (listener.failed()) {
-    DiagnosedSilenceableFailure status = listener.checkAndResetError();
-    if (getFailOnPayloadReplacementNotFound())
-      return status;
-    (void)status.silence();
+  // Erase all ops that have become dead.
+  while (!worklist.empty()) {
+    Operation *op = worklist.pop_back_val();
+    if (!isOpTriviallyDead(op))
+      continue;
+    addDefiningOpsToWorklist(op);
+    eraseOp(op);
   }
 
   return DiagnosedSilenceableFailure::success();
 }
 
+void transform::ApplyDeadCodeEliminationOp::getEffects(
+    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  transform::onlyReadsHandle(getTarget(), effects);
+  transform::modifiesPayload(effects);
+}
+
+//===----------------------------------------------------------------------===//
+// ApplyPatternsOp
+//===----------------------------------------------------------------------===//
+
+DiagnosedSilenceableFailure transform::ApplyPatternsOp::applyToOne(
+    transform::TransformRewriter &rewriter, Operation *target,
+    ApplyToEachResultList &results, transform::TransformState &state) {
+  // Make sure that this transform is not applied to itself. Modifying the
+  // transform IR while it is being interpreted is generally dangerous. Even
+  // more so for the ApplyPatternsOp because the GreedyPatternRewriteDriver
+  // performs many additional simplifications such as dead code elimination.
+  DiagnosedSilenceableFailure payloadCheck =
+      ensurePayloadIsSeparateFromTransform(*this, target);
+  if (!payloadCheck.succeeded())
+    return payloadCheck;
+
+  // Gather all specified patterns.
+  MLIRContext *ctx = target->getContext();
+  RewritePatternSet patterns(ctx);
+  if (!getRegion().empty()) {
+    for (Operation &op : getRegion().front()) {
+      cast<transform::PatternDescriptorOpInterface>(&op)
+          .populatePatternsWithState(patterns, state);
+    }
+  }
+
+  // Configure the GreedyPatternRewriteDriver.
+  GreedyRewriteConfig config;
+  config.listener =
+      static_cast<RewriterBase::Listener *>(rewriter.getListener());
+  FrozenRewritePatternSet frozenPatterns(std::move(patterns));
+
+  // Apply patterns and CSE repetitively until a fixpoint is reached. If no CSE
+  // was requested, apply the greedy pattern rewrite only once. (The greedy
+  // pattern rewrite driver already iterates to a fixpoint internally.)
+  bool cseChanged = false;
+  // One or two iterations should be sufficient. Stop iterating after a certain
+  // threshold to make debugging easier.
+  static const int64_t kNumMaxIterations = 50;
+  int64_t iteration = 0;
+  do {
+    LogicalResult result = failure();
+    if (target->hasTrait<OpTrait::IsIsolatedFromAbove>()) {
+      // Op is isolated from above. Apply patterns and also perform region
+      // simplification.
+      result = applyPatternsAndFoldGreedily(target, frozenPatterns, config);
+    } else {
+      // Manually gather list of ops because the other
+      // GreedyPatternRewriteDriver overloads only accepts ops that are isolated
+      // from above. This way, patterns can be applied to ops that are not
+      // isolated from above. Regions are not being simplified. Furthermore,
+      // only a single greedy rewrite iteration is performed.
+      SmallVector<Operation *> ops;
+      target->walk([&](Operation *nestedOp) {
+        if (target != nestedOp)
+          ops.push_back(nestedOp);
+      });
+      result = applyOpPatternsAndFold(ops, frozenPatterns, config);
+    }
+
+    // A failure typically indicates that the pattern application did not
+    // converge.
+    if (failed(result)) {
+      return emitSilenceableFailure(target)
+             << "greedy pattern application failed";
+    }
+
+    if (getApplyCse()) {
+      DominanceInfo domInfo;
+      mlir::eliminateCommonSubExpressions(rewriter, domInfo, target,
+                                          &cseChanged);
+    }
+  } while (cseChanged && ++iteration < kNumMaxIterations);
+
+  if (iteration == kNumMaxIterations)
+    return emitDefiniteFailure() << "fixpoint iteration did not converge";
+
+  return DiagnosedSilenceableFailure::success();
+}
+
 LogicalResult transform::ApplyPatternsOp::verify() {
-  const auto &registry = getContext()
-                             ->getLoadedDialect<transform::TransformDialect>()
-                             ->getExtraData<transform::PatternRegistry>();
-  for (Attribute attr : getPatterns()) {
-    auto strAttr = attr.dyn_cast<StringAttr>();
-    if (!strAttr)
-      return emitOpError() << "expected " << getPatternsAttrName()
-                           << " to be an array of strings";
-    if (!registry.hasPatterns(strAttr))
-      return emitOpError() << "patterns not registered: " << strAttr.strref();
+  if (!getRegion().empty()) {
+    for (Operation &op : getRegion().front()) {
+      if (!isa<transform::PatternDescriptorOpInterface>(&op)) {
+        InFlightDiagnostic diag = emitOpError()
+                                  << "expected children ops to implement "
+                                     "PatternDescriptorOpInterface";
+        diag.attachNote(op.getLoc()) << "op without interface";
+        return diag;
+      }
+    }
   }
   return success();
 }
@@ -495,12 +458,309 @@ void transform::ApplyPatternsOp::getEffects(
   transform::modifiesPayload(effects);
 }
 
+void transform::ApplyPatternsOp::build(
+    OpBuilder &builder, OperationState &result, Value target,
+    function_ref<void(OpBuilder &, Location)> bodyBuilder) {
+  result.addOperands(target);
+
+  OpBuilder::InsertionGuard g(builder);
+  Region *region = result.addRegion();
+  builder.createBlock(region);
+  if (bodyBuilder)
+    bodyBuilder(builder, result.location);
+}
+
+//===----------------------------------------------------------------------===//
+// ApplyCanonicalizationPatternsOp
+//===----------------------------------------------------------------------===//
+
+void transform::ApplyCanonicalizationPatternsOp::populatePatterns(
+    RewritePatternSet &patterns) {
+  MLIRContext *ctx = patterns.getContext();
+  for (Dialect *dialect : ctx->getLoadedDialects())
+    dialect->getCanonicalizationPatterns(patterns);
+  for (RegisteredOperationName op : ctx->getRegisteredOperations())
+    op.getCanonicalizationPatterns(patterns, ctx);
+}
+
+//===----------------------------------------------------------------------===//
+// ApplyConversionPatternsOp
+//===----------------------------------------------------------------------===//
+
+DiagnosedSilenceableFailure transform::ApplyConversionPatternsOp::apply(
+    transform::TransformRewriter &rewriter,
+    transform::TransformResults &results, transform::TransformState &state) {
+  MLIRContext *ctx = getContext();
+
+  // Instantiate the default type converter if a type converter builder is
+  // specified.
+  std::unique_ptr<TypeConverter> defaultTypeConverter;
+  transform::TypeConverterBuilderOpInterface typeConverterBuilder =
+      getDefaultTypeConverter();
+  if (typeConverterBuilder)
+    defaultTypeConverter = typeConverterBuilder.getTypeConverter();
+
+  // Configure conversion target.
+  ConversionTarget conversionTarget(*getContext());
+  if (getLegalOps())
+    for (Attribute attr : cast<ArrayAttr>(*getLegalOps()))
+      conversionTarget.addLegalOp(
+          OperationName(cast<StringAttr>(attr).getValue(), ctx));
+  if (getIllegalOps())
+    for (Attribute attr : cast<ArrayAttr>(*getIllegalOps()))
+      conversionTarget.addIllegalOp(
+          OperationName(cast<StringAttr>(attr).getValue(), ctx));
+  if (getLegalDialects())
+    for (Attribute attr : cast<ArrayAttr>(*getLegalDialects()))
+      conversionTarget.addLegalDialect(cast<StringAttr>(attr).getValue());
+  if (getIllegalDialects())
+    for (Attribute attr : cast<ArrayAttr>(*getIllegalDialects()))
+      conversionTarget.addIllegalDialect(cast<StringAttr>(attr).getValue());
+
+  // Gather all specified patterns.
+  RewritePatternSet patterns(ctx);
+  // Need to keep the converters alive until after pattern application because
+  // the patterns take a reference to an object that would otherwise get out of
+  // scope.
+  SmallVector<std::unique_ptr<TypeConverter>> keepAliveConverters;
+  if (!getPatterns().empty()) {
+    for (Operation &op : getPatterns().front()) {
+      auto descriptor =
+          cast<transform::ConversionPatternDescriptorOpInterface>(&op);
+
+      // Check if this pattern set specifies a type converter.
+      std::unique_ptr<TypeConverter> typeConverter =
+          descriptor.getTypeConverter();
+      TypeConverter *converter = nullptr;
+      if (typeConverter) {
+        keepAliveConverters.emplace_back(std::move(typeConverter));
+        converter = keepAliveConverters.back().get();
+      } else {
+        // No type converter specified: Use the default type converter.
+        if (!defaultTypeConverter) {
+          auto diag = emitDefiniteFailure()
+                      << "pattern descriptor does not specify type "
+                         "converter and apply_conversion_patterns op has "
+                         "no default type converter";
+          diag.attachNote(op.getLoc()) << "pattern descriptor op";
+          return diag;
+        }
+        converter = defaultTypeConverter.get();
+      }
+
+      // Add descriptor-specific updates to the conversion target, which may
+      // depend on the final type converter. In structural converters, the
+      // legality of types dictates the dynamic legality of an operation.
+      descriptor.populateConversionTargetRules(*converter, conversionTarget);
+
+      descriptor.populatePatterns(*converter, patterns);
+    }
+  }
+
+  FrozenRewritePatternSet frozenPatterns(std::move(patterns));
+  for (Operation *target : state.getPayloadOps(getTarget())) {
+    // Make sure that this transform is not applied to itself. Modifying the
+    // transform IR while it is being interpreted is generally dangerous.
+    DiagnosedSilenceableFailure payloadCheck =
+        ensurePayloadIsSeparateFromTransform(*this, target);
+    if (!payloadCheck.succeeded())
+      return payloadCheck;
+
+    LogicalResult status = failure();
+    if (getPartialConversion()) {
+      status = applyPartialConversion(target, conversionTarget, frozenPatterns);
+    } else {
+      status = applyFullConversion(target, conversionTarget, frozenPatterns);
+    }
+
+    if (failed(status)) {
+      auto diag = emitSilenceableError() << "dialect conversion failed";
+      diag.attachNote(target->getLoc()) << "target op";
+      return diag;
+    }
+  }
+
+  return DiagnosedSilenceableFailure::success();
+}
+
+LogicalResult transform::ApplyConversionPatternsOp::verify() {
+  if (getNumRegions() != 1 && getNumRegions() != 2)
+    return emitOpError() << "expected 1 or 2 regions";
+  if (!getPatterns().empty()) {
+    for (Operation &op : getPatterns().front()) {
+      if (!isa<transform::ConversionPatternDescriptorOpInterface>(&op)) {
+        InFlightDiagnostic diag =
+            emitOpError() << "expected pattern children ops to implement "
+                             "ConversionPatternDescriptorOpInterface";
+        diag.attachNote(op.getLoc()) << "op without interface";
+        return diag;
+      }
+    }
+  }
+  if (getNumRegions() == 2) {
+    Region &typeConverterRegion = getRegion(1);
+    if (!llvm::hasSingleElement(typeConverterRegion.front()))
+      return emitOpError()
+             << "expected exactly one op in default type converter region";
+    auto typeConverterOp = dyn_cast<transform::TypeConverterBuilderOpInterface>(
+        &typeConverterRegion.front().front());
+    if (!typeConverterOp) {
+      InFlightDiagnostic diag = emitOpError()
+                                << "expected default converter child op to "
+                                   "implement TypeConverterBuilderOpInterface";
+      diag.attachNote(typeConverterOp->getLoc()) << "op without interface";
+      return diag;
+    }
+    // Check default type converter type.
+    if (!getPatterns().empty()) {
+      for (Operation &op : getPatterns().front()) {
+        auto descriptor =
+            cast<transform::ConversionPatternDescriptorOpInterface>(&op);
+        if (failed(descriptor.verifyTypeConverter(typeConverterOp)))
+          return failure();
+      }
+    }
+  }
+  return success();
+}
+
+void transform::ApplyConversionPatternsOp::getEffects(
+    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  transform::consumesHandle(getTarget(), effects);
+  transform::modifiesPayload(effects);
+}
+
+void transform::ApplyConversionPatternsOp::build(
+    OpBuilder &builder, OperationState &result, Value target,
+    function_ref<void(OpBuilder &, Location)> patternsBodyBuilder,
+    function_ref<void(OpBuilder &, Location)> typeConverterBodyBuilder) {
+  result.addOperands(target);
+
+  {
+    OpBuilder::InsertionGuard g(builder);
+    Region *region1 = result.addRegion();
+    builder.createBlock(region1);
+    if (patternsBodyBuilder)
+      patternsBodyBuilder(builder, result.location);
+  }
+  {
+    OpBuilder::InsertionGuard g(builder);
+    Region *region2 = result.addRegion();
+    builder.createBlock(region2);
+    if (typeConverterBodyBuilder)
+      typeConverterBodyBuilder(builder, result.location);
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// ApplyToLLVMConversionPatternsOp
+//===----------------------------------------------------------------------===//
+
+void transform::ApplyToLLVMConversionPatternsOp::populatePatterns(
+    TypeConverter &typeConverter, RewritePatternSet &patterns) {
+  Dialect *dialect = getContext()->getLoadedDialect(getDialectName());
+  assert(dialect && "expected that dialect is loaded");
+  auto iface = cast<ConvertToLLVMPatternInterface>(dialect);
+  // ConversionTarget is currently ignored because the enclosing
+  // apply_conversion_patterns op sets up its own ConversionTarget.
+  ConversionTarget target(*getContext());
+  iface->populateConvertToLLVMConversionPatterns(
+      target, static_cast<LLVMTypeConverter &>(typeConverter), patterns);
+}
+
+LogicalResult transform::ApplyToLLVMConversionPatternsOp::verifyTypeConverter(
+    transform::TypeConverterBuilderOpInterface builder) {
+  if (builder.getTypeConverterType() != "LLVMTypeConverter")
+    return emitOpError("expected LLVMTypeConverter");
+  return success();
+}
+
+LogicalResult transform::ApplyToLLVMConversionPatternsOp::verify() {
+  Dialect *dialect = getContext()->getLoadedDialect(getDialectName());
+  if (!dialect)
+    return emitOpError("unknown dialect or dialect not loaded: ")
+           << getDialectName();
+  auto iface = dyn_cast<ConvertToLLVMPatternInterface>(dialect);
+  if (!iface)
+    return emitOpError(
+               "dialect does not implement ConvertToLLVMPatternInterface or "
+               "extension was not loaded: ")
+           << getDialectName();
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ApplyLoopInvariantCodeMotionOp
+//===----------------------------------------------------------------------===//
+
+DiagnosedSilenceableFailure
+transform::ApplyLoopInvariantCodeMotionOp::applyToOne(
+    transform::TransformRewriter &rewriter, LoopLikeOpInterface target,
+    transform::ApplyToEachResultList &results,
+    transform::TransformState &state) {
+  // Currently, LICM does not remove operations, so we don't need tracking.
+  // If this ever changes, add a LICM entry point that takes a rewriter.
+  moveLoopInvariantCode(target);
+  return DiagnosedSilenceableFailure::success();
+}
+
+void transform::ApplyLoopInvariantCodeMotionOp::getEffects(
+    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  transform::onlyReadsHandle(getTarget(), effects);
+  transform::modifiesPayload(effects);
+}
+
+//===----------------------------------------------------------------------===//
+// ApplyRegisteredPassOp
+//===----------------------------------------------------------------------===//
+
+DiagnosedSilenceableFailure transform::ApplyRegisteredPassOp::applyToOne(
+    transform::TransformRewriter &rewriter, Operation *target,
+    ApplyToEachResultList &results, transform::TransformState &state) {
+  // Make sure that this transform is not applied to itself. Modifying the
+  // transform IR while it is being interpreted is generally dangerous. Even
+  // more so when applying passes because they may perform a wide range of IR
+  // modifications.
+  DiagnosedSilenceableFailure payloadCheck =
+      ensurePayloadIsSeparateFromTransform(*this, target);
+  if (!payloadCheck.succeeded())
+    return payloadCheck;
+
+  // Get pass or pass pipeline from registry.
+  const PassRegistryEntry *info = PassPipelineInfo::lookup(getPassName());
+  if (!info)
+    info = PassInfo::lookup(getPassName());
+  if (!info)
+    return emitDefiniteFailure()
+           << "unknown pass or pass pipeline: " << getPassName();
+
+  // Create pass manager and run the pass or pass pipeline.
+  PassManager pm(getContext());
+  if (failed(info->addToPipeline(pm, getOptions(), [&](const Twine &msg) {
+        emitError(msg);
+        return failure();
+      }))) {
+    return emitDefiniteFailure()
+           << "failed to add pass or pass pipeline to pipeline: "
+           << getPassName();
+  }
+  if (failed(pm.run(target))) {
+    auto diag = emitSilenceableError() << "pass pipeline failed";
+    diag.attachNote(target->getLoc()) << "target op";
+    return diag;
+  }
+
+  results.push_back(target);
+  return DiagnosedSilenceableFailure::success();
+}
+
 //===----------------------------------------------------------------------===//
 // CastOp
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure
-transform::CastOp::applyToOne(Operation *target, ApplyToEachResultList &results,
+transform::CastOp::applyToOne(transform::TransformRewriter &rewriter,
+                              Operation *target, ApplyToEachResultList &results,
                               transform::TransformState &state) {
   results.push_back(target);
   return DiagnosedSilenceableFailure::success();
@@ -536,7 +796,7 @@ static DiagnosedSilenceableFailure
 matchBlock(Block &block, Operation *op, transform::TransformState &state,
            SmallVectorImpl<SmallVector<transform::MappedValue>> &mappings) {
   assert(block.getParent() && "cannot match using a detached block");
-  auto matchScope = state.make_isolated_region_scope(*block.getParent());
+  auto matchScope = state.make_region_scope(*block.getParent());
   if (failed(state.mapBlockArgument(block.getArgument(0), {op})))
     return DiagnosedSilenceableFailure::definiteFailure();
 
@@ -562,7 +822,8 @@ matchBlock(Block &block, Operation *op, transform::TransformState &state,
 }
 
 DiagnosedSilenceableFailure
-transform::ForeachMatchOp::apply(transform::TransformResults &results,
+transform::ForeachMatchOp::apply(transform::TransformRewriter &rewriter,
+                                 transform::TransformResults &results,
                                  transform::TransformState &state) {
   SmallVector<std::pair<FunctionOpInterface, FunctionOpInterface>>
       matchActionPairs;
@@ -613,7 +874,7 @@ transform::ForeachMatchOp::apply(transform::TransformResults &results,
           continue;
         }
 
-        auto scope = state.make_isolated_region_scope(action.getFunctionBody());
+        auto scope = state.make_region_scope(action.getFunctionBody());
         for (auto &&[arg, map] : llvm::zip_equal(
                  action.getFunctionBody().front().getArguments(), mappings)) {
           if (failed(state.mapBlockArgument(arg, map)))
@@ -735,7 +996,7 @@ static bool implementSameTransformInterface(Type t1, Type t2) {
 /// consumption effect annotations. If `alsoVerifyInternal`, checks for
 /// annotations being present even if they can be inferred from the body.
 static DiagnosedSilenceableFailure
-verifyFunctionLikeConsumeAnnotations(FunctionOpInterface op,
+verifyFunctionLikeConsumeAnnotations(FunctionOpInterface op, bool emitWarnings,
                                      bool alsoVerifyInternal = false) {
   auto transformOp = cast<transform::TransformOpInterface>(op.getOperation());
   llvm::SmallDenseSet<unsigned> consumedArguments;
@@ -767,12 +1028,12 @@ verifyFunctionLikeConsumeAnnotations(FunctionOpInterface op,
              << "argument #" << i
              << " is consumed in the body but is not marked as such";
     }
-    if (!consumedArguments.contains(i) && isConsumed) {
-      Diagnostic warning(op->getLoc(), DiagnosticSeverity::Warning);
-      warning << "argument #" << i
-              << " is not consumed in the body but is marked as consumed";
-      return DiagnosedSilenceableFailure::silenceableFailure(
-          std::move(warning));
+    if (emitWarnings && !consumedArguments.contains(i) && isConsumed) {
+      // Cannot use op.emitWarning() here as it would attempt to verify the op
+      // before printing, resulting in infinite recursion.
+      emitWarning(op->getLoc())
+          << "op argument #" << i
+          << " is not consumed in the body but is marked as consumed";
     }
   }
   return DiagnosedSilenceableFailure::success();
@@ -799,11 +1060,13 @@ LogicalResult transform::ForeachMatchOp::verifySymbolUses(
       return emitError() << "unresolved action symbol " << action;
 
     if (failed(verifyFunctionLikeConsumeAnnotations(matcherSymbol,
+                                                    /*emitWarnings=*/false,
                                                     /*alsoVerifyInternal=*/true)
                    .checkAndReport())) {
       return failure();
     }
     if (failed(verifyFunctionLikeConsumeAnnotations(actionSymbol,
+                                                    /*emitWarnings=*/false,
                                                     /*alsoVerifyInternal=*/true)
                    .checkAndReport())) {
       return failure();
@@ -860,11 +1123,15 @@ LogicalResult transform::ForeachMatchOp::verifySymbolUses(
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure
-transform::ForeachOp::apply(transform::TransformResults &results,
+transform::ForeachOp::apply(transform::TransformRewriter &rewriter,
+                            transform::TransformResults &results,
                             transform::TransformState &state) {
   SmallVector<SmallVector<Operation *>> resultOps(getNumResults(), {});
-
-  for (Operation *op : state.getPayloadOps(getTarget())) {
+  // Store payload ops in a vector because ops may be removed from the mapping
+  // by the TrackingRewriter while the iteration is in progress.
+  SmallVector<Operation *> targets =
+      llvm::to_vector(state.getPayloadOps(getTarget()));
+  for (Operation *op : targets) {
     auto scope = state.make_region_scope(getBody());
     if (failed(state.mapBlockArguments(getIterationVariable(), {op})))
       return DiagnosedSilenceableFailure::definiteFailure();
@@ -894,6 +1161,7 @@ void transform::ForeachOp::getEffects(
     SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
   BlockArgument iterVar = getIterationVariable();
   if (any_of(getBody().front().without_terminator(), [&](Operation &op) {
+
         return isHandleConsumed(iterVar, cast<TransformOpInterface>(&op));
       })) {
     consumesHandle(getTarget(), effects);
@@ -901,30 +1169,39 @@ void transform::ForeachOp::getEffects(
     onlyReadsHandle(getTarget(), effects);
   }
 
+  if (any_of(getBody().front().without_terminator(), [&](Operation &op) {
+        return doesModifyPayload(cast<TransformOpInterface>(&op));
+      })) {
+    modifiesPayload(effects);
+  } else if (any_of(getBody().front().without_terminator(), [&](Operation &op) {
+               return doesReadPayload(cast<TransformOpInterface>(&op));
+             })) {
+    onlyReadsPayload(effects);
+  }
+
   for (Value result : getResults())
     producesHandle(result, effects);
 }
 
 void transform::ForeachOp::getSuccessorRegions(
-    std::optional<unsigned> index, ArrayRef<Attribute> operands,
-    SmallVectorImpl<RegionSuccessor> &regions) {
+    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions) {
   Region *bodyRegion = &getBody();
-  if (!index) {
+  if (point.isParent()) {
     regions.emplace_back(bodyRegion, bodyRegion->getArguments());
     return;
   }
 
   // Branch back to the region or the parent.
-  assert(*index == 0 && "unexpected region index");
+  assert(point == getBody() && "unexpected region index");
   regions.emplace_back(bodyRegion, bodyRegion->getArguments());
   regions.emplace_back();
 }
 
 OperandRange
-transform::ForeachOp::getSuccessorEntryOperands(std::optional<unsigned> index) {
+transform::ForeachOp::getEntrySuccessorOperands(RegionBranchPoint point) {
   // The iteration variable op handle is mapped to a subset (one op to be
   // precise) of the payload ops of the ForeachOp operand.
-  assert(index && *index == 0 && "unexpected region index");
+  assert(point == getBody() && "unexpected region index");
   return getOperation()->getOperands();
 }
 
@@ -945,25 +1222,44 @@ LogicalResult transform::ForeachOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// GetClosestIsolatedParentOp
+// GetParentOp
 //===----------------------------------------------------------------------===//
 
-DiagnosedSilenceableFailure transform::GetClosestIsolatedParentOp::apply(
-    transform::TransformResults &results, transform::TransformState &state) {
-  SetVector<Operation *> parents;
+DiagnosedSilenceableFailure
+transform::GetParentOp::apply(transform::TransformRewriter &rewriter,
+                              transform::TransformResults &results,
+                              transform::TransformState &state) {
+  SmallVector<Operation *> parents;
+  DenseSet<Operation *> resultSet;
   for (Operation *target : state.getPayloadOps(getTarget())) {
-    Operation *parent =
-        target->getParentWithTrait<OpTrait::IsIsolatedFromAbove>();
+    Operation *parent = target->getParentOp();
+    while (parent) {
+      bool checkIsolatedFromAbove =
+          !getIsolatedFromAbove() ||
+          parent->hasTrait<OpTrait::IsIsolatedFromAbove>();
+      bool checkOpName = !getOpName().has_value() ||
+                         parent->getName().getStringRef() == *getOpName();
+      if (checkIsolatedFromAbove && checkOpName)
+        break;
+      parent = parent->getParentOp();
+    }
     if (!parent) {
       DiagnosedSilenceableFailure diag =
           emitSilenceableError()
-          << "could not find an isolated-from-above parent op";
+          << "could not find a parent op that matches all requirements";
       diag.attachNote(target->getLoc()) << "target op";
       return diag;
     }
-    parents.insert(parent);
+    if (getDeduplicate()) {
+      if (!resultSet.contains(parent)) {
+        parents.push_back(parent);
+        resultSet.insert(parent);
+      }
+    } else {
+      parents.push_back(parent);
+    }
   }
-  results.set(llvm::cast<OpResult>(getResult()), parents.getArrayRef());
+  results.set(llvm::cast<OpResult>(getResult()), parents);
   return DiagnosedSilenceableFailure::success();
 }
 
@@ -972,7 +1268,8 @@ DiagnosedSilenceableFailure transform::GetClosestIsolatedParentOp::apply(
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure
-transform::GetConsumersOfResult::apply(transform::TransformResults &results,
+transform::GetConsumersOfResult::apply(transform::TransformRewriter &rewriter,
+                                       transform::TransformResults &results,
                                        transform::TransformState &state) {
   int64_t resultNumber = getResultNumber();
   auto payloadOps = state.getPayloadOps(getTarget());
@@ -997,7 +1294,8 @@ transform::GetConsumersOfResult::apply(transform::TransformResults &results,
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure
-transform::GetDefiningOp::apply(transform::TransformResults &results,
+transform::GetDefiningOp::apply(transform::TransformRewriter &rewriter,
+                                transform::TransformResults &results,
                                 transform::TransformState &state) {
   SmallVector<Operation *> definingOps;
   for (Value v : state.getPayloadValues(getTarget())) {
@@ -1018,7 +1316,8 @@ transform::GetDefiningOp::apply(transform::TransformResults &results,
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure
-transform::GetProducerOfOperand::apply(transform::TransformResults &results,
+transform::GetProducerOfOperand::apply(transform::TransformRewriter &rewriter,
+                                       transform::TransformResults &results,
                                        transform::TransformState &state) {
   int64_t operandNumber = getOperandNumber();
   SmallVector<Operation *> producers;
@@ -1046,7 +1345,8 @@ transform::GetProducerOfOperand::apply(transform::TransformResults &results,
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure
-transform::GetResultOp::apply(transform::TransformResults &results,
+transform::GetResultOp::apply(transform::TransformRewriter &rewriter,
+                              transform::TransformResults &results,
                               transform::TransformState &state) {
   int64_t resultNumber = getResultNumber();
   SmallVector<Value> opResults;
@@ -1060,6 +1360,37 @@ transform::GetResultOp::apply(transform::TransformResults &results,
     opResults.push_back(target->getOpResult(resultNumber));
   }
   results.setValues(llvm::cast<OpResult>(getResult()), opResults);
+  return DiagnosedSilenceableFailure::success();
+}
+
+//===----------------------------------------------------------------------===//
+// GetTypeOp
+//===----------------------------------------------------------------------===//
+
+void transform::GetTypeOp::getEffects(
+    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  onlyReadsHandle(getValue(), effects);
+  producesHandle(getResult(), effects);
+  onlyReadsPayload(effects);
+}
+
+DiagnosedSilenceableFailure
+transform::GetTypeOp::apply(transform::TransformRewriter &rewriter,
+                            transform::TransformResults &results,
+                            transform::TransformState &state) {
+  SmallVector<Attribute> params;
+  ArrayRef<Value> values = state.getPayloadValues(getValue());
+  params.reserve(values.size());
+  for (Value value : values) {
+    Type type = value.getType();
+    if (getElemental()) {
+      if (auto shaped = dyn_cast<ShapedType>(type)) {
+        type = shaped.getElementType();
+      }
+    }
+    params.push_back(TypeAttr::get(type));
+  }
+  results.setParams(getResult().cast<OpResult>(), params);
   return DiagnosedSilenceableFailure::success();
 }
 
@@ -1097,7 +1428,8 @@ applySequenceBlock(Block &block, transform::FailurePropagationMode mode,
 }
 
 DiagnosedSilenceableFailure
-transform::IncludeOp::apply(transform::TransformResults &results,
+transform::IncludeOp::apply(transform::TransformRewriter &rewriter,
+                            transform::TransformResults &results,
                             transform::TransformState &state) {
   auto callee = SymbolTable::lookupNearestSymbolFrom<NamedSequenceOp>(
       getOperation(), getTarget());
@@ -1109,7 +1441,7 @@ transform::IncludeOp::apply(transform::TransformResults &results,
   // Map operands to block arguments.
   SmallVector<SmallVector<MappedValue>> mappings;
   detail::prepareValueMappings(mappings, getOperands(), state);
-  auto scope = state.make_isolated_region_scope(callee.getBody());
+  auto scope = state.make_region_scope(callee.getBody());
   for (auto &&[arg, map] :
        llvm::zip_equal(callee.getBody().front().getArguments(), mappings)) {
     if (failed(state.mapBlockArgument(arg, map)))
@@ -1127,7 +1459,7 @@ transform::IncludeOp::apply(transform::TransformResults &results,
 }
 
 static DiagnosedSilenceableFailure
-verifyNamedSequenceOp(transform::NamedSequenceOp op);
+verifyNamedSequenceOp(transform::NamedSequenceOp op, bool emitWarnings);
 
 void transform::IncludeOp::getEffects(
     SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
@@ -1157,7 +1489,7 @@ void transform::IncludeOp::getEffects(
   if (!callee)
     return defaultEffects();
   DiagnosedSilenceableFailure earlyVerifierResult =
-      verifyNamedSequenceOp(callee);
+      verifyNamedSequenceOp(callee, /*emitWarnings=*/false);
   if (!earlyVerifierResult.succeeded()) {
     (void)earlyVerifierResult.silence();
     return defaultEffects();
@@ -1210,7 +1542,7 @@ transform::IncludeOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   }
 
   return verifyFunctionLikeConsumeAnnotations(
-             cast<FunctionOpInterface>(*target),
+             cast<FunctionOpInterface>(*target), /*emitWarnings=*/false,
              /*alsoVerifyInternal=*/true)
       .checkAndReport();
 }
@@ -1235,7 +1567,8 @@ DiagnosedSilenceableFailure transform::MatchOperationNameOp::matchOperation(
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure
-transform::MatchParamCmpIOp::apply(transform::TransformResults &results,
+transform::MatchParamCmpIOp::apply(transform::TransformRewriter &rewriter,
+                                   transform::TransformResults &results,
                                    transform::TransformState &state) {
   auto signedAPIntAsString = [&](APInt value) {
     std::string str;
@@ -1321,7 +1654,8 @@ void transform::MatchParamCmpIOp::getEffects(
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure
-transform::ParamConstantOp::apply(transform::TransformResults &results,
+transform::ParamConstantOp::apply(transform::TransformRewriter &rewriter,
+                                  transform::TransformResults &results,
                                   transform::TransformState &state) {
   results.setParams(cast<OpResult>(getParam()), {getValue()});
   return DiagnosedSilenceableFailure::success();
@@ -1332,18 +1666,51 @@ transform::ParamConstantOp::apply(transform::TransformResults &results,
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure
-transform::MergeHandlesOp::apply(transform::TransformResults &results,
+transform::MergeHandlesOp::apply(transform::TransformRewriter &rewriter,
+                                 transform::TransformResults &results,
                                  transform::TransformState &state) {
-  SmallVector<Operation *> operations;
-  for (Value operand : getHandles())
-    llvm::append_range(operations, state.getPayloadOps(operand));
-  if (!getDeduplicate()) {
-    results.set(llvm::cast<OpResult>(getResult()), operations);
+  ValueRange handles = getHandles();
+  if (isa<TransformHandleTypeInterface>(handles.front().getType())) {
+    SmallVector<Operation *> operations;
+    for (Value operand : handles)
+      llvm::append_range(operations, state.getPayloadOps(operand));
+    if (!getDeduplicate()) {
+      results.set(llvm::cast<OpResult>(getResult()), operations);
+      return DiagnosedSilenceableFailure::success();
+    }
+
+    SetVector<Operation *> uniqued(operations.begin(), operations.end());
+    results.set(llvm::cast<OpResult>(getResult()), uniqued.getArrayRef());
     return DiagnosedSilenceableFailure::success();
   }
 
-  SetVector<Operation *> uniqued(operations.begin(), operations.end());
-  results.set(llvm::cast<OpResult>(getResult()), uniqued.getArrayRef());
+  if (llvm::isa<TransformParamTypeInterface>(handles.front().getType())) {
+    SmallVector<Attribute> attrs;
+    for (Value attribute : handles)
+      llvm::append_range(attrs, state.getParams(attribute));
+    if (!getDeduplicate()) {
+      results.setParams(cast<OpResult>(getResult()), attrs);
+      return DiagnosedSilenceableFailure::success();
+    }
+
+    SetVector<Attribute> uniqued(attrs.begin(), attrs.end());
+    results.setParams(cast<OpResult>(getResult()), uniqued.getArrayRef());
+    return DiagnosedSilenceableFailure::success();
+  }
+
+  assert(
+      llvm::isa<TransformValueHandleTypeInterface>(handles.front().getType()) &&
+      "expected value handle type");
+  SmallVector<Value> payloadValues;
+  for (Value value : handles)
+    llvm::append_range(payloadValues, state.getPayloadValues(value));
+  if (!getDeduplicate()) {
+    results.setValues(cast<OpResult>(getResult()), payloadValues);
+    return DiagnosedSilenceableFailure::success();
+  }
+
+  SetVector<Value> uniqued(payloadValues.begin(), payloadValues.end());
+  results.setValues(cast<OpResult>(getResult()), uniqued.getArrayRef());
   return DiagnosedSilenceableFailure::success();
 }
 
@@ -1375,7 +1742,8 @@ OpFoldResult transform::MergeHandlesOp::fold(FoldAdaptor adaptor) {
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure
-transform::NamedSequenceOp::apply(transform::TransformResults &results,
+transform::NamedSequenceOp::apply(transform::TransformRewriter &rewriter,
+                                  transform::TransformResults &results,
                                   transform::TransformState &state) {
   // Nothing to do here.
   return DiagnosedSilenceableFailure::success();
@@ -1460,7 +1828,7 @@ verifyYieldingSingleBlockOp(FunctionOpInterface op, bool allowExternal) {
 /// immediately, so it can be used to check for op's well-formedness before the
 /// verifier runs, e.g., during trait verification.
 static DiagnosedSilenceableFailure
-verifyNamedSequenceOp(transform::NamedSequenceOp op) {
+verifyNamedSequenceOp(transform::NamedSequenceOp op, bool emitWarnings) {
   if (Operation *parent = op->getParentWithTrait<OpTrait::SymbolTable>()) {
     if (!parent->getAttr(
             transform::TransformDialect::kWithNamedSequenceAttrName)) {
@@ -1483,7 +1851,8 @@ verifyNamedSequenceOp(transform::NamedSequenceOp op) {
   }
 
   if (op.isExternal() || op.getBody().empty())
-    return verifyFunctionLikeConsumeAnnotations(cast<FunctionOpInterface>(*op));
+    return verifyFunctionLikeConsumeAnnotations(cast<FunctionOpInterface>(*op),
+                                                emitWarnings);
 
   if (op.getBody().front().empty())
     return emitSilenceableFailure(op) << "expected a non-empty body block";
@@ -1517,7 +1886,7 @@ verifyNamedSequenceOp(transform::NamedSequenceOp op) {
 
   auto funcOp = cast<FunctionOpInterface>(*op);
   DiagnosedSilenceableFailure diag =
-      verifyFunctionLikeConsumeAnnotations(funcOp);
+      verifyFunctionLikeConsumeAnnotations(funcOp, emitWarnings);
   if (!diag.succeeded())
     return diag;
 
@@ -1527,7 +1896,25 @@ verifyNamedSequenceOp(transform::NamedSequenceOp op) {
 
 LogicalResult transform::NamedSequenceOp::verify() {
   // Actual verification happens in a separate function for reusability.
-  return verifyNamedSequenceOp(*this).checkAndReport();
+  return verifyNamedSequenceOp(*this, /*emitWarnings=*/true).checkAndReport();
+}
+
+//===----------------------------------------------------------------------===//
+// SelectOp
+//===----------------------------------------------------------------------===//
+
+DiagnosedSilenceableFailure
+transform::SelectOp::apply(transform::TransformRewriter &rewriter,
+                           transform::TransformResults &results,
+                           transform::TransformState &state) {
+  SmallVector<Operation *> result;
+  auto payloadOps = state.getPayloadOps(getTarget());
+  for (Operation *op : payloadOps) {
+    if (op->getName().getStringRef() == getOpName())
+      result.push_back(op);
+  }
+  results.set(cast<OpResult>(getResult()), result);
+  return DiagnosedSilenceableFailure::success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1541,7 +1928,8 @@ void transform::SplitHandleOp::build(OpBuilder &builder, OperationState &result,
 }
 
 DiagnosedSilenceableFailure
-transform::SplitHandleOp::apply(transform::TransformResults &results,
+transform::SplitHandleOp::apply(transform::TransformRewriter &rewriter,
+                                transform::TransformResults &results,
                                 transform::TransformState &state) {
   int64_t numPayloadOps = llvm::range_size(state.getPayloadOps(getHandle()));
   auto produceNumOpsError = [&]() {
@@ -1602,7 +1990,8 @@ LogicalResult transform::SplitHandleOp::verify() {
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure
-transform::ReplicateOp::apply(transform::TransformResults &results,
+transform::ReplicateOp::apply(transform::TransformRewriter &rewriter,
+                              transform::TransformResults &results,
                               transform::TransformState &state) {
   unsigned numRepetitions = llvm::range_size(state.getPayloadOps(getPattern()));
   for (const auto &en : llvm::enumerate(getHandles())) {
@@ -1642,7 +2031,8 @@ void transform::ReplicateOp::getEffects(
 //===----------------------------------------------------------------------===//
 
 DiagnosedSilenceableFailure
-transform::SequenceOp::apply(transform::TransformResults &results,
+transform::SequenceOp::apply(transform::TransformRewriter &rewriter,
+                             transform::TransformResults &results,
                              transform::TransformState &state) {
   // Map the entry block argument to the list of operations.
   auto scope = state.make_region_scope(*getBodyBlock()->getParent());
@@ -1798,6 +2188,9 @@ LogicalResult transform::SequenceOp::verify() {
     }
   }
 
+  if (!getBodyBlock()->hasTerminator())
+    return emitOpError() << "expects to have a terminator in the body";
+
   if (getBodyBlock()->getTerminator()->getOperandTypes() !=
       getOperation()->getResultTypes()) {
     InFlightDiagnostic diag = emitOpError()
@@ -1814,9 +2207,9 @@ void transform::SequenceOp::getEffects(
   getPotentialTopLevelEffects(effects);
 }
 
-OperandRange transform::SequenceOp::getSuccessorEntryOperands(
-    std::optional<unsigned> index) {
-  assert(index && *index == 0 && "unexpected region index");
+OperandRange
+transform::SequenceOp::getEntrySuccessorOperands(RegionBranchPoint point) {
+  assert(point == getBody() && "unexpected region index");
   if (getOperation()->getNumOperands() > 0)
     return getOperation()->getOperands();
   return OperandRange(getOperation()->operand_end(),
@@ -1824,17 +2217,16 @@ OperandRange transform::SequenceOp::getSuccessorEntryOperands(
 }
 
 void transform::SequenceOp::getSuccessorRegions(
-    std::optional<unsigned> index, ArrayRef<Attribute> operands,
-    SmallVectorImpl<RegionSuccessor> &regions) {
-  if (!index) {
+    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions) {
+  if (point.isParent()) {
     Region *bodyRegion = &getBody();
-    regions.emplace_back(bodyRegion, !operands.empty()
+    regions.emplace_back(bodyRegion, getNumOperands() != 0
                                          ? bodyRegion->getArguments()
                                          : Block::BlockArgListType());
     return;
   }
 
-  assert(*index == 0 && "unexpected region index");
+  assert(point == getBody() && "unexpected region index");
   regions.emplace_back(getOperation()->getResults());
 }
 
@@ -1932,7 +2324,8 @@ void transform::PrintOp::build(OpBuilder &builder, OperationState &result,
 }
 
 DiagnosedSilenceableFailure
-transform::PrintOp::apply(transform::TransformResults &results,
+transform::PrintOp::apply(transform::TransformRewriter &rewriter,
+                          transform::TransformResults &results,
                           transform::TransformState &state) {
   llvm::outs() << "[[[ IR printer: ";
   if (getName().has_value())
@@ -1958,6 +2351,29 @@ void transform::PrintOp::getEffects(
   // There is no resource for stderr file descriptor, so just declare print
   // writes into the default resource.
   effects.emplace_back(MemoryEffects::Write::get());
+}
+
+//===----------------------------------------------------------------------===//
+// VerifyOp
+//===----------------------------------------------------------------------===//
+
+DiagnosedSilenceableFailure
+transform::VerifyOp::applyToOne(transform::TransformRewriter &rewriter,
+                                Operation *target,
+                                transform::ApplyToEachResultList &results,
+                                transform::TransformState &state) {
+  if (failed(::mlir::verify(target))) {
+    DiagnosedDefiniteFailure diag = emitDefiniteFailure()
+                                    << "failed to verify payload op";
+    diag.attachNote(target->getLoc()) << "payload op";
+    return diag;
+  }
+  return DiagnosedSilenceableFailure::success();
+}
+
+void transform::VerifyOp::getEffects(
+    SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+  transform::onlyReadsHandle(getTarget(), effects);
 }
 
 //===----------------------------------------------------------------------===//

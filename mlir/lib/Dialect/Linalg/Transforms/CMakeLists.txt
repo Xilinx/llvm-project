@@ -11,6 +11,7 @@ add_mlir_dialect_library(MLIRLinalgTransforms
   DropUnitDims.cpp
   ElementwiseOpFusion.cpp
   ElementwiseToLinalg.cpp
+  EliminateEmptyTensors.cpp
   EraseUnusedOperandsAndResults.cpp
   FusePadOpWithLinalgProducer.cpp
   Fusion.cpp
@@ -21,10 +22,10 @@ add_mlir_dialect_library(MLIRLinalgTransforms
   Interchange.cpp
   Loops.cpp
   NamedOpConversions.cpp
+  Padding.cpp
   Promotion.cpp
   Split.cpp
   SplitReduction.cpp
-  StructuralFusion.cpp
   SubsetHoisting.cpp
   SwapExtractSliceWithFillPatterns.cpp
   Tiling.cpp

@@ -18,6 +18,7 @@
 #include "mlir/Dialect/CommonFolders.h"
 #include "mlir/Dialect/SPIRV/IR/SPIRVDialect.h"
 #include "mlir/Dialect/SPIRV/IR/SPIRVTypes.h"
+#include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "llvm/ADT/STLExtras.h"
@@ -112,6 +113,58 @@ struct CombineChainedAccessChain final
 void spirv::AccessChainOp::getCanonicalizationPatterns(
     RewritePatternSet &results, MLIRContext *context) {
   results.add<CombineChainedAccessChain>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// spirv.UMod
+//===----------------------------------------------------------------------===//
+
+// Input:
+//    %0 = spirv.UMod %arg0, %const32 : i32
+//    %1 = spirv.UMod %0, %const4 : i32
+// Output:
+//    %0 = spirv.UMod %arg0, %const32 : i32
+//    %1 = spirv.UMod %arg0, %const4 : i32
+
+// The transformation is only applied if one divisor is a multiple of the other.
+
+// TODO(https://github.com/llvm/llvm-project/issues/63174): Add support for vector constants
+struct UModSimplification final : OpRewritePattern<spirv::UModOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(spirv::UModOp umodOp,
+                                PatternRewriter &rewriter) const override {
+    auto prevUMod = umodOp.getOperand(0).getDefiningOp<spirv::UModOp>();
+    if (!prevUMod)
+      return failure();
+
+    IntegerAttr prevValue;
+    IntegerAttr currValue;
+    if (!matchPattern(prevUMod.getOperand(1), m_Constant(&prevValue)) ||
+        !matchPattern(umodOp.getOperand(1), m_Constant(&currValue)))
+      return failure();
+
+    APInt prevConstValue = prevValue.getValue();
+    APInt currConstValue = currValue.getValue();
+
+    // Ensure that one divisor is a multiple of the other. If not, fail the
+    // transformation.
+    if (prevConstValue.urem(currConstValue) != 0 &&
+        currConstValue.urem(prevConstValue) != 0)
+      return failure();
+
+    // The transformation is safe. Replace the existing UMod operation with a
+    // new UMod operation, using the original dividend and the current divisor.
+    rewriter.replaceOpWithNewOp<spirv::UModOp>(
+        umodOp, umodOp.getType(), prevUMod.getOperand(0), umodOp.getOperand(1));
+
+    return success();
+  }
+};
+
+void spirv::UModOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
+                                                MLIRContext *context) {
+  patterns.insert<UModSimplification>(context);
 }
 
 //===----------------------------------------------------------------------===//

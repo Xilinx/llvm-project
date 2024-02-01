@@ -593,10 +593,10 @@ CodeGen::genConstraintOrRewriteCall(const T *decl, Location loc,
     } else {
       resultTypes.push_back(genType(declResultType));
     }
-    Operation *pdlOp = builder.create<PDLOpT>(
+    PDLOpT pdlOp = builder.create<PDLOpT>(
         loc, resultTypes, decl->getName().getName(), inputs);
-    if (isNegated)
-      pdlOp->setAttr("isNegated", builder.getBoolAttr(true));
+    if (isNegated && std::is_same_v<PDLOpT, pdl::ApplyNativeConstraintOp>)
+      cast<pdl::ApplyNativeConstraintOp>(pdlOp).setIsNegated(true);
     return pdlOp->getResults();
   }
 

@@ -152,6 +152,9 @@ static lto::Config createConfig() {
   c.DwoDir = std::string(config->dwoDir);
 
   c.HasWholeProgramVisibility = config->ltoWholeProgramVisibility;
+  c.ValidateAllVtablesHaveTypeInfos =
+      config->ltoValidateAllVtablesHaveTypeInfos;
+  c.AllVtablesHaveTypeInfos = ctx.ltoAllVtablesHaveTypeInfos;
   c.AlwaysEmitRegularLTOObj = !config->ltoObjPath.empty();
 
   for (const llvm::StringRef &name : config->thinLTOModulesToCompile)
@@ -174,7 +177,7 @@ static lto::Config createConfig() {
   }
 
   if (config->ltoEmitAsm) {
-    c.CGFileType = CGFT_AssemblyFile;
+    c.CGFileType = CodeGenFileType::AssemblyFile;
     c.Options.MCOptions.AsmVerbose = true;
   }
 
@@ -206,8 +209,13 @@ BitcodeCompiler::BitcodeCompiler() {
         config->thinLTOEmitImportsFiles);
   }
 
-  ltoObj = std::make_unique<lto::LTO>(createConfig(), backend,
-                                       config->ltoPartitions);
+  constexpr llvm::lto::LTO::LTOKind ltoModes[3] =
+    {llvm::lto::LTO::LTOKind::LTOK_UnifiedThin,
+     llvm::lto::LTO::LTOKind::LTOK_UnifiedRegular,
+     llvm::lto::LTO::LTOKind::LTOK_Default};
+  ltoObj = std::make_unique<lto::LTO>(
+      createConfig(), backend, config->ltoPartitions,
+      ltoModes[config->ltoKind]);
 
   // Initialize usedStartStop.
   if (ctx.bitcodeFiles.empty())
@@ -217,7 +225,7 @@ BitcodeCompiler::BitcodeCompiler() {
       continue;
     StringRef s = sym->getName();
     for (StringRef prefix : {"__start_", "__stop_"})
-      if (s.startswith(prefix))
+      if (s.starts_with(prefix))
         usedStartStop.insert(s.substr(prefix.size()));
   }
 }
