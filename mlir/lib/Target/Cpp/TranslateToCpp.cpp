@@ -786,6 +786,17 @@ static LogicalResult printOperation(CppEmitter &emitter, ModuleOp moduleOp) {
 
 static LogicalResult printFunctionArgs(CppEmitter &emitter,
                                        Operation *functionOp,
+                                       ArrayRef<Type> arguments) {
+  raw_indented_ostream &os = emitter.ostream();
+
+  return (
+      interleaveCommaWithError(arguments, os, [&](Type arg) -> LogicalResult {
+        return emitter.emitType(functionOp->getLoc(), arg);
+      }));
+}
+
+static LogicalResult printFunctionArgs(CppEmitter &emitter,
+                                       Operation *functionOp,
                                        Region::BlockArgListType arguments) {
   raw_indented_ostream &os = emitter.ostream();
 
@@ -925,6 +936,13 @@ static LogicalResult printOperation(CppEmitter &emitter,
 
   os << "(";
   Operation *operation = functionOp.getOperation();
+  if (functionOp.isExternal()) {
+    if (failed(printFunctionArgs(emitter, operation,
+                                 functionOp.getArgumentTypes())))
+      return failure();
+    os << ");";
+    return success();
+  }
   if (failed(printFunctionArgs(emitter, operation, functionOp.getArguments())))
     return failure();
   os << ") {\n";
