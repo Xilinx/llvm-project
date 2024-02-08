@@ -193,6 +193,8 @@ LogicalResult tosa::AvgPool2dOp::verify() {
 
   if (inputETy.isF32() && resultETy.isF32())
     return success();
+  if (inputETy.isBF16() && resultETy.isBF16())
+    return success();
   if (inputETy.isInteger(8) && resultETy.isInteger(8))
     return success();
   if (inputETy.isInteger(16) && resultETy.isInteger(16))
