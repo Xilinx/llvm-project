@@ -18,6 +18,7 @@
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
 #include <queue>
+#include "llvm/ADT/SmallPtrSet.h"
 
 #define DEBUG_TYPE "pdl-predicate-tree"
 
@@ -889,8 +890,17 @@ static void insertExitNode(std::unique_ptr<MatcherNode> *root) {
 template <typename Iterator, typename Compare>
 void stableTopologicalSort(Iterator begin, Iterator end, Compare cmp) {
   while (begin != end) {
+    // Cannot compute sortBeforeOthers in the predicate of stable_partition
+    // because stable_partition will not keep the [begin, end) range intact
+    // while it runs.
+    llvm::SmallPtrSet<typename Iterator::value_type, 16> sortBeforeOthers;
+    for(auto i = begin; i != end; ++i) {
+      if (std::none_of(begin, end, [&](auto const &b) { return cmp(b, *i); }))
+        sortBeforeOthers.insert(*i);
+    }
+
     auto const next = std::stable_partition(begin, end, [&](auto const &a) {
-      return std::none_of(begin, end, [&](auto const &b) { return cmp(b, a); });
+      return sortBeforeOthers.contains(a);
     });
     assert(next != begin && "not a partial ordering");
     begin = next;
