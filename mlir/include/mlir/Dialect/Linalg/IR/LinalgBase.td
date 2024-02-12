@@ -47,10 +47,6 @@ def Linalg_Dialect : Dialect {
   let hasOperationAttrVerify = 1;
   let hasConstantMaterializer = 1;
   let extraClassDeclaration = [{
-    virtual void *getRegisteredInterfaceForOp(
-        TypeID interfaceID,
-        OperationName opName) override;
-
     /// Attribute name used to memoize indexing maps for named ops.
     constexpr const static ::llvm::StringLiteral
         kMemoizedIndexingMapsAttrName = "linalg.memoized_indexing_maps";

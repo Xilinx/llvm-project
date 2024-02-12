@@ -814,23 +814,6 @@ void FillOp::getCanonicalizationPatterns(RewritePatternSet &results,
 }
 
 //===----------------------------------------------------------------------===//
-// GlobalAveragePool2D
-//===----------------------------------------------------------------------===//
-
-LogicalResult GlobalAveragePool2DOp::verify() {
-  auto inputTensor = getInput().getType().dyn_cast<RankedTensorType>();
-  auto outputTensor = getResult().getType().dyn_cast<RankedTensorType>();
-  if (!inputTensor || !outputTensor)
-    return failure();
-  if (inputTensor.getRank() != outputTensor.getRank())
-    return emitOpError("rank in input and output tensor needs to match");
-  if ((inputTensor.getShape()[0] != outputTensor.getShape()[0]) ||
-      (inputTensor.getShape()[1] != outputTensor.getShape()[1]))
-    return emitOpError("input and output batchsize and channel needs to match");
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // GenericOp
 //===----------------------------------------------------------------------===//
 
@@ -2323,89 +2306,6 @@ struct InferStaticShapeOfOperands : public OpInterfaceRewritePattern<LinalgOp> {
 
 // All named ops canonicalizers and folders are auto-generated in the
 // .cpp.inc.
-
-//===----------------------------------------------------------------------===//
-// OperatorClassInterfaceFallback
-//===----------------------------------------------------------------------===//
-
-static bool isElementwiseGeneric(LinalgOp op) {
-  if (!op.hasTensorSemantics())
-    return false;
-  if (op.getNumParallelLoops() != op.getNumLoops())
-    return false;
-  if (op.getNumDpsInits() != 1)
-    return false;
-  return op.getMatchingIndexingMap(op.getDpsInitOperand(0)).isPermutation();
-}
-
-namespace {
-
-struct OperatorClassInterfaceFallback
-    : OperatorClassInterface::FallbackModel<OperatorClassInterfaceFallback> {
-  OperatorClass getOperatorClass(Operation *op) const {
-    using llvm::operator|;
-
-    //
-    // Known ops
-    //
-
-    if (matchPattern(op, m_Constant()) || isa<tensor::EmptyOp>(op))
-      return OperatorClass::Constant;
-    if (isa<ApplyBias2DFchwOp, tensor::SplatOp, linalg::BroadcastBias2DFchwOp,
-            linalg::FillOp>(op))
-      return OperatorClass::Broadcast;
-    if (isa<Relu2DNchwOp, Lrelu2DNchwOp>(op))
-      return OperatorClass::Activation;
-    if (isa<tensor::PadOp>(op))
-      return OperatorClass::Padding;
-    if (isa<Conv2DReluOp, Conv2DLreluOp>(op))
-      return OperatorClass::Convolution | OperatorClass::Activation;
-    if (isa<Conv2DLreluMaxpoolOp>(op))
-      return OperatorClass::Convolution | OperatorClass::Activation |
-             OperatorClass::Padding | OperatorClass::Pooling;
-
-    //
-    // Guessing
-    //
-
-    if (isa<arith::ArithDialect, math::MathDialect>(op->getDialect()))
-      return OperatorClass::Elementwise;
-
-    if (auto conv = dyn_cast<ConvolutionOpInterface>(op)) {
-      if (conv.filter().getDefiningOp<tensor::EmptyOp>()) {
-        // Probably a pooling operator.
-        return OperatorClass::Pooling;
-      }
-
-      // Probably a convolution operator.
-      return OperatorClass::Convolution;
-    }
-
-    if (auto generic = dyn_cast<LinalgOp>(op)) {
-      if (isElementwiseGeneric(generic))
-        return OperatorClass::Elementwise;
-
-      return OperatorClass::Generic;
-    }
-
-    return OperatorClass::None;
-  }
-};
-
-} // namespace
-
-OperatorClass mlir::linalg::classifyOperator(Operation *op) {
-  if (auto iface = dyn_cast<OperatorClassInterface>(op)) {
-    return iface.getOperatorClass();
-  }
-
-  return OperatorClassInterfaceFallback().getOperatorClass(op);
-}
-
-void *mlir::linalg::getOperatorClassInterfaceFallback() {
-  static OperatorClassInterfaceFallback instance;
-  return static_cast<void *>(&instance);
-}
 
 //===----------------------------------------------------------------------===//
 // SoftmaxOp
