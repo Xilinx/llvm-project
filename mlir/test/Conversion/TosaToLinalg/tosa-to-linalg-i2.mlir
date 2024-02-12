@@ -16,5 +16,3 @@ func.func @test_cast(%arg0: tensor<1xf32>) -> tensor<1xf32> {
 
   return %2 : tensor<1xf32>
 }
-
-// -----
