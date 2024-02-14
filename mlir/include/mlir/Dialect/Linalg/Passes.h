@@ -61,9 +61,6 @@ std::unique_ptr<Pass> createLinalgBufferizePass();
 /// operations.
 std::unique_ptr<Pass> createLinalgGeneralizationPass();
 
-/// Create a pass to convert fused named ops into simple ops
-std::unique_ptr<OperationPass<func::FuncOp>> createLinalgUnfusePass();
-
 /// Create a pass to convert Linalg operations to equivalent operations that
 /// work on primitive types, if possible.
 std::unique_ptr<Pass> createLinalgDetensorizePass();

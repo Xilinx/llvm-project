@@ -107,17 +107,6 @@ def LinalgGeneralization : Pass<"linalg-generalize-named-ops"> {
   let dependentDialects = ["linalg::LinalgDialect"];
 }
 
-def LinalgUnfuse : Pass<"linalg-unfuse", "func::FuncOp"> {
-  let summary = "Convert fused named ops into simple ops";
-  let constructor = "mlir::createLinalgUnfusePass()";
-  let dependentDialects = [
-    "linalg::LinalgDialect",
-    "tensor::TensorDialect",
-    "arith::ArithDialect",
-    "math::MathDialect"
-  ];
-}
-
 def LinalgDetensorize : InterfacePass<"linalg-detensorize", "FunctionOpInterface"> {
   let summary = "Detensorize linalg ops";
   let constructor = "mlir::createLinalgDetensorizePass()";

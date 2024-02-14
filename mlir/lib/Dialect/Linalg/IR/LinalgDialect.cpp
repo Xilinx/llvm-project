@@ -98,17 +98,6 @@ void addNamedOpBuilders(
   (addNamedOpBuilderImpl<OpTypes>(map), ...);
 }
 
-void *mlir::linalg::LinalgDialect::getRegisteredInterfaceForOp(
-    TypeID interfaceID,
-    OperationName opName)
-{
-  if (interfaceID == TypeID::get<OperatorClassInterface>()) {
-    return getOperatorClassInterfaceFallback();
-  }
-
-  return nullptr;
-}
-
 void mlir::linalg::LinalgDialect::initialize() {
   addAttributes<
 #define GET_ATTRDEF_LIST

@@ -880,20 +880,6 @@ def LinalgStructuredInterface : OpInterface<"LinalgOp"> {
   let verifyWithRegions = 1;
 }
 
-def LinalgOperatorClassInterface : OpInterface<"OperatorClassInterface"> {
-  let cppNamespace = "::mlir::linalg";
-  let methods = [
-    InterfaceMethod<
-      /*desc=*/[{}],
-      /*retTy=*/"OperatorClass",
-      /*methodName=*/"getOperatorClass",
-      /*args=*/(ins),
-      /*methodBody=*/"",
-      /*defaultImplementation=*/""
-    >
-  ];
-}
-
 def AggregatedOpInterface : OpInterface<"AggregatedOpInterface"> {
   let description = [{
     Interface for decomposing aggregated operations into a sequence of simpler
