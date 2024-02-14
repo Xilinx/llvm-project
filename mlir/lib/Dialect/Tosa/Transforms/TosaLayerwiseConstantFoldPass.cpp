@@ -45,6 +45,8 @@ void populateTosaOpsCanonicalizationPatterns(MLIRContext *ctx,
 struct TosaLayerwiseConstantFoldPass
     : public tosa::impl::TosaLayerwiseConstantFoldPassBase<
           TosaLayerwiseConstantFoldPass> {
+  using TosaLayerwiseConstantFoldPassBase::TosaLayerwiseConstantFoldPassBase;
+
   void runOnOperation() override {
     auto *ctx = &getContext();
     RewritePatternSet patterns(ctx);
@@ -52,6 +54,8 @@ struct TosaLayerwiseConstantFoldPass
 
     mlir::tosa::populateTosaFoldConstantPatterns(
         ctx, patterns, foldSplatOrSingleUseOnly, enableIntCastFolding);
+    mlir::tosa::populateTosaConstantReduction(ctx, patterns,
+                                              aggressiveReduceConstant);
     populateTosaOpsCanonicalizationPatterns(ctx, patterns);
 
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
@@ -63,4 +67,9 @@ struct TosaLayerwiseConstantFoldPass
 
 std::unique_ptr<Pass> mlir::tosa::createTosaLayerwiseConstantFoldPass() {
   return std::make_unique<TosaLayerwiseConstantFoldPass>();
+}
+
+std::unique_ptr<Pass> mlir::tosa::createTosaLayerwiseConstantFoldPass(
+    const TosaLayerwiseConstantFoldPassOptions &options) {
+  return std::make_unique<TosaLayerwiseConstantFoldPass>(options);
 }

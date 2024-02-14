@@ -75,21 +75,23 @@ std::unique_ptr<Pass> mlir::tosa::createTosaToLinalg() {
 }
 
 void mlir::tosa::addTosaToLinalgPasses(
-    OpPassManager &pm, bool disableTosaDecompositions,
-    bool useMatmulForSingleBatch,
+    OpPassManager &pm, const TosaToLinalgOptions &options,
     tosa::ValidationOptions const &validationOptions) {
   // Optional decompositions are designed to benefit linalg.
-  if (!disableTosaDecompositions)
+  if (!options.disableTosaDecompositions)
     pm.addNestedPass<func::FuncOp>(tosa::createTosaOptionalDecompositions());
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
 
   pm.addNestedPass<func::FuncOp>(tosa::createTosaInferShapesPass());
   pm.addNestedPass<func::FuncOp>(tosa::createTosaMakeBroadcastablePass());
   pm.addNestedPass<func::FuncOp>(
-      tosa::createTosaToLinalgNamed(useMatmulForSingleBatch));
+      tosa::createTosaToLinalgNamed(options.useMatmulForSingleBatch));
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
   // TODO: Remove pass that operates on const tensor and enable optionality
-  pm.addNestedPass<func::FuncOp>(tosa::createTosaLayerwiseConstantFoldPass());
+  TosaLayerwiseConstantFoldPassOptions tosaFoldOptions;
+  tosaFoldOptions.aggressiveReduceConstant = options.aggressiveReduceConstant;
+  pm.addNestedPass<func::FuncOp>(tosa::createTosaLayerwiseConstantFoldPass(
+      tosaFoldOptions));
   pm.addNestedPass<func::FuncOp>(tosa::createTosaMakeBroadcastablePass());
   pm.addNestedPass<func::FuncOp>(
       tosa::createTosaValidationPass(validationOptions));

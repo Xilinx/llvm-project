@@ -9,7 +9,6 @@
 // CHECK:           %[[VAL_2:.*]] = arith.constant 8 : index
 // CHECK:           %[[VAL_3:.*]] = arith.constant 0 : index
 // CHECK:           %[[VAL_4:.*]] = arith.constant 9 : index
-// CHECK:           %[[VAL_5:.*]] = bufferization.alloc_tensor() : tensor<8x8xf32, #{{.*}}>
 // CHECK:           %[[VAL_6:.*]] = sparse_tensor.number_of_entries %[[VAL_0]] : tensor<8x8xf32, #{{.*}}>
 // CHECK:           %[[VAL_7:.*]] = sparse_tensor.number_of_entries %[[VAL_1]] : tensor<8x8xf32, #{{.*}}>
 // CHECK:           %[[VAL_8:.*]] = sparse_tensor.positions %[[VAL_0]] {level = 1 : index} : tensor<8x8xf32, #{{.*}}>
@@ -87,12 +86,12 @@
 // CHECK:           %[[VAL_a2:.*]] = bufferization.to_tensor %[[VAL_83]] : memref<?xf32>
 // CHECK:           %[[VAL_a3:.*]] = bufferization.to_tensor %[[VAL_81]] : memref<?xindex>
 // CHECK:           %[[VAL_a4:.*]] = bufferization.to_tensor %[[VAL_82]] : memref<?xindex>
-// CHECK:           %[[VAL_a5:.*]] = sparse_tensor.pack %[[VAL_a2]], %[[VAL_a3]], %[[VAL_a4]] : tensor<?xf32>, tensor<?xindex>, tensor<?xindex> to tensor<8x8xf32, #{{.*}}>
+// CHECK:           %[[VAL_a5:.*]] = sparse_tensor.assemble %[[VAL_a2]], %[[VAL_a3]], %[[VAL_a4]] : tensor<?xf32>, tensor<?xindex>, tensor<?xindex> to tensor<8x8xf32, #{{.*}}>
 // CHECK:           return %[[VAL_a5]] : tensor<8x8xf32, #{{.*}}>
 // CHECK:         }
 func.func @matmulCSR(%A: tensor<8x8xf32, #CSR>,
                      %B: tensor<8x8xf32, #CSR>) -> tensor<8x8xf32, #CSR> {
-  %init = bufferization.alloc_tensor() : tensor<8x8xf32, #CSR>
+  %init = tensor.empty() : tensor<8x8xf32, #CSR>
   %C = linalg.matmul
     ins(%A, %B: tensor<8x8xf32, #CSR>,
                 tensor<8x8xf32, #CSR>)
