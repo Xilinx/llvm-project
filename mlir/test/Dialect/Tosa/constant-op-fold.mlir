@@ -1108,14 +1108,13 @@ func.func @reduce_sum_constant() -> tensor<1x3xi32> {
 
 // -----
 
-func.func @reduce_sum_constant() -> tensor<1x3xi32> {
-  // CHECK-LABEL:     func.func @reduce_sum_constant() -> tensor<1x3xi32> {
-  // CHECK:           %[[VAL_0:.*]] = "tosa.const"() <{value = dense<{{\[\[}}1, 2, 3], [4, 5, 6]]> : tensor<2x3xi32>}> : () -> tensor<2x3xi32>
+func.func @reduce_sum_constant(%arg0: tensor<2x3xi32>) -> tensor<1x3xi32> {
+  // CHECK-LABEL:     func.func @reduce_sum_constant
+  // CHECK-SAME: (%[[VAL_0:.*]]: tensor<2x3xi32>) -> tensor<1x3xi32> {
   // CHECK:           %[[VAL_1:.*]] = "tosa.const"() <{value = dense<{{\[\[}}1, 2, 3], [4, 5, 7]]> : tensor<2x3xi32>}> : () -> tensor<2x3xi32>
   // CHECK:           %[[VAL_2:.*]] = tosa.add %[[VAL_0]], %[[VAL_1]] : (tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   // CHECK:           %[[VAL_3:.*]] = tosa.reduce_sum %[[VAL_2]] {axis = 0 : i32} : (tensor<2x3xi32>) -> tensor<1x3xi32>
   // CHECK:           return %[[VAL_3]] : tensor<1x3xi32>
-  %arg0 = "tosa.const"() <{value = dense<[[1,2,3], [4,5,6]]> : tensor<2x3xi32>}> : () -> tensor<2x3xi32>
   %arg1 = "tosa.const"() <{value = dense<[[1,2,3], [4,5,7]]> : tensor<2x3xi32>}> : () -> tensor<2x3xi32>
   %arg2 = tosa.add %arg0, %arg1 : (tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   %0 = tosa.reduce_sum %arg2 {axis = 0 : i32} : (tensor<2x3xi32>) -> tensor<1x3xi32>
