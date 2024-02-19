@@ -34,8 +34,7 @@ createTosaToLinalgNamed(bool useMatmulForSingleBatch = false);
 /// pipeline succeeds.  The option to disable decompositions is available for
 /// benchmarking performance improvements from the canonicalizations.
 void addTosaToLinalgPasses(
-    OpPassManager &pm, bool disableTosaDecompositions = false,
-    bool useMatmulForSingleBatch = false,
+    OpPassManager &pm, const TosaToLinalgOptions &options,
     // Note: Default to 'none' level unless otherwise specified.
     tosa::ValidationOptions const &validationOptions =
         tosa::ValidationOptions().setLevel(tosa::TosaLevelEnum::None));

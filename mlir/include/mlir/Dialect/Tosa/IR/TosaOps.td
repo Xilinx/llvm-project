@@ -48,6 +48,8 @@ def Tosa_ArgMaxOp : Tosa_InferShapedTypeOp<"argmax"> {
   let results = (outs
     Tosa_Tensor: $output
   );
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -802,7 +804,7 @@ def Tosa_MulOp : Tosa_ElementwiseOp<"mul", [
   let arguments = (ins
     Tosa_Tensor:$input1,
     Tosa_Tensor:$input2,
-    I32Attr:$shift
+    I8Attr:$shift
   );
 
   let results = (outs
@@ -1281,6 +1283,11 @@ def Tosa_ReduceAllOp : Tosa_InferTensorTypeOp<"reduce_all"> {
     /// Returns true when two result types are compatible for this op;
     /// Method used by InferTypeOpInterface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+
+    /// Return the AND result between two integer operands
+    static inline APInt calcOneElement(APInt leftOperand, APInt rightOperand) {
+      return leftOperand & rightOperand;
+    }
   }];
 }
 
@@ -1309,6 +1316,11 @@ def Tosa_ReduceAnyOp : Tosa_InferTensorTypeOp<"reduce_any"> {
     /// Returns true when two result types are compatible for this op;
     /// Method used by InferTypeOpInterface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+
+    /// Return the OR result between two integer operands
+    static inline APInt calcOneElement(APInt leftOperand, APInt rightOperand) {
+      return leftOperand | rightOperand;
+    }
   }];
 }
 
@@ -1337,6 +1349,12 @@ def Tosa_ReduceMaxOp : Tosa_InferTensorTypeOp<"reduce_max"> {
     /// Returns true when two result types are compatible for this op;
     /// Method used by InferTypeOpInterface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+
+    /// Return the max of the two integer operands
+    static inline APInt calcOneElement(APInt leftOperand, APInt rightOperand) {
+      const llvm::APInt subtractRes = leftOperand - rightOperand;
+      return (!subtractRes.isNegative()) ? leftOperand : rightOperand;
+    }
   }];
 }
 
@@ -1365,6 +1383,12 @@ def Tosa_ReduceMinOp : Tosa_InferTensorTypeOp<"reduce_min"> {
     /// Returns true when two result types are compatible for this op;
     /// Method used by InferTypeOpInterface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+
+    /// Return the min of the two integer operands
+    static inline APInt calcOneElement(APInt leftOperand, APInt rightOperand) {
+      const llvm::APInt subtractRes = leftOperand - rightOperand;
+      return (!subtractRes.isNegative()) ? rightOperand : leftOperand;
+    }
   }];
 }
 
@@ -1393,6 +1417,11 @@ def Tosa_ReduceProdOp : Tosa_InferTensorTypeOp<"reduce_prod"> {
     /// Returns true when two result types are compatible for this op;
     /// Method used by InferTypeOpInterface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+
+    /// Return the prod of the two integer operands
+    static inline APInt calcOneElement(APInt leftOperand, APInt rightOperand) {
+      return leftOperand * rightOperand;
+    }
   }];
 }
 
@@ -1414,13 +1443,17 @@ def Tosa_ReduceSumOp : Tosa_InferTensorTypeOp<"reduce_sum"> {
   let results = (outs
     Tosa_Tensor:$output
   );
-
   let hasFolder = 1;
 
   let extraClassDeclaration = [{
     /// Returns true when two result types are compatible for this op;
     /// Method used by InferTypeOpInterface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
+
+    /// Return the sum of the two integer operands
+    static inline APInt calcOneElement(APInt leftOperand, APInt rightOperand) {
+      return leftOperand + rightOperand;
+    }
   }];
 }
 
