@@ -831,6 +831,15 @@ LogicalResult Parser::convertTupleExpressionTo(
     return convertToRange({valueTy, valueRangeTy}, valueRangeTy);
   if (type == typeRangeTy)
     return convertToRange({typeTy, typeRangeTy}, typeRangeTy);
+  if (type == attrTy && exprType.size() == 1 &&
+      exprType.getElementTypes()[0] == type) {
+    // Parenthesis become tuples. Allow to unpack single element tuples
+    // to expressions.
+    expr = ast::MemberAccessExpr::create(ctx, expr->getLoc(), expr,
+                                         llvm::to_string(0),
+                                         exprType.getElementTypes()[0]);
+    return success();
+  }
 
   return emitErrorFn();
 }

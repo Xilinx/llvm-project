@@ -124,6 +124,16 @@ Pattern {
 
 // -----
 
+Constraint checkAttr(attr: Attr);
+Pattern {
+  let tuple = (result1 = value: Value);
+  // CHECK: unable to convert expression of type `Tuple<result1: Value>` to the expected type of `Attr`
+  checkAttr(tuple);
+  erase _: Op;
+}
+
+// -----
+
 //===----------------------------------------------------------------------===//
 // Range Expr
 //===----------------------------------------------------------------------===//
