@@ -106,6 +106,17 @@ private:
   /// Pop the last decl scope from the lexer.
   void popDeclScope() { curDeclScope = curDeclScope->getParentScope(); }
 
+  /// Creates a native constraint taking a set of Attr as arguments.
+  /// The number of arguments and their names is given by argNames.
+  /// The native returns an Attr when returnsAttr is true, otherwise returns
+  /// nothing.
+  template <class T>
+  T *declareBuiltin(StringRef name, ArrayRef<StringRef> argNames,
+                    bool returnsAttr);
+
+  /// Register all builtin natives.
+  void declareBuiltins();
+
   /// Parse the body of an AST module.
   LogicalResult parseModuleBody(SmallVectorImpl<ast::Decl *> &decls);
 
@@ -418,12 +429,12 @@ private:
   FailureOr<ast::MemberAccessExpr *>
   createMemberAccessExpr(ast::Expr *parentExpr, StringRef name, SMRange loc);
 
-  // Create a native call with \p nativeFuncName and \p arguments.
+  // Create a native call with \p function and \p arguments.
   // This should be accompanied by a C++ implementation of the function that
   // needs to be linked and registered in passes that process PDLL files.
-  FailureOr<ast::DeclRefExpr *>
-  createNativeCall(SMRange loc, StringRef nativeFuncName,
-                   MutableArrayRef<ast::Expr *> arguments);
+  FailureOr<ast::Expr *>
+  createBuiltinCall(SMRange loc, ast::Decl *function,
+                    MutableArrayRef<ast::Expr *> arguments);
 
   /// Validate the member access `name` into the given parent expression. On
   /// success, this also returns the type of the member accessed.
@@ -578,12 +589,63 @@ private:
 
   /// The optional code completion context.
   CodeCompleteContext *codeCompleteContext;
+
+  struct {
+    ast::UserRewriteDecl *createDictionaryAttr;
+    ast::UserRewriteDecl *addEntryToDictionaryAttr;
+    ast::UserRewriteDecl *createArrayAttr;
+    ast::UserRewriteDecl *addElemToArrayAttr;
+  } builtins{};
 };
 } // namespace
+
+template <class T>
+T *Parser::declareBuiltin(StringRef name, ArrayRef<StringRef> argNames,
+                          bool returnsAttr) {
+  SMRange loc;
+  auto attrConstr = ast::ConstraintRef(
+      ast::AttrConstraintDecl::create(ctx, loc, nullptr), loc);
+
+  pushDeclScope();
+  SmallVector<ast::VariableDecl *> args;
+  for (auto argName : argNames) {
+    FailureOr<ast::VariableDecl *> arg =
+        createArgOrResultVariableDecl(argName, loc, attrConstr);
+    assert(succeeded(arg));
+    args.push_back(*arg);
+  }
+  SmallVector<ast::VariableDecl *> results;
+  if (returnsAttr) {
+    auto result = createArgOrResultVariableDecl("", loc, attrConstr);
+    assert(succeeded(result));
+    results.push_back(*result);
+  }
+  popDeclScope();
+
+  auto *constraintDecl = T::createNative(ctx, ast::Name::create(ctx, name, loc),
+                                         args, results, {}, attrTy);
+  curDeclScope->add(constraintDecl);
+  return constraintDecl;
+}
+
+void Parser::declareBuiltins() {
+  builtins.createDictionaryAttr = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_createDictionaryAttr", {}, /*returnsAttr=*/true);
+  builtins.addEntryToDictionaryAttr = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_addEntryToDictionaryAttr", {"attr", "attrName", "attrEntry"},
+      /*returnsAttr=*/true);
+  builtins.createArrayAttr = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_createArrayAttr", {}, /*returnsAttr=*/true);
+  builtins.addElemToArrayAttr = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_addElemToArrayAttr", {"attr", "element"},
+      /*returnsAttr=*/true);
+}
 
 FailureOr<ast::Module *> Parser::parseModule() {
   SMLoc moduleLoc = curToken.getStartLoc();
   pushDeclScope();
+
+  declareBuiltins();
 
   // Parse the top-level decls of the module.
   SmallVector<ast::Decl *> decls;
@@ -1874,7 +1936,7 @@ FailureOr<ast::Expr *> Parser::parseArrayAttrExpr() {
         "Parsing of array attributes as constraint not supported!");
 
   auto arrayAttrCall =
-      createNativeCall(curToken.getLoc(), "createArrayAttr", {});
+      createBuiltinCall(curToken.getLoc(), builtins.createArrayAttr, {});
   if (failed(arrayAttrCall))
     return failure();
 
@@ -1884,8 +1946,8 @@ FailureOr<ast::Expr *> Parser::parseArrayAttrExpr() {
       return failure();
 
     SmallVector<ast::Expr *> arrayAttrArgs{*arrayAttrCall, *attr};
-    auto elemToArrayCall = createNativeCall(
-        curToken.getLoc(), "addElemToArrayAttr", arrayAttrArgs);
+    auto elemToArrayCall = createBuiltinCall(
+        curToken.getLoc(), builtins.addElemToArrayAttr, arrayAttrArgs);
     if (failed(elemToArrayCall))
       return failure();
 
@@ -1966,7 +2028,7 @@ FailureOr<ast::Expr *> Parser::parseDictAttrExpr() {
     return emitError(
         "Parsing of dictionary attributes as constraint not supported!");
 
-  auto dictAttrCall = createNativeCall(loc, "createDictionaryAttr", {});
+  auto dictAttrCall = createBuiltinCall(loc, builtins.createDictionaryAttr, {});
   if (failed(dictAttrCall))
     return failure();
 
@@ -2000,8 +2062,8 @@ FailureOr<ast::Expr *> Parser::parseDictAttrExpr() {
     // Create addEntryToDictionaryAttr native call.
     SmallVector<ast::Expr *> arrayAttrArgs{*dictAttrCall, *stringAttrRef,
                                            namedDecl->getValue()};
-    auto entryToDictionaryCall =
-        createNativeCall(loc, "addEntryToDictionaryAttr", arrayAttrArgs);
+    auto entryToDictionaryCall = createBuiltinCall(
+        loc, builtins.addEntryToDictionaryAttr, arrayAttrArgs);
     if (failed(entryToDictionaryCall))
       return failure();
 
@@ -2923,33 +2985,20 @@ Parser::createMemberAccessExpr(ast::Expr *parentExpr, StringRef name,
   return ast::MemberAccessExpr::create(ctx, loc, parentExpr, name, *memberType);
 }
 
-FailureOr<ast::DeclRefExpr *>
-Parser::createNativeCall(SMRange loc, StringRef nativeFuncName,
-                         MutableArrayRef<ast::Expr *> arguments) {
+FailureOr<ast::Expr *>
+Parser::createBuiltinCall(SMRange loc, ast::Decl *function,
+                          MutableArrayRef<ast::Expr *> arguments) {
 
-  FailureOr<ast::Expr *> nativeFuncExpr = parseDeclRefExpr(nativeFuncName, loc);
+  FailureOr<ast::Expr *> nativeFuncExpr = createDeclRefExpr(loc, function);
   if (failed(nativeFuncExpr))
     return failure();
-
-  if (!(*nativeFuncExpr)->getType().isa<ast::RewriteType>())
-    return emitError(nativeFuncName + " should be defined as a rewriter.");
 
   FailureOr<ast::CallExpr *> nativeCall =
       createCallExpr(loc, *nativeFuncExpr, arguments);
   if (failed(nativeCall))
     return failure();
 
-  // Create a unique anonymous name declaration to use, as its name is not
-  // important.
-  std::string anonName =
-      llvm::formatv("{0}_{1}", nativeFuncName, anonymousDeclNameCounter++)
-          .str();
-  FailureOr<ast::VariableDecl *> varDecl = defineVariableDecl(
-      anonName, loc, (*nativeCall)->getType(), *nativeCall, {});
-  if (failed(varDecl))
-    return failure();
-
-  return createDeclRefExpr(loc, *varDecl);
+  return *nativeCall;
 }
 
 FailureOr<ast::Type> Parser::validateMemberAccess(ast::Expr *parentExpr,
