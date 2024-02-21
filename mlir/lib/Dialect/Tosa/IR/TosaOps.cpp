@@ -905,6 +905,14 @@ LogicalResult tosa::SliceOp::verify() {
                          << ") must match";
   }
 
+  if (static_cast<size_t>(inputType.getRank()) != getStart().size())
+    return emitOpError(
+        "length of start attribute is not equal rank of input shape");
+
+  if (static_cast<size_t>(inputType.getRank()) != getSize().size())
+    return emitOpError(
+        "length of size attribute is not equal rank of input shape");
+
   for (int64_t dim = 0; dim < outputType.getRank(); ++dim) {
     if (getSize()[dim] != -1 && !outputType.isDynamicDim(dim) &&
         getSize()[dim] != outputType.getShape()[dim]) {
@@ -915,17 +923,8 @@ LogicalResult tosa::SliceOp::verify() {
     }
   }
 
-  if (static_cast<size_t>(inputType.getRank()) != getStart().size())
-    return emitOpError(
-        "length of start attribute is not equal rank of input shape");
-
-  if (static_cast<size_t>(inputType.getRank()) != getSize().size())
-    return emitOpError(
-        "length of size attribute is not equal rank of input shape");
-
-  for (int i = 0; i < outputType.getRank(); ++i) {
-    auto dimSize = inputType.getShape()[i];
-    if (getSize()[i] != -1 && dimSize != ShapedType::kDynamic &&
+  for (int i = 0; i < inputType.getRank(); ++i) {
+    if (getSize()[i] != -1 && !inputType.isDynamicDim(i) &&
         getStart()[i] + getSize()[i] > inputType.getShape()[i]) {
       return emitOpError() << "start (" << getStart()[i] << ") plus size ("
                            << getSize()[i]

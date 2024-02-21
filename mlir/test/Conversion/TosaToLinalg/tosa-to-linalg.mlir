@@ -1704,8 +1704,8 @@ func.func @test_custom_ops(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> () {
   // CHECK: math.sin
   // CHECK: linalg.generic
   // CHECK: math.atan2
-  %2 = "tosa.custom"(%arg0) <{config = "UNDEF", identifier = "math.sin", implementation_attrs = "linalg.generic"}> : (tensor<1xf32>) -> tensor<1xf32>
-  %3 = "tosa.custom"(%arg0, %arg1) <{config = "UNDEF", identifier = "math.atan2", implementation_attrs = "linalg.generic"}> : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %2 = "tosa.custom"(%arg0) <{domain_name = "UNDEF", operator_name = "math.sin", implementation_attrs = "linalg.generic"}> : (tensor<1xf32>) -> tensor<1xf32>
+  %3 = "tosa.custom"(%arg0, %arg1) <{domain_name = "UNDEF", operator_name = "math.atan2", implementation_attrs = "linalg.generic"}> : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
 
   return
 }
@@ -1718,8 +1718,8 @@ func.func @test_custom_ops_dyn(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> ()
   // CHECK: math.cos
   // CHECK: linalg.generic
   // CHECK: math.atan2
-  %2 = "tosa.custom"(%arg0) <{config = "UNDEF", identifier = "math.cos", implementation_attrs = "linalg.generic"}> : (tensor<?xf32>) -> tensor<?xf32>
-  %3 = "tosa.custom"(%arg0, %arg1) <{config = "UNDEF", identifier = "math.atan2", implementation_attrs = "linalg.generic"}> : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+  %2 = "tosa.custom"(%arg0) <{domain_name = "UNDEF", operator_name = "math.cos", implementation_attrs = "linalg.generic"}> : (tensor<?xf32>) -> tensor<?xf32>
+  %3 = "tosa.custom"(%arg0, %arg1) <{domain_name = "UNDEF", operator_name = "math.atan2", implementation_attrs = "linalg.generic"}> : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
 
   return
 }
