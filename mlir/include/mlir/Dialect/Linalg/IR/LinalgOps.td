@@ -16,9 +16,11 @@
 include "mlir/Dialect/Linalg/IR/LinalgBase.td"
 include "mlir/Dialect/Linalg/IR/LinalgInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/DestinationStyleOpInterface.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/TilingInterface.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
 
 // Base class for Linalg dialect ops that do not correspond to library calls.
@@ -88,104 +90,68 @@ def Linalg_IndexOp : Linalg_Op<"index", [Pure]>,
   let hasVerifier = 1;
 }
 
-def Linalg_SoftmaxOp : Linalg_Op<"softmax", [Pure]> {
-  let arguments = (ins AnyTensor:$input,
-                       I64Attr:$dim);
-  let results = (outs AnyTensor:$result);
-  let summary = "linalg softmax operation";
+def Linalg_SoftmaxOp : Linalg_Op<"softmax",
+    [DestinationStyleOpInterface,
+     PredOpTrait<"input and output have same element type", TCopVTEtIsSameAs<0, 1>>,
+     DeclareOpInterfaceMethods<ReifyRankedShapedTypeOpInterface>,
+     DeclareOpInterfaceMethods<AggregatedOpInterface, ["decomposeOperation"]>,
+     DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+     DeclareOpInterfaceMethods<TilingInterface,
+      ["getIterationDomain",
+       "getLoopIteratorTypes",
+       "getResultTilePosition",
+       "getTiledImplementation"]>]> {
+  let summary = "Softmax operator";
   let description = [{
-    This implements the softmax operator.
-  }];
-  let assemblyFormat = [{ attr-dict `ins``(` $input `:` type($input)`)` `->` type(results) }];
-  let hasVerifier = 1;
-}
+    linalg.softmax computes a numerically stable version of softmax.
 
-def Linalg_GlobalAveragePool2DOp : Linalg_Op<"globalaveragepool2d", [Pure]> {
-  let arguments = (ins AnyTensor:$input);
-  let results = (outs AnyTensor:$result);
-  let summary = "linalg globalaveragepool2d operation";
-  let description = [{
-    This implements the globalaveragepool2d operator.
-    The custom op is unfused into `linalg.pooling_nchw_sum` and `arith.divf`.
-  }];
-  let assemblyFormat = [{ attr-dict `ins``(` $input `:` type($input)`)` `->` type(results) }];
-  let hasVerifier = 1;
-}
+    For a given input tensor and a specified dimension `d`, compute:
+      1. the max `m` along that dimension `d`
+      2. f(x) = exp(x - m)
+      3. sum f(x) along dimension d to get l(x).
+      4. compute the final result f(x) / l(x).
 
-def Linalg_SubgraphOp
-    : Linalg_Op<"subgraph", [
-        IsolatedFromAbove,
-        DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
-        DeclareOpInterfaceMethods<LinalgOperatorClassInterface>,
-        DeclareOpInterfaceMethods<
-          RegionBranchOpInterface, [
-            "getSuccessorEntryOperands",
-            "getNumRegionInvocations",
-            "getRegionInvocationBounds"]>,
-        SingleBlockImplicitTerminator<"YieldOp">]> {
-  let summary = "Fused operator region";
-  let description = [{
-    The `linalg.subgraph` operation declares a single block that collects
-    operations that produce a tensor value in a single region, with
-    all intermediary values being buffered internally and/or scalar replaced.
+    This is an aggregate linalg operation that further reduces to a small DAG of
+    structured operations.
 
-    All values used within this block must be explicitly captured.
-
-    This operation also supports buffered semantics, where no value will be
-    returned, and all side-effects are expected to be mediated through captured
-    memrefs.
-
-    Example:
-
-    ```mlir
-    %0 = ... : tensor<1x3x108x108xf32>
-    %1 = linalg.subgraph (%ifm = %0 : tensor<1x3x108x108xf32>) {
-      %0 = linalg.conv2d_nchw ins(%ifm: ...
-      %1 = linalg.relu2d_nchw ins(%0: ...
-      linalg.yield %1 : tensor<1x3x106x106xf32>
-    } -> tensor<1x3x106x106xf32>
-    ```
+    Warning: Regarding the tiling capabilities, the implementation doesn't
+    check that the provided dimensions make sense. This is the responsability
+    of the transformation calling the tiling to ensure that the provided
+    sizes for each dimension make sense with respect to the semantic of
+    softmax.
   }];
 
-  let arguments = (ins Variadic<AnyType>:$captures);
-  let results = (outs Optional<AnyRankedTensor>:$result);
-  let regions = (region SizedRegion<1>:$body);
+  let arguments = (ins AnyShaped:$input,
+                       AnyShaped:$output,
+                       I64Attr:$dimension
+  );
 
-  let hasCustomAssemblyFormat = 1;
-  let hasVerifier = 1;
-  let hasCanonicalizer = 1;
+  let results = (outs Variadic<AnyRankedTensor>:$result);
+  let hasFolder = 1;
+  let assemblyFormat = [{
+    attr-dict
+    `dimension` `(` $dimension `)`
+    `ins` `(` $input `:` type($input) `)`
+    `outs` `(` $output `:` type($output) `)`
+    (`->` type($result)^)?
+  }];
 
-  let builders = [
-    OpBuilder<(ins
-      "Type":$resultType,
-      "ValueRange":$captures,
-      CArg<"function_ref<void(OpBuilder &, Location, IRMapping &)>", "nullptr">:$bodyBuilder)>,
-    OpBuilder<(ins
-      "ValueRange":$captures,
-      CArg<"function_ref<void(OpBuilder &, Location, IRMapping &)>", "nullptr">:$bodyBuilder)>
-  ];
-  let skipDefaultBuilders = 1;
-
-  code extraClassDeclaration = [{
-    Block::BlockArgListType getCaptureArgs() {
-      return getBody().getArguments();
+  let extraClassDeclaration = [{
+    ShapedType getInputOperandType() {
+      return getInput().getType().cast<ShapedType>();
     }
-
-    IRMapping getCaptureMapping() {
-      IRMapping result;
-      for (unsigned idx = 0; idx < getCaptures().size(); ++idx) {
-        result.map(getCaptures()[idx], getCaptureArgs()[idx]);
-      }
-      return result;
+    ShapedType getOutputOperandType() {
+      return getOutput().getType().cast<ShapedType>();
     }
-    IRMapping getUnCaptureMapping() {
-      IRMapping result;
-      for (unsigned idx = 0; idx < getCaptures().size(); ++idx) {
-        result.map(getCaptureArgs()[idx], getCaptures()[idx]);
-      }
-      return result;
+    int64_t getInputOperandRank() {
+      return getInputOperandType().getRank();
     }
+    int64_t getOutputOperandRank() {
+      return getOutputOperandType().getRank();
+    }
+    MutableOperandRange getDpsInitsMutable() { return getOutputMutable(); }
   }];
+  let hasVerifier = 1;
 }
 
 #endif // LINALG_OPS

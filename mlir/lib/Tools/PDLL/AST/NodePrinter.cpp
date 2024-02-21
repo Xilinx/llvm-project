@@ -227,7 +227,7 @@ void NodePrinter::printImpl(const CallExpr *expr) {
   print(expr->getType());
   os << ">";
   if (expr->getIsNegated())
-    os << " negated";
+    os << " Negated";
   os << "\n";
   printChildren(expr->getCallableExpr());
   printChildren("Arguments", expr->getArguments());

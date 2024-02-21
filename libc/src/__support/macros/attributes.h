@@ -14,12 +14,13 @@
 // Most macros here are exposing GCC or Clang features, and are stubbed out for
 // other compilers.
 
-#ifndef LLVM_LIBC_SUPPORT_MACROS_ATTRIBUTES_H
-#define LLVM_LIBC_SUPPORT_MACROS_ATTRIBUTES_H
+#ifndef LLVM_LIBC_SRC___SUPPORT_MACROS_ATTRIBUTES_H
+#define LLVM_LIBC_SRC___SUPPORT_MACROS_ATTRIBUTES_H
 
 #include "properties/architectures.h"
 
 #define LIBC_INLINE inline
+#define LIBC_INLINE_VAR inline
 #define LIBC_INLINE_ASM __asm__ __volatile__
 #define LIBC_UNUSED __attribute__((unused))
 
@@ -29,4 +30,4 @@
 #define LIBC_THREAD_LOCAL thread_local
 #endif
 
-#endif // LLVM_LIBC_SUPPORT_MACROS_ATTRIBUTES_H
+#endif // LLVM_LIBC_SRC___SUPPORT_MACROS_ATTRIBUTES_H

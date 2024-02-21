@@ -31,12 +31,6 @@
 namespace mlir {
 namespace linalg {
 
-/// Returns a singleton FallbackModel for the OperatorClassInterface.
-///
-/// This FallbackModel is attached to all linalg dialect operations so that we
-/// don't have to change their definitions.
-void* getOperatorClassInterfaceFallback();
-
 class LinalgOp;
 
 /// Returns the name mangled library call name to disambiguate between different
@@ -77,6 +71,19 @@ AffineMap extractOrIdentityMap(std::optional<AffineMap> maybeMap, unsigned rank,
 /// Return the vector that is the concatenation of `a` and `b`.
 SmallVector<AffineExpr, 4> concat(ArrayRef<AffineExpr> a,
                                   ArrayRef<AffineExpr> b);
+
+/// Create one memref::DimOp or tensor::DimOp depending on the type of `val`.
+/// This is a polymorphic convenience function to abstract away the rank and
+/// concrete type of `val`.
+/// Asserts that `val` is a memref or tensor type.
+Value createOrFoldDimOp(OpBuilder &b, Location loc, Value val, int64_t dim);
+
+/// Create one memref::DimOp or tensor::DimOp depending on the type of `val`.
+/// This is a polymorphic convenience function to abstract away the rank and
+/// concrete type of `val`.
+/// Asserts that `val` is a memref or tensor type.
+OpFoldResult createFoldedDimOp(OpBuilder &b, Location loc, Value val,
+                               int64_t dim);
 
 } // namespace linalg
 } // namespace mlir

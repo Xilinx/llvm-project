@@ -216,17 +216,7 @@ void DataAggregator::launchPerfProcess(StringRef Name, PerfProcessInfo &PPI,
   outs() << "PERF2BOLT: spawning perf job to read " << Name << '\n';
   Argv.push_back(PerfPath.data());
 
-  char *WritableArgsString = strdup(ArgsString);
-  char *Str = WritableArgsString;
-  do {
-    Argv.push_back(Str);
-    while (*Str && *Str != ' ')
-      ++Str;
-    if (!*Str)
-      break;
-    *Str++ = 0;
-  } while (true);
-
+  StringRef(ArgsString).split(Argv, ' ');
   Argv.push_back("-f");
   Argv.push_back("-i");
   Argv.push_back(Filename.c_str());
@@ -266,8 +256,6 @@ void DataAggregator::launchPerfProcess(StringRef Name, PerfProcessInfo &PPI,
   else
     PPI.PI = sys::ExecuteNoWait(PerfPath.data(), Argv, /*envp*/ std::nullopt,
                                 Redirects);
-
-  free(WritableArgsString);
 }
 
 void DataAggregator::processFileBuildID(StringRef FileBuildID) {
@@ -409,28 +397,20 @@ std::error_code DataAggregator::writeAutoFDOData(StringRef OutputFilename) {
   };
 
   OutFile << FallthroughLBRs.size() << "\n";
-  for (const auto &AggrLBR : FallthroughLBRs) {
-    const Trace &Trace = AggrLBR.first;
-    const FTInfo &Info = AggrLBR.second;
-    OutFile << Twine::utohexstr(filterAddress(Trace.From)) << "-"
-            << Twine::utohexstr(filterAddress(Trace.To)) << ":"
-            << (Info.InternCount + Info.ExternCount) << "\n";
+  for (const auto &[Trace, Info] : FallthroughLBRs) {
+    OutFile << formatv("{0:x-}-{1:x-}:{2}\n", filterAddress(Trace.From),
+                       filterAddress(Trace.To),
+                       Info.InternCount + Info.ExternCount);
   }
 
   OutFile << BasicSamples.size() << "\n";
-  for (const auto &Sample : BasicSamples) {
-    uint64_t PC = Sample.first;
-    uint64_t HitCount = Sample.second;
-    OutFile << Twine::utohexstr(filterAddress(PC)) << ":" << HitCount << "\n";
-  }
+  for (const auto [PC, HitCount] : BasicSamples)
+    OutFile << formatv("{0:x-}:{1}\n", filterAddress(PC), HitCount);
 
   OutFile << BranchLBRs.size() << "\n";
-  for (const auto &AggrLBR : BranchLBRs) {
-    const Trace &Trace = AggrLBR.first;
-    const BranchInfo &Info = AggrLBR.second;
-    OutFile << Twine::utohexstr(filterAddress(Trace.From)) << "->"
-            << Twine::utohexstr(filterAddress(Trace.To)) << ":"
-            << Info.TakenCount << "\n";
+  for (const auto &[Trace, Info] : BranchLBRs) {
+    OutFile << formatv("{0:x-}->{1:x-}:{2}\n", filterAddress(Trace.From),
+                       filterAddress(Trace.To), Info.TakenCount);
   }
 
   outs() << "PERF2BOLT: wrote " << FallthroughLBRs.size() << " unique traces, "
@@ -636,6 +616,12 @@ void DataAggregator::processProfile(BinaryContext &BC) {
       BF.markProfiled(Flags);
   }
 
+  for (auto &FuncBranches : NamesToBranches)
+    llvm::stable_sort(FuncBranches.second.Data);
+
+  for (auto &MemEvents : NamesToMemEvents)
+    llvm::stable_sort(MemEvents.second.Data);
+
   // Release intermediate storage.
   clear(BranchLBRs);
   clear(FallthroughLBRs);
@@ -777,7 +763,8 @@ bool DataAggregator::doBranch(uint64_t From, uint64_t To, uint64_t Count,
   if (!FromFunc && !ToFunc)
     return false;
 
-  if (FromFunc == ToFunc) {
+  // Treat recursive control transfers as inter-branches.
+  if (FromFunc == ToFunc && (To != ToFunc->getAddress())) {
     recordBranch(*FromFunc, From - FromFunc->getAddress(),
                  To - FromFunc->getAddress(), Count, Mispreds);
     return doIntraBranch(*FromFunc, From, To, Count, Mispreds);
@@ -791,23 +778,23 @@ bool DataAggregator::doTrace(const LBREntry &First, const LBREntry &Second,
   BinaryFunction *FromFunc = getBinaryFunctionContainingAddress(First.To);
   BinaryFunction *ToFunc = getBinaryFunctionContainingAddress(Second.From);
   if (!FromFunc || !ToFunc) {
-    LLVM_DEBUG(
-        dbgs() << "Out of range trace starting in " << FromFunc->getPrintName()
-               << " @ " << Twine::utohexstr(First.To - FromFunc->getAddress())
-               << " and ending in " << ToFunc->getPrintName() << " @ "
-               << ToFunc->getPrintName() << " @ "
-               << Twine::utohexstr(Second.From - ToFunc->getAddress()) << '\n');
+    LLVM_DEBUG({
+      dbgs() << "Out of range trace starting in " << FromFunc->getPrintName()
+             << formatv(" @ {0:x}", First.To - FromFunc->getAddress())
+             << " and ending in " << ToFunc->getPrintName()
+             << formatv(" @ {0:x}\n", Second.From - ToFunc->getAddress());
+    });
     NumLongRangeTraces += Count;
     return false;
   }
   if (FromFunc != ToFunc) {
     NumInvalidTraces += Count;
-    LLVM_DEBUG(
-        dbgs() << "Invalid trace starting in " << FromFunc->getPrintName()
-               << " @ " << Twine::utohexstr(First.To - FromFunc->getAddress())
-               << " and ending in " << ToFunc->getPrintName() << " @ "
-               << ToFunc->getPrintName() << " @ "
-               << Twine::utohexstr(Second.From - ToFunc->getAddress()) << '\n');
+    LLVM_DEBUG({
+      dbgs() << "Invalid trace starting in " << FromFunc->getPrintName()
+             << formatv(" @ {0:x}", First.To - FromFunc->getAddress())
+             << " and ending in " << ToFunc->getPrintName()
+             << formatv(" @ {0:x}\n", Second.From - ToFunc->getAddress());
+    });
     return false;
   }
 
@@ -1484,13 +1471,10 @@ std::error_code DataAggregator::parseBranchEvents() {
     NumTraces += parseLBRSample(Sample, NeedsSkylakeFix);
   }
 
-  for (const auto &LBR : BranchLBRs) {
-    const Trace &Trace = LBR.first;
-    if (BinaryFunction *BF = getBinaryFunctionContainingAddress(Trace.From))
-      BF->setHasProfileAvailable();
-    if (BinaryFunction *BF = getBinaryFunctionContainingAddress(Trace.To))
-      BF->setHasProfileAvailable();
-  }
+  for (const Trace &Trace : llvm::make_first_range(BranchLBRs))
+    for (const uint64_t Addr : {Trace.From, Trace.To})
+      if (BinaryFunction *BF = getBinaryFunctionContainingAddress(Addr))
+        BF->setHasProfileAvailable();
 
   auto printColored = [](raw_ostream &OS, float Percent, float T1, float T2) {
     OS << " (";
@@ -1726,12 +1710,9 @@ std::error_code DataAggregator::parsePreAggregatedLBRSamples() {
     if (std::error_code EC = AggrEntry.getError())
       return EC;
 
-    if (BinaryFunction *BF =
-            getBinaryFunctionContainingAddress(AggrEntry->From.Offset))
-      BF->setHasProfileAvailable();
-    if (BinaryFunction *BF =
-            getBinaryFunctionContainingAddress(AggrEntry->To.Offset))
-      BF->setHasProfileAvailable();
+    for (const uint64_t Addr : {AggrEntry->From.Offset, AggrEntry->To.Offset})
+      if (BinaryFunction *BF = getBinaryFunctionContainingAddress(Addr))
+        BF->setHasProfileAvailable();
 
     AggregatedLBRs.emplace_back(std::move(AggrEntry.get()));
   }
@@ -1978,6 +1959,8 @@ std::error_code DataAggregator::parseMMapEvents() {
     std::pair<StringRef, MMapInfo> FileMMapInfo = FileMMapInfoRes.get();
     if (FileMMapInfo.second.PID == -1)
       continue;
+    if (FileMMapInfo.first.equals("(deleted)"))
+      continue;
 
     // Consider only the first mapping of the file for any given PID
     auto Range = GlobalMMapInfo.equal_range(FileMMapInfo.first);
@@ -1992,12 +1975,11 @@ std::error_code DataAggregator::parseMMapEvents() {
   }
 
   LLVM_DEBUG({
-    dbgs() << "FileName -> mmap info:\n";
-    for (const std::pair<const StringRef, MMapInfo> &Pair : GlobalMMapInfo)
-      dbgs() << "  " << Pair.first << " : " << Pair.second.PID << " [0x"
-             << Twine::utohexstr(Pair.second.MMapAddress) << ", "
-             << Twine::utohexstr(Pair.second.Size) << " @ "
-             << Twine::utohexstr(Pair.second.Offset) << "]\n";
+    dbgs() << "FileName -> mmap info:\n"
+           << "  Filename : PID [MMapAddr, Size, Offset]\n";
+    for (const auto &[Name, MMap] : GlobalMMapInfo)
+      dbgs() << formatv("  {0} : {1} [{2:x}, {3:x} @ {4:x}]\n", Name, MMap.PID,
+                        MMap.MMapAddress, MMap.Size, MMap.Offset);
   });
 
   StringRef NameToUse = llvm::sys::path::filename(BC->getFilename());

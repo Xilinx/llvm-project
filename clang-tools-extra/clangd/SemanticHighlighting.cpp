@@ -128,7 +128,7 @@ std::optional<HighlightingKind> kindForDecl(const NamedDecl *D,
     return HighlightingKind::Class;
   if (isa<ObjCProtocolDecl>(D))
     return HighlightingKind::Interface;
-  if (isa<ObjCCategoryDecl>(D))
+  if (isa<ObjCCategoryDecl, ObjCCategoryImplDecl>(D))
     return HighlightingKind::Namespace;
   if (auto *MD = dyn_cast<CXXMethodDecl>(D))
     return MD->isStatic() ? HighlightingKind::StaticMethod
@@ -166,6 +166,8 @@ std::optional<HighlightingKind> kindForDecl(const NamedDecl *D,
     return HighlightingKind::TemplateParameter;
   if (isa<ConceptDecl>(D))
     return HighlightingKind::Concept;
+  if (isa<LabelDecl>(D))
+    return HighlightingKind::Label;
   if (const auto *UUVD = dyn_cast<UnresolvedUsingValueDecl>(D)) {
     auto Targets = Resolver->resolveUsingValueDecl(UUVD);
     if (!Targets.empty() && Targets[0] != UUVD) {
@@ -713,13 +715,6 @@ public:
     return true;
   }
 
-  bool VisitClassScopeFunctionSpecializationDecl(
-      ClassScopeFunctionSpecializationDecl *D) {
-    if (auto *Args = D->getTemplateArgsAsWritten())
-      H.addAngleBracketTokens(Args->getLAngleLoc(), Args->getRAngleLoc());
-    return true;
-  }
-
   bool VisitDeclRefExpr(DeclRefExpr *E) {
     H.addAngleBracketTokens(E->getLAngleLoc(), E->getRAngleLoc());
     return true;
@@ -731,12 +726,6 @@ public:
 
   bool VisitTemplateSpecializationTypeLoc(TemplateSpecializationTypeLoc L) {
     H.addAngleBracketTokens(L.getLAngleLoc(), L.getRAngleLoc());
-    return true;
-  }
-
-  bool VisitAutoTypeLoc(AutoTypeLoc L) {
-    if (L.isConstrained())
-      H.addAngleBracketTokens(L.getLAngleLoc(), L.getRAngleLoc());
     return true;
   }
 
@@ -756,8 +745,6 @@ public:
     }
     if (auto *Args = D->getTemplateSpecializationArgsAsWritten())
       H.addAngleBracketTokens(Args->getLAngleLoc(), Args->getRAngleLoc());
-    if (auto *I = D->getDependentSpecializationInfo())
-      H.addAngleBracketTokens(I->getLAngleLoc(), I->getRAngleLoc());
     return true;
   }
 
@@ -951,13 +938,18 @@ public:
         kindForType(AT->getDeducedType().getTypePtrOrNull(), H.getResolver());
     if (!K)
       return true;
-    SourceLocation StartLoc = D->getTypeSpecStartLoc();
+    auto *TSI = D->getTypeSourceInfo();
+    if (!TSI)
+      return true;
+    SourceLocation StartLoc =
+        TSI->getTypeLoc().getContainedAutoTypeLoc().getNameLoc();
     // The AutoType may not have a corresponding token, e.g. in the case of
     // init-captures. In this case, StartLoc overlaps with the location
     // of the decl itself, and producing a token for the type here would result
     // in both it and the token for the decl being dropped due to conflict.
     if (StartLoc == D->getLocation())
       return true;
+
     auto &Tok =
         H.addToken(StartLoc, *K).addModifier(HighlightingModifier::Deduced);
     const Type *Deduced = AT->getDeducedType().getTypePtrOrNull();
@@ -1209,7 +1201,8 @@ getSemanticHighlightings(ParsedAST &AST, bool IncludeInactiveRegionTokens) {
       AST.getHeuristicResolver());
   // Add highlightings for macro references.
   auto AddMacro = [&](const MacroOccurrence &M) {
-    auto &T = Builder.addToken(M.Rng, HighlightingKind::Macro);
+    auto &T = Builder.addToken(M.toRange(C.getSourceManager()),
+                               HighlightingKind::Macro);
     T.addModifier(HighlightingModifier::GlobalScope);
     if (M.IsDefinition)
       T.addModifier(HighlightingModifier::Declaration);
@@ -1271,6 +1264,8 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &OS, HighlightingKind K) {
     return OS << "Operator";
   case HighlightingKind::Bracket:
     return OS << "Bracket";
+  case HighlightingKind::Label:
+    return OS << "Label";
   case HighlightingKind::InactiveCode:
     return OS << "InactiveCode";
   }
@@ -1470,6 +1465,8 @@ llvm::StringRef toSemanticTokenType(HighlightingKind Kind) {
     return "operator";
   case HighlightingKind::Bracket:
     return "bracket";
+  case HighlightingKind::Label:
+    return "label";
   case HighlightingKind::InactiveCode:
     return "comment";
   }
