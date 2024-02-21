@@ -23,6 +23,15 @@ Pattern {
 
 // -----
 
+// CHECK: Module
+// CHECK: `-AttributeExpr {{.*}} Value<""value"">
+Pattern {
+  let attr = "value";
+  erase _: Op;
+}
+
+// -----
+
 // CHECK: |-NamedAttributeDecl {{.*}}  Name<some_array>
 // CHECK: `-UserRewriteDecl {{.*}} Name<__builtin_addElemToArrayAttr> ResultType<Attr>
 // CHECK:   `Arguments`
