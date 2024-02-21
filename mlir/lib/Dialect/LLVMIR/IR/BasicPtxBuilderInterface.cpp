@@ -12,7 +12,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/LLVMIR/BasicPtxBuilderInterface.h"
-#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/Support/LogicalResult.h"
 
 #define DEBUG_TYPE "ptx-builder"
@@ -27,6 +26,8 @@
 
 using namespace mlir;
 using namespace NVVM;
+
+static constexpr int64_t kSharedMemorySpace = 3;
 
 static char getRegisterType(Type type) {
   if (type.isInteger(1))
@@ -43,7 +44,7 @@ static char getRegisterType(Type type) {
     return 'd';
   if (auto ptr = type.dyn_cast<LLVM::LLVMPointerType>()) {
     // Shared address spaces is addressed with 32-bit pointers.
-    if (ptr.getAddressSpace() == NVVM::kSharedMemorySpace) {
+    if (ptr.getAddressSpace() == kSharedMemorySpace) {
       return 'r';
     }
     return 'l';
@@ -121,6 +122,14 @@ LLVM::InlineAsmOp PtxBuilder::build() {
     registerConstraints.pop_back();
 
   std::string ptxInstruction = interfaceOp.getPtx();
+
+  // Add the predicate to the asm string.
+  if (interfaceOp.getPredicate().has_value() &&
+      interfaceOp.getPredicate().value()) {
+    std::string predicateStr = "@%";
+    predicateStr += std::to_string((ptxOperands.size() - 1));
+    ptxInstruction = predicateStr + " " + ptxInstruction;
+  }
 
   // Tablegen doesn't accept $, so we use %, but inline assembly uses $.
   // Replace all % with $
