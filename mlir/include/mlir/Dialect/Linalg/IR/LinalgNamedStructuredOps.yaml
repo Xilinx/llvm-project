@@ -607,7 +607,7 @@ structured_op: !LinalgStructuredOpConfig
     value: !ScalarExpression
       scalar_fn:
         kind: binary
-        fn_name: div
+        fn_name: div_unsigned
         operands:
         - !ScalarExpression
           scalar_arg: lhs

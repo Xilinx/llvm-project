@@ -409,7 +409,7 @@ func.func @generalize_divu(%lhs: memref<7x14x21xi32>, %rhs: memref<7x14x21xi32>,
 // CHECK-SAME: outs(%[[OUT]] : memref<7x14x21xi32>)
 
 // CHECK:         ^{{.+}}(%[[BBARG0:.+]]: i32, %[[BBARG1:.+]]: i32, %[[BBARG2:.+]]: i32)
-// CHECK-NEXT:      %[[DIVU:.+]] = arith.divsi %[[BBARG0]], %[[BBARG1]] : i32
+// CHECK-NEXT:      %[[DIVU:.+]] = arith.divui %[[BBARG0]], %[[BBARG1]] : i32
 // CHECK-NEXT:      linalg.yield %[[DIVU]] : i32
 
 // -----
