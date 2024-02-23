@@ -47,6 +47,22 @@ func.func @cast_fold_double(%arg0: tensor<?x1xf32>) -> tensor<?x1xi8> {
   return %1 : tensor<?x1xi8>
 }
 
+// CHECK-LABEL: @cast_fold_same_type
+func.func @cast_fold_same_type(%arg0: tensor<?x1xf32>) -> tensor<?x1xf32> {
+  // CHECK: return %arg0 : tensor<?x1xf32>
+  %0 = tosa.cast %arg0 : (tensor<?x1xf32>) -> tensor<?x1xi16>
+  %1 = tosa.cast %0 : (tensor<?x1xi16>) -> tensor<?x1xf32>
+  return %1 : tensor<?x1xf32>
+}
+
+// CHECK-LABEL: @cast_fold_same_type2
+func.func @cast_fold_same_type2(%arg0: tensor<?x1xi8>) -> tensor<?x1xi8> {
+  // CHECK: return %arg0 : tensor<?x1xi8>
+  %0 = tosa.cast %arg0 : (tensor<?x1xi8>) -> tensor<?x1xi1>
+  %1 = tosa.cast %0 : (tensor<?x1xi1>) -> tensor<?x1xi8>
+  return %1 : tensor<?x1xi8>
+}
+
 // CHECK-LABEL: @cast_no_fold_double1
 func.func @cast_no_fold_double1(%arg0: tensor<?x1xf32>) -> tensor<?x1xi8> {
   // CHECK: tosa.cast{{.*}} (tensor<?x1xf32>) -> tensor<?x1xui16>

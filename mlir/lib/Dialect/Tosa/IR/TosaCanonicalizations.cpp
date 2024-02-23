@@ -868,9 +868,16 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
     return getInput();
 
   // cast-to-iN(cast-to-iM(x)) -> cast-to-iN(x) when N <= M
+  // cast-to-iN(cast-to-iM(x)) -> x when N == type of x
   if (auto cast = getInput().getDefiningOp<CastOp>()) {
-    auto intermediateElTy = cast.getType().getElementType().dyn_cast<IntegerType>();
+    auto inputElTy =
+        cast.getInput().getType().getElementType().dyn_cast<IntegerType>();
     auto finalElTy = getType().getElementType().dyn_cast<IntegerType>();
+    if (inputElTy == finalElTy ) {
+      return cast.getInput();
+    }
+
+    auto intermediateElTy = cast.getType().getElementType().dyn_cast<IntegerType>();
     if (intermediateElTy && finalElTy &&
         intermediateElTy.getSignedness() == finalElTy.getSignedness() &&
         intermediateElTy.getWidth() >= finalElTy.getWidth()) {
