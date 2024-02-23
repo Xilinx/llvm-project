@@ -89,8 +89,8 @@ struct SqrtReciprocalOptimization : public OpRewritePattern<tosa::PowOp> {
 
     auto constantType = scale.getElementType();
     float scaleValue = 0.;
-    if (constantType.isF32())
-      scaleValue = scale.getSplatValue<float>();
+    if (constantType.isF32() || constantType.isBF16())
+      scaleValue = scale.getSplatValue<llvm::APFloat>().convertToFloat();
     else
       return rewriter.notifyMatchFailure(op, "unexpected type for scale value of the pow op");
     if(scaleValue != 0.5)
