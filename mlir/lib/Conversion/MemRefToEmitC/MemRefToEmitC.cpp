@@ -54,6 +54,34 @@ bool isSignatureLegal(FunctionType ty) {
   return isLegal(llvm::concat<const Type>(ty.getInputs(), ty.getResults()));
 }
 
+struct ConvertLoad final : public OpConversionPattern<memref::LoadOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::LoadOp op, OpAdaptor operands,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    rewriter.replaceOpWithNewOp<emitc::SubscriptOp>(op, operands.getMemref(),
+                                                    operands.getIndices());
+    return success();
+  }
+};
+
+struct ConvertStore final : public OpConversionPattern<memref::StoreOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::StoreOp op, OpAdaptor operands,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    auto subscript = rewriter.create<emitc::SubscriptOp>(
+        op.getLoc(), operands.getMemref(), operands.getIndices());
+    rewriter.replaceOpWithNewOp<emitc::AssignOp>(op, subscript,
+                                                 operands.getValue());
+    return success();
+  }
+};
+
 struct ConvertMemRefToEmitCPass
     : public impl::ConvertMemRefToEmitCBase<ConvertMemRefToEmitCPass> {
   void runOnOperation() override {
@@ -91,6 +119,7 @@ struct ConvertMemRefToEmitCPass
     target.addDynamicallyLegalDialect<func::FuncDialect>(
         [](Operation *op) { return isLegal(op); });
     target.addIllegalDialect<memref::MemRefDialect>();
+    target.addLegalDialect<emitc::EmitCDialect>();
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
@@ -106,6 +135,8 @@ void mlir::populateMemRefToEmitCConversionPatterns(RewritePatternSet &patterns,
                                                                  converter);
   populateCallOpTypeConversionPattern(patterns, converter);
   populateReturnOpTypeConversionPattern(patterns, converter);
+  patterns.add<ConvertLoad>(converter, patterns.getContext());
+  patterns.add<ConvertStore>(converter, patterns.getContext());
 }
 
 std::unique_ptr<OperationPass<>> mlir::createConvertMemRefToEmitCPass() {
