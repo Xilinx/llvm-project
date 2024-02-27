@@ -1774,7 +1774,8 @@ def Tosa_ResizeOp : Tosa_InferShapedTypeOp<"resize"> {
     Tosa_IntArrayAttr4:$scale,
     Tosa_IntArrayAttr2:$offset,
     Tosa_IntArrayAttr2:$border,
-    Tosa_ResizeTypeAttr:$mode
+    Tosa_ResizeTypeAttr:$mode,
+    Tosa_ResizeNearestRoundingAttr:$nearest_rounding_mode
   );
 
   let results = (outs

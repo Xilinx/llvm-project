@@ -969,7 +969,7 @@ func.func @transpose_conv2d_strided(%arg0: tensor<1x5x7x1xf32>, %arg1: tensor<1x
 // CHECK-LABEL: @resize_int_horizontal
 func.func @resize_int_horizontal(%arg0: tensor<1x15x13x1xi8>) {
   // CHECK: -> tensor<1x23x179x1xi8>
-  %0 = tosa.resize %arg0 {mode = "NEAREST_NEIGHBOR", scale = array<i64: 11, 7, 89, 6>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x15x13x1xi8>) -> tensor<?x?x?x?xi8>
+  %0 = tosa.resize %arg0 {mode = "NEAREST_NEIGHBOR", nearest_rounding_mode = "ROUND_PREFER_CEIL", scale = array<i64: 11, 7, 89, 6>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x15x13x1xi8>) -> tensor<?x?x?x?xi8>
   return
 }
 
@@ -978,7 +978,7 @@ func.func @resize_int_horizontal(%arg0: tensor<1x15x13x1xi8>) {
 // CHECK-LABEL: @resize_int_vertical
 func.func @resize_int_vertical(%arg0: tensor<1x49x42x1xi16>) {
   // CHECK: -> tensor<1x112x220x1xi16>
-  %0 = tosa.resize %arg0 {mode = "NEAREST_NEIGHBOR", scale = array<i64: 37, 16, 219, 41>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x49x42x1xi16>) -> tensor<?x?x?x?xi16>
+  %0 = tosa.resize %arg0 {mode = "NEAREST_NEIGHBOR", nearest_rounding_mode = "ROUND_PREFER_CEIL", scale = array<i64: 37, 16, 219, 41>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x49x42x1xi16>) -> tensor<?x?x?x?xi16>
   return
 }
 
@@ -987,7 +987,7 @@ func.func @resize_int_vertical(%arg0: tensor<1x49x42x1xi16>) {
 // CHECK-LABEL: @resize_int_power_of_two_upscale
 func.func @resize_int_power_of_two_upscale(%arg0: tensor<1x23x19x1xi8>) {
   // CHECK: -> tensor<1x353x289x1xi32>
-  %0 = tosa.resize %arg0 {mode = "BILINEAR", scale = array<i64: 16, 1, 16, 1>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x23x19x1xi8>) -> tensor<?x?x?x?xi32>
+  %0 = tosa.resize %arg0 {mode = "BILINEAR", nearest_rounding_mode = "ROUND_PREFER_CEIL", scale = array<i64: 16, 1, 16, 1>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x23x19x1xi8>) -> tensor<?x?x?x?xi32>
   return
 }
 
@@ -996,7 +996,7 @@ func.func @resize_int_power_of_two_upscale(%arg0: tensor<1x23x19x1xi8>) {
 // CHECK-LABEL: @resize_int_power_of_two_upscale_offsetted
 func.func @resize_int_power_of_two_upscale_offsetted(%arg0: tensor<1x41x26x1xi16>) {
   // CHECK: -> tensor<1x328x208x1xi48>
-  %0 = tosa.resize %arg0 {mode = "BILINEAR", scale = array<i64: 16, 2, 16, 2>, offset = array<i64: -7, -7>, border = array<i64: 7, 7>} : (tensor<1x41x26x1xi16>) -> tensor<?x?x?x?xi48>
+  %0 = tosa.resize %arg0 {mode = "BILINEAR", nearest_rounding_mode = "ROUND_PREFER_CEIL", scale = array<i64: 16, 2, 16, 2>, offset = array<i64: -7, -7>, border = array<i64: 7, 7>} : (tensor<1x41x26x1xi16>) -> tensor<?x?x?x?xi48>
   return
 }
 
@@ -1004,7 +1004,7 @@ func.func @resize_int_power_of_two_upscale_offsetted(%arg0: tensor<1x41x26x1xi16
 // CHECK-LABEL: @resize_fp_horizontal
 func.func @resize_fp_horizontal(%arg0: tensor<1x50x48x1xf32>) {
   // CHECK: -> tensor<1x106x85x1xf32>
-  %0 = tosa.resize %arg0 {mode = "BILINEAR", scale = array<i64: 15, 7, 84, 47>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x50x48x1xf32>) -> tensor<?x?x?x?xf32>
+  %0 = tosa.resize %arg0 {mode = "BILINEAR", nearest_rounding_mode = "ROUND_PREFER_CEIL", scale = array<i64: 15, 7, 84, 47>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x50x48x1xf32>) -> tensor<?x?x?x?xf32>
   return
 }
 
@@ -1012,7 +1012,7 @@ func.func @resize_fp_horizontal(%arg0: tensor<1x50x48x1xf32>) {
 // CHECK-LABEL: @resize_fp_vertical
 func.func @resize_fp_vertical(%arg0: tensor<1x50x48x1xf32>) {
   // CHECK: -> tensor<1x128x13x1xf32>
-  %0 = tosa.resize %arg0 {mode = "NEAREST_NEIGHBOR", scale = array<i64: 127, 49, 12, 47>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x50x48x1xf32>) -> tensor<?x?x?x?xf32>
+  %0 = tosa.resize %arg0 {mode = "NEAREST_NEIGHBOR", nearest_rounding_mode = "ROUND_PREFER_CEIL", scale = array<i64: 127, 49, 12, 47>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x50x48x1xf32>) -> tensor<?x?x?x?xf32>
   return
 }
 
@@ -1021,7 +1021,7 @@ func.func @resize_fp_vertical(%arg0: tensor<1x50x48x1xf32>) {
 // CHECK-LABEL: @resize_fp_power_of_two_upscale
 func.func @resize_fp_power_of_two_upscale(%arg0: tensor<1x23x23x1xf32>) {
   // CHECK: -> tensor<1x89x89x1xf32>
-  %0 = tosa.resize %arg0 {mode = "BILINEAR", scale = array<i64: 4, 1, 4, 1>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x23x23x1xf32>) -> tensor<?x?x?x?xf32>
+  %0 = tosa.resize %arg0 {mode = "BILINEAR", nearest_rounding_mode = "ROUND_PREFER_CEIL", scale = array<i64: 4, 1, 4, 1>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x23x23x1xf32>) -> tensor<?x?x?x?xf32>
   return
 }
 
@@ -1030,7 +1030,7 @@ func.func @resize_fp_power_of_two_upscale(%arg0: tensor<1x23x23x1xf32>) {
 // CHECK-LABEL: @resize_fp_power_of_two_upscale_offsetted
 func.func @resize_fp_power_of_two_upscale_offsetted(%arg0: tensor<1x50x48x1xf32>) {
   // CHECK: -> tensor<1x1600x1536x1xf32>
-  %0 = tosa.resize %arg0 {mode = "NEAREST_NEIGHBOR", scale = array<i64: 64, 2, 64, 2>, offset = array<i64: -31, -31>, border = array<i64: 31, 31>} : (tensor<1x50x48x1xf32>) -> tensor<?x?x?x?xf32>
+  %0 = tosa.resize %arg0 {mode = "NEAREST_NEIGHBOR", nearest_rounding_mode = "ROUND_PREFER_CEIL", scale = array<i64: 64, 2, 64, 2>, offset = array<i64: -31, -31>, border = array<i64: 31, 31>} : (tensor<1x50x48x1xf32>) -> tensor<?x?x?x?xf32>
   return
 }
 

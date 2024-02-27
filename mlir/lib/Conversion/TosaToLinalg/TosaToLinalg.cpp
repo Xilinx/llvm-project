@@ -1663,13 +1663,42 @@ public:
           }
 
           Value pred;
-          if (floatingPointMode) {
-            auto h = b.create<arith::ConstantOp>(b.getFloatAttr(floatTy, 0.5f));
-            pred = b.create<arith::CmpFOp>(arith::CmpFPredicate::OGE, dval, h);
+          const bool isRoundPreferFloor =
+              op.getNearestRoundingMode() == "ROUND_PREFER_FLOOR";
+          // Marking as maybe_unused to avoid complains in release builds, this
+          // value is only used on assertions
+          [[maybe_unused]] const bool isRoundPreferCeil =
+              op.getNearestRoundingMode() == "ROUND_PREFER_CEIL";
+          const bool isFloor = op.getNearestRoundingMode() == "FLOOR";
+          const bool isCeil = op.getNearestRoundingMode() == "CEIL";
+
+          if (isFloor) {
+            pred = b.create<arith::ConstantOp>(b.getBoolAttr(false));
+          } else if (isCeil) {
+            pred = b.create<arith::ConstantOp>(b.getBoolAttr(true));
           } else {
-            Value dvalDouble = b.create<arith::ShLIOp>(dval, one);
-            pred = b.create<arith::CmpIOp>(arith::CmpIPredicate::sge,
-                                           dvalDouble, scale);
+            if (floatingPointMode) {
+              auto h =
+                  b.create<arith::ConstantOp>(b.getFloatAttr(floatTy, 0.5f));
+              if (isRoundPreferFloor) {
+                pred =
+                    b.create<arith::CmpFOp>(arith::CmpFPredicate::OLT, dval, h);
+              } else {
+                assert(isRoundPreferCeil);
+                pred =
+                    b.create<arith::CmpFOp>(arith::CmpFPredicate::OGE, dval, h);
+              }
+            } else {
+              Value dvalDouble = b.create<arith::ShLIOp>(dval, one);
+              if (isRoundPreferFloor) {
+                pred = b.create<arith::CmpIOp>(arith::CmpIPredicate::slt,
+                                               dvalDouble, scale);
+              } else {
+                assert(isRoundPreferCeil);
+                pred = b.create<arith::CmpIOp>(arith::CmpIPredicate::sge,
+                                               dvalDouble, scale);
+              }
+            }
           }
 
           auto offset = b.create<arith::SelectOp>(pred, one, zeroI32);

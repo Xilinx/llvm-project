@@ -213,6 +213,14 @@ def Tosa_ResizeTypeAttr : StringBasedAttr<
           "::llvm::cast<StringAttr>($_self).getValue() == \"NEAREST_NEIGHBOR\"">,
     "Supported resize/upsampling strategies">;
 
+// Supported rounding modes for tosa.resize mode = NEAREST_NEIGHBOR
+def Tosa_ResizeNearestRoundingAttr : StringBasedAttr<
+    CPred<"::llvm::cast<StringAttr>($_self).getValue() == \"ROUND_PREFER_FLOOR\"  || " #
+          "::llvm::cast<StringAttr>($_self).getValue() == \"ROUND_PREFER_CEIL\"  || " #
+          "::llvm::cast<StringAttr>($_self).getValue() == \"FLOOR\"  || " #
+          "::llvm::cast<StringAttr>($_self).getValue() == \"CEIL\"">,
+    "Supported nearest rounding strategies">;
+
 def Tosa_TensorTypeAttr : TypeAttrBase<"TensorType", "Tensor type attribute">;
 
 // Tensor to buffer types.

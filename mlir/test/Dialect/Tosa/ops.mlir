@@ -576,7 +576,7 @@ func.func @test_scatter(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x26xi32>, %a
 // -----
 // CHECK-LABEL: resize
 func.func @test_resize(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x64x64x8xf32> {
-  %1 = tosa.resize %arg0 { scale = array<i64: 4, 2, 4, 2>, offset = array<i64: -1, -1>, border = array<i64: 1, 1>, mode = "BILINEAR" } : (tensor<1x32x32x8xf32>) -> tensor<1x64x64x8xf32>
+  %1 = tosa.resize %arg0 { scale = array<i64: 4, 2, 4, 2>, offset = array<i64: -1, -1>, border = array<i64: 1, 1>, mode = "BILINEAR", nearest_rounding_mode = "ROUND_PREFER_CEIL" } : (tensor<1x32x32x8xf32>) -> tensor<1x64x64x8xf32>
   return %1 : tensor<1x64x64x8xf32>
 }
 
