@@ -507,8 +507,8 @@ func.func @resize_bilinear_int(%arg0: tensor<1x19x20x1xi8>) {
 
 // -----
 
-// CHECK-LABEL: @resize_nearest_fp32
-func.func @resize_nearest_fp32(%input: tensor<1x50x48x1xf32>) -> () {
+// CHECK-LABEL: @resize_nearest_fp32_round_prefer_ceil
+func.func @resize_nearest_fp32_round_prefer_ceil(%input: tensor<1x50x48x1xf32>) -> () {
   // CHECK: %[[INIT:.+]] = tensor.empty() : tensor<1x1600x1536x1xf32>
   // CHECK: %[[GENERIC:.+]] = linalg.generic
   // CHECK: %[[IDX0:.+]] = linalg.index 0
@@ -576,6 +576,225 @@ func.func @resize_nearest_fp32(%input: tensor<1x50x48x1xf32>) -> () {
   // CHECK: linalg.yield %[[EXTRACT]]
 
   %output = "tosa.resize"(%input) {mode = "NEAREST_NEIGHBOR", nearest_rounding_mode = "ROUND_PREFER_CEIL", scale = array<i64: 64, 2, 64, 2>, offset = array<i64: -31, -31>, border = array<i64: 31, 31>} : (tensor<1x50x48x1xf32>) -> tensor<1x1600x1536x1xf32>
+  return
+}
+
+
+// -----
+
+// CHECK-LABEL: @resize_nearest_fp32_round_prefer_floor
+func.func @resize_nearest_fp32_round_prefer_floor(%input: tensor<1x50x48x1xf32>) -> () {
+  // CHECK: %[[INIT:.+]] = tensor.empty() : tensor<1x1600x1536x1xf32>
+  // CHECK: %[[GENERIC:.+]] = linalg.generic
+  // CHECK: %[[IDX0:.+]] = linalg.index 0
+  // CHECK: %[[IDX1:.+]] = linalg.index 1
+  // CHECK: %[[IDX2:.+]] = linalg.index 2
+  // CHECK: %[[IDX3:.+]] = linalg.index 3
+  // CHECK-DAG: %[[ZERO:.*]] = arith.constant 0
+  // CHECK-DAG: %[[YMAX:.*]] = arith.constant 49
+  // CHECK-DAG: %[[XMAX:.*]] = arith.constant 47
+  // CHECK: %[[Y:.+]] = arith.index_cast %[[IDX1]]
+  // CHECK: %[[X:.+]] = arith.index_cast %[[IDX2]]
+  // CHECK-DAG: %[[ISCALE_Y_N:.*]] = arith.constant 64
+  // CHECK-DAG: %[[ISCALE_Y_D:.*]] = arith.constant 2
+  // CHECK-DAG: %[[ISCALE_X_N:.*]] = arith.constant 64
+  // CHECK-DAG: %[[ISCALE_X_D:.*]] = arith.constant 2
+  // CHECK-DAG: %[[IOFFSET_Y:.*]] = arith.constant -31
+  // CHECK-DAG: %[[IOFFSET_X:.*]] = arith.constant -31
+  // CHECK-DAG: %[[IBORDER_Y:.*]] = arith.constant 31
+  // CHECK-DAG: %[[IBORDER_X:.*]] = arith.constant 31
+
+  // CHECK: %[[Y0:.+]] = arith.uitofp %[[Y]]
+  // CHECK: %[[SCALE_Y_N:.*]] = arith.uitofp %[[ISCALE_Y_N]]
+  // CHECK: %[[SCALE_Y_D:.*]] = arith.uitofp %[[ISCALE_Y_D]]
+  // CHECK: %[[OFFSET_Y:.*]] = arith.sitofp %[[IOFFSET_Y]]
+  // CHECK: %[[VAL_29:.*]] = arith.mulf %[[Y0]], %[[SCALE_Y_D]]
+  // CHECK: %[[VAL_31:.*]] = arith.addf %[[VAL_29]], %[[OFFSET_Y]]
+  // CHECK: %[[VAL_33:.*]] = arith.divf %[[VAL_31]], %[[SCALE_Y_N]]
+  // CHECK: %[[VAL_35:.*]] = math.floor %[[VAL_33]]
+  // CHECK: %[[D_Y:.*]] = arith.subf %[[VAL_33]], %[[VAL_35]]
+  // CHECK: %[[VAL_39:.*]] = arith.fptosi %[[VAL_35]]
+
+  // CHECK: %[[X0:.+]] = arith.uitofp %[[X]]
+  // CHECK: %[[SCALE_X_N:.*]] = arith.uitofp %[[ISCALE_X_N]]
+  // CHECK: %[[SCALE_X_D:.*]] = arith.uitofp %[[ISCALE_X_D]]
+  // CHECK: %[[OFFSET_X:.*]] = arith.sitofp %[[IOFFSET_X]]
+  // CHECK: %[[VAL_30:.*]] = arith.mulf %[[X0]], %[[SCALE_X_D]]
+  // CHECK: %[[VAL_32:.*]] = arith.addf %[[VAL_30]], %[[OFFSET_X]]
+  // CHECK: %[[VAL_34:.*]] = arith.divf %[[VAL_32]], %[[SCALE_X_N]]
+  // CHECK: %[[VAL_36:.*]] = math.floor %[[VAL_34]]
+  // CHECK: %[[D_X:.*]] = arith.subf %[[VAL_34]], %[[VAL_36]]
+  // CHECK: %[[VAL_40:.*]] = arith.fptosi %[[VAL_36]]
+
+  // CHECK-DAG: %[[ONE:.*]] = arith.constant 1
+  // CHECK-DAG: %[[HALF:.*]] = arith.constant 5.000000e-01
+  // CHECK: %[[PRED_Y:.*]] = arith.cmpf olt, %[[D_Y]], %[[HALF]]
+  // CHECK: %[[ROUND_Y:.*]] = arith.select %[[PRED_Y]], %[[ONE]], %[[ZERO]]
+  // CHECK: %[[VAL_48:.*]] = arith.addi %[[VAL_39]], %[[ROUND_Y]]
+  // CHECK: %[[VAL_50:.*]] = arith.cmpi slt, %[[VAL_48]], %[[ZERO]]
+  // CHECK: %[[VAL_51:.*]] = arith.select %[[VAL_50]], %[[ZERO]], %[[VAL_48]]
+  // CHECK: %[[VAL_52:.*]] = arith.cmpi slt, %[[YMAX]], %[[VAL_48]]
+  // CHECK: %[[VAL_53:.*]] = arith.select %[[VAL_52]], %[[YMAX]], %[[VAL_51]]
+  // CHECK: %[[IDY:.*]] = arith.index_cast %[[VAL_53]]
+
+  // CHECK-DAG: %[[HALF:.*]] = arith.constant 5.000000e-01
+  // CHECK: %[[PRED_X:.*]] = arith.cmpf olt, %[[D_X]], %[[HALF]]
+  // CHECK: %[[ROUND_X:.*]] = arith.select %[[PRED_X]], %[[ONE]], %[[ZERO]]
+  // CHECK: %[[VAL_49:.*]] = arith.addi %[[VAL_40]], %[[ROUND_X]]
+  // CHECK: %[[VAL_54:.*]] = arith.cmpi slt, %[[VAL_49]], %[[ZERO]]
+  // CHECK: %[[VAL_55:.*]] = arith.select %[[VAL_54]], %[[ZERO]], %[[VAL_49]]
+  // CHECK: %[[VAL_56:.*]] = arith.cmpi slt, %[[XMAX]], %[[VAL_49]]
+  // CHECK: %[[VAL_57:.*]] = arith.select %[[VAL_56]], %[[XMAX]], %[[VAL_55]]
+  // CHECK: %[[IDX:.*]] = arith.index_cast %[[VAL_57]]
+
+  // CHECK: %[[EXTRACT:.+]] = tensor.extract %arg0[%[[IDX0]], %[[IDY]], %[[IDX]], %[[IDX3]]]
+  // CHECK: linalg.yield %[[EXTRACT]]
+
+  %output = "tosa.resize"(%input) {mode = "NEAREST_NEIGHBOR", nearest_rounding_mode = "ROUND_PREFER_FLOOR", scale = array<i64: 64, 2, 64, 2>, offset = array<i64: -31, -31>, border = array<i64: 31, 31>} : (tensor<1x50x48x1xf32>) -> tensor<1x1600x1536x1xf32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @resize_nearest_fp32_ceil
+func.func @resize_nearest_fp32_ceil(%input: tensor<1x50x48x1xf32>) -> () {
+  // CHECK: %[[INIT:.+]] = tensor.empty() : tensor<1x1600x1536x1xf32>
+  // CHECK: %[[GENERIC:.+]] = linalg.generic
+  // CHECK: %[[IDX0:.+]] = linalg.index 0
+  // CHECK: %[[IDX1:.+]] = linalg.index 1
+  // CHECK: %[[IDX2:.+]] = linalg.index 2
+  // CHECK: %[[IDX3:.+]] = linalg.index 3
+  // CHECK-DAG: %[[ZERO:.*]] = arith.constant 0
+  // CHECK-DAG: %[[YMAX:.*]] = arith.constant 49
+  // CHECK-DAG: %[[XMAX:.*]] = arith.constant 47
+  // CHECK: %[[Y:.+]] = arith.index_cast %[[IDX1]]
+  // CHECK: %[[X:.+]] = arith.index_cast %[[IDX2]]
+  // CHECK-DAG: %[[ISCALE_Y_N:.*]] = arith.constant 64
+  // CHECK-DAG: %[[ISCALE_Y_D:.*]] = arith.constant 2
+  // CHECK-DAG: %[[ISCALE_X_N:.*]] = arith.constant 64
+  // CHECK-DAG: %[[ISCALE_X_D:.*]] = arith.constant 2
+  // CHECK-DAG: %[[IOFFSET_Y:.*]] = arith.constant -31
+  // CHECK-DAG: %[[IOFFSET_X:.*]] = arith.constant -31
+  // CHECK-DAG: %[[IBORDER_Y:.*]] = arith.constant 31
+  // CHECK-DAG: %[[IBORDER_X:.*]] = arith.constant 31
+
+  // CHECK: %[[Y0:.+]] = arith.uitofp %[[Y]]
+  // CHECK: %[[SCALE_Y_N:.*]] = arith.uitofp %[[ISCALE_Y_N]]
+  // CHECK: %[[SCALE_Y_D:.*]] = arith.uitofp %[[ISCALE_Y_D]]
+  // CHECK: %[[OFFSET_Y:.*]] = arith.sitofp %[[IOFFSET_Y]]
+  // CHECK: %[[VAL_29:.*]] = arith.mulf %[[Y0]], %[[SCALE_Y_D]]
+  // CHECK: %[[VAL_31:.*]] = arith.addf %[[VAL_29]], %[[OFFSET_Y]]
+  // CHECK: %[[VAL_33:.*]] = arith.divf %[[VAL_31]], %[[SCALE_Y_N]]
+  // CHECK: %[[VAL_35:.*]] = math.floor %[[VAL_33]]
+  // CHECK: %[[D_Y:.*]] = arith.subf %[[VAL_33]], %[[VAL_35]]
+  // CHECK: %[[VAL_39:.*]] = arith.fptosi %[[VAL_35]]
+
+  // CHECK: %[[X0:.+]] = arith.uitofp %[[X]]
+  // CHECK: %[[SCALE_X_N:.*]] = arith.uitofp %[[ISCALE_X_N]]
+  // CHECK: %[[SCALE_X_D:.*]] = arith.uitofp %[[ISCALE_X_D]]
+  // CHECK: %[[OFFSET_X:.*]] = arith.sitofp %[[IOFFSET_X]]
+  // CHECK: %[[VAL_30:.*]] = arith.mulf %[[X0]], %[[SCALE_X_D]]
+  // CHECK: %[[VAL_32:.*]] = arith.addf %[[VAL_30]], %[[OFFSET_X]]
+  // CHECK: %[[VAL_34:.*]] = arith.divf %[[VAL_32]], %[[SCALE_X_N]]
+  // CHECK: %[[VAL_36:.*]] = math.floor %[[VAL_34]]
+  // CHECK: %[[D_X:.*]] = arith.subf %[[VAL_34]], %[[VAL_36]]
+  // CHECK: %[[VAL_40:.*]] = arith.fptosi %[[VAL_36]]
+
+  // CHECK-DAG: %[[ONE:.*]] = arith.constant 1
+  // CHECK: %[[TRUE_VAL_0:.*]] = arith.constant true
+  // CHECK: %[[ROUND_Y:.*]] = arith.select %[[TRUE_VAL_0]], %[[ONE]], %[[ZERO]]
+  // CHECK: %[[VAL_48:.*]] = arith.addi %[[VAL_39]], %[[ROUND_Y]]
+  // CHECK: %[[VAL_50:.*]] = arith.cmpi slt, %[[VAL_48]], %[[ZERO]]
+  // CHECK: %[[VAL_51:.*]] = arith.select %[[VAL_50]], %[[ZERO]], %[[VAL_48]]
+  // CHECK: %[[VAL_52:.*]] = arith.cmpi slt, %[[YMAX]], %[[VAL_48]]
+  // CHECK: %[[VAL_53:.*]] = arith.select %[[VAL_52]], %[[YMAX]], %[[VAL_51]]
+  // CHECK: %[[IDY:.*]] = arith.index_cast %[[VAL_53]]
+
+  // CHECK: %[[TRUE_VAL_0:.*]] = arith.constant true
+  // CHECK: %[[ROUND_X:.*]] = arith.select %[[TRUE_VAL_0]], %[[ONE]], %[[ZERO]]
+  // CHECK: %[[VAL_49:.*]] = arith.addi %[[VAL_40]], %[[ROUND_X]]
+  // CHECK: %[[VAL_54:.*]] = arith.cmpi slt, %[[VAL_49]], %[[ZERO]]
+  // CHECK: %[[VAL_55:.*]] = arith.select %[[VAL_54]], %[[ZERO]], %[[VAL_49]]
+  // CHECK: %[[VAL_56:.*]] = arith.cmpi slt, %[[XMAX]], %[[VAL_49]]
+  // CHECK: %[[VAL_57:.*]] = arith.select %[[VAL_56]], %[[XMAX]], %[[VAL_55]]
+  // CHECK: %[[IDX:.*]] = arith.index_cast %[[VAL_57]]
+
+  // CHECK: %[[EXTRACT:.+]] = tensor.extract %arg0[%[[IDX0]], %[[IDY]], %[[IDX]], %[[IDX3]]]
+  // CHECK: linalg.yield %[[EXTRACT]]
+
+  %output = "tosa.resize"(%input) {mode = "NEAREST_NEIGHBOR", nearest_rounding_mode = "CEIL", scale = array<i64: 64, 2, 64, 2>, offset = array<i64: -31, -31>, border = array<i64: 31, 31>} : (tensor<1x50x48x1xf32>) -> tensor<1x1600x1536x1xf32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @resize_nearest_fp32_floor
+func.func @resize_nearest_fp32_floor(%input: tensor<1x50x48x1xf32>) -> () {
+  // CHECK: %[[INIT:.+]] = tensor.empty() : tensor<1x1600x1536x1xf32>
+  // CHECK: %[[GENERIC:.+]] = linalg.generic
+  // CHECK: %[[IDX0:.+]] = linalg.index 0
+  // CHECK: %[[IDX1:.+]] = linalg.index 1
+  // CHECK: %[[IDX2:.+]] = linalg.index 2
+  // CHECK: %[[IDX3:.+]] = linalg.index 3
+  // CHECK-DAG: %[[ZERO:.*]] = arith.constant 0
+  // CHECK-DAG: %[[YMAX:.*]] = arith.constant 49
+  // CHECK-DAG: %[[XMAX:.*]] = arith.constant 47
+  // CHECK: %[[Y:.+]] = arith.index_cast %[[IDX1]]
+  // CHECK: %[[X:.+]] = arith.index_cast %[[IDX2]]
+  // CHECK-DAG: %[[ISCALE_Y_N:.*]] = arith.constant 64
+  // CHECK-DAG: %[[ISCALE_Y_D:.*]] = arith.constant 2
+  // CHECK-DAG: %[[ISCALE_X_N:.*]] = arith.constant 64
+  // CHECK-DAG: %[[ISCALE_X_D:.*]] = arith.constant 2
+  // CHECK-DAG: %[[IOFFSET_Y:.*]] = arith.constant -31
+  // CHECK-DAG: %[[IOFFSET_X:.*]] = arith.constant -31
+  // CHECK-DAG: %[[IBORDER_Y:.*]] = arith.constant 31
+  // CHECK-DAG: %[[IBORDER_X:.*]] = arith.constant 31
+
+  // CHECK: %[[Y0:.+]] = arith.uitofp %[[Y]]
+  // CHECK: %[[SCALE_Y_N:.*]] = arith.uitofp %[[ISCALE_Y_N]]
+  // CHECK: %[[SCALE_Y_D:.*]] = arith.uitofp %[[ISCALE_Y_D]]
+  // CHECK: %[[OFFSET_Y:.*]] = arith.sitofp %[[IOFFSET_Y]]
+  // CHECK: %[[VAL_29:.*]] = arith.mulf %[[Y0]], %[[SCALE_Y_D]]
+  // CHECK: %[[VAL_31:.*]] = arith.addf %[[VAL_29]], %[[OFFSET_Y]]
+  // CHECK: %[[VAL_33:.*]] = arith.divf %[[VAL_31]], %[[SCALE_Y_N]]
+  // CHECK: %[[VAL_35:.*]] = math.floor %[[VAL_33]]
+  // CHECK: %[[D_Y:.*]] = arith.subf %[[VAL_33]], %[[VAL_35]]
+  // CHECK: %[[VAL_39:.*]] = arith.fptosi %[[VAL_35]]
+
+  // CHECK: %[[X0:.+]] = arith.uitofp %[[X]]
+  // CHECK: %[[SCALE_X_N:.*]] = arith.uitofp %[[ISCALE_X_N]]
+  // CHECK: %[[SCALE_X_D:.*]] = arith.uitofp %[[ISCALE_X_D]]
+  // CHECK: %[[OFFSET_X:.*]] = arith.sitofp %[[IOFFSET_X]]
+  // CHECK: %[[VAL_30:.*]] = arith.mulf %[[X0]], %[[SCALE_X_D]]
+  // CHECK: %[[VAL_32:.*]] = arith.addf %[[VAL_30]], %[[OFFSET_X]]
+  // CHECK: %[[VAL_34:.*]] = arith.divf %[[VAL_32]], %[[SCALE_X_N]]
+  // CHECK: %[[VAL_36:.*]] = math.floor %[[VAL_34]]
+  // CHECK: %[[D_X:.*]] = arith.subf %[[VAL_34]], %[[VAL_36]]
+  // CHECK: %[[VAL_40:.*]] = arith.fptosi %[[VAL_36]]
+
+  // CHECK-DAG: %[[ONE:.*]] = arith.constant 1
+  // CHECK: %[[FALSE_VAL_0:.*]] = arith.constant false
+  // CHECK: %[[ROUND_Y:.*]] = arith.select %[[FALSE_VAL_0]], %[[ONE]], %[[ZERO]]
+  // CHECK: %[[VAL_48:.*]] = arith.addi %[[VAL_39]], %[[ROUND_Y]]
+  // CHECK: %[[VAL_50:.*]] = arith.cmpi slt, %[[VAL_48]], %[[ZERO]]
+  // CHECK: %[[VAL_51:.*]] = arith.select %[[VAL_50]], %[[ZERO]], %[[VAL_48]]
+  // CHECK: %[[VAL_52:.*]] = arith.cmpi slt, %[[YMAX]], %[[VAL_48]]
+  // CHECK: %[[VAL_53:.*]] = arith.select %[[VAL_52]], %[[YMAX]], %[[VAL_51]]
+  // CHECK: %[[IDY:.*]] = arith.index_cast %[[VAL_53]]
+
+  // CHECK: %[[FALSE_VAL_1:.*]] = arith.constant false
+  // CHECK: %[[ROUND_X:.*]] = arith.select %[[FALSE_VAL_1]], %[[ONE]], %[[ZERO]]
+  // CHECK: %[[VAL_49:.*]] = arith.addi %[[VAL_40]], %[[ROUND_X]]
+  // CHECK: %[[VAL_54:.*]] = arith.cmpi slt, %[[VAL_49]], %[[ZERO]]
+  // CHECK: %[[VAL_55:.*]] = arith.select %[[VAL_54]], %[[ZERO]], %[[VAL_49]]
+  // CHECK: %[[VAL_56:.*]] = arith.cmpi slt, %[[XMAX]], %[[VAL_49]]
+  // CHECK: %[[VAL_57:.*]] = arith.select %[[VAL_56]], %[[XMAX]], %[[VAL_55]]
+  // CHECK: %[[IDX:.*]] = arith.index_cast %[[VAL_57]]
+
+  // CHECK: %[[EXTRACT:.+]] = tensor.extract %arg0[%[[IDX0]], %[[IDY]], %[[IDX]], %[[IDX3]]]
+  // CHECK: linalg.yield %[[EXTRACT]]
+
+  %output = "tosa.resize"(%input) {mode = "NEAREST_NEIGHBOR", nearest_rounding_mode = "FLOOR", scale = array<i64: 64, 2, 64, 2>, offset = array<i64: -31, -31>, border = array<i64: 31, 31>} : (tensor<1x50x48x1xf32>) -> tensor<1x1600x1536x1xf32>
   return
 }
 
