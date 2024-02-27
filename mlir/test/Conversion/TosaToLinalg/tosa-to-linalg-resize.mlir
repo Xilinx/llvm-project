@@ -124,8 +124,8 @@ func.func @unary_resize_bilinear_i32(%arg0 : tensor<3x1x1x7xi8>) -> tensor<3x1x1
 
 // -----
 
-// CHECK-LABEL:  @resize_nearest_int
-func.func @resize_nearest_int(%arg0: tensor<1x15x13x1xi8>) -> () {
+// CHECK-LABEL:  @resize_nearest_int_round_prefer_ceil
+func.func @resize_nearest_int_round_prefer_ceil(%arg0: tensor<1x15x13x1xi8>) -> () {
   // CHECK: %[[INIT:.+]] = tensor.empty() : tensor<1x23x179x1xi8>
   // CHECK: %[[GENERIC:.+]] = linalg.generic
   // CHECK: %[[IDX_0:.+]] = linalg.index 0
@@ -189,6 +189,210 @@ func.func @resize_nearest_int(%arg0: tensor<1x15x13x1xi8>) -> () {
 
   // Round to the nearest index.
   %0 = "tosa.resize"(%arg0) {mode = "NEAREST_NEIGHBOR", nearest_rounding_mode = "ROUND_PREFER_CEIL", scale = array<i64: 11, 7, 89, 6>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x15x13x1xi8>) -> tensor<1x23x179x1xi8>
+  return
+}
+
+// -----
+
+// CHECK-LABEL:  @resize_nearest_int_round_prefer_floor
+func.func @resize_nearest_int_round_prefer_floor(%arg0: tensor<1x15x13x1xi8>) -> () {
+  // CHECK: %[[INIT:.+]] = tensor.empty() : tensor<1x23x179x1xi8>
+  // CHECK: %[[GENERIC:.+]] = linalg.generic
+  // CHECK: %[[IDX_0:.+]] = linalg.index 0
+  // CHECK: %[[IDX_1:.+]] = linalg.index 1
+  // CHECK: %[[IDX_2:.+]] = linalg.index 2
+  // CHECK: %[[IDX_3:.+]] = linalg.index 3
+  // CHECK-DAG: %[[ZERO:.+]] = arith.constant 0
+  // CHECK-DAG: %[[Y_MAX:.+]] = arith.constant 14
+  // CHECK-DAG: %[[X_MAX:.+]] = arith.constant 12
+
+  // CHECK: %[[Y:.+]] = arith.index_cast %[[IDX_1]]
+  // CHECK: %[[X:.+]] = arith.index_cast %[[IDX_2]]
+  // CHECK-DAG: %[[SCALE_Y_N:.*]] = arith.constant 11
+  // CHECK-DAG: %[[SCALE_Y_D:.*]] = arith.constant 7
+  // CHECK-DAG: %[[SCALE_X_N:.*]] = arith.constant 89
+  // CHECK-DAG: %[[SCALE_X_D:.*]] = arith.constant 6
+  // CHECK-DAG: %[[OFFSET_Y:.*]] = arith.constant 0
+  // CHECK-DAG: %[[OFFSET_X:.*]] = arith.constant 0
+  // CHECK-DAG: %[[BORDER_Y:.*]] = arith.constant 0
+  // CHECK-DAG: %[[BORDER_X:.*]] = arith.constant 0
+
+  // find the remainder and integer component of the target index.
+
+  // CHECK: %[[TEMP_Y:.*]] = arith.muli %[[Y]], %[[SCALE_Y_D]]
+  // CHECK: %[[Y:.*]] = arith.addi %[[TEMP_Y]], %[[OFFSET_Y]]
+  // CHECK: %[[I_Y:.*]] = arith.divsi %[[Y]], %[[SCALE_Y_N]]
+  // CHECK: %[[TEMP_Y:.*]] = arith.muli %[[I_Y]], %[[SCALE_Y_N]]
+  // CHECK: %[[D_Y:.*]] = arith.subi %[[Y]], %[[TEMP_Y]]
+
+  // CHECK: %[[TEMP_X:.*]] = arith.muli %[[X]], %[[SCALE_X_D]]
+  // CHECK: %[[X:.*]] = arith.addi %[[TEMP_X]], %[[OFFSET_X]]
+  // CHECK: %[[I_X:.*]] = arith.divsi %[[X]], %[[SCALE_X_N]]
+  // CHECK: %[[TEMP_X:.*]] = arith.muli %[[I_X]], %[[SCALE_X_N]]
+  // CHECK: %[[D_X:.*]] = arith.subi %[[X]], %[[TEMP_X]]
+
+  // Compute the offset and bound for the Y position.
+  // CHECK-DAG: %[[ONE:.*]] = arith.constant 1
+  // CHECK: %[[D_Y_DOUBLE:.*]] = arith.shli %[[D_Y]], %[[ONE]]
+  // CHECK: %[[PRED_Y:.*]] = arith.cmpi slt, %[[D_Y_DOUBLE]], %[[SCALE_Y_N]]
+  // CHECK: %[[VAL_37:.*]] = arith.select %[[PRED_Y]], %[[ONE]], %[[ZERO]]
+  // CHECK: %[[VAL_39:.*]] = arith.addi %[[I_Y]], %[[VAL_37]]
+  // CHECK: %[[VAL_41:.*]] = arith.cmpi slt, %[[VAL_39]], %[[ZERO]]
+  // CHECK: %[[VAL_42:.*]] = arith.select %[[VAL_41]], %[[ZERO]], %[[VAL_39]]
+  // CHECK: %[[VAL_43:.*]] = arith.cmpi slt, %[[Y_MAX]], %[[VAL_39]]
+  // CHECK: %[[VAL_44:.*]] = arith.select %[[VAL_43]], %[[Y_MAX]], %[[VAL_42]]
+  // CHECK: %[[IDY:.+]] = arith.index_cast %[[VAL_44]]
+
+  // Compute the offset and bound for the X position.
+  // CHECK: %[[D_X_DOUBLE:.*]] = arith.shli %[[D_X]], %[[ONE]]
+  // CHECK: %[[PRED_X:.*]] = arith.cmpi slt, %[[D_X_DOUBLE]], %[[SCALE_X_N]]
+  // CHECK: %[[VAL_38:.*]] = arith.select %[[PRED_X]], %[[ONE]], %[[ZERO]]
+  // CHECK: %[[VAL_40:.*]] = arith.addi %[[I_X]], %[[VAL_38]]
+  // CHECK: %[[VAL_45:.*]] = arith.cmpi slt, %[[VAL_40]], %[[ZERO]]
+  // CHECK: %[[VAL_46:.*]] = arith.select %[[VAL_45]], %[[ZERO]], %[[VAL_40]]
+  // CHECK: %[[VAL_47:.*]] = arith.cmpi slt, %[[X_MAX]], %[[VAL_40]]
+  // CHECK: %[[VAL_48:.*]] = arith.select %[[VAL_47]], %[[X_MAX]], %[[VAL_46]]
+  // CHECK: %[[IDX:.+]] = arith.index_cast %[[VAL_48]]
+
+  // CHECK: %[[EXTRACT:.+]] = tensor.extract %arg0[%[[IDX_0]], %[[IDY]], %[[IDX]], %[[IDX_3]]]
+  // CHECK: linalg.yield %[[EXTRACT]]
+
+  // Round to the nearest index.
+  %0 = "tosa.resize"(%arg0) {mode = "NEAREST_NEIGHBOR", nearest_rounding_mode = "ROUND_PREFER_FLOOR", scale = array<i64: 11, 7, 89, 6>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x15x13x1xi8>) -> tensor<1x23x179x1xi8>
+  return
+}
+
+// -----
+
+// CHECK-LABEL:  @resize_nearest_int_floor
+func.func @resize_nearest_int_floor(%arg0: tensor<1x15x13x1xi8>) -> () {
+  // CHECK: %[[INIT:.+]] = tensor.empty() : tensor<1x23x179x1xi8>
+  // CHECK: %[[GENERIC:.+]] = linalg.generic
+  // CHECK: %[[IDX_0:.+]] = linalg.index 0
+  // CHECK: %[[IDX_1:.+]] = linalg.index 1
+  // CHECK: %[[IDX_2:.+]] = linalg.index 2
+  // CHECK: %[[IDX_3:.+]] = linalg.index 3
+  // CHECK-DAG: %[[ZERO:.+]] = arith.constant 0
+  // CHECK-DAG: %[[Y_MAX:.+]] = arith.constant 14
+  // CHECK-DAG: %[[X_MAX:.+]] = arith.constant 12
+
+  // CHECK: %[[Y:.+]] = arith.index_cast %[[IDX_1]]
+  // CHECK: %[[X:.+]] = arith.index_cast %[[IDX_2]]
+  // CHECK-DAG: %[[SCALE_Y_N:.*]] = arith.constant 11
+  // CHECK-DAG: %[[SCALE_Y_D:.*]] = arith.constant 7
+  // CHECK-DAG: %[[SCALE_X_N:.*]] = arith.constant 89
+  // CHECK-DAG: %[[SCALE_X_D:.*]] = arith.constant 6
+  // CHECK-DAG: %[[OFFSET_Y:.*]] = arith.constant 0
+  // CHECK-DAG: %[[OFFSET_X:.*]] = arith.constant 0
+  // CHECK-DAG: %[[BORDER_Y:.*]] = arith.constant 0
+  // CHECK-DAG: %[[BORDER_X:.*]] = arith.constant 0
+
+  // find the remainder and integer component of the target index.
+
+  // CHECK: %[[TEMP_Y:.*]] = arith.muli %[[Y]], %[[SCALE_Y_D]]
+  // CHECK: %[[Y:.*]] = arith.addi %[[TEMP_Y]], %[[OFFSET_Y]]
+  // CHECK: %[[I_Y:.*]] = arith.divsi %[[Y]], %[[SCALE_Y_N]]
+  // CHECK: %[[TEMP_Y:.*]] = arith.muli %[[I_Y]], %[[SCALE_Y_N]]
+  // CHECK: %[[D_Y:.*]] = arith.subi %[[Y]], %[[TEMP_Y]]
+
+  // CHECK: %[[TEMP_X:.*]] = arith.muli %[[X]], %[[SCALE_X_D]]
+  // CHECK: %[[X:.*]] = arith.addi %[[TEMP_X]], %[[OFFSET_X]]
+  // CHECK: %[[I_X:.*]] = arith.divsi %[[X]], %[[SCALE_X_N]]
+  // CHECK: %[[TEMP_X:.*]] = arith.muli %[[I_X]], %[[SCALE_X_N]]
+  // CHECK: %[[D_X:.*]] = arith.subi %[[X]], %[[TEMP_X]]
+
+  // Compute the offset and bound for the Y position.
+  // CHECK-DAG: %[[ONE:.*]] = arith.constant 1
+  // CHECK: %[[FALSE_VAL_0:.*]] = arith.constant false
+  // CHECK: %[[VAL_37:.*]] = arith.select %[[FALSE_VAL_0]], %[[ONE]], %[[ZERO]]
+  // CHECK: %[[VAL_39:.*]] = arith.addi %[[I_Y]], %[[VAL_37]]
+  // CHECK: %[[VAL_41:.*]] = arith.cmpi slt, %[[VAL_39]], %[[ZERO]]
+  // CHECK: %[[VAL_42:.*]] = arith.select %[[VAL_41]], %[[ZERO]], %[[VAL_39]]
+  // CHECK: %[[VAL_43:.*]] = arith.cmpi slt, %[[Y_MAX]], %[[VAL_39]]
+  // CHECK: %[[VAL_44:.*]] = arith.select %[[VAL_43]], %[[Y_MAX]], %[[VAL_42]]
+  // CHECK: %[[IDY:.+]] = arith.index_cast %[[VAL_44]]
+
+  // Compute the offset and bound for the X position.
+  // CHECK: %[[FALSE_VAL_1:.*]] = arith.constant false
+  // CHECK: %[[VAL_38:.*]] = arith.select %[[FALSE_VAL_1]], %[[ONE]], %[[ZERO]]
+  // CHECK: %[[VAL_40:.*]] = arith.addi %[[I_X]], %[[VAL_38]]
+  // CHECK: %[[VAL_45:.*]] = arith.cmpi slt, %[[VAL_40]], %[[ZERO]]
+  // CHECK: %[[VAL_46:.*]] = arith.select %[[VAL_45]], %[[ZERO]], %[[VAL_40]]
+  // CHECK: %[[VAL_47:.*]] = arith.cmpi slt, %[[X_MAX]], %[[VAL_40]]
+  // CHECK: %[[VAL_48:.*]] = arith.select %[[VAL_47]], %[[X_MAX]], %[[VAL_46]]
+  // CHECK: %[[IDX:.+]] = arith.index_cast %[[VAL_48]]
+
+  // CHECK: %[[EXTRACT:.+]] = tensor.extract %arg0[%[[IDX_0]], %[[IDY]], %[[IDX]], %[[IDX_3]]]
+  // CHECK: linalg.yield %[[EXTRACT]]
+
+  // Round to the nearest index.
+  %0 = "tosa.resize"(%arg0) {mode = "NEAREST_NEIGHBOR", nearest_rounding_mode = "FLOOR", scale = array<i64: 11, 7, 89, 6>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x15x13x1xi8>) -> tensor<1x23x179x1xi8>
+  return
+}
+
+// CHECK-LABEL:  @resize_nearest_int_ceil
+func.func @resize_nearest_int_ceil(%arg0: tensor<1x15x13x1xi8>) -> () {
+  // CHECK: %[[INIT:.+]] = tensor.empty() : tensor<1x23x179x1xi8>
+  // CHECK: %[[GENERIC:.+]] = linalg.generic
+  // CHECK: %[[IDX_0:.+]] = linalg.index 0
+  // CHECK: %[[IDX_1:.+]] = linalg.index 1
+  // CHECK: %[[IDX_2:.+]] = linalg.index 2
+  // CHECK: %[[IDX_3:.+]] = linalg.index 3
+  // CHECK-DAG: %[[ZERO:.+]] = arith.constant 0
+  // CHECK-DAG: %[[Y_MAX:.+]] = arith.constant 14
+  // CHECK-DAG: %[[X_MAX:.+]] = arith.constant 12
+
+  // CHECK: %[[Y:.+]] = arith.index_cast %[[IDX_1]]
+  // CHECK: %[[X:.+]] = arith.index_cast %[[IDX_2]]
+  // CHECK-DAG: %[[SCALE_Y_N:.*]] = arith.constant 11
+  // CHECK-DAG: %[[SCALE_Y_D:.*]] = arith.constant 7
+  // CHECK-DAG: %[[SCALE_X_N:.*]] = arith.constant 89
+  // CHECK-DAG: %[[SCALE_X_D:.*]] = arith.constant 6
+  // CHECK-DAG: %[[OFFSET_Y:.*]] = arith.constant 0
+  // CHECK-DAG: %[[OFFSET_X:.*]] = arith.constant 0
+  // CHECK-DAG: %[[BORDER_Y:.*]] = arith.constant 0
+  // CHECK-DAG: %[[BORDER_X:.*]] = arith.constant 0
+
+  // find the remainder and integer component of the target index.
+
+  // CHECK: %[[TEMP_Y:.*]] = arith.muli %[[Y]], %[[SCALE_Y_D]]
+  // CHECK: %[[Y:.*]] = arith.addi %[[TEMP_Y]], %[[OFFSET_Y]]
+  // CHECK: %[[I_Y:.*]] = arith.divsi %[[Y]], %[[SCALE_Y_N]]
+  // CHECK: %[[TEMP_Y:.*]] = arith.muli %[[I_Y]], %[[SCALE_Y_N]]
+  // CHECK: %[[D_Y:.*]] = arith.subi %[[Y]], %[[TEMP_Y]]
+
+  // CHECK: %[[TEMP_X:.*]] = arith.muli %[[X]], %[[SCALE_X_D]]
+  // CHECK: %[[X:.*]] = arith.addi %[[TEMP_X]], %[[OFFSET_X]]
+  // CHECK: %[[I_X:.*]] = arith.divsi %[[X]], %[[SCALE_X_N]]
+  // CHECK: %[[TEMP_X:.*]] = arith.muli %[[I_X]], %[[SCALE_X_N]]
+  // CHECK: %[[D_X:.*]] = arith.subi %[[X]], %[[TEMP_X]]
+
+  // Compute the offset and bound for the Y position.
+  // CHECK-DAG: %[[ONE:.*]] = arith.constant 1
+  // CHECK: %[[TRUE_VAL_0:.*]] = arith.constant true
+  // CHECK: %[[VAL_37:.*]] = arith.select %[[TRUE_VAL_0]], %[[ONE]], %[[ZERO]]
+  // CHECK: %[[VAL_39:.*]] = arith.addi %[[I_Y]], %[[VAL_37]]
+  // CHECK: %[[VAL_41:.*]] = arith.cmpi slt, %[[VAL_39]], %[[ZERO]]
+  // CHECK: %[[VAL_42:.*]] = arith.select %[[VAL_41]], %[[ZERO]], %[[VAL_39]]
+  // CHECK: %[[VAL_43:.*]] = arith.cmpi slt, %[[Y_MAX]], %[[VAL_39]]
+  // CHECK: %[[VAL_44:.*]] = arith.select %[[VAL_43]], %[[Y_MAX]], %[[VAL_42]]
+  // CHECK: %[[IDY:.+]] = arith.index_cast %[[VAL_44]]
+
+  // Compute the offset and bound for the X position.
+  // CHECK: %[[TRUE_VAL_1:.*]] = arith.constant true
+  // CHECK: %[[VAL_38:.*]] = arith.select %[[TRUE_VAL_1]], %[[ONE]], %[[ZERO]]
+  // CHECK: %[[VAL_40:.*]] = arith.addi %[[I_X]], %[[VAL_38]]
+  // CHECK: %[[VAL_45:.*]] = arith.cmpi slt, %[[VAL_40]], %[[ZERO]]
+  // CHECK: %[[VAL_46:.*]] = arith.select %[[VAL_45]], %[[ZERO]], %[[VAL_40]]
+  // CHECK: %[[VAL_47:.*]] = arith.cmpi slt, %[[X_MAX]], %[[VAL_40]]
+  // CHECK: %[[VAL_48:.*]] = arith.select %[[VAL_47]], %[[X_MAX]], %[[VAL_46]]
+  // CHECK: %[[IDX:.+]] = arith.index_cast %[[VAL_48]]
+
+  // CHECK: %[[EXTRACT:.+]] = tensor.extract %arg0[%[[IDX_0]], %[[IDY]], %[[IDX]], %[[IDX_3]]]
+  // CHECK: linalg.yield %[[EXTRACT]]
+
+  // Round to the nearest index.
+  %0 = "tosa.resize"(%arg0) {mode = "NEAREST_NEIGHBOR", nearest_rounding_mode = "CEIL", scale = array<i64: 11, 7, 89, 6>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x15x13x1xi8>) -> tensor<1x23x179x1xi8>
   return
 }
 
