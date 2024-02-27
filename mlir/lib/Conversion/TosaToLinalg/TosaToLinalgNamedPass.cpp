@@ -37,10 +37,8 @@ namespace {
 struct TosaToLinalgNamed
     : public impl::TosaToLinalgNamedBase<TosaToLinalgNamed> {
 public:
-  TosaToLinalgNamed() = default;
-  explicit TosaToLinalgNamed(bool useMatmulForSingleBatch) {
-    this->useMatmulForSingleBatch = useMatmulForSingleBatch;
-  }
+  TosaToLinalgNamed(const TosaToLinalgNamedOptions &options)
+      : impl::TosaToLinalgNamedBase<TosaToLinalgNamed>(options) {}
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry
@@ -66,8 +64,10 @@ public:
     target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
 
     FunctionOpInterface func = getOperation();
-    mlir::tosa::populateTosaToLinalgNamedConversionPatterns(
-        &patterns, this->useMatmulForSingleBatch);
+    TosaToLinalgNamedOptions options;
+    options.preferConv2DKernelLayoutHWCF = preferConv2DKernelLayoutHWCF;
+    options.useMatmulForSingleBatch = useMatmulForSingleBatch;
+    tosa::populateTosaToLinalgNamedConversionPatterns(&patterns, options);
     if (failed(applyFullConversion(func, target, std::move(patterns))))
       signalPassFailure();
   }
@@ -75,6 +75,6 @@ public:
 } // namespace
 
 std::unique_ptr<Pass>
-mlir::tosa::createTosaToLinalgNamed(bool useMatmulForSingleBatch) {
-  return std::make_unique<TosaToLinalgNamed>(useMatmulForSingleBatch);
+mlir::tosa::createTosaToLinalgNamed(const TosaToLinalgNamedOptions &options) {
+  return std::make_unique<TosaToLinalgNamed>(options);
 }
