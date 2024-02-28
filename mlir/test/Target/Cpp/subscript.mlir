@@ -7,6 +7,6 @@ func.func @load_store(%arg0: !emitc.array<4x8xf32>, %arg1: !emitc.array<3x5xf32>
   emitc.assign %0 : f32 to %1 : f32
   return
 }
-// CHECK: void load_store(float [[V1:[^ ]*]][4][8], float [[V2:[^ ]*]][3][5],
-// CHECK-SAME:            size_t [[V3:[^ ]*]], size_t [[V4:[^ ]*]])
-// CHECK-NEXT: [[V2]][[[V3]]][[[V4]]] = [[V1]][[[V3]]][[[V4]]];
+// CHECK: void load_store(float [[ARR1:[^ ]*]][4][8], float [[ARR2:[^ ]*]][3][5],
+// CHECK-SAME:            size_t [[I:[^ ]*]], size_t [[J:[^ ]*]])
+// CHECK-NEXT: [[ARR2]][[[I]]][[[J]]] = [[ARR1]][[[I]]][[[J]]];
