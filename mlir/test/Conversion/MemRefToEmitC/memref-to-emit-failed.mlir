@@ -22,3 +22,20 @@ func.func @memref_op(%arg0 : memref<2x4xf32>) {
   memref.copy %arg0, %arg0 : memref<2x4xf32> to memref<2x4xf32>
   return
 }
+
+// -----
+
+func.func @alloca_with_dynamic_shape() {
+  %0 = index.constant 1
+  // expected-error@+1 {{failed to legalize operation 'memref.alloca' that was explicitly marked illegal}}
+  %1 = memref.alloca(%0) : memref<4x?xf32>
+  return
+}
+
+// -----
+
+func.func @alloca_with_alignment() {
+  // expected-error@+1 {{failed to legalize operation 'memref.alloca' that was explicitly marked illegal}}
+  %1 = memref.alloca() {alignment = 64 : i64}: memref<4xf32>
+  return
+}
