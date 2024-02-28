@@ -82,6 +82,32 @@ struct ConvertStore final : public OpConversionPattern<memref::StoreOp> {
   }
 };
 
+struct ConvertAlloca final : public OpConversionPattern<memref::AllocaOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::AllocaOp op, OpAdaptor operands,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    if (!op.getType().hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op.getLoc(), "cannot transform alloca with dynamic shape");
+    }
+
+    if (op.getAlignment().value_or(1) > 1) {
+      // TODO: Allow alignment if it is not more than the natural alignment
+      // of the C array.
+      return rewriter.notifyMatchFailure(
+          op.getLoc(), "cannot transform alloca with alignment requirement");
+    }
+
+    auto resultTy = getTypeConverter()->convertType(op.getType());
+    auto noInit = emitc::OpaqueAttr::get(getContext(), "");
+    rewriter.replaceOpWithNewOp<emitc::VariableOp>(op, resultTy, noInit);
+    return success();
+  }
+};
+
 struct ConvertMemRefToEmitCPass
     : public impl::ConvertMemRefToEmitCBase<ConvertMemRefToEmitCPass> {
   void runOnOperation() override {
@@ -135,8 +161,8 @@ void mlir::populateMemRefToEmitCConversionPatterns(RewritePatternSet &patterns,
                                                                  converter);
   populateCallOpTypeConversionPattern(patterns, converter);
   populateReturnOpTypeConversionPattern(patterns, converter);
-  patterns.add<ConvertLoad>(converter, patterns.getContext());
-  patterns.add<ConvertStore>(converter, patterns.getContext());
+  patterns.add<ConvertLoad, ConvertStore, ConvertAlloca>(converter,
+                                                         patterns.getContext());
 }
 
 std::unique_ptr<OperationPass<>> mlir::createConvertMemRefToEmitCPass() {

@@ -36,3 +36,12 @@ func.func @memref_load_store(%in: memref<4x8xf32>, %out: memref<3x5xf32>, %i: in
   memref.store %0, %out[%i, %j] : memref<3x5xf32>
   return
 }
+
+// -----
+
+// CHECK-LABEL: alloca
+func.func @alloca() {
+  // CHECK "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.array<4x8xf32>
+  %0 = memref.alloca() : memref<4x8xf32>
+  return
+}
