@@ -96,6 +96,10 @@ struct CppEmitter {
   LogicalResult emitVariableDeclaration(OpResult result,
                                         bool trailingSemicolon);
 
+  /// Emits a declaration of a variable with the given type and name.
+  LogicalResult emitVariableDeclaration(Location loc, Type type,
+                                        StringRef name);
+
   /// Emits the variable declaration and assignment prefix for 'op'.
   /// - emits separate variable followed by std::tie for multi-valued operation;
   /// - emits single type followed by variable for single result;
@@ -623,14 +627,12 @@ static LogicalResult printOperation(CppEmitter &emitter,
   os << " " << functionOp.getName();
 
   os << "(";
-  if (failed(interleaveCommaWithError(
-          functionOp.getArguments(), os,
-          [&](BlockArgument arg) -> LogicalResult {
-            if (failed(emitter.emitType(functionOp.getLoc(), arg.getType())))
-              return failure();
-            os << " " << emitter.getOrCreateName(arg);
-            return success();
-          })))
+  if (failed(interleaveCommaWithError(functionOp.getArguments(), os,
+                                      [&](BlockArgument arg) -> LogicalResult {
+                                        return emitter.emitVariableDeclaration(
+                                            functionOp.getLoc(), arg.getType(),
+                                            emitter.getOrCreateName(arg));
+                                      })))
     return failure();
   os << ") {\n";
   os.indent();
@@ -893,9 +895,10 @@ LogicalResult CppEmitter::emitVariableDeclaration(OpResult result,
     return result.getDefiningOp()->emitError(
         "result variable for the operation already declared");
   }
-  if (failed(emitType(result.getOwner()->getLoc(), result.getType())))
+  if (failed(emitVariableDeclaration(result.getOwner()->getLoc(),
+                                     result.getType(),
+                                     getOrCreateName(result))))
     return failure();
-  os << " " << getOrCreateName(result);
   if (trailingSemicolon)
     os << ";\n";
   return success();
@@ -974,6 +977,23 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
     return success();
 
   os << (trailingSemicolon ? ";\n" : "\n");
+  return success();
+}
+
+LogicalResult CppEmitter::emitVariableDeclaration(Location loc, Type type,
+                                                  StringRef name) {
+  if (auto arrType = dyn_cast<emitc::ArrayType>(type)) {
+    if (failed(emitType(loc, arrType.getElementType())))
+      return failure();
+    os << " " << name;
+    for (auto dim : arrType.getShape()) {
+      os << "[" << dim << "]";
+    }
+    return success();
+  }
+  if (failed(emitType(loc, type)))
+    return failure();
+  os << " " << name;
   return success();
 }
 
