@@ -579,33 +579,8 @@ void emitc::OpaqueAttr::print(AsmPrinter &printer) const {
 #include "mlir/Dialect/EmitC/IR/EmitCTypes.cpp.inc"
 
 //===----------------------------------------------------------------------===//
-// OpaqueType
+// ArrayType
 //===----------------------------------------------------------------------===//
-
-Type emitc::OpaqueType::parse(AsmParser &parser) {
-  if (parser.parseLess())
-    return Type();
-  std::string value;
-  SMLoc loc = parser.getCurrentLocation();
-  if (parser.parseOptionalString(&value) || value.empty()) {
-    parser.emitError(loc) << "expected non empty string in !emitc.opaque type";
-    return Type();
-  }
-  if (value.back() == '*') {
-    parser.emitError(loc) << "pointer not allowed as outer type with "
-                             "!emitc.opaque, use !emitc.ptr instead";
-    return Type();
-  }
-  if (parser.parseGreater())
-    return Type();
-  return get(parser.getContext(), value);
-}
-
-void emitc::OpaqueType::print(AsmPrinter &printer) const {
-  printer << "<\"";
-  llvm::printEscapedString(getValue(), printer.getStream());
-  printer << "\">";
-}
 
 Type emitc::ArrayType::parse(AsmParser &parser) {
   if (parser.parseLess())
@@ -664,4 +639,33 @@ emitc::ArrayType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
   if (!shape)
     return emitc::ArrayType::get(getShape(), elementType);
   return emitc::ArrayType::get(*shape, elementType);
+}
+
+//===----------------------------------------------------------------------===//
+// OpaqueType
+//===----------------------------------------------------------------------===//
+
+Type emitc::OpaqueType::parse(AsmParser &parser) {
+  if (parser.parseLess())
+    return Type();
+  std::string value;
+  SMLoc loc = parser.getCurrentLocation();
+  if (parser.parseOptionalString(&value) || value.empty()) {
+    parser.emitError(loc) << "expected non empty string in !emitc.opaque type";
+    return Type();
+  }
+  if (value.back() == '*') {
+    parser.emitError(loc) << "pointer not allowed as outer type with "
+                             "!emitc.opaque, use !emitc.ptr instead";
+    return Type();
+  }
+  if (parser.parseGreater())
+    return Type();
+  return get(parser.getContext(), value);
+}
+
+void emitc::OpaqueType::print(AsmPrinter &printer) const {
+  printer << "<\"";
+  llvm::printEscapedString(getValue(), printer.getStream());
+  printer << "\">";
 }
