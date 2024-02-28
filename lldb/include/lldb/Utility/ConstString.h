@@ -44,7 +44,7 @@ public:
   /// Initializes the string to an empty string.
   ConstString() = default;
 
-  explicit ConstString(const llvm::StringRef &s);
+  explicit ConstString(llvm::StringRef s);
 
   /// Construct with C String value
   ///
@@ -77,22 +77,6 @@ public:
   ///     \a max_cstr_len, then only max_cstr_len bytes will be used
   ///     from \a cstr.
   explicit ConstString(const char *cstr, size_t max_cstr_len);
-
-  /// C string equality binary predicate function object for ConstString
-  /// objects.
-  struct StringIsEqual {
-    /// C equality test.
-    ///
-    /// Two C strings are equal when they are contained in ConstString objects
-    /// when their pointer values are equal to each other.
-    ///
-    /// \return
-    ///     Returns \b true if the C string in \a lhs is equal to
-    ///     the C string value in \a rhs, \b false otherwise.
-    bool operator()(const char *lhs, const char *rhs) const {
-      return lhs == rhs;
-    }
-  };
 
   /// Convert to bool operator.
   ///
@@ -328,7 +312,7 @@ public:
   ///     A NULL terminated C string to add to the string pool.
   void SetCString(const char *cstr);
 
-  void SetString(const llvm::StringRef &s);
+  void SetString(llvm::StringRef s);
 
   /// Set the C string value and its mangled counterpart.
   ///

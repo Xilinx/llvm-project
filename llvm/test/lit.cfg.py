@@ -216,7 +216,6 @@ tools.extend(
         "llvm-rc",
         "llvm-readelf",
         "llvm-readobj",
-        "llvm-remark-size-diff",
         "llvm-rtdyld",
         "llvm-sim",
         "llvm-size",
@@ -225,7 +224,7 @@ tools.extend(
         "llvm-strings",
         "llvm-strip",
         "llvm-tblgen",
-        "llvm-tapi-diff",
+        "llvm-readtapi",
         "llvm-undname",
         "llvm-windres",
         "llvm-c-test",
@@ -305,6 +304,7 @@ def enable_ptxas(ptxas_executable):
             (11, 7),
             (11, 8),
             (12, 0),
+            (12, 1),
         ]
 
         def version_int(ver):
@@ -582,9 +582,6 @@ if not re.match(
     config.target_triple,
 ) and not re.match(r"^arm64(e)?-apple-(macos|darwin)", config.target_triple):
     config.available_features.add("debug_frame")
-
-if config.have_libxar:
-    config.available_features.add("xar")
 
 if config.enable_threads:
     config.available_features.add("thread_support")

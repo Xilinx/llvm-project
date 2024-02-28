@@ -171,7 +171,7 @@ const char *DataLayout::getManglingComponent(const Triple &T) {
     return "-m:l";
   if (T.isOSBinFormatMachO())
     return "-m:o";
-  if (T.isOSWindows() && T.isOSBinFormatCOFF())
+  if ((T.isOSWindows() || T.isUEFI()) && T.isOSBinFormatCOFF())
     return T.getArch() == Triple::x86 ? "-m:x" : "-m:w";
   if (T.isOSBinFormatXCOFF())
     return "-m:a";
@@ -858,11 +858,6 @@ Align DataLayout::getAlignment(Type *Ty, bool abi_or_pref) const {
   default:
     llvm_unreachable("Bad type for getAlignment!!!");
   }
-}
-
-/// TODO: Remove this function once the transition to Align is over.
-uint64_t DataLayout::getABITypeAlignment(Type *Ty) const {
-  return getABITypeAlign(Ty).value();
 }
 
 Align DataLayout::getABITypeAlign(Type *Ty) const {

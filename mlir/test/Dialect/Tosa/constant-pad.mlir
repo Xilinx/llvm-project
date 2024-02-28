@@ -112,7 +112,7 @@ func.func @pad_int32_multi_user() -> (tensor<2x2xi32>, tensor<5x5xi32>) {
   // CHECK: "tosa.const"() <{value = dense<2> : tensor<2x2xi32>}>
   // CHECK: "tosa.const"() <{value = dense<{{\[\[}}1, 2], [1, 2]]>
   // CHECK: "tosa.const"() <{value = dense<1> : tensor<i32>}>
-  // CHECK: "tosa.pad"
+  // CHECK: tosa.pad
   %0 = "tosa.const"() {value = dense<2> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
   %5 = "tosa.const"() {value = dense<[[1, 2], [1, 2]]> : tensor<2x2xi64>} : () -> tensor<2x2xi64>
   %6 = "tosa.const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>

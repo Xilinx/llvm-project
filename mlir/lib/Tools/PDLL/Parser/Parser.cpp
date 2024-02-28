@@ -344,6 +344,8 @@ private:
   FailureOr<ast::Expr *> parseInlineRewriteLambdaExpr();
   FailureOr<ast::Expr *> parseMemberAccessExpr(ast::Expr *parentExpr);
   FailureOr<ast::Expr *> parseNegatedExpr();
+  FailureOr<ast::Expr *> parseIntegerExpr();
+  FailureOr<ast::Expr *> parseStringExpr();
   FailureOr<ast::OpNameDecl *> parseOperationName(bool allowEmptyName = false);
   FailureOr<ast::OpNameDecl *> parseWrappedOperationName(bool allowEmptyName);
   FailureOr<ast::Expr *>
@@ -427,7 +429,8 @@ private:
 
   FailureOr<ast::CallExpr *>
   createCallExpr(SMRange loc, ast::Expr *parentExpr,
-                 MutableArrayRef<ast::Expr *> arguments, bool isNegated);
+                 MutableArrayRef<ast::Expr *> arguments,
+                 bool isNegated = false);
   FailureOr<ast::DeclRefExpr *> createDeclRefExpr(SMRange loc, ast::Decl *decl);
   FailureOr<ast::DeclRefExpr *>
   createInlineVariableExpr(ast::Type type, StringRef name, SMRange loc,
@@ -841,6 +844,15 @@ LogicalResult Parser::convertTupleExpressionTo(
     return convertToRange({valueTy, valueRangeTy}, valueRangeTy);
   if (type == typeRangeTy)
     return convertToRange({typeTy, typeRangeTy}, typeRangeTy);
+  if (type == attrTy && exprType.size() == 1 &&
+      exprType.getElementTypes()[0] == type) {
+    // Parenthesis become tuples. Allow to unpack single element tuples
+    // to expressions.
+    expr = ast::MemberAccessExpr::create(ctx, expr->getLoc(), expr,
+                                         llvm::to_string(0),
+                                         exprType.getElementTypes()[0]);
+    return success();
+  }
 
   return emitErrorFn();
 }
@@ -1946,6 +1958,9 @@ FailureOr<ast::Expr *> Parser::parseOtherExpr() {
   case Token::kw_Constraint:
     lhsExpr = parseInlineConstraintLambdaExpr();
     break;
+  case Token::kw_not:
+    lhsExpr = parseNegatedExpr();
+    break;
   case Token::identifier:
     lhsExpr = parseIdentifierExpr();
     break;
@@ -1966,6 +1981,12 @@ FailureOr<ast::Expr *> Parser::parseOtherExpr() {
     break;
   case Token::l_square:
     lhsExpr = parseArrayAttrExpr();
+    break;
+  case Token::integer:
+    lhsExpr = parseIntegerExpr();
+    break;
+  case Token::string:
+    lhsExpr = parseStringExpr();
     break;
   case Token::string_block:
     return emitError("expected expression. If you are trying to create an "
@@ -2201,7 +2222,8 @@ FailureOr<ast::Expr *> Parser::parseMemberAccessExpr(ast::Expr *parentExpr) {
 }
 
 FailureOr<ast::Expr *> Parser::parseNegatedExpr() {
-  consumeToken(Token::exclam);
+  consumeToken(Token::kw_not);
+  // Only native constraints are supported after negation
   if (!curToken.is(Token::identifier))
     return emitError("expected native constraint");
   FailureOr<ast::Expr *> identifierExpr = parseIdentifierExpr();
@@ -2210,6 +2232,32 @@ FailureOr<ast::Expr *> Parser::parseNegatedExpr() {
   if (!curToken.is(Token::l_paren))
     return emitError("expected `(` after function name");
   return parseCallExpr(*identifierExpr, /*isNegated = */ true);
+}
+
+/// Parse
+///   integer : identifier
+/// into an AttributeExpr.
+/// Examples: '4 : i32', '0 : si1'
+FailureOr<ast::Expr *> Parser::parseIntegerExpr() {
+  SMRange loc = curToken.getLoc();
+  StringRef value = curToken.getSpelling();
+  consumeToken();
+  if (!consumeIf(Token::colon))
+    return emitError("expected colon after integer literal");
+  if (!curToken.is(Token::identifier))
+    return emitError("expected integer type");
+  StringRef type = curToken.getSpelling();
+  consumeToken();
+
+  auto allocated = copyStringWithNull(ctx, (Twine(value) + ":" + type).str());
+  return ast::AttributeExpr::create(ctx, loc, allocated);
+}
+
+FailureOr<ast::Expr *> Parser::parseStringExpr() {
+  SMRange loc = curToken.getLoc();
+  StringRef value = curToken.getSpelling();
+  consumeToken();
+  return ast::AttributeExpr::create(ctx, loc, value);
 }
 
 FailureOr<ast::OpNameDecl *> Parser::parseOperationName(bool allowEmptyName) {
@@ -2610,7 +2658,7 @@ FailureOr<ast::LetStmt *> Parser::parseLetStmt() {
           TypeSwitch<const ast::Node *, LogicalResult>(constraint.constraint)
               .Case<ast::AttrConstraintDecl, ast::ValueConstraintDecl,
                     ast::ValueRangeConstraintDecl>([&](const auto *cst) {
-                if (auto *typeConstraintExpr = cst->getTypeExpr()) {
+                if (cst->getTypeExpr()) {
                   return this->emitError(
                       constraint.referenceLoc,
                       "type constraints are not permitted on variables with "
@@ -2940,8 +2988,7 @@ Parser::validateTypeRangeConstraintExpr(const ast::Expr *typeExpr) {
 
 FailureOr<ast::CallExpr *>
 Parser::createCallExpr(SMRange loc, ast::Expr *parentExpr,
-                       MutableArrayRef<ast::Expr *> arguments,
-                       bool isNegated = false) {
+                       MutableArrayRef<ast::Expr *> arguments, bool isNegated) {
   ast::Type parentType = parentExpr->getType();
 
   ast::CallableDecl *callableDecl = tryExtractCallableDecl(parentExpr);
@@ -2956,9 +3003,13 @@ Parser::createCallExpr(SMRange loc, ast::Expr *parentExpr,
       return emitError(
           loc, "unable to invoke `Constraint` within a rewrite section");
     if (isNegated)
-      return emitError(loc, "negation of Rewrites is not supported");
-  } else if (isa<ast::UserRewriteDecl>(callableDecl)) {
-    return emitError(loc, "unable to invoke `Rewrite` within a match section");
+      return emitError(loc, "unable to negate a Rewrite");
+  } else {
+    if (isa<ast::UserRewriteDecl>(callableDecl))
+      return emitError(loc,
+                       "unable to invoke `Rewrite` within a match section");
+    if (isNegated && cast<ast::UserConstraintDecl>(callableDecl)->getBody())
+      return emitError(loc, "unable to negate non native constraints");
   }
 
   // Verify the arguments of the call.

@@ -237,8 +237,6 @@ Token Lexer::lexToken() {
       return formToken(Token::l_paren, tokStart);
     case ')':
       return formToken(Token::r_paren, tokStart);
-    case '!':
-      return formToken(Token::exclam, tokStart);
     case '/':
       if (*curPtr == '/') {
         lexComment();
@@ -360,6 +358,7 @@ Token Lexer::lexIdentifier(const char *tokStart) {
                          .Case("erase", Token::kw_erase)
                          .Case("let", Token::kw_let)
                          .Case("Constraint", Token::kw_Constraint)
+                         .Case("not", Token::kw_not)
                          .Case("op", Token::kw_op)
                          .Case("Op", Token::kw_Op)
                          .Case("OpName", Token::kw_OpName)

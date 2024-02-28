@@ -14,8 +14,26 @@ Pattern {
 
 // -----
 
-// CHECK: NamedAttributeDecl {{.*}}  Name<some_array>
-// CHECK: UserRewriteDecl {{.*}} Name<__builtin_addElemToArrayAttr> ResultType<Attr>
+// CHECK: Module
+// CHECK: `-AttributeExpr {{.*}} Value<"10:i32">
+Pattern {
+  let attr = 10 : i32;
+  erase _: Op;
+}
+
+// -----
+
+// CHECK: Module
+// CHECK: `-AttributeExpr {{.*}} Value<""value"">
+Pattern {
+  let attr = "value";
+  erase _: Op;
+}
+
+// -----
+
+// CHECK: |-NamedAttributeDecl {{.*}}  Name<some_array>
+// CHECK: `-UserRewriteDecl {{.*}} Name<__builtin_addElemToArrayAttr> ResultType<Attr>
 // CHECK:   `Arguments`
 // CHECK:     CallExpr {{.*}} Type<Attr>
 // CHECK:       UserRewriteDecl {{.*}} Name<__builtin_createArrayAttr> ResultType<Attr>
@@ -74,16 +92,16 @@ Pattern {
 // -----
 
 // CHECK: Module {{.*}}
-// CHECK:  -UserConstraintDecl {{.*}} Name<checkOp> ResultType<Tuple<>>
+// CHECK:  -UserConstraintDecl {{.*}} Name<TestConstraint> ResultType<Tuple<>>
 // CHECK: `-PatternDecl {{.*}}
-// CHECK:   -CallExpr {{.*}} Type<Tuple<>> negated
+// CHECK:   -CallExpr {{.*}} Type<Tuple<>> Negated
 // CHECK:     `-DeclRefExpr {{.*}} Type<Constraint>
-// CHECK:       `-UserConstraintDecl {{.*}} Name<checkOp> ResultType<Tuple<>>
-Constraint checkOp(op: Op);
+// CHECK:       `-UserConstraintDecl {{.*}} Name<TestConstraint> ResultType<Tuple<>>
+Constraint TestConstraint(op: Op);
 
 Pattern {
   let inputOp = op<my_dialect.bar>;
-  !checkOp(inputOp);
+  not TestConstraint(inputOp);
   erase inputOp;
 }
 
@@ -105,6 +123,20 @@ Pattern {
   let firstEltIndex = tuple.0;
   let firstEltName = tuple.firstElt;
 
+  erase _: Op;
+}
+
+// -----
+
+// Implicitly convert single element Tuple<Attr> to Attr
+// CHECK: Module
+// CHECK: `-MemberAccessExpr {{.*}} Member<0> Type<Attr>
+// CHECK:   `-TupleExpr {{.*}} Type<Tuple<Attr>>
+// CHECK:     `-AttributeExpr {{.*}} Value<"10: i32">
+Constraint checkAttr(attr: Attr);
+Pattern {
+  let tuple = (attr<"10: i32">);
+  checkAttr(tuple);
   erase _: Op;
 }
 
@@ -175,7 +207,7 @@ Pattern {
 
 // -----
 
-// Test explicitly empty operand/result/etc. lists, which are different from the 
+// Test explicitly empty operand/result/etc. lists, which are different from the
 // "unconstrained" examples above.
 
 // CHECK: Module

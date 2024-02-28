@@ -13,6 +13,8 @@
 //   * 'arm_streaming' (default)
 //   * 'arm_locally_streaming'
 //
+// It can also optionally enable the ZA storage array.
+//
 // Streaming-mode is part of the interface (ABI) for functions with the
 // first attribute and it's the responsibility of the caller to manage
 // PSTATE.SM on entry/exit to functions with this attribute [3]. The LLVM
@@ -49,13 +51,21 @@ using namespace mlir::arm_sme;
 
 static constexpr char kArmStreamingAttr[] = "arm_streaming";
 static constexpr char kArmLocallyStreamingAttr[] = "arm_locally_streaming";
+static constexpr char kArmZAAttr[] = "arm_za";
+static constexpr char kEnableArmStreamingIgnoreAttr[] =
+    "enable_arm_streaming_ignore";
 
 namespace {
 struct EnableArmStreamingPass
     : public arm_sme::impl::EnableArmStreamingBase<EnableArmStreamingPass> {
-  EnableArmStreamingPass(ArmStreaming mode) { this->mode = mode; }
+  EnableArmStreamingPass(ArmStreaming mode, bool enableZA) {
+    this->mode = mode;
+    this->enableZA = enableZA;
+  }
   void runOnOperation() override {
-    std::string attr;
+    if (getOperation()->getAttr(kEnableArmStreamingIgnoreAttr))
+      return;
+    StringRef attr;
     switch (mode) {
     case ArmStreaming::Default:
       attr = kArmStreamingAttr;
@@ -65,11 +75,19 @@ struct EnableArmStreamingPass
       break;
     }
     getOperation()->setAttr(attr, UnitAttr::get(&getContext()));
+
+    // The pass currently only supports enabling ZA when in streaming-mode, but
+    // ZA can be accessed by the SME LDR, STR and ZERO instructions when not in
+    // streaming-mode (see section B1.1.1, IDGNQM of spec [1]). It may be worth
+    // supporting this later.
+    if (enableZA)
+      getOperation()->setAttr(kArmZAAttr, UnitAttr::get(&getContext()));
   }
 };
 } // namespace
 
 std::unique_ptr<Pass>
-mlir::arm_sme::createEnableArmStreamingPass(const ArmStreaming mode) {
-  return std::make_unique<EnableArmStreamingPass>(mode);
+mlir::arm_sme::createEnableArmStreamingPass(const ArmStreaming mode,
+                                            const bool enableZA) {
+  return std::make_unique<EnableArmStreamingPass>(mode, enableZA);
 }

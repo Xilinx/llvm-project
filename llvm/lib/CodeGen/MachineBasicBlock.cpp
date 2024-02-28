@@ -12,6 +12,7 @@
 
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/CodeGen/LiveIntervals.h"
 #include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/LiveVariables.h"
@@ -569,6 +570,11 @@ void MachineBasicBlock::printName(raw_ostream &os, unsigned printNameFlags,
       os << "bb_id " << *getBBID();
       hasAttributes = true;
     }
+    if (CallFrameSize != 0) {
+      os << (hasAttributes ? ", " : " (");
+      os << "call-frame-size " << CallFrameSize;
+      hasAttributes = true;
+    }
   }
 
   if (hasAttributes)
@@ -954,6 +960,10 @@ const MachineBasicBlock *MachineBasicBlock::getSingleSuccessor() const {
   return Successors.size() == 1 ? Successors[0] : nullptr;
 }
 
+const MachineBasicBlock *MachineBasicBlock::getSinglePredecessor() const {
+  return Predecessors.size() == 1 ? Predecessors[0] : nullptr;
+}
+
 MachineBasicBlock *MachineBasicBlock::getFallThrough(bool JumpToFallThrough) {
   MachineFunction::iterator Fallthrough = getIterator();
   ++Fallthrough;
@@ -1098,6 +1108,7 @@ MachineBasicBlock *MachineBasicBlock::SplitCriticalEdge(
   DebugLoc DL;  // FIXME: this is nowhere
 
   MachineBasicBlock *NMBB = MF->CreateMachineBasicBlock();
+  NMBB->setCallFrameSize(Succ->getCallFrameSize());
 
   // Is there an indirect jump with jump table?
   bool ChangedIndirectJump = false;
@@ -1727,11 +1738,6 @@ bool MachineBasicBlock::sizeWithoutDebugLargerThan(unsigned Limit) const {
       return true;
   }
   return false;
-}
-
-unsigned MachineBasicBlock::getBBIDOrNumber() const {
-  uint8_t BBAddrMapVersion = getParent()->getContext().getBBAddrMapVersion();
-  return BBAddrMapVersion < 2 ? getNumber() : *getBBID();
 }
 
 const MBBSectionID MBBSectionID::ColdSectionID(MBBSectionID::SectionType::Cold);

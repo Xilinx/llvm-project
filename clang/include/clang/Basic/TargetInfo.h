@@ -29,6 +29,7 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Frontend/OpenMP/OMPGridValues.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/Support/DataTypes.h"
@@ -266,6 +267,12 @@ protected:
   // UserLabelPrefix must match DL's getGlobalPrefix() when interpreted
   // as a DataLayout object.
   void resetDataLayout(StringRef DL, const char *UserLabelPrefix = "");
+
+  // Target features that are read-only and should not be disabled/enabled
+  // by command line options. Such features are for emitting predefined
+  // macros or checking availability of builtin functions and can be omitted
+  // in function attributes in IR.
+  llvm::StringSet<> ReadOnlyFeatures;
 
 public:
   /// Construct a target for the given options.
@@ -1253,10 +1260,6 @@ public:
   /// the language based on the target options where applicable.
   virtual void adjust(DiagnosticsEngine &Diags, LangOptions &Opts);
 
-  /// Adjust target options based on codegen options.
-  virtual void adjustTargetOptions(const CodeGenOptions &CGOpts,
-                                   TargetOptions &TargetOpts) const {}
-
   /// Initialize the map with the default set of target features for the
   /// CPU this should include all legal feature strings on the target.
   ///
@@ -1394,6 +1397,11 @@ public:
     return false;
   }
 
+  /// Determine whether the given target feature is read only.
+  bool isReadOnlyFeature(StringRef Feature) const {
+    return ReadOnlyFeatures.count(Feature);
+  }
+
   /// Identify whether this target supports multiversioning of functions,
   /// which requires support for cpu_supports and cpu_is functionality.
   bool supportsMultiVersioning() const {
@@ -1402,7 +1410,9 @@ public:
 
   /// Identify whether this target supports IFuncs.
   bool supportsIFunc() const {
-    return getTriple().isOSBinFormatELF() && !getTriple().isOSFuchsia();
+    return getTriple().isOSBinFormatELF() &&
+           ((getTriple().isOSLinux() && !getTriple().isMusl()) ||
+            getTriple().isOSFreeBSD());
   }
 
   // Validate the contents of the __builtin_cpu_supports(const char*)
@@ -1710,6 +1720,9 @@ public:
                ? getTargetOpts().DarwinTargetVariantSDKVersion
                : std::optional<VersionTuple>();
   }
+
+  /// Whether to support HIP image/texture API's.
+  virtual bool hasHIPImageSupport() const { return true; }
 
 protected:
   /// Copy type and layout related info.

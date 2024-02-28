@@ -19,6 +19,7 @@
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/NVGPU/IR/NVGPUDialect.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -54,6 +55,7 @@ struct TestVectorToVectorLowering
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<affine::AffineDialect>();
+    registry.insert<vector::VectorDialect>();
   }
 
   Option<bool> unroll{*this, "unroll", llvm::cl::desc("Include unrolling"),
@@ -373,6 +375,31 @@ struct TestVectorTransferCollapseInnerMostContiguousDims
   }
 };
 
+struct TestSinkVectorBroadcast
+    : public PassWrapper<TestSinkVectorBroadcast, OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TestSinkVectorBroadcast)
+
+  TestSinkVectorBroadcast() = default;
+  TestSinkVectorBroadcast(const TestSinkVectorBroadcast &pass) = default;
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<memref::MemRefDialect, affine::AffineDialect>();
+  }
+
+  StringRef getArgument() const final { return "test-sink-vector-broadcast"; }
+
+  StringRef getDescription() const final {
+    return "Test lowering patterns that eliminate redundant brodacast "
+           "operations.";
+  }
+
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
+    populateSinkVectorBroadcastPatterns(patterns);
+    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
+  }
+};
+
 struct TestVectorReduceToContractPatternsPatterns
     : public PassWrapper<TestVectorReduceToContractPatternsPatterns,
                          OperationPass<func::FuncOp>> {
@@ -654,7 +681,8 @@ struct TestCreateVectorBroadcast
       auto targetShape =
           cast<VectorType>(op->getResult(0).getType()).getShape();
       auto arrayAttr =
-          cast<DenseI64ArrayAttr>(op->getAttr("broadcast_dims")).asArrayRef();
+          cast<DenseI64ArrayAttr>(op->getDiscardableAttr("broadcast_dims"))
+              .asArrayRef();
       llvm::SetVector<int64_t> broadcastedDims;
       broadcastedDims.insert(arrayAttr.begin(), arrayAttr.end());
       OpBuilder b(op);
@@ -689,26 +717,32 @@ struct TestVectorGatherLowering
   }
 };
 
-struct TestVectorTransferTensorSlicePatterns
-    : public PassWrapper<TestVectorTransferTensorSlicePatterns,
+struct TestFoldArithExtensionIntoVectorContractPatterns
+    : public PassWrapper<TestFoldArithExtensionIntoVectorContractPatterns,
                          OperationPass<func::FuncOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
-      TestVectorTransferTensorSlicePatterns)
+      TestFoldArithExtensionIntoVectorContractPatterns)
 
   StringRef getArgument() const final {
-    return "test-vector-transfer-tensor-slice-patterns";
+    return "test-fold-arith-extf-into-vector-contract-patterns";
   }
   StringRef getDescription() const final {
-    return "Test patterns that fold vector transfer and tensor slice ops";
+    return "Test patterns that fold arithmetic extension ops into vector "
+           "contract ops";
+  }
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<arith::ArithDialect, func::FuncDialect, nvgpu::NVGPUDialect,
+                    memref::MemRefDialect, scf::SCFDialect,
+                    tensor::TensorDialect, vector::VectorDialect>();
   }
 
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    populateVectorTransferTensorSliceTransforms(patterns);
+    populateFoldArithExtensionPatterns(patterns);
     (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
-
 } // namespace
 
 namespace mlir {
@@ -728,6 +762,8 @@ void registerTestVectorLowerings() {
 
   PassRegistration<TestVectorTransferCollapseInnerMostContiguousDims>();
 
+  PassRegistration<TestSinkVectorBroadcast>();
+
   PassRegistration<TestVectorReduceToContractPatternsPatterns>();
 
   PassRegistration<TestFlattenVectorTransferPatterns>();
@@ -744,7 +780,7 @@ void registerTestVectorLowerings() {
 
   PassRegistration<TestVectorGatherLowering>();
 
-  PassRegistration<TestVectorTransferTensorSlicePatterns>();
+  PassRegistration<TestFoldArithExtensionIntoVectorContractPatterns>();
 }
 } // namespace test
 } // namespace mlir

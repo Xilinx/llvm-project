@@ -110,7 +110,7 @@ bool LibstdcppMapIteratorSyntheticFrontEnd::Update() {
     return false;
   m_exe_ctx_ref = valobj_sp->GetExecutionContextRef();
 
-  ValueObjectSP _M_node_sp(valobj_sp->GetChildMemberWithName("_M_node", true));
+  ValueObjectSP _M_node_sp(valobj_sp->GetChildMemberWithName("_M_node"));
   if (!_M_node_sp)
     return false;
 
@@ -143,7 +143,7 @@ LibstdcppMapIteratorSyntheticFrontEnd::GetChildAtIndex(size_t idx) {
       m_pair_sp = CreateValueObjectFromAddress("pair", m_pair_address,
                                                m_exe_ctx_ref, m_pair_type);
     if (m_pair_sp)
-      return m_pair_sp->GetChildAtIndex(idx, true);
+      return m_pair_sp->GetChildAtIndex(idx);
   }
   return lldb::ValueObjectSP();
 }
@@ -377,9 +377,16 @@ lldb::ValueObjectSP
 LibStdcppSharedPtrSyntheticFrontEnd::GetChildAtIndex(size_t idx) {
   if (idx == 0)
     return m_ptr_obj->GetSP();
-  if (idx == 1)
-    return m_obj_obj->GetSP();
-
+  if (idx == 1) {
+    if (m_ptr_obj && !m_obj_obj) {
+      Status error;
+      ValueObjectSP obj_obj = m_ptr_obj->Dereference(error);
+      if (error.Success())
+        m_obj_obj = obj_obj->Clone(ConstString("object")).get();
+    }
+    if (m_obj_obj)
+      return m_obj_obj->GetSP();
+  }
   return lldb::ValueObjectSP();
 }
 
@@ -392,19 +399,12 @@ bool LibStdcppSharedPtrSyntheticFrontEnd::Update() {
   if (!valobj_sp)
     return false;
 
-  auto ptr_obj_sp = valobj_sp->GetChildMemberWithName("_M_ptr", true);
+  auto ptr_obj_sp = valobj_sp->GetChildMemberWithName("_M_ptr");
   if (!ptr_obj_sp)
     return false;
 
   m_ptr_obj = ptr_obj_sp->Clone(ConstString("pointer")).get();
-
-  if (m_ptr_obj) {
-    Status error;
-    ValueObjectSP obj_obj = m_ptr_obj->Dereference(error);
-    if (error.Success()) {
-      m_obj_obj = obj_obj->Clone(ConstString("object")).get();
-    }
-  }
+  m_obj_obj = nullptr;
 
   return false;
 }
@@ -433,7 +433,7 @@ bool lldb_private::formatters::LibStdcppSmartPointerSummaryProvider(
   if (!valobj_sp)
     return false;
 
-  ValueObjectSP ptr_sp(valobj_sp->GetChildMemberWithName("_M_ptr", true));
+  ValueObjectSP ptr_sp(valobj_sp->GetChildMemberWithName("_M_ptr"));
   if (!ptr_sp)
     return false;
 

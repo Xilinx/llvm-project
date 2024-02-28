@@ -195,50 +195,6 @@ struct AndroidConfig {
   template <typename Config> using SecondaryT = MapAllocator<Config>;
 };
 
-struct AndroidSvelteConfig {
-  static const bool MaySupportMemoryTagging = false;
-  template <class A>
-  using TSDRegistryT = TSDRegistrySharedT<A, 2U, 1U>; // Shared, max 2 TSDs.
-
-  struct Primary {
-    using SizeClassMap = SvelteSizeClassMap;
-#if SCUDO_CAN_USE_PRIMARY64
-    static const uptr RegionSizeLog = 27U;
-    typedef u32 CompactPtrT;
-    static const uptr CompactPtrScale = SCUDO_MIN_ALIGNMENT_LOG;
-    static const uptr GroupSizeLog = 18U;
-    static const bool EnableRandomOffset = true;
-    static const uptr MapSizeIncrement = 1UL << 18;
-#else
-    static const uptr RegionSizeLog = 16U;
-    static const uptr GroupSizeLog = 16U;
-    typedef uptr CompactPtrT;
-#endif
-    static const s32 MinReleaseToOsIntervalMs = 1000;
-    static const s32 MaxReleaseToOsIntervalMs = 1000;
-  };
-
-#if SCUDO_CAN_USE_PRIMARY64
-  template <typename Config> using PrimaryT = SizeClassAllocator64<Config>;
-#else
-  template <typename Config> using PrimaryT = SizeClassAllocator32<Config>;
-#endif
-
-  struct Secondary {
-    struct Cache {
-      static const u32 EntriesArraySize = 16U;
-      static const u32 QuarantineSize = 32U;
-      static const u32 DefaultMaxEntriesCount = 4U;
-      static const uptr DefaultMaxEntrySize = 1UL << 18;
-      static const s32 MinReleaseToOsIntervalMs = 0;
-      static const s32 MaxReleaseToOsIntervalMs = 0;
-    };
-    template <typename Config> using CacheT = MapAllocatorCache<Config>;
-  };
-
-  template <typename Config> using SecondaryT = MapAllocator<Config>;
-};
-
 #if SCUDO_CAN_USE_PRIMARY64
 struct FuchsiaConfig {
   static const bool MaySupportMemoryTagging = false;
@@ -271,20 +227,17 @@ struct FuchsiaConfig {
 };
 
 struct TrustyConfig {
-  static const bool MaySupportMemoryTagging = false;
+  static const bool MaySupportMemoryTagging = true;
   template <class A>
   using TSDRegistryT = TSDRegistrySharedT<A, 1U, 1U>; // Shared, max 1 TSD.
 
   struct Primary {
-    static const bool MaySupportMemoryTagging = false;
     using SizeClassMap = TrustySizeClassMap;
-    // Some apps have 1 page of heap total so small regions are necessary.
-    static const uptr RegionSizeLog = 10U;
-    static const uptr GroupSizeLog = 10U;
+    static const uptr RegionSizeLog = 28U;
+    static const uptr GroupSizeLog = 20U;
     typedef u32 CompactPtrT;
     static const bool EnableRandomOffset = false;
-    // Trusty is extremely memory-constrained so minimally round up map calls.
-    static const uptr MapSizeIncrement = 1UL << 4;
+    static const uptr MapSizeIncrement = 1UL << 12;
     static const uptr CompactPtrScale = SCUDO_MIN_ALIGNMENT_LOG;
     static const s32 MinReleaseToOsIntervalMs = INT32_MIN;
     static const s32 MaxReleaseToOsIntervalMs = INT32_MAX;

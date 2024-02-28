@@ -57,6 +57,7 @@ public:
     kw_erase,
     kw_let,
     kw_Constraint,
+    kw_not,
     kw_Op,
     kw_OpName,
     kw_Pattern,
@@ -80,7 +81,6 @@ public:
     equal_arrow,
     equal_equal,
     semicolon,
-    exclam,
     /// Paired punctuation.
     less,
     greater,

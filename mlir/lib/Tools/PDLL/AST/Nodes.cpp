@@ -16,7 +16,7 @@ using namespace mlir;
 using namespace mlir::pdll::ast;
 
 /// Copy a string reference into the context with a null terminator.
-static StringRef copyStringWithNull(Context &ctx, StringRef str) {
+StringRef mlir::pdll::ast::copyStringWithNull(Context &ctx, StringRef str) {
   if (str.empty())
     return str;
 
