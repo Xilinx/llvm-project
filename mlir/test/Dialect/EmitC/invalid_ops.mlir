@@ -331,3 +331,11 @@ emitc.declare_func @bar
 
 // expected-error@+1 {{'emitc.declare_func' op requires attribute 'sym_name'}}
 "emitc.declare_func"()  : () -> ()
+
+// -----
+
+func.func @test_subscript_indices_mismatch(%arg0: !emitc.array<4x8xf32>, %arg2: index) {
+  // expected-error @+1 {{'emitc.subscript' op requires number of indices (1) to match the rank of the array type (2)}}
+  %0 = emitc.subscript %arg0[%arg2] : <4x8xf32>
+  return
+}
