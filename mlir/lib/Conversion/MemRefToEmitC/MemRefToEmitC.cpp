@@ -90,7 +90,11 @@ struct ConvertMemRefToEmitCPass
         [](func::FuncOp op) { return isSignatureLegal(op.getFunctionType()); });
     target.addDynamicallyLegalDialect<func::FuncDialect>(
         [](Operation *op) { return isLegal(op); });
-    target.addIllegalDialect<memref::MemRefDialect>();
+    target.addIllegalDialect<
+    memref::MemRefDialect
+    >(
+      
+    );
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
