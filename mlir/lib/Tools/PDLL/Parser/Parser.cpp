@@ -1937,7 +1937,7 @@ FailureOr<ast::Expr *> Parser::parseMulDivExpr() {
 
 FailureOr<ast::Expr *> Parser::parseLogicalNotExpr() {
   switch (curToken.getKind()) {
-  case Token::exclam:
+  case Token::kw_not:
     return parseNegatedExpr();
     break;
   default:

@@ -13,6 +13,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/SourceMgr.h"
+#include <mlir/Tools/PDLL/AST/Nodes.h>
 
 using namespace mlir;
 using namespace mlir::pdll;
@@ -237,6 +238,8 @@ Token Lexer::lexToken() {
       return formToken(Token::l_paren, tokStart);
     case ')':
       return formToken(Token::r_paren, tokStart);
+    case '!':
+      return formToken(Token::exclam, tokStart);
     case '/':
       if (*curPtr == '/') {
         lexComment();
