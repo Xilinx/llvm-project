@@ -769,29 +769,25 @@ void Generator::generate(Operation *op, ByteCodeWriter &writer) {
 
 void Generator::generate(pdl_interp::ApplyConstraintOp op,
                          ByteCodeWriter &writer) {
-  /// Constraints that should return a value have to be registered as rewrites
-  /// If the constraint and rewrite of similar name are registered the
-  /// constraint fun takes precedence
-  ResultRange results = op.getResults();
-  if (results.size() == 0 && constraintToMemIndex.count(op.getName()) != 0) {
-    writer.append(OpCode::ApplyConstraint, constraintToMemIndex[op.getName()]);
-  } else if (results.size() > 0 &&
-             externalRewriterToMemIndex.count(op.getName()) != 0) {
-    writer.append(OpCode::ApplyConstraint,
-                  externalRewriterToMemIndex[op.getName()]);
-  } else {
-    assert(true && "expected index for constraint function, make sure it is "
-                   "registered properly. Note that native constraints with "
-                   "results have to be registered using "
-                   "PDLPatternModule::registerConstraintFunctionWithResults.");
-  }
+  // Constraints that should return a value have to be registered as rewrites.
+  // If a constraint and a rewrite of similar name are registered the
+  // constraint takes precedence
+  writer.append(OpCode::ApplyConstraint, constraintToMemIndex[op.getName()]);
   writer.appendPDLValueList(op.getArgs());
+  writer.append(ByteCodeField(op.getIsNegated()));
+  ResultRange results = op.getResults();
   writer.append(ByteCodeField(results.size()));
   for (Value result : results) {
-    // TODO: Handle result ranges
+    // We record the expected kind of the result, so that we can provide extra
+    // verification of the native rewrite function and handle the failure case
+    // of constraints accordingly.
+    writer.appendPDLValueKind(result);
+
+    // Range results also need to append the range storage index.
+    if (isa<pdl::RangeType>(result.getType()))
+      writer.append(getRangeStorageIndex(result));
     writer.append(result);
   }
-  writer.append(ByteCodeField(op.getIsNegated()));
   writer.append(op.getSuccessors());
 }
 void Generator::generate(pdl_interp::ApplyRewriteOp op,
@@ -804,11 +800,9 @@ void Generator::generate(pdl_interp::ApplyRewriteOp op,
   ResultRange results = op.getResults();
   writer.append(ByteCodeField(results.size()));
   for (Value result : results) {
-    // In debug mode we also record the expected kind of the result, so that we
+    // We record the expected kind of the result, so that we
     // can provide extra verification of the native rewrite function.
-#ifndef NDEBUG
     writer.appendPDLValueKind(result);
-#endif
 
     // Range results also need to append the range storage index.
     if (isa<pdl::RangeType>(result.getType()))
@@ -887,14 +881,6 @@ void Generator::generate(pdl_interp::CreateOperationOp op,
     writer.append(kInferTypesMarker);
   else
     writer.appendPDLValueList(op.getInputResultTypes());
-
-  // Add number of regions
-  if (IntegerAttr attr = op.getNumRegionsAttr()) {
-    writer.append(ByteCodeField(attr.getUInt()));
-  } else {
-    unsigned numRegions = 0;
-    writer.append(ByteCodeField(numRegions));
-  }
 }
 void Generator::generate(pdl_interp::CreateRangeOp op, ByteCodeWriter &writer) {
   // Append the correct opcode for the range type.
@@ -1102,6 +1088,28 @@ void PDLByteCode::initializeMutableState(PDLByteCodeMutableState &state) const {
 // ByteCode Execution
 
 namespace {
+/// This class is an instantiation of the PDLResultList that provides access to
+/// the returned results. This API is not on `PDLResultList` to avoid
+/// overexposing access to information specific solely to the ByteCode.
+class ByteCodeRewriteResultList : public PDLResultList {
+public:
+  ByteCodeRewriteResultList(unsigned maxNumResults)
+      : PDLResultList(maxNumResults) {}
+
+  /// Return the list of PDL results.
+  MutableArrayRef<PDLValue> getResults() { return results; }
+
+  /// Return the type ranges allocated by this list.
+  MutableArrayRef<llvm::OwningArrayRef<Type>> getAllocatedTypeRanges() {
+    return allocatedTypeRanges;
+  }
+
+  /// Return the value ranges allocated by this list.
+  MutableArrayRef<llvm::OwningArrayRef<Value>> getAllocatedValueRanges() {
+    return allocatedValueRanges;
+  }
+};
+
 /// This class provides support for executing a bytecode stream.
 class ByteCodeExecutor {
 public:
@@ -1178,6 +1186,9 @@ private:
   void executeSwitchResultCount();
   void executeSwitchType();
   void executeSwitchTypes();
+  void processNativeFunResults(ByteCodeRewriteResultList &results,
+                               unsigned numResults,
+                               LogicalResult &rewriteResult);
 
   /// Pushes a code iterator to the stack.
   void pushCodeIt(const ByteCodeField *it) { resumeCodeIt.push_back(it); }
@@ -1250,6 +1261,8 @@ private:
     curCodeIt += sizeof(const void *) / sizeof(ByteCodeField);
     return T::getFromOpaquePointer(pointer);
   }
+
+  void skip(size_t skipN) { curCodeIt += skipN; }
 
   /// Jump to a specific successor based on a predicate value.
   void selectJump(bool isTrue) { selectJump(size_t(isTrue ? 0 : 1)); }
@@ -1407,28 +1420,6 @@ private:
   ArrayRef<PDLConstraintFunction> constraintFunctions;
   ArrayRef<PDLRewriteFunction> rewriteFunctions;
 };
-
-/// This class is an instantiation of the PDLResultList that provides access to
-/// the returned results. This API is not on `PDLResultList` to avoid
-/// overexposing access to information specific solely to the ByteCode.
-class ByteCodeRewriteResultList : public PDLResultList {
-public:
-  ByteCodeRewriteResultList(unsigned maxNumResults)
-      : PDLResultList(maxNumResults) {}
-
-  /// Return the list of PDL results.
-  MutableArrayRef<PDLValue> getResults() { return results; }
-
-  /// Return the type ranges allocated by this list.
-  MutableArrayRef<llvm::OwningArrayRef<Type>> getAllocatedTypeRanges() {
-    return allocatedTypeRanges;
-  }
-
-  /// Return the value ranges allocated by this list.
-  MutableArrayRef<llvm::OwningArrayRef<Value>> getAllocatedValueRanges() {
-    return allocatedValueRanges;
-  }
-};
 } // namespace
 
 void ByteCodeExecutor::executeApplyConstraint(PatternRewriter &rewriter) {
@@ -1443,42 +1434,34 @@ void ByteCodeExecutor::executeApplyConstraint(PatternRewriter &rewriter) {
     llvm::dbgs() << "\n";
   });
 
+  ByteCodeField isNegated = read();
+  LLVM_DEBUG({
+    llvm::dbgs() << "  * isNegated: " << isNegated << "\n";
+    llvm::interleaveComma(args, llvm::dbgs());
+  });
+
   ByteCodeField numResults = read();
-  if (numResults == 0) {
-    const PDLConstraintFunction &constraintFn = constraintFunctions[fun_idx];
-    LogicalResult rewriteResult = constraintFn(rewriter, args);
-    // Depending on the constraint jump to the proper destination.
-    ByteCodeField isNegated = read();
-    selectJump(isNegated != succeeded(rewriteResult));
-  } else {
-    const PDLRewriteFunction &constraintFn = rewriteFunctions[fun_idx];
-    ByteCodeRewriteResultList results(numResults);
-    LogicalResult rewriteResult = constraintFn(rewriter, results, args);
-    ArrayRef<PDLValue> constraintResults = results.getResults();
-    LLVM_DEBUG({
-      if (succeeded(rewriteResult)) {
-        llvm::dbgs() << "  * Constraint succeeded\n";
-        llvm::dbgs() << "  * Results: ";
-        llvm::interleaveComma(constraintResults, llvm::dbgs());
-        llvm::dbgs() << "\n";
-      } else {
-        llvm::dbgs() << "  * Constraint failed\n";
-      }
-    });
-    assert((failed(rewriteResult) || constraintResults.size() == numResults) &&
-           "native PDL rewrite function returned "
-           "unexpected number of results");
-    // Populate memory either with the results or with 0s to preserve memory
-    // structure as expected
-    for (int i = 0; i < numResults; i++) {
-      memory[read()] = succeeded(rewriteResult)
-                           ? constraintResults[i].getAsOpaquePointer()
-                           : 0;
+  const PDLRewriteFunction &constraintFn = constraintFunctions[fun_idx];
+  ByteCodeRewriteResultList results(numResults);
+  LogicalResult rewriteResult = constraintFn(rewriter, results, args);
+  ArrayRef<PDLValue> constraintResults = results.getResults();
+  LLVM_DEBUG({
+    if (succeeded(rewriteResult)) {
+      llvm::dbgs() << "  * Constraint succeeded\n";
+      llvm::dbgs() << "  * Results: ";
+      llvm::interleaveComma(constraintResults, llvm::dbgs());
+      llvm::dbgs() << "\n";
+    } else {
+      llvm::dbgs() << "  * Constraint failed\n";
     }
-    // Depending on the constraint jump to the proper destination.
-    ByteCodeField isNegated = read();
-    selectJump(isNegated != succeeded(rewriteResult));
-  }
+  });
+  assert((failed(rewriteResult) || constraintResults.size() == numResults) &&
+         "native PDL rewrite function succeeded but returned "
+         "unexpected number of results");
+  processNativeFunResults(results, numResults, rewriteResult);
+
+  // Depending on the constraint jump to the proper destination.
+  selectJump(isNegated != succeeded(rewriteResult));
 }
 
 LogicalResult ByteCodeExecutor::executeApplyRewrite(PatternRewriter &rewriter) {
@@ -1500,16 +1483,39 @@ LogicalResult ByteCodeExecutor::executeApplyRewrite(PatternRewriter &rewriter) {
   assert(results.getResults().size() == numResults &&
          "native PDL rewrite function returned unexpected number of results");
 
-  // Store the results in the bytecode memory.
-  for (PDLValue &result : results.getResults()) {
+  processNativeFunResults(results, numResults, rewriteResult);
+
+  if (failed(rewriteResult)) {
+    LLVM_DEBUG(llvm::dbgs() << "  - Failed");
+    return failure();
+  }
+  return success();
+}
+
+void ByteCodeExecutor::processNativeFunResults(
+    ByteCodeRewriteResultList &results, unsigned numResults,
+    LogicalResult &rewriteResult) {
+  // Store the results in the bytecode memory or handle missing results on
+  // failure.
+  for (unsigned resultIdx = 0; resultIdx < numResults; resultIdx++) {
+    PDLValue::Kind resultKind = read<PDLValue::Kind>();
+
+    // Skip the according number of values on the buffer on failure and exit
+    // early as there are no results to process.
+    if (failed(rewriteResult)) {
+      if (resultKind == PDLValue::Kind::TypeRange ||
+          resultKind == PDLValue::Kind::ValueRange) {
+        skip(2);
+      } else {
+        skip(1);
+      }
+      return;
+    }
+    PDLValue result = results.getResults()[resultIdx];
     LLVM_DEBUG(llvm::dbgs() << "  * Result: " << result << "\n");
-
-// In debug mode we also verify the expected kind of the result.
-#ifndef NDEBUG
-    assert(result.getKind() == read<PDLValue::Kind>() &&
-           "native PDL rewrite function returned an unexpected type of result");
-#endif
-
+    assert(result.getKind() == resultKind &&
+           "native PDL rewrite function returned an unexpected type of "
+           "result");
     // If the result is a range, we need to copy it over to the bytecodes
     // range memory.
     if (std::optional<TypeRange> typeRange = result.dyn_cast<TypeRange>()) {
@@ -1531,13 +1537,6 @@ LogicalResult ByteCodeExecutor::executeApplyRewrite(PatternRewriter &rewriter) {
     allocatedTypeRangeMemory.push_back(std::move(it));
   for (auto &it : results.getAllocatedValueRanges())
     allocatedValueRangeMemory.push_back(std::move(it));
-
-  // Process the result of the rewrite.
-  if (failed(rewriteResult)) {
-    LLVM_DEBUG(llvm::dbgs() << "  - Failed");
-    return failure();
-  }
-  return success();
 }
 
 void ByteCodeExecutor::executeAreEqual() {
@@ -1688,12 +1687,6 @@ void ByteCodeExecutor::executeCreateOperation(PatternRewriter &rewriter,
         state.types.append(resultTypes->begin(), resultTypes->end());
       }
     }
-  }
-
-  // handle regions:
-  unsigned numRegions = read();
-  for (unsigned i = 0; i < numRegions; i++) {
-    state.addRegion();
   }
 
   Operation *resultOp = rewriter.create(state);
