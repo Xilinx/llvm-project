@@ -128,6 +128,18 @@ def ArithToAMDGPUConversionPass : Pass<"convert-arith-to-amdgpu"> {
 }
 
 //===----------------------------------------------------------------------===//
+// ArithToEmitC
+//===----------------------------------------------------------------------===//
+
+def ArithToEmitCConversionPass : Pass<"convert-arith-to-emitc"> {
+  let summary = "Convert Arith ops to EmitC ops";
+  let description = [{
+    Convert `arith` operations to operations in the `emitc` dialect.
+  }];
+  let dependentDialects = ["emitc::EmitCDialect"];
+}
+
+//===----------------------------------------------------------------------===//
 // ArithToLLVM
 //===----------------------------------------------------------------------===//
 
