@@ -225,7 +225,8 @@ Token Lexer::lexToken() {
       return formToken(Token::l_square, tokStart);
     case ']':
       return formToken(Token::r_square, tokStart);
-
+    case '+':
+      return formToken(Token::add, tokStart);
     case '<':
       return formToken(Token::less, tokStart);
     case '>':
@@ -238,8 +239,6 @@ Token Lexer::lexToken() {
       return formToken(Token::l_paren, tokStart);
     case ')':
       return formToken(Token::r_paren, tokStart);
-    case '!':
-      return formToken(Token::exclam, tokStart);
     case '/':
       if (*curPtr == '/') {
         lexComment();

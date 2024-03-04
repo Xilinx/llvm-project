@@ -1,5 +1,15 @@
+#include <cassert>
+#include <cstdint>
+#include <llvm/ADT/APInt.h>
+#include <llvm/ADT/ArrayRef.h>
+#include <llvm/Support/Casting.h>
+#include <llvm/Support/ErrorHandling.h>
 #include <mlir/Dialect/PDL/IR/Builtins.h>
+#include <mlir/IR/Attributes.h>
+#include <mlir/IR/BuiltinAttributes.h>
+#include <mlir/IR/Location.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/Support/LogicalResult.h>
 
 using namespace mlir;
 
@@ -40,6 +50,63 @@ mlir::Attribute addElemToArrayAttr(mlir::PatternRewriter &rewriter,
   return rewriter.getArrayAttr(values);
 }
 
+LogicalResult add(mlir::PatternRewriter &rewriter, mlir::PDLResultList &results,
+                  llvm::ArrayRef<mlir::PDLValue> args) {
+  assert(args.size() == 2 && "Expected 2 arguments");
+  auto lhsAttr = args[0].cast<Attribute>();
+  auto rhsAttr = args[1].cast<Attribute>();
+  if (auto lhsIntAttr = dyn_cast_or_null<IntegerAttr>(lhsAttr)) {
+    auto rhsIntAttr = dyn_cast_or_null<IntegerAttr>(rhsAttr);
+    if (!rhsIntAttr || lhsIntAttr.getType() != rhsIntAttr.getType())
+      return failure();
+
+    APInt lhsVal = lhsIntAttr.getValue();
+    APInt rhsVal = rhsIntAttr.getValue();
+    auto resultAPInt = lhsVal + rhsVal;
+
+    IntegerAttr result;
+    if (lhsIntAttr.getType().isInteger(8)) {
+      result = rewriter.getI8IntegerAttr((int8_t)resultAPInt.getSExtValue());
+    } else if (lhsIntAttr.getType().isInteger(16)) {
+      result = rewriter.getI16IntegerAttr((int16_t)resultAPInt.getSExtValue());
+    } else if (lhsIntAttr.getType().isInteger(32)) {
+      result = rewriter.getI32IntegerAttr((int32_t)resultAPInt.getSExtValue());
+    } else if (lhsIntAttr.getType().isInteger(64)) {
+      result = rewriter.getI64IntegerAttr((int64_t)resultAPInt.getSExtValue());
+    } else {
+      return failure();
+    }
+    results.push_back(result);
+    return success();
+  }
+
+  if (auto lhsFloatAttr = dyn_cast_or_null<FloatAttr>(lhsAttr)) {
+    auto rhsFloatAttr = dyn_cast_or_null<FloatAttr>(rhsAttr);
+    if (!rhsFloatAttr || lhsFloatAttr.getType() != rhsFloatAttr.getType())
+      return failure();
+
+    APFloat lhsVal = lhsFloatAttr.getValue();
+    APFloat rhsVal = rhsFloatAttr.getValue();
+    auto resultAPFloat = lhsVal + rhsVal;
+
+    FloatAttr result;
+    if (lhsFloatAttr.getType().isF16()) {
+      result = rewriter.getF16FloatAttr(resultAPFloat.convertToFloat());
+    } else if (lhsFloatAttr.getType().isF32()) {
+      result = rewriter.getF32FloatAttr(resultAPFloat.convertToFloat());
+    } else if (lhsFloatAttr.getType().isF64()) {
+      result = rewriter.getF64FloatAttr(resultAPFloat.convertToFloat());
+    } else {
+      // other float types not supported
+      return failure();
+    }
+
+    results.push_back(result);
+    return success();
+  }
+  return failure();
+}
+
 LogicalResult equals(mlir::PatternRewriter &, mlir::Attribute lhs,
                      mlir::Attribute rhs) {
   if (auto lhsAttr = dyn_cast_or_null<IntegerAttr>(lhs)) {
@@ -77,5 +144,6 @@ void registerBuiltins(PDLPatternModule &pdlPattern) {
   pdlPattern.registerRewriteFunction("__builtin_addElemToArrayAttr",
                                      addElemToArrayAttr);
   pdlPattern.registerConstraintFunction("__builtin_equals", equals);
+  pdlPattern.registerConstraintFunctionWithResults("__builtin_add", add);
 }
 } // namespace mlir::pdl

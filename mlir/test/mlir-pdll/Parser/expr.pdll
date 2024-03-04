@@ -407,3 +407,8 @@ Pattern {
   a == a;
   erase _: Op;
 }
+
+Pattern {
+  let resultAttr = attr<"4 : f32"> + attr<"5 : i32">;
+  erase _: Op;
+}

@@ -8,6 +8,7 @@
 
 #include "mlir/Dialect/PDL/IR/Builtins.h"
 #include "gmock/gmock.h"
+#include <gtest/gtest.h>
 #include <mlir/IR/PatternMatch.h>
 
 using namespace mlir;

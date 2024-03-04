@@ -266,3 +266,8 @@ Pattern TestEquals {
     val == attr<"4 : i32">;
     replace op with op<test.success>;
 }
+
+Pattern TestAdd {
+  let val : Attr = attr<"4 : i32"> + attr<"5 : i32">;
+  replace op<test.simple> with op<test.success>;
+}
