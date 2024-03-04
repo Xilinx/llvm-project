@@ -9,6 +9,8 @@
 #include "mlir/Dialect/PDL/IR/Builtins.h"
 #include "gmock/gmock.h"
 #include <gtest/gtest.h>
+#include <mlir/IR/Attributes.h>
+#include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/PatternMatch.h>
 
 using namespace mlir;
@@ -20,6 +22,15 @@ class TestPatternRewriter : public PatternRewriter {
 public:
   TestPatternRewriter(MLIRContext *ctx) : PatternRewriter(ctx) {}
 };
+
+class TestPDLResultList : public PDLResultList {
+public:
+  TestPDLResultList(unsigned maxNumResults) : PDLResultList(maxNumResults) {}
+    /// Return the list of PDL results.
+  MutableArrayRef<PDLValue> getResults() {
+    return results;
+  }
+}; 
 
 class BuiltinTest : public ::testing::Test {
 public:
@@ -89,5 +100,56 @@ TEST_F(BuiltinTest, equals) {
   EXPECT_TRUE(builtin::equals(rewriter, onef32, zerof32).failed());
   EXPECT_TRUE(builtin::equals(rewriter, negzerof32, zerof32).succeeded());
   EXPECT_TRUE(builtin::equals(rewriter, zerof32, zerof64).failed());
+}
+
+TEST_F(BuiltinTest, add) {
+  auto onei16 = rewriter.getI16IntegerAttr(1);
+  auto onei32 = rewriter.getI32IntegerAttr(1);
+  //auto twoi16 = rewriter.getI16IntegerAttr(2);
+
+  {
+    TestPDLResultList results(1);  
+    EXPECT_TRUE(builtin::add(rewriter, results, {onei16, onei16}).succeeded());
+
+    PDLValue result = results.getResults()[0];
+    EXPECT_EQ(
+    cast<IntegerAttr>(result.cast<Attribute>()).getValue().getSExtValue(),
+    2);
+  }
+  
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::add(rewriter, results, {onei16, onei32}).failed());
+  }
+
+  auto onef32 = rewriter.getF32FloatAttr(1.0);
+  auto zerof32 = rewriter.getF32FloatAttr(0.0);
+  auto negzerof32 = rewriter.getF32FloatAttr(-0.0);
+  auto zerof64 = rewriter.getF64FloatAttr(0.0);
+
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::add(rewriter, results, {onef32, onef32}).succeeded());
+
+    PDLValue result = results.getResults()[0];
+    EXPECT_EQ(
+      cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat(),
+      2.0);
+  }
+
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::add(rewriter, results, {zerof32, negzerof32}).succeeded());
+
+    PDLValue result = results.getResults()[0];
+    EXPECT_EQ(
+      cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat(),
+      0.0);
+  }
+
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::add(rewriter, results, {zerof32, zerof64}).failed());
+  }
 }
 } // namespace

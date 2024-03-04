@@ -408,7 +408,14 @@ Pattern {
   erase _: Op;
 }
 
+// -----
+
+// CHECK: Module {{.*}}
+// CHECK: UserConstraintDecl {{.*}} Name<__builtin_add> ResultType<Attr>
 Pattern {
-  let resultAttr = attr<"4 : f32"> + attr<"5 : i32">;
+  let resultAttr : Attr = attr<"4 : f32"> + attr<"5 : i32">;
   erase _: Op;
 }
+
+
+
