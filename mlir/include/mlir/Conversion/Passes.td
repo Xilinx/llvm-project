@@ -125,17 +125,20 @@ def ArithToAMDGPUConversionPass : Pass<"convert-arith-to-amdgpu"> {
   }];
 
   let dependentDialects = ["amdgpu::AMDGPUDialect", "vector::VectorDialect"];
+
+  let options = [
+    Option<"saturateFP8Truncf", "saturate-fp8-truncf", "bool",
+           /*default=*/"false",
+           "Use saturating truncation for 8-bit float types">,
+  ];
 }
 
 //===----------------------------------------------------------------------===//
 // ArithToEmitC
 //===----------------------------------------------------------------------===//
 
-def ArithToEmitCConversionPass : Pass<"convert-arith-to-emitc"> {
-  let summary = "Convert Arith ops to EmitC ops";
-  let description = [{
-    Convert `arith` operations to operations in the `emitc` dialect.
-  }];
+def ConvertArithToEmitC : Pass<"convert-arith-to-emitc"> {
+  let summary = "Convert Arith dialect to EmitC dialect";
   let dependentDialects = ["emitc::EmitCDialect"];
 }
 
