@@ -398,16 +398,6 @@ Pattern {
 // Builtins
 //===----------------------------------------------------------------------===//
 
-// CHECK: Module {{.*}}
-// CHECK: UserConstraintDecl {{.*}} Name<__builtin_equals> ResultType<Tuple<>>
-// CHECK: UserConstraintDecl {{.*}} Name<__builtin_equals> ResultType<Tuple<>>
-Pattern {
-  attr<"4 : i32"> == attr<"5 : i32">;
-  let a: Attr;
-  a == a;
-  erase _: Op;
-}
-
 // -----
 
 // CHECK: Module {{.*}}

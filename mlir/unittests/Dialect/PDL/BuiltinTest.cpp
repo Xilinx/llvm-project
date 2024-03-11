@@ -86,26 +86,6 @@ TEST_F(BuiltinTest, addElemToArrayAttr) {
   EXPECT_EQ(dictInsideArrAttr, dict);
 }
 
-TEST_F(BuiltinTest, equals) {
-  auto onei16 = rewriter.getI16IntegerAttr(1);
-  auto onei32 = rewriter.getI32IntegerAttr(1);
-  auto zeroi32 = rewriter.getI32IntegerAttr(0);
-
-  EXPECT_TRUE(builtin::equals(rewriter, onei16, onei16).succeeded());
-  EXPECT_TRUE(builtin::equals(rewriter, onei16, onei32).failed());
-  EXPECT_TRUE(builtin::equals(rewriter, zeroi32, onei32).failed());
-
-  auto onef32 = rewriter.getF32FloatAttr(1.0);
-  auto zerof32 = rewriter.getF32FloatAttr(0.0);
-  auto negzerof32 = rewriter.getF32FloatAttr(-0.0);
-  auto zerof64 = rewriter.getF64FloatAttr(0.0);
-
-  EXPECT_TRUE(builtin::equals(rewriter, onef32, onef32).succeeded());
-  EXPECT_TRUE(builtin::equals(rewriter, onef32, zerof32).failed());
-  EXPECT_TRUE(builtin::equals(rewriter, negzerof32, zerof32).succeeded());
-  EXPECT_TRUE(builtin::equals(rewriter, zerof32, zerof64).failed());
-}
-
 TEST_F(BuiltinTest, add) {
   auto onei16 = rewriter.getI16IntegerAttr(1);
   auto onei32 = rewriter.getI32IntegerAttr(1);

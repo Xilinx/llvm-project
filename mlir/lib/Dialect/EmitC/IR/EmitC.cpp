@@ -102,9 +102,10 @@ LogicalResult ApplyOp::verify() {
 LogicalResult emitc::AssignOp::verify() {
   Value variable = getVar();
   Operation *variableDef = variable.getDefiningOp();
-  if (!variableDef || !llvm::isa<emitc::VariableOp>(variableDef))
+  if (!variableDef ||
+      !llvm::isa<emitc::VariableOp, emitc::SubscriptOp>(variableDef))
     return emitOpError() << "requires first operand (" << variable
-                         << ") to be a Variable";
+                         << ") to be a Variable or subscript";
 
   Value value = getValue();
   if (variable.getType() != value.getType())
@@ -131,7 +132,7 @@ bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
 // CallOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult emitc::CallOp::verify() {
+LogicalResult emitc::CallOpaqueOp::verify() {
   // Callee must not be empty.
   if (getCallee().empty())
     return emitOpError("callee must not be empty");
@@ -188,6 +189,101 @@ LogicalResult emitc::ConstantOp::verify() {
 }
 
 OpFoldResult emitc::ConstantOp::fold(FoldAdaptor adaptor) { return getValue(); }
+
+//===----------------------------------------------------------------------===//
+// ForOp
+//===----------------------------------------------------------------------===//
+
+void ForOp::build(OpBuilder &builder, OperationState &result, Value lb,
+                  Value ub, Value step, BodyBuilderFn bodyBuilder) {
+  result.addOperands({lb, ub, step});
+  Type t = lb.getType();
+  Region *bodyRegion = result.addRegion();
+  bodyRegion->push_back(new Block);
+  Block &bodyBlock = bodyRegion->front();
+  bodyBlock.addArgument(t, result.location);
+
+  // Create the default terminator if the builder is not provided.
+  if (!bodyBuilder) {
+    ForOp::ensureTerminator(*bodyRegion, builder, result.location);
+  } else {
+    OpBuilder::InsertionGuard guard(builder);
+    builder.setInsertionPointToStart(&bodyBlock);
+    bodyBuilder(builder, result.location, bodyBlock.getArgument(0));
+  }
+}
+
+void ForOp::getCanonicalizationPatterns(RewritePatternSet &, MLIRContext *) {}
+
+ParseResult ForOp::parse(OpAsmParser &parser, OperationState &result) {
+  Builder &builder = parser.getBuilder();
+  Type type;
+
+  OpAsmParser::Argument inductionVariable;
+  OpAsmParser::UnresolvedOperand lb, ub, step;
+
+  // Parse the induction variable followed by '='.
+  if (parser.parseOperand(inductionVariable.ssaName) || parser.parseEqual() ||
+      // Parse loop bounds.
+      parser.parseOperand(lb) || parser.parseKeyword("to") ||
+      parser.parseOperand(ub) || parser.parseKeyword("step") ||
+      parser.parseOperand(step))
+    return failure();
+
+  // Parse the optional initial iteration arguments.
+  SmallVector<OpAsmParser::Argument, 4> regionArgs;
+  SmallVector<OpAsmParser::UnresolvedOperand, 4> operands;
+  regionArgs.push_back(inductionVariable);
+
+  // Parse optional type, else assume Index.
+  if (parser.parseOptionalColon())
+    type = builder.getIndexType();
+  else if (parser.parseType(type))
+    return failure();
+
+  // Resolve input operands.
+  regionArgs.front().type = type;
+  if (parser.resolveOperand(lb, type, result.operands) ||
+      parser.resolveOperand(ub, type, result.operands) ||
+      parser.resolveOperand(step, type, result.operands))
+    return failure();
+
+  // Parse the body region.
+  Region *body = result.addRegion();
+  if (parser.parseRegion(*body, regionArgs))
+    return failure();
+
+  ForOp::ensureTerminator(*body, builder, result.location);
+
+  // Parse the optional attribute list.
+  if (parser.parseOptionalAttrDict(result.attributes))
+    return failure();
+
+  return success();
+}
+
+void ForOp::print(OpAsmPrinter &p) {
+  p << " " << getInductionVar() << " = " << getLowerBound() << " to "
+    << getUpperBound() << " step " << getStep();
+
+  p << ' ';
+  if (Type t = getInductionVar().getType(); !t.isIndex())
+    p << " : " << t << ' ';
+  p.printRegion(getRegion(),
+                /*printEntryBlockArgs=*/false,
+                /*printBlockTerminators=*/false);
+  p.printOptionalAttrDict((*this)->getAttrs());
+}
+
+LogicalResult ForOp::verifyRegions() {
+  // Check that the body defines as single block argument for the induction
+  // variable.
+  if (getInductionVar().getType() != getLowerBound().getType())
+    return emitOpError(
+        "expected induction variable to be same type as bounds and step");
+
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // IfOp
@@ -436,6 +532,20 @@ LogicalResult emitc::VariableOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// SubscriptOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult emitc::SubscriptOp::verify() {
+  if (getIndices().size() != (size_t)getArray().getType().getRank()) {
+    return emitOpError() << "requires number of indices ("
+                         << getIndices().size()
+                         << ") to match the rank of the array type ("
+                         << getArray().getType().getRank() << ")";
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
@@ -482,6 +592,69 @@ void emitc::OpaqueAttr::print(AsmPrinter &printer) const {
 
 #define GET_TYPEDEF_CLASSES
 #include "mlir/Dialect/EmitC/IR/EmitCTypes.cpp.inc"
+
+//===----------------------------------------------------------------------===//
+// ArrayType
+//===----------------------------------------------------------------------===//
+
+Type emitc::ArrayType::parse(AsmParser &parser) {
+  if (parser.parseLess())
+    return Type();
+
+  SmallVector<int64_t, 4> dimensions;
+  if (parser.parseDimensionList(dimensions, /*allowDynamic=*/false,
+                                /*withTrailingX=*/true))
+    return Type();
+  // Parse the element type.
+  auto typeLoc = parser.getCurrentLocation();
+  Type elementType;
+  if (parser.parseType(elementType))
+    return Type();
+
+  // Check that memref is formed from allowed types.
+  if (!isValidElementType(elementType))
+    return parser.emitError(typeLoc, "invalid array element type"), Type();
+  if (parser.parseGreater())
+    return Type();
+  return parser.getChecked<ArrayType>(dimensions, elementType);
+}
+
+void emitc::ArrayType::print(AsmPrinter &printer) const {
+  printer << "<";
+  for (int64_t dim : getShape()) {
+    printer << dim << 'x';
+  }
+  printer.printType(getElementType());
+  printer << ">";
+}
+
+LogicalResult emitc::ArrayType::verify(
+    ::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError,
+    ::llvm::ArrayRef<int64_t> shape, Type elementType) {
+  if (shape.empty())
+    return emitError() << "shape must not be empty";
+
+  for (auto d : shape) {
+    if (d <= 0)
+      return emitError() << "dimensions must have positive size";
+  }
+
+  if (!elementType)
+    return emitError() << "element type must not be none";
+
+  if (!isValidElementType(elementType))
+    return emitError() << "invalid array element type";
+
+  return success();
+}
+
+emitc::ArrayType
+emitc::ArrayType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
+                            Type elementType) const {
+  if (!shape)
+    return emitc::ArrayType::get(getShape(), elementType);
+  return emitc::ArrayType::get(*shape, elementType);
+}
 
 //===----------------------------------------------------------------------===//
 // OpaqueType

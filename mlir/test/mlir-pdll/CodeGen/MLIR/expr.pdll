@@ -254,20 +254,6 @@ Pattern RewriteMultiplyElementsArrayAttr {
 }
 
 // -----
-// CHECK-LABEL:   pdl.pattern @TestEquals : benefit(0) {
-// CHECK:           %[[VAL_0:.*]] = operands
-// CHECK:           %[[VAL_1:.*]] = attribute
-// CHECK:           %[[VAL_2:.*]] = types
-// CHECK:           %[[VAL_3:.*]] = operation "test.op"(%[[VAL_0]] : !pdl.range<value>)  {"val" = %[[VAL_1]]} -> (%[[VAL_2]] : !pdl.range<type>)
-// CHECK:           %[[VAL_4:.*]] = attribute = 4 : i32
-// CHECK:           apply_native_constraint "__builtin_equals"(%[[VAL_1]], %[[VAL_4]] : !pdl.attribute, !pdl.attribute)
-Pattern TestEquals {
-    let op = op<test.op> {val = val : Attr};
-    val == attr<"4 : i32">;
-    replace op with op<test.success>;
-}
-
-// -----
 // CHECK-LABEL:    pdl.pattern @TestAdd : benefit(0) {
 // CHECK:            %[[VAL_0:.*]] = attribute = 4 : i32
 // CHECK:            %[[VAL_1:.*]] = attribute = 5 : i32

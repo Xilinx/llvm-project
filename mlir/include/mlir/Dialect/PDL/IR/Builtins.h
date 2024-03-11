@@ -33,8 +33,6 @@ Attribute addEntryToDictionaryAttr(PatternRewriter &rewriter,
 Attribute createArrayAttr(PatternRewriter &rewriter);
 Attribute addElemToArrayAttr(PatternRewriter &rewriter, Attribute attr,
                              Attribute element);
-LogicalResult equals(PatternRewriter &rewriter, Attribute lhs, Attribute rhs);
-// return Attribute or LogicalResult?
 LogicalResult add(PatternRewriter &rewriter, PDLResultList &results, llvm::ArrayRef<PDLValue> args);
 } // namespace builtin
 } // namespace pdl

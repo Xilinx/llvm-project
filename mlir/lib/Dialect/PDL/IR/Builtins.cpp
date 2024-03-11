@@ -142,7 +142,6 @@ void registerBuiltins(PDLPatternModule &pdlPattern) {
                                      createArrayAttr);
   pdlPattern.registerRewriteFunction("__builtin_addElemToArrayAttr",
                                      addElemToArrayAttr);
-  pdlPattern.registerConstraintFunction("__builtin_equals", equals);
   pdlPattern.registerConstraintFunctionWithResults("__builtin_add", add);
 }
 } // namespace mlir::pdl

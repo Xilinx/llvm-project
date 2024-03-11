@@ -454,6 +454,16 @@ struct TosaFoldConstantBinary : public TosaFoldConstantBase<TosaOp> {
           op, "Expected type of binary op arguments to match.");
     }
 
+    TensorType opType = dyn_cast<TensorType>(op.getType());
+    if (opType == nullptr ||
+        !static_cast<const BaseClass *>(this)->isSupportedElementType(
+            opType.getElementType())) {
+      return rewriter.notifyMatchFailure(op, "Type is not supported.");
+    }
+
+    if (!opType.hasStaticShape())
+      return rewriter.notifyMatchFailure(op, "result type shape is not static");
+
     // Check if both tensors are constant
     auto rhsIsConstantCheck =
         notifyIfNoTosaDenseConstantTensor(leftOp, op, rewriter);
@@ -514,6 +524,8 @@ struct TosaFoldConstantBinary : public TosaFoldConstantBase<TosaOp> {
                                  PatternRewriter &rewriter, TosaOp op) const {
     return {};
   }
+
+  bool isSupportedElementType(Type type) const { return true; }
 };
 
 struct TosaFoldConstantTranspose : public TosaFoldConstantBase<tosa::TransposeOp> {
@@ -1332,6 +1344,131 @@ struct TosaFoldConstantMaximum
   }
 };
 
+template <typename AccumulatorType, typename InputType,
+          typename ConvertToAccType =
+              std::function<AccumulatorType(const InputType &)>>
+SmallVector<AccumulatorType>
+matmul(ShapedType outputType, ElementsAttr matrixA, ElementsAttr matrixB,
+       ConvertToAccType convertToAccType, AccumulatorType aZp = 0,
+       AccumulatorType bZp = 0) {
+
+  auto inputAShape = cast<ShapedType>(matrixA.getType()).getShape();
+  auto inputBShape = cast<ShapedType>(matrixB.getType()).getShape();
+
+  // InputA -> (NHC), InputB -> (NCW)
+  constexpr int64_t batchDim = 0;
+  constexpr int64_t heightDim = 1;
+  constexpr int64_t channelDim = 2;
+  constexpr int64_t widthDim = 2;
+  const auto batchSize = inputAShape[batchDim];
+  const auto channelSize = inputAShape[channelDim];
+  const auto heightSize = inputAShape[heightDim];
+  const auto widthSize = inputBShape[widthDim];
+
+  SmallVector<AccumulatorType> outputValues(outputType.getNumElements());
+  auto matrixAVals = matrixA.getValues<InputType>();
+  auto matrixBVals = matrixB.getValues<InputType>();
+
+  // Output index is always incremented by one, so avoid computing its index for
+  // each iteration.
+  auto indexOut = 0;
+  for (int64_t batch = 0; batch < batchSize; ++batch) {
+    for (int64_t height = 0; height < heightSize; ++height) {
+      for (int64_t width = 0; width < widthSize; ++width, ++indexOut) {
+        AccumulatorType acc = static_cast<AccumulatorType>(0);
+        auto indexA =
+            indexToOffset(inputAShape, {batch, height, /*channel=*/0});
+        auto indexB = indexToOffset(inputBShape, {batch, /*channel=*/0, width});
+        for (int64_t channel = 0; channel < channelSize;
+             ++channel, ++indexA, indexB += widthSize) {
+
+          auto valA = convertToAccType(matrixAVals[indexA]);
+          auto valB = convertToAccType(matrixBVals[indexB]);
+          valA -= aZp; // Apply quantization if needed
+          valB -= bZp; // Apply quantization if needed
+
+          acc += valA * valB;
+        }
+        outputValues[indexOut] = acc;
+      }
+    }
+  }
+  return outputValues;
+}
+
+struct TosaFoldConstantMatMul
+    : public TosaFoldConstantBinary<TosaFoldConstantMatMul, MatMulOp> {
+  using TosaFoldConstantBinary<TosaFoldConstantMatMul,
+                               MatMulOp>::TosaFoldConstantBinary;
+
+  /// Called when the lhsValues.getElementType() is IntegerType.
+  DenseElementsAttr computeInteger(DenseElementsAttr lhsValues,
+                                   DenseElementsAttr rhsValues,
+                                   PatternRewriter &rewriter,
+                                   MatMulOp op) const {
+    auto aZp = 0;
+    auto bZp = 0;
+    auto quantInfo = op.getQuantizationInfo();
+    if (quantInfo.has_value()) {
+      aZp = quantInfo->getAZp();
+      bZp = quantInfo->getBZp();
+    }
+
+    auto outputType = cast<ShapedType>(op.getType());
+    IntegerType baseType = cast<IntegerType>(outputType.getElementType());
+
+    auto convertAPIntToInt64 = [&](const APInt &val) {
+      return val.getSExtValue();
+    };
+    // For integer types, accumulate values in int64_t to allow support for i8
+    // and i16 that accumulates with i32 and i48, respectively.
+    auto values = matmul<int64_t, APInt>(outputType, lhsValues, rhsValues,
+                                         convertAPIntToInt64, aZp, bZp);
+
+    // Convert int64_t to the correct output type.
+    std::vector<APInt> apintValues;
+    llvm::transform(values, std::back_inserter(apintValues),
+                    [&](const int64_t &val) {
+                      APInt apIntVal(baseType.getIntOrFloatBitWidth(), val);
+                      return apIntVal;
+                    });
+    return DenseElementsAttr::get(outputType, apintValues);
+  }
+
+  /// Called when the lhsValues.getElementType() is FloatType.
+  DenseElementsAttr computeFloat(DenseElementsAttr lhsValues,
+                                 DenseElementsAttr rhsValues,
+                                 PatternRewriter &rewriter, MatMulOp op) const {
+    auto outputType = cast<ShapedType>(op.getType());
+    FloatType baseType = cast<FloatType>(outputType.getElementType());
+
+    auto convertAPFloatToFloat = [&](const APFloat &val) {
+      return val.convertToFloat();
+    };
+    // For FP types, accumulate values in float to cover all cases for FP
+    // matmul. This is safe since tosa supports at most f32 type.
+    auto values = matmul<float, APFloat>(outputType, lhsValues, rhsValues,
+                                         convertAPFloatToFloat);
+
+    // Convert float values to the correct output type.
+    std::vector<APFloat> apfloatValues;
+    llvm::transform(values, std::back_inserter(apfloatValues),
+                    [&](float val) -> llvm::APFloat {
+                      bool ignored;
+                      APFloat apFloat(val);
+                      apFloat.convert(baseType.getFloatSemantics(),
+                                      tosaRoundingMode, &ignored);
+                      return apFloat;
+                    });
+    return DenseElementsAttr::get(outputType, apfloatValues);
+  }
+
+  bool isSupportedElementType(Type type) const {
+    return type.isBF16() || type.isF16() || type.isF32() ||
+           type.isInteger(32) || type.isInteger(48);
+  }
+};
+
 template <typename BaseType>
 DenseElementsAttr padType(ShapedType inputType, ElementsAttr inputValues,
                           DenseElementsAttr paddings,
@@ -1588,6 +1725,7 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
   patterns.add<TosaFoldConstantMinimum>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantMaximum>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantPad>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantMatMul>(ctx, foldSplatOrSingleUseOnly);
 }
 
 void mlir::tosa::populateTosaConstantReduction(MLIRContext *ctx,

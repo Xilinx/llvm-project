@@ -79,7 +79,6 @@ public:
     dot,
     equal,
     equal_arrow,
-    equal_equal,
     semicolon,
     /// Paired punctuation.
     add,

@@ -604,7 +604,6 @@ private:
     ast::UserRewriteDecl *addEntryToDictionaryAttr;
     ast::UserRewriteDecl *createArrayAttr;
     ast::UserRewriteDecl *addElemToArrayAttr;
-    ast::UserConstraintDecl *equals;
     ast::UserConstraintDecl *add;
   } builtins{};
 };
@@ -650,11 +649,6 @@ void Parser::declareBuiltins() {
   builtins.addElemToArrayAttr = declareBuiltin<ast::UserRewriteDecl>(
       "__builtin_addElemToArrayAttr", {"attr", "element"},
       /*returnsAttr=*/true);
-
-  builtins.equals = declareBuiltin<ast::UserConstraintDecl>(
-      "__builtin_equals", {"lhs", "rhs"},
-      /*returnsAttr=*/false);
-
   builtins.add = declareBuiltin<ast::UserConstraintDecl>(
       "__builtin_add", {"lhs", "rhs"},
       /*returnsAttr=*/true);
@@ -892,7 +886,7 @@ LogicalResult Parser::parseInclude(SmallVectorImpl<ast::Decl *> &decls) {
 
   // Check the type of include. If ending with `.pdll`, this is another pdl file
   // to be parsed along with the current module.
-  if (filename.endswith(".pdll")) {
+  if (filename.ends_with(".pdll")) {
     if (failed(lexer.pushInclude(filename, fileLoc)))
       return emitError(fileLoc,
                        "unable to open include file `" + filename + "`");
@@ -907,7 +901,7 @@ LogicalResult Parser::parseInclude(SmallVectorImpl<ast::Decl *> &decls) {
   }
 
   // Otherwise, this must be a `.td` include.
-  if (filename.endswith(".td"))
+  if (filename.ends_with(".td"))
     return parseTdInclude(filename, fileLoc, decls);
 
   return emitError(fileLoc,
@@ -1890,11 +1884,11 @@ FailureOr<ast::ConstraintRef> Parser::parseArgOrResultConstraint() {
 // Exprs
 
 // Operator precedence follows C++:
-// When parsing an expression, an operator which is listed on some row below with a precedence will be bound tighter (as if by parentheses) to
-// its arguments than any operator that is listed on a row further below it with
-// a lower precedence. Operators that have the same precedence are bound to
-// their arguments left-to-right.
-// Highest precedence first:
+// When parsing an expression, an operator which is listed on some rows below
+// with a precedence will be bound tighter (as if by parentheses) to its
+// arguments than any operator that is listed on a row further below it with a
+// lower precedence. Operators that have the same precedence are bound to their
+// arguments left-to-right. Highest precedence first:
 // - call, member access
 // - logical not
 // - multipication, division, remainder
@@ -1914,22 +1908,7 @@ FailureOr<ast::Expr *> Parser::parseLogicalAndExpr() {
 }
 
 FailureOr<ast::Expr *> Parser::parseEqualityExpr() {
-  auto lhs = parseRelationExpr();
-  if (failed(lhs))
-    return failure();
-
-  switch (curToken.getKind()) {
-  case Token::equal_equal: {
-    consumeToken();
-    auto rhs = parseRelationExpr();
-    if (failed(rhs))
-      return failure();
-    SmallVector<ast::Expr *> args{*lhs, *rhs};
-    return createBuiltinCall(curToken.getLoc(), builtins.equals, args);
-  }
-  default:
-    return lhs;
-  }
+  return parseRelationExpr();
 }
 
 FailureOr<ast::Expr *> Parser::parseRelationExpr() { return parseAddSubExpr(); }
@@ -1979,9 +1958,6 @@ FailureOr<ast::Expr *> Parser::parseOtherExpr() {
     break;
   case Token::kw_Constraint:
     lhsExpr = parseInlineConstraintLambdaExpr();
-    break;
-  case Token::kw_not:
-    lhsExpr = parseNegatedExpr();
     break;
   case Token::identifier:
     lhsExpr = parseIdentifierExpr();

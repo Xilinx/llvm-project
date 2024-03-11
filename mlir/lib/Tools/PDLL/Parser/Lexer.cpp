@@ -210,10 +210,6 @@ Token Lexer::lexToken() {
         ++curPtr;
         return formToken(Token::equal_arrow, tokStart);
       }
-      if (*curPtr == '=') {
-        ++curPtr;
-        return formToken(Token::equal_equal, tokStart);
-      }
       return formToken(Token::equal, tokStart);
     case ';':
       return formToken(Token::semicolon, tokStart);
