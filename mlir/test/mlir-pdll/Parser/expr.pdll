@@ -417,5 +417,11 @@ Pattern {
   erase _: Op;
 }
 
+// -----
+
+Pattern {
+  attr<"4 : f32"> + attr<"5 : i32">;
+  erase _: Op;
+}
 
 

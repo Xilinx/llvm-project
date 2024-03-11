@@ -1,7 +1,10 @@
 #include <cassert>
 #include <cstdint>
+#include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
+#include <llvm/ADT/APSInt.h>
 #include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <mlir/Dialect/PDL/IR/Builtins.h>
@@ -9,6 +12,7 @@
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/Location.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
 
 using namespace mlir;
@@ -55,31 +59,32 @@ LogicalResult add(mlir::PatternRewriter &rewriter, mlir::PDLResultList &results,
   assert(args.size() == 2 && "Expected 2 arguments");
   auto lhsAttr = args[0].cast<Attribute>();
   auto rhsAttr = args[1].cast<Attribute>();
+
+  // Integer
   if (auto lhsIntAttr = dyn_cast_or_null<IntegerAttr>(lhsAttr)) {
     auto rhsIntAttr = dyn_cast_or_null<IntegerAttr>(rhsAttr);
     if (!rhsIntAttr || lhsIntAttr.getType() != rhsIntAttr.getType())
       return failure();
 
-    APInt lhsVal = lhsIntAttr.getValue();
-    APInt rhsVal = rhsIntAttr.getValue();
-    auto resultAPInt = lhsVal + rhsVal;
+    auto integerType = lhsIntAttr.getType();
 
-    IntegerAttr result;
-    if (lhsIntAttr.getType().isInteger(8)) {
-      result = rewriter.getI8IntegerAttr((int8_t)resultAPInt.getSExtValue());
-    } else if (lhsIntAttr.getType().isInteger(16)) {
-      result = rewriter.getI16IntegerAttr((int16_t)resultAPInt.getSExtValue());
-    } else if (lhsIntAttr.getType().isInteger(32)) {
-      result = rewriter.getI32IntegerAttr((int32_t)resultAPInt.getSExtValue());
-    } else if (lhsIntAttr.getType().isInteger(64)) {
-      result = rewriter.getI64IntegerAttr((int64_t)resultAPInt.getSExtValue());
+    bool isOverflow;
+    llvm::APInt resultAPInt;
+    if (integerType.isUnsignedInteger()) {
+      resultAPInt = lhsIntAttr.getValue().uadd_ov(rhsIntAttr.getValue(), isOverflow);
     } else {
+      resultAPInt = lhsIntAttr.getValue().sadd_ov(rhsIntAttr.getValue(), isOverflow);
+    }
+
+    if (isOverflow) {
       return failure();
     }
-    results.push_back(result);
+
+    results.push_back(rewriter.getIntegerAttr(integerType, resultAPInt));
     return success();
   }
 
+  // Float
   if (auto lhsFloatAttr = dyn_cast_or_null<FloatAttr>(lhsAttr)) {
     auto rhsFloatAttr = dyn_cast_or_null<FloatAttr>(rhsAttr);
     if (!rhsFloatAttr || lhsFloatAttr.getType() != rhsFloatAttr.getType())
@@ -87,21 +92,15 @@ LogicalResult add(mlir::PatternRewriter &rewriter, mlir::PDLResultList &results,
 
     APFloat lhsVal = lhsFloatAttr.getValue();
     APFloat rhsVal = rhsFloatAttr.getValue();
-    auto resultAPFloat = lhsVal + rhsVal;
+    APFloat resultVal(lhsVal);
+    auto floatType = lhsFloatAttr.getType();
 
-    FloatAttr result;
-    if (lhsFloatAttr.getType().isF16()) {
-      result = rewriter.getF16FloatAttr(resultAPFloat.convertToFloat());
-    } else if (lhsFloatAttr.getType().isF32()) {
-      result = rewriter.getF32FloatAttr(resultAPFloat.convertToFloat());
-    } else if (lhsFloatAttr.getType().isF64()) {
-      result = rewriter.getF64FloatAttr(resultAPFloat.convertToFloat());
-    } else {
-      // other float types not supported
+    bool isOverflow = resultVal.add(rhsVal, llvm::APFloatBase::rmNearestTiesToEven);
+    if (isOverflow) {
       return failure();
     }
 
-    results.push_back(result);
+    results.push_back(rewriter.getFloatAttr(floatType, resultVal));
     return success();
   }
   return failure();

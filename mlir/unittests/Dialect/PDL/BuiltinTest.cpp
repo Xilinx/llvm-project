@@ -9,9 +9,13 @@
 #include "mlir/Dialect/PDL/IR/Builtins.h"
 #include "gmock/gmock.h"
 #include <gtest/gtest.h>
+#include <llvm/ADT/APFloat.h>
+#include <llvm/ADT/APInt.h>
 #include <mlir/IR/Attributes.h>
 #include <mlir/IR/BuiltinAttributes.h>
+#include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/IR/Region.h>
 
 using namespace mlir;
 using namespace mlir::pdl;
@@ -105,10 +109,27 @@ TEST_F(BuiltinTest, equals) {
 TEST_F(BuiltinTest, add) {
   auto onei16 = rewriter.getI16IntegerAttr(1);
   auto onei32 = rewriter.getI32IntegerAttr(1);
-  //auto twoi16 = rewriter.getI16IntegerAttr(2);
+  auto onei8 = rewriter.getI8IntegerAttr(1);
+  auto largesti8 = rewriter.getI8IntegerAttr(127);
+
+  // check signed integer overflow
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::add(rewriter, results, {onei8, largesti8}).failed());
+  }
+
+  IntegerType Uint8 = rewriter.getIntegerType(8, false);
+  auto oneUint8 = rewriter.getIntegerAttr(Uint8, APInt(8, 1, false));
+  auto largestUint8 = rewriter.getIntegerAttr(Uint8, APInt(8, 255, false));
+
+  // check unsigned integer overflow  
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::add(rewriter, results, {oneUint8, largestUint8}).failed());
+  }
 
   {
-    TestPDLResultList results(1);  
+    TestPDLResultList results(1);
     EXPECT_TRUE(builtin::add(rewriter, results, {onei16, onei16}).succeeded());
 
     PDLValue result = results.getResults()[0];
@@ -122,10 +143,19 @@ TEST_F(BuiltinTest, add) {
     EXPECT_TRUE(builtin::add(rewriter, results, {onei16, onei32}).failed());
   }
 
+  auto onef16 = rewriter.getF16FloatAttr(1.0);
   auto onef32 = rewriter.getF32FloatAttr(1.0);
   auto zerof32 = rewriter.getF32FloatAttr(0.0);
   auto negzerof32 = rewriter.getF32FloatAttr(-0.0);
   auto zerof64 = rewriter.getF64FloatAttr(0.0);
+
+  auto maxValF16 = rewriter.getF16FloatAttr(llvm::APFloat::getLargest(llvm::APFloat::IEEEhalf()).convertToFloat());
+
+  // check float overflow
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::add(rewriter, results, {onef16, maxValF16}).failed());
+  }
 
   {
     TestPDLResultList results(1);
