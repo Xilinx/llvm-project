@@ -203,7 +203,7 @@ func.func @sub_pointer_pointer(%arg0: !emitc.ptr<f32>, %arg1: !emitc.ptr<f32>) {
 // -----
 
 func.func @test_misplaced_yield() {
-  // expected-error @+1 {{'emitc.yield' op expects parent op to be one of 'emitc.if, emitc.for'}}
+  // expected-error @+1 {{'emitc.yield' op expects parent op to be one of 'emitc.expression, emitc.if, emitc.for'}}
   emitc.yield
   return
 }
@@ -231,4 +231,61 @@ func.func @test_subscript_indices_mismatch(%arg0: !emitc.array<4x8xf32>, %arg2: 
   // expected-error @+1 {{'emitc.subscript' op requires number of indices (1) to match the rank of the array type (2)}}
   %0 = emitc.subscript %arg0[%arg2] : <4x8xf32>
   return
+}
+
+// -----
+
+func.func @test_expression_no_yield() -> i32 {
+  // expected-error @+1 {{'emitc.expression' op must yield a value at termination}}
+  %r = emitc.expression : i32 {
+    %c7 = "emitc.constant"(){value = 7 : i32} : () -> i32
+  }
+  return %r : i32
+}
+
+// -----
+
+func.func @test_expression_illegal_op(%arg0 : i1) -> i32 {
+  // expected-error @+1 {{'emitc.expression' op contains an unsupported operation}}
+  %r = emitc.expression : i32 {
+    %x = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> i32
+    emitc.yield %x : i32
+  }
+  return %r : i32
+}
+
+// -----
+
+func.func @test_expression_no_use(%arg0: i32, %arg1: i32) -> i32 {
+  // expected-error @+1 {{'emitc.expression' op requires exactly one use for each operation}}
+  %r = emitc.expression : i32 {
+    %a = emitc.add %arg0, %arg1 : (i32, i32) -> i32
+    %b = emitc.rem %arg0, %arg1 : (i32, i32) -> i32
+    emitc.yield %a : i32
+  }
+  return %r : i32
+}
+
+// -----
+
+func.func @test_expression_multiple_uses(%arg0: i32, %arg1: i32) -> i32 {
+  // expected-error @+1 {{'emitc.expression' op requires exactly one use for each operation}}
+  %r = emitc.expression : i32 {
+    %a = emitc.rem %arg0, %arg1 : (i32, i32) -> i32
+    %b = emitc.add %a, %arg0 : (i32, i32) -> i32
+    %c = emitc.mul %arg1, %a : (i32, i32) -> i32
+    emitc.yield %a : i32
+  }
+  return %r : i32
+}
+
+// -----
+
+func.func @test_expression_multiple_results(%arg0: i32) -> i32 {
+  // expected-error @+1 {{'emitc.expression' op requires exactly one result for each operation}}
+  %r = emitc.expression : i32 {
+    %a:2 = emitc.call_opaque "bar" (%arg0) : (i32) -> (i32, i32)
+    emitc.yield %a : i32
+  }
+  return %r : i32
 }
