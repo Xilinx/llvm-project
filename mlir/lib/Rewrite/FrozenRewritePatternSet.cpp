@@ -8,8 +8,6 @@
 
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "ByteCode.h"
-#include "mlir/Conversion/PDLToPDLInterp/PDLToPDLInterp.h"
-#include "mlir/Dialect/PDL/IR/PDLOps.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
@@ -17,6 +15,11 @@
 #include <optional>
 
 using namespace mlir;
+
+// Include the PDL rewrite support.
+#if MLIR_ENABLE_PDL_IN_PATTERNMATCH
+#include "mlir/Conversion/PDLToPDLInterp/PDLToPDLInterp.h"
+#include "mlir/Dialect/PDL/IR/PDLOps.h"
 
 static LogicalResult
 convertPDLToPDLInterp(ModuleOp pdlModule,
@@ -49,6 +52,7 @@ convertPDLToPDLInterp(ModuleOp pdlModule,
   pdlModule.getBody()->walk(simplifyFn);
   return success();
 }
+#endif // MLIR_ENABLE_PDL_IN_PATTERNMATCH
 
 //===----------------------------------------------------------------------===//
 // FrozenRewritePatternSet
@@ -122,6 +126,7 @@ FrozenRewritePatternSet::FrozenRewritePatternSet(
     impl->nativeAnyOpPatterns.push_back(std::move(pat));
   }
 
+#if MLIR_ENABLE_PDL_IN_PATTERNMATCH
   // Generate the bytecode for the PDL patterns if any were provided.
   PDLPatternModule &pdlPatterns = patterns.getPDLPatterns();
   ModuleOp pdlModule = pdlPatterns.getModule();
@@ -140,6 +145,7 @@ FrozenRewritePatternSet::FrozenRewritePatternSet(
       pdlModule, pdlPatterns.takeConfigs(), configMap,
       pdlPatterns.takeConstraintFunctions(),
       pdlPatterns.takeRewriteFunctions());
+#endif // MLIR_ENABLE_PDL_IN_PATTERNMATCH
 }
 
 FrozenRewritePatternSet::~FrozenRewritePatternSet() = default;

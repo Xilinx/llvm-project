@@ -566,13 +566,6 @@ struct TosaFoldConstantTranspose : public TosaFoldConstantBase<tosa::TransposeOp
   }
 };
 
-static APFloat computeReciprocal(const APFloat &floatVal, FloatType floatTy) {
-  auto recipAttr = FloatAttr::get(floatTy, 1.0);
-  APFloat recip = recipAttr.getValue();
-  recip.divide(floatVal, tosaRoundingMode);
-  return recip;
-}
-
 struct TosaFoldConstantReciprocal
     : public TosaFoldConstantUnaryElementwise<TosaFoldConstantReciprocal, ReciprocalOp> {
   using TosaFoldConstantUnaryElementwise<TosaFoldConstantReciprocal,
@@ -581,7 +574,9 @@ struct TosaFoldConstantReciprocal
   DenseElementsAttr computeFloat(DenseElementsAttr values,
                                  PatternRewriter &rewriter, TosaOp op) const {
     return applyElementWise<APFloat, APFloat, FloatType>(
-        values, &computeReciprocal, cast<FloatType>(values.getElementType()));
+        values, [](const APFloat &apFloatVal, FloatType) {
+          return ReciprocalOp::calcOneElement(apFloatVal);
+        }, cast<FloatType>(values.getElementType()));
   }
 };
 
@@ -608,7 +603,7 @@ struct TosaFoldConstantRSQRT
     apSqrtVal.convert(apFloatVal.getSemantics(), tosaRoundingMode, &losesInfo);
 
     // Compute the reciprocal
-    return computeReciprocal(apSqrtVal, floatTy);
+    return ReciprocalOp::calcOneElement(apSqrtVal);
   }
 
   DenseElementsAttr computeFloat(DenseElementsAttr values,

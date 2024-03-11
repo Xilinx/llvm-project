@@ -742,6 +742,8 @@ Error RewriteInstance::run() {
 
   runOptimizationPasses();
 
+  finalizeMetadataPreEmit();
+
   emitAndLink();
 
   updateMetadata();
@@ -3416,6 +3418,10 @@ void RewriteInstance::emitAndLink() {
   }
 }
 
+void RewriteInstance::finalizeMetadataPreEmit() {
+  MetadataManager.runFinalizersPreEmit();
+}
+
 void RewriteInstance::updateMetadata() {
   MetadataManager.runFinalizersAfterEmit();
 
@@ -4112,6 +4118,7 @@ void RewriteInstance::encodeBATSection() {
                                   copyByteArray(BoltInfo), BoltInfo.size(),
                                   /*Alignment=*/1,
                                   /*IsReadOnly=*/true, ELF::SHT_NOTE);
+  outs() << "BOLT-INFO: BAT section size (bytes): " << BoltInfo.size() << '\n';
 }
 
 template <typename ELFShdrTy>
