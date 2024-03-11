@@ -30,11 +30,9 @@ public:
 class TestPDLResultList : public PDLResultList {
 public:
   TestPDLResultList(unsigned maxNumResults) : PDLResultList(maxNumResults) {}
-    /// Return the list of PDL results.
-  MutableArrayRef<PDLValue> getResults() {
-    return results;
-  }
-}; 
+  /// Return the list of PDL results.
+  MutableArrayRef<PDLValue> getResults() { return results; }
+};
 
 class BuiltinTest : public ::testing::Test {
 public:
@@ -102,10 +100,11 @@ TEST_F(BuiltinTest, add) {
   auto oneUint8 = rewriter.getIntegerAttr(Uint8, APInt(8, 1, false));
   auto largestUint8 = rewriter.getIntegerAttr(Uint8, APInt(8, 255, false));
 
-  // check unsigned integer overflow  
+  // check unsigned integer overflow
   {
     TestPDLResultList results(1);
-    EXPECT_TRUE(builtin::add(rewriter, results, {oneUint8, largestUint8}).failed());
+    EXPECT_TRUE(
+        builtin::add(rewriter, results, {oneUint8, largestUint8}).failed());
   }
 
   {
@@ -114,10 +113,10 @@ TEST_F(BuiltinTest, add) {
 
     PDLValue result = results.getResults()[0];
     EXPECT_EQ(
-    cast<IntegerAttr>(result.cast<Attribute>()).getValue().getSExtValue(),
-    2);
+        cast<IntegerAttr>(result.cast<Attribute>()).getValue().getSExtValue(),
+        2);
   }
-  
+
   {
     TestPDLResultList results(1);
     EXPECT_TRUE(builtin::add(rewriter, results, {onei16, onei32}).failed());
@@ -129,7 +128,8 @@ TEST_F(BuiltinTest, add) {
   auto negzerof32 = rewriter.getF32FloatAttr(-0.0);
   auto zerof64 = rewriter.getF64FloatAttr(0.0);
 
-  auto maxValF16 = rewriter.getF16FloatAttr(llvm::APFloat::getLargest(llvm::APFloat::IEEEhalf()).convertToFloat());
+  auto maxValF16 = rewriter.getF16FloatAttr(
+      llvm::APFloat::getLargest(llvm::APFloat::IEEEhalf()).convertToFloat());
 
   // check float overflow
   {
@@ -143,18 +143,19 @@ TEST_F(BuiltinTest, add) {
 
     PDLValue result = results.getResults()[0];
     EXPECT_EQ(
-      cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat(),
-      2.0);
+        cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat(),
+        2.0);
   }
 
   {
     TestPDLResultList results(1);
-    EXPECT_TRUE(builtin::add(rewriter, results, {zerof32, negzerof32}).succeeded());
+    EXPECT_TRUE(
+        builtin::add(rewriter, results, {zerof32, negzerof32}).succeeded());
 
     PDLValue result = results.getResults()[0];
     EXPECT_EQ(
-      cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat(),
-      0.0);
+        cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat(),
+        0.0);
   }
 
   {

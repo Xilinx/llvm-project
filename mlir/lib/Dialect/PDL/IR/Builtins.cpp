@@ -71,9 +71,11 @@ LogicalResult add(mlir::PatternRewriter &rewriter, mlir::PDLResultList &results,
     bool isOverflow;
     llvm::APInt resultAPInt;
     if (integerType.isUnsignedInteger()) {
-      resultAPInt = lhsIntAttr.getValue().uadd_ov(rhsIntAttr.getValue(), isOverflow);
+      resultAPInt =
+          lhsIntAttr.getValue().uadd_ov(rhsIntAttr.getValue(), isOverflow);
     } else {
-      resultAPInt = lhsIntAttr.getValue().sadd_ov(rhsIntAttr.getValue(), isOverflow);
+      resultAPInt =
+          lhsIntAttr.getValue().sadd_ov(rhsIntAttr.getValue(), isOverflow);
     }
 
     if (isOverflow) {
@@ -95,7 +97,8 @@ LogicalResult add(mlir::PatternRewriter &rewriter, mlir::PDLResultList &results,
     APFloat resultVal(lhsVal);
     auto floatType = lhsFloatAttr.getType();
 
-    bool isOverflow = resultVal.add(rhsVal, llvm::APFloatBase::rmNearestTiesToEven);
+    bool isOverflow =
+        resultVal.add(rhsVal, llvm::APFloatBase::rmNearestTiesToEven);
     if (isOverflow) {
       return failure();
     }
