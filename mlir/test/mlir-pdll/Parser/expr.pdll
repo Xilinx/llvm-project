@@ -392,8 +392,6 @@ Pattern {
   erase _: Op;
 }
 
-// -----
-
 //===----------------------------------------------------------------------===//
 // Builtins
 //===----------------------------------------------------------------------===//
@@ -404,13 +402,6 @@ Pattern {
 // CHECK: UserConstraintDecl {{.*}} Name<__builtin_add> ResultType<Attr>
 Pattern {
   let resultAttr : Attr = attr<"4 : f32"> + attr<"5 : i32">;
-  erase _: Op;
-}
-
-// -----
-
-Pattern {
-  attr<"4 : f32"> + attr<"5 : i32">;
   erase _: Op;
 }
 

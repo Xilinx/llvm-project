@@ -8,6 +8,7 @@
 
 #include "mlir/Dialect/PDL/IR/Builtins.h"
 #include "gmock/gmock.h"
+#include <cstdint>
 #include <gtest/gtest.h>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
@@ -88,12 +89,25 @@ TEST_F(BuiltinTest, add) {
   auto onei16 = rewriter.getI16IntegerAttr(1);
   auto onei32 = rewriter.getI32IntegerAttr(1);
   auto onei8 = rewriter.getI8IntegerAttr(1);
-  auto largesti8 = rewriter.getI8IntegerAttr(127);
+  auto largesti8 = rewriter.getI8IntegerAttr(-1);
 
-  // check signed integer overflow
+  // check signless integer overflow
   {
     TestPDLResultList results(1);
+    EXPECT_TRUE(onei8.getType().isSignlessInteger());
+
     EXPECT_TRUE(builtin::add(rewriter, results, {onei8, largesti8}).failed());
+  }
+
+  // check correctness of result
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::add(rewriter, results, {onei16, onei16}).succeeded());
+
+    PDLValue result = results.getResults()[0];
+    EXPECT_EQ(
+        cast<IntegerAttr>(result.cast<Attribute>()).getValue().getSExtValue(),
+        2);
   }
 
   IntegerType Uint8 = rewriter.getIntegerType(8, false);
@@ -107,16 +121,18 @@ TEST_F(BuiltinTest, add) {
         builtin::add(rewriter, results, {oneUint8, largestUint8}).failed());
   }
 
+  IntegerType SInt8 = rewriter.getIntegerType(8, true);
+  auto oneSInt8 = rewriter.getIntegerAttr(SInt8, APInt(8, 1, true));
+  auto largestSInt8 = rewriter.getIntegerAttr(SInt8, APInt(8, 127, true));
+
+  // check signed integer overflow
   {
     TestPDLResultList results(1);
-    EXPECT_TRUE(builtin::add(rewriter, results, {onei16, onei16}).succeeded());
-
-    PDLValue result = results.getResults()[0];
-    EXPECT_EQ(
-        cast<IntegerAttr>(result.cast<Attribute>()).getValue().getSExtValue(),
-        2);
+    EXPECT_TRUE(
+        builtin::add(rewriter, results, {oneSInt8, largestSInt8}).failed());
   }
 
+  // check integer types mismatch
   {
     TestPDLResultList results(1);
     EXPECT_TRUE(builtin::add(rewriter, results, {onei16, onei32}).failed());
@@ -137,6 +153,7 @@ TEST_F(BuiltinTest, add) {
     EXPECT_TRUE(builtin::add(rewriter, results, {onef16, maxValF16}).failed());
   }
 
+  // check correctness of result
   {
     TestPDLResultList results(1);
     EXPECT_TRUE(builtin::add(rewriter, results, {onef32, onef32}).succeeded());
@@ -147,6 +164,7 @@ TEST_F(BuiltinTest, add) {
         2.0);
   }
 
+  // check correctness of result
   {
     TestPDLResultList results(1);
     EXPECT_TRUE(
@@ -158,6 +176,7 @@ TEST_F(BuiltinTest, add) {
         0.0);
   }
 
+  // check float types mismatch
   {
     TestPDLResultList results(1);
     EXPECT_TRUE(builtin::add(rewriter, results, {zerof32, zerof64}).failed());

@@ -13,7 +13,6 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/SourceMgr.h"
-#include <mlir/Tools/PDLL/AST/Nodes.h>
 
 using namespace mlir;
 using namespace mlir::pdll;

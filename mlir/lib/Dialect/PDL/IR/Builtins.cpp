@@ -70,7 +70,7 @@ LogicalResult add(mlir::PatternRewriter &rewriter, mlir::PDLResultList &results,
 
     bool isOverflow;
     llvm::APInt resultAPInt;
-    if (integerType.isUnsignedInteger()) {
+    if (integerType.isUnsignedInteger() || integerType.isSignlessInteger()) {
       resultAPInt =
           lhsIntAttr.getValue().uadd_ov(rhsIntAttr.getValue(), isOverflow);
     } else {

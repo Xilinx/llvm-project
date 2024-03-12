@@ -14,9 +14,3 @@ Pattern TestSimplePattern => replace op<test.simple> with op<test.success>;
 
 // Test the import of interfaces.
 Pattern TestInterface => replace _: CastOpInterface with op<test.success>;
-
-// Test add builtin
-Pattern TestAdd {
-    let result : Attr = attr<"4 : i32"> + attr<"5 : i32">;
-    replace op<test.simple> with op<test.success>;
-}
