@@ -108,30 +108,6 @@ LogicalResult add(mlir::PatternRewriter &rewriter, mlir::PDLResultList &results,
   }
   return failure();
 }
-
-LogicalResult equals(mlir::PatternRewriter &, mlir::Attribute lhs,
-                     mlir::Attribute rhs) {
-  if (auto lhsAttr = dyn_cast_or_null<IntegerAttr>(lhs)) {
-    auto rhsAttr = dyn_cast_or_null<IntegerAttr>(rhs);
-    if (!rhsAttr || lhsAttr.getType() != rhsAttr.getType())
-      return failure();
-
-    APInt lhsVal = lhsAttr.getValue();
-    APInt rhsVal = rhsAttr.getValue();
-    return success(lhsVal.eq(rhsVal));
-  }
-
-  if (auto lhsAttr = dyn_cast_or_null<FloatAttr>(lhs)) {
-    auto rhsAttr = dyn_cast_or_null<FloatAttr>(rhs);
-    if (!rhsAttr || lhsAttr.getType() != rhsAttr.getType())
-      return failure();
-
-    APFloat lhsVal = lhsAttr.getValue();
-    APFloat rhsVal = rhsAttr.getValue();
-    return success(lhsVal.compare(rhsVal) == llvm::APFloatBase::cmpEqual);
-  }
-  return failure();
-}
 } // namespace builtin
 
 void registerBuiltins(PDLPatternModule &pdlPattern) {
