@@ -1449,7 +1449,7 @@ def LLVM_LLVMFuncOp : LLVM_Op<"func", [
   let extraClassDeclaration = [{
     // Add an entry block to an empty function, and set up the block arguments
     // to match the signature of the function.
-    Block *addEntryBlock();
+    Block *addEntryBlock(OpBuilder &builder);
 
     bool isVarArg() { return getFunctionType().isVarArg(); }
 

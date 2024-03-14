@@ -1,4 +1,4 @@
-//===- ArithToEmitC.cpp - Arith to EmitC conversion -----------------------===//
+//===- ArithToEmitC.cpp - Arith to EmitC Patterns ---------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements a pass to convert arith ops into emitc ops.
+// This file implements patterns to convert the Arith dialect to the EmitC
+// dialect.
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,91 +15,62 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
-#include "mlir/IR/BuiltinTypes.h"
-#include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
-
-namespace mlir {
-#define GEN_PASS_DEF_ARITHTOEMITCCONVERSIONPASS
-#include "mlir/Conversion/Passes.h.inc"
-} // namespace mlir
 
 using namespace mlir;
 
+//===----------------------------------------------------------------------===//
+// Conversion Patterns
+//===----------------------------------------------------------------------===//
+
 namespace {
-
-static bool isConvertibleToEmitC(Type type) {
-  Type baseType = type;
-  if (auto tensorType = dyn_cast<TensorType>(type)) {
-    if (!tensorType.hasRank() || !tensorType.hasStaticShape()) {
-      return false;
-    }
-    baseType = tensorType.getElementType();
-  }
-
-  if (isa<IndexType>(baseType)) {
-    return true;
-  }
-
-  if (auto intType = dyn_cast<IntegerType>(baseType)) {
-    switch (intType.getWidth()) {
-    case 1:
-    case 8:
-    case 16:
-    case 32:
-    case 64:
-      return true;
-    }
-    return false;
-  }
-
-  if (auto floatType = dyn_cast<FloatType>(baseType)) {
-    return floatType.isF32() || floatType.isF64();
-  }
-
-  return false;
-}
-
 class ArithConstantOpConversionPattern
-    : public OpRewritePattern<arith::ConstantOp> {
+    : public OpConversionPattern<arith::ConstantOp> {
 public:
-  using OpRewritePattern::OpRewritePattern;
+  using OpConversionPattern::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(arith::ConstantOp arithConst,
-                                PatternRewriter &rewriter) const override {
-
-    auto constantType = arithConst.getType();
-    if (!isConvertibleToEmitC(constantType)) {
-      return rewriter.notifyMatchFailure(arithConst.getLoc(),
-                                         "Type cannot be converted to emitc");
-    }
-
-    rewriter.replaceOpWithNewOp<emitc::ConstantOp>(arithConst, constantType,
-                                                   arithConst.getValue());
+  LogicalResult
+  matchAndRewrite(arith::ConstantOp arithConst,
+                  arith::ConstantOp::Adaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<emitc::ConstantOp>(
+        arithConst, arithConst.getType(), adaptor.getValue());
     return success();
   }
 };
 
-struct ConvertArithToEmitCPass
-    : public impl::ArithToEmitCConversionPassBase<ConvertArithToEmitCPass> {
+template <typename ArithOp, typename EmitCOp>
+class ArithOpConversion final : public OpConversionPattern<ArithOp> {
 public:
-  void runOnOperation() override {
+  using OpConversionPattern<ArithOp>::OpConversionPattern;
 
-    ConversionTarget target(getContext());
-    target.addIllegalDialect<arith::ArithDialect>();
-    target.addLegalDialect<emitc::EmitCDialect>();
-    RewritePatternSet patterns(&getContext());
-    populateArithToEmitCConversionPatterns(patterns);
+  LogicalResult
+  matchAndRewrite(ArithOp arithOp, typename ArithOp::Adaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
 
-    if (failed(applyPartialConversion(getOperation(), target,
-                                      std::move(patterns)))) {
-      signalPassFailure();
-    }
+    rewriter.template replaceOpWithNewOp<EmitCOp>(arithOp, arithOp.getType(),
+                                                  adaptor.getOperands());
+
+    return success();
   }
 };
-
 } // namespace
 
-void mlir::populateArithToEmitCConversionPatterns(RewritePatternSet &patterns) {
-  patterns.add<ArithConstantOpConversionPattern>(patterns.getContext());
+//===----------------------------------------------------------------------===//
+// Pattern population
+//===----------------------------------------------------------------------===//
+
+void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
+                                        RewritePatternSet &patterns) {
+  MLIRContext *ctx = patterns.getContext();
+
+  // clang-format off
+  patterns.add<
+    ArithConstantOpConversionPattern,
+    ArithOpConversion<arith::AddFOp, emitc::AddOp>,
+    ArithOpConversion<arith::DivFOp, emitc::DivOp>,
+    ArithOpConversion<arith::MulFOp, emitc::MulOp>,
+    ArithOpConversion<arith::SubFOp, emitc::SubOp>
+  >(typeConverter, ctx);
+  // clang-format on
 }

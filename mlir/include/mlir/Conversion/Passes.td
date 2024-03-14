@@ -137,11 +137,8 @@ def ArithToAMDGPUConversionPass : Pass<"convert-arith-to-amdgpu"> {
 // ArithToEmitC
 //===----------------------------------------------------------------------===//
 
-def ArithToEmitCConversionPass : Pass<"convert-arith-to-emitc"> {
-  let summary = "Convert Arith ops to EmitC ops";
-  let description = [{
-    Convert `arith` operations to operations in the `emitc` dialect.
-  }];
+def ConvertArithToEmitC : Pass<"convert-arith-to-emitc"> {
+  let summary = "Convert Arith dialect to EmitC dialect";
   let dependentDialects = ["emitc::EmitCDialect"];
 }
 
@@ -369,6 +366,15 @@ def ConvertControlFlowToSPIRV : Pass<"convert-cf-to-spirv"> {
            "Emulate narrower scalar types with 32-bit ones if not supported by"
            " the target">
   ];
+}
+
+//===----------------------------------------------------------------------===//
+// FuncToEmitC
+//===----------------------------------------------------------------------===//
+
+def ConvertFuncToEmitC : Pass<"convert-func-to-emitc", "ModuleOp"> {
+  let summary = "Convert Func dialect to EmitC dialect";
+  let dependentDialects = ["emitc::EmitCDialect"];
 }
 
 //===----------------------------------------------------------------------===//
