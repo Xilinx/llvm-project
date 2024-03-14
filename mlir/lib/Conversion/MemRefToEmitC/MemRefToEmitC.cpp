@@ -108,6 +108,57 @@ struct ConvertAlloca final : public OpConversionPattern<memref::AllocaOp> {
   }
 };
 
+struct ConvertGlobal final : public OpConversionPattern<memref::GlobalOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::GlobalOp op, OpAdaptor operands,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    if (!op.getType().hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op.getLoc(), "cannot transform global with dynamic shape");
+    }
+
+    if (op.getAlignment().value_or(1) > 1) {
+      // TODO: Allow alignment if it is not more than the natural alignment
+      // of the C array.
+      return rewriter.notifyMatchFailure(
+          op.getLoc(), "cannot global alloca with alignment requirement");
+    }
+
+    auto resultTy = getTypeConverter()->convertType(op.getType());
+    if (!resultTy) {
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "cannot convert result type");
+    }
+
+    rewriter.replaceOpWithNewOp<emitc::GlobalOp>(
+        op, operands.getSymName(), resultTy, operands.getInitialValueAttr(),
+        operands.getConstant());
+    return success();
+  }
+};
+
+struct ConvertGetGlobal final
+    : public OpConversionPattern<memref::GetGlobalOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::GetGlobalOp op, OpAdaptor operands,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    auto resultTy = getTypeConverter()->convertType(op.getType());
+    if (!resultTy) {
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "cannot convert result type");
+    }
+    rewriter.replaceOpWithNewOp<emitc::GetGlobalOp>(op, resultTy,
+                                                    operands.getNameAttr());
+    return success();
+  }
+};
+
 struct ConvertMemRefToEmitCPass
     : public impl::ConvertMemRefToEmitCBase<ConvertMemRefToEmitCPass> {
   void runOnOperation() override {
@@ -161,8 +212,8 @@ void mlir::populateMemRefToEmitCConversionPatterns(RewritePatternSet &patterns,
                                                                  converter);
   populateCallOpTypeConversionPattern(patterns, converter);
   populateReturnOpTypeConversionPattern(patterns, converter);
-  patterns.add<ConvertLoad, ConvertStore, ConvertAlloca>(converter,
-                                                         patterns.getContext());
+  patterns.add<ConvertLoad, ConvertStore, ConvertAlloca, ConvertGlobal,
+               ConvertGetGlobal>(converter, patterns.getContext());
 }
 
 std::unique_ptr<OperationPass<>> mlir::createConvertMemRefToEmitCPass() {

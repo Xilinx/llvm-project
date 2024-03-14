@@ -387,3 +387,18 @@ func.func @logical_or_resulterror(%arg0: i32, %arg1: i32) {
   %0 = "emitc.logical_or"(%arg0, %arg1) : (i32, i32) -> i32
   return
 }
+
+// -----
+
+// expected-error @+1 {{'emitc.global' op cannot declare uninitialized constant}}
+emitc.global constant @uninit : i32 = uninitialized
+
+// -----
+
+emitc.global @myglobal : !emitc.array<2xf32>
+
+func.func @use_global(%i: index) {
+  // expected-error @+1 {{'emitc.get_global' op result type 'f32' does not match type '!emitc.array<2xf32>' of the global @myglobal}}
+  %0 = emitc.get_global @myglobal : f32
+  return
+}
