@@ -2,9 +2,7 @@
 #include <cstdint>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
-#include <llvm/ADT/APSInt.h>
 #include <llvm/ADT/ArrayRef.h>
-#include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <mlir/Dialect/PDL/IR/Builtins.h>
@@ -12,7 +10,6 @@
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/Location.h>
 #include <mlir/IR/PatternMatch.h>
-#include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
 
 using namespace mlir;
