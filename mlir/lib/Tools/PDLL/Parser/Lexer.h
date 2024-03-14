@@ -81,6 +81,7 @@ public:
     equal_arrow,
     semicolon,
     /// Paired punctuation.
+    add,
     less,
     greater,
     l_brace,

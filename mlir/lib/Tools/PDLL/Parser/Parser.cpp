@@ -604,6 +604,7 @@ private:
     ast::UserRewriteDecl *addEntryToDictionaryAttr;
     ast::UserRewriteDecl *createArrayAttr;
     ast::UserRewriteDecl *addElemToArrayAttr;
+    ast::UserConstraintDecl *add;
   } builtins{};
 };
 } // namespace
@@ -631,8 +632,9 @@ T *Parser::declareBuiltin(StringRef name, ArrayRef<StringRef> argNames,
   }
   popDeclScope();
 
-  auto *constraintDecl = T::createNative(ctx, ast::Name::create(ctx, name, loc),
-                                         args, results, {}, attrTy);
+  auto *constraintDecl =
+      T::createNative(ctx, ast::Name::create(ctx, name, loc), args, results, {},
+                      createUserConstraintRewriteResultType(results));
   curDeclScope->add(constraintDecl);
   return constraintDecl;
 }
@@ -648,6 +650,9 @@ void Parser::declareBuiltins() {
   builtins.addElemToArrayAttr = declareBuiltin<ast::UserRewriteDecl>(
       "__builtin_addElemToArrayAttr", {"attr", "element"},
       /*returnsAttr=*/true);
+  builtins.add =
+      declareBuiltin<ast::UserConstraintDecl>("__builtin_add", {"lhs", "rhs"},
+                                              /*returnsAttr=*/true);
 }
 
 FailureOr<ast::Module *> Parser::parseModule() {
@@ -1909,7 +1914,24 @@ FailureOr<ast::Expr *> Parser::parseEqualityExpr() {
 
 FailureOr<ast::Expr *> Parser::parseRelationExpr() { return parseAddSubExpr(); }
 
-FailureOr<ast::Expr *> Parser::parseAddSubExpr() { return parseMulDivExpr(); }
+FailureOr<ast::Expr *> Parser::parseAddSubExpr() {
+  auto lhs = parseMulDivExpr();
+  if (failed(lhs))
+    return failure();
+
+  switch (curToken.getKind()) {
+  case Token::add: {
+    consumeToken();
+    auto rhs = parseMulDivExpr();
+    if (failed(rhs))
+      return failure();
+    SmallVector<ast::Expr *> args{*lhs, *rhs};
+    return createBuiltinCall(curToken.getLoc(), builtins.add, args);
+  }
+  default:
+    return lhs;
+  }
+}
 
 FailureOr<ast::Expr *> Parser::parseMulDivExpr() {
   return parseLogicalNotExpr();

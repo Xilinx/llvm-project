@@ -252,3 +252,13 @@ Pattern RewriteMultiplyElementsArrayAttr {
       replace root with newRoot;
   };
 }
+
+// -----
+// CHECK-LABEL:    pdl.pattern @TestAdd : benefit(0) {
+// CHECK:            %[[VAL_0:.*]] = attribute = 4 : i32
+// CHECK:            %[[VAL_1:.*]] = attribute = 5 : i32
+// CHECK:            apply_native_constraint "__builtin_add"(%[[VAL_0]], %[[VAL_1]] : !pdl.attribute, !pdl.attribute) : !pdl.attribute
+Pattern TestAdd {
+  let val : Attr = attr<"4 : i32"> + attr<"5 : i32">;
+  replace op<test.simple> with op<test.success>;
+}
