@@ -996,6 +996,26 @@ def Tosa_ClzOp : Tosa_ElementwiseOp<"clz", [SameOperandsAndResultElementType]> {
 }
 
 //===----------------------------------------------------------------------===//
+// Operator: cos
+//===----------------------------------------------------------------------===//
+def Tosa_CosOp : Tosa_ElementwiseOp<"cos",
+    [SameOperandsAndResultElementType]> {
+  let summary = "Elementwise cos op";
+
+  let description = [{
+    Elementwise cosine operation for values given in radians.
+  }];
+
+  let arguments = (ins
+    Tosa_FloatTensor:$input
+  );
+
+  let results = (outs
+    Tosa_FloatTensor:$output
+  );
+}
+
+//===----------------------------------------------------------------------===//
 // Operator: exp
 //===----------------------------------------------------------------------===//
 def Tosa_ExpOp : Tosa_ElementwiseOp<"exp", [SameOperandsAndResultElementType]> {
@@ -1151,6 +1171,26 @@ def Tosa_RsqrtOp : Tosa_ElementwiseOp<"rsqrt",
 
   let results = (outs
     Tosa_Tensor:$output
+  );
+}
+
+//===----------------------------------------------------------------------===//
+// Operator: sin
+//===----------------------------------------------------------------------===//
+def Tosa_SinOp : Tosa_ElementwiseOp<"sin",
+    [SameOperandsAndResultElementType]> {
+  let summary = "Elementwise sin op";
+
+  let description = [{
+    Elementwise sine operation for values given in radians.
+  }];
+
+  let arguments = (ins
+    Tosa_FloatTensor:$input
+  );
+
+  let results = (outs
+    Tosa_FloatTensor:$output
   );
 }
 

@@ -2,9 +2,9 @@
 
 func.func @test_cast(%arg0: tensor<1xf32>) -> tensor<1xf32> {
   // CHECK: linalg.generic
+  // CHECK: math.roundeven
   // CHECK: arith.constant -2.000000e+00
   // CHECK: arith.constant 1.000000e+00
-  // CHECK: math.roundeven
   // CHECK: arith.minimumf
   // CHECK: arith.maximumf
   // CHECK: arith.fptosi

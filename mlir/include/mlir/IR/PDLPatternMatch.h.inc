@@ -868,6 +868,9 @@ public:
                                    std::forward<ConstraintFnT>(constraintFn)));
   }
 
+  void registerConstraintFunctionWithResults(StringRef name,
+                                             PDLRewriteFunction constraintFn);
+
   /// Register a rewrite function with PDL. A rewrite function may be specified
   /// in one of two ways:
   ///
