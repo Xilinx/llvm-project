@@ -131,7 +131,6 @@ def FunctionOpInterface : OpInterface<"FunctionOpInterface", [
     static void buildWithEntryBlock(
         OpBuilder &builder, OperationState &state, StringRef name, Type type,
         ArrayRef<NamedAttribute> attrs, TypeRange inputTypes) {
-      OpBuilder::InsertionGuard g(builder);
       state.addAttribute(SymbolTable::getSymbolAttrName(),
                         builder.getStringAttr(name));
       state.addAttribute(ConcreteOp::getFunctionTypeAttrName(state.name),
@@ -140,7 +139,8 @@ def FunctionOpInterface : OpInterface<"FunctionOpInterface", [
 
       // Add the function body.
       Region *bodyRegion = state.addRegion();
-      Block *body = builder.createBlock(bodyRegion);
+      Block *body = new Block();
+      bodyRegion->push_back(body);
       for (Type input : inputTypes)
         body->addArgument(input, state.location);
     }
