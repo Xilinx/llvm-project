@@ -39,6 +39,54 @@ public:
   }
 };
 
+/// Return an operation that returns true (in i1) when operand is NaN.
+emitc::CmpOp isNan(ConversionPatternRewriter &rewriter, Location loc,
+                   Value operand) {
+  // A value is NaN exactly when it compares unequal to itself.
+  return rewriter.create<emitc::CmpOp>(
+      loc, rewriter.getI1Type(), emitc::CmpPredicate::ne, operand, operand);
+}
+
+class CmpFOpConversion : public OpConversionPattern<arith::CmpFOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::CmpFOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    emitc::CmpPredicate predicate;
+    switch (op.getPredicate()) {
+    case arith::CmpFPredicate::UGT:
+      // unordered or greater than
+      predicate = emitc::CmpPredicate::gt;
+      break;
+    case arith::CmpFPredicate::ULT:
+      // unordered or less than
+      predicate = emitc::CmpPredicate::lt;
+      break;
+    case arith::CmpFPredicate::UNO: {
+      // unordered, i.e. either operand is nan
+      auto lhsIsNan = isNan(rewriter, op.getLoc(), adaptor.getLhs());
+      if (adaptor.getLhs() == adaptor.getRhs()) {
+        rewriter.replaceOp(op, lhsIsNan);
+        return success();
+      }
+      auto rhsIsNan = isNan(rewriter, op.getLoc(), adaptor.getRhs());
+      rewriter.replaceOpWithNewOp<arith::OrIOp>(op, op.getType(), lhsIsNan,
+                                                rhsIsNan);
+      return success();
+    }
+    default:
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "cannot match predicate ");
+    }
+
+    rewriter.replaceOpWithNewOp<emitc::CmpOp>(
+        op, op.getType(), predicate, adaptor.getLhs(), adaptor.getRhs());
+    return success();
+  }
+};
+
 template <typename ArithOp, typename EmitCOp>
 class ArithOpConversion final : public OpConversionPattern<ArithOp> {
 public:
@@ -99,6 +147,7 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
     ArithOpConversion<arith::AddIOp, emitc::AddOp>,
     ArithOpConversion<arith::MulIOp, emitc::MulOp>,
     ArithOpConversion<arith::SubIOp, emitc::SubOp>,
+    CmpFOpConversion,
     SelectOpConversion
   >(typeConverter, ctx);
   // clang-format on

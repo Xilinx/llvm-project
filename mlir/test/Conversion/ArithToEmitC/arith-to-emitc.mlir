@@ -55,3 +55,16 @@ func.func @arith_select(%arg0: i1, %arg1: tensor<8xi32>, %arg2: tensor<8xi32>) -
   %0 = arith.select %arg0, %arg1, %arg2 : i1, tensor<8xi32>
   return
 }
+
+// -----
+
+func.func @cmpf(%arg0: f32, %arg1: f32) {
+  // CHECK: emitc.cmp gt, %arg0, %arg1 : (f32, f32) -> i1
+  %0 = arith.cmpf ugt, %arg0, %arg1 : f32
+  // CHECK: emitc.cmp lt, %arg0, %arg1 : (f32, f32) -> i1
+  %1 = arith.cmpf ult, %arg0, %arg1 : f32
+  // CHECK: emitc.cmp ne, %arg0, %arg0 : (f32, f32) -> i1
+  %2 = arith.cmpf uno, %arg0, %arg0 : f32
+
+  return
+}
