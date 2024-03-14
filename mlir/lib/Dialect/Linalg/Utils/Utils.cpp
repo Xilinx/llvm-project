@@ -275,13 +275,14 @@ GenericOp makeTransposeOp(OpBuilder &b, Location loc, Value inputTensor,
   auto transposeOp =
       b.create<GenericOp>(loc, resultTensorType, inputTensor, outputTensor,
                           indexingMaps, iteratorTypes);
+  Region &body = transposeOp.getRegion();
+  body.push_back(new Block());
+  body.front().addArguments({elementType, elementType}, {loc, loc});
 
   // Create the body of the transpose operation.
   OpBuilder::InsertionGuard g(b);
-  Region &body = transposeOp.getRegion();
-  Block *bodyBlock = b.createBlock(&body, /*insertPt=*/{},
-                                   {elementType, elementType}, {loc, loc});
-  b.create<YieldOp>(loc, bodyBlock->getArgument(0));
+  b.setInsertionPointToEnd(&body.front());
+  b.create<YieldOp>(loc, transposeOp.getRegion().front().getArgument(0));
   return transposeOp;
 }
 

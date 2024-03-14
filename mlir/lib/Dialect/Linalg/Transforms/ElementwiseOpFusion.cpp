@@ -178,9 +178,11 @@ static void generateFusedElementwiseOpRegion(
   // Build the region of the fused op.
   Block &producerBlock = producer->getRegion(0).front();
   Block &consumerBlock = consumer->getRegion(0).front();
-  OpBuilder::InsertionGuard guard(rewriter);
-  Block *fusedBlock = rewriter.createBlock(&fusedOp.getRegion());
+  Block *fusedBlock = new Block();
+  fusedOp.getRegion().push_back(fusedBlock);
   IRMapping mapper;
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPointToStart(fusedBlock);
 
   // 2. Add an index operation for every fused loop dimension and use the
   // `consumerToProducerLoopsMap` to map the producer indices.
