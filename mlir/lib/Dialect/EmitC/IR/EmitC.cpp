@@ -752,13 +752,6 @@ LogicalResult emitc::YieldOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// TableGen'd op method definitions
-//===----------------------------------------------------------------------===//
-
-#define GET_OP_CLASSES
-#include "mlir/Dialect/EmitC/IR/EmitC.cpp.inc"
-
-//===----------------------------------------------------------------------===//
 // EmitC Enums
 //===----------------------------------------------------------------------===//
 
@@ -857,3 +850,119 @@ LogicalResult mlir::emitc::OpaqueType::verify(
   }
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// GlobalOp
+//===----------------------------------------------------------------------===//
+
+static void printEmitCGlobalOpTypeAndInitialValue(OpAsmPrinter &p, GlobalOp op,
+                                                  TypeAttr type,
+                                                  Attribute initialValue) {
+  p << type;
+  if (!op.isExternal()) {
+    p << " = ";
+    if (op.isUninitialized())
+      p << "uninitialized";
+    else
+      p.printAttributeWithoutType(initialValue);
+  }
+}
+
+static ParseResult
+parseEmitCGlobalOpTypeAndInitialValue(OpAsmParser &parser, TypeAttr &typeAttr,
+                                      Attribute &initialValue) {
+  Type type;
+  if (parser.parseType(type))
+    return failure();
+
+  typeAttr = TypeAttr::get(type);
+
+  if (parser.parseOptionalEqual())
+    return success();
+
+  if (succeeded(parser.parseOptionalKeyword("uninitialized"))) {
+    initialValue = UnitAttr::get(parser.getContext());
+    return success();
+  }
+
+  if (parser.parseAttribute(initialValue, type))
+    return failure();
+  if (!llvm::isa<ElementsAttr>(initialValue))
+    return parser.emitError(parser.getNameLoc())
+           << "initial value should be a unit or elements attribute";
+  return success();
+}
+
+LogicalResult GlobalOp::verify() {
+  /*auto memrefType = llvm::dyn_cast<MemRefType>(getType());
+  if (!memrefType || !memrefType.hasStaticShape())
+    return emitOpError("type should be static shaped memref, but got ")
+           << getType();
+
+  // Verify that the initial value, if present, is either a unit attribute or
+  // an elements attribute.
+  if (getInitialValue().has_value()) {
+    Attribute initValue = getInitialValue().value();
+    if (!llvm::isa<UnitAttr>(initValue) && !llvm::isa<ElementsAttr>(initValue))
+      return emitOpError("initial value should be a unit or elements "
+                         "attribute, but got ")
+             << initValue;
+
+    // Check that the type of the initial value is compatible with the type of
+    // the global variable.
+    if (auto elementsAttr = llvm::dyn_cast<ElementsAttr>(initValue)) {
+      Type initType = elementsAttr.getType();
+      Type tensorType = getTensorTypeFromMemRefType(memrefType);
+      if (initType != tensorType)
+        return emitOpError("initial value expected to be of type ")
+               << tensorType << ", but was of type " << initType;
+    }
+  }
+
+  if (std::optional<uint64_t> alignAttr = getAlignment()) {
+    uint64_t alignment = *alignAttr;
+
+    if (!llvm::isPowerOf2_64(alignment))
+      return emitError() << "alignment attribute value " << alignment
+                         << " is not a power of 2";
+  }
+*/
+  // TODO: verify visibility for declarations.
+  return success();
+}
+
+ElementsAttr GlobalOp::getConstantInitValue() {
+  auto initVal = getInitialValue();
+  if (getConstant() && initVal.has_value())
+    return llvm::cast<ElementsAttr>(initVal.value());
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
+// GetGlobalOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult
+GetGlobalOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
+  // Verify that the result type is same as the type of the referenced
+  // memref.global op.
+  auto global =
+      symbolTable.lookupNearestSymbolFrom<GlobalOp>(*this, getNameAttr());
+  if (!global)
+    return emitOpError("'")
+           << getName() << "' does not reference a valid emitc.global";
+
+  Type resultType = getResult().getType();
+  if (global.getType() != resultType)
+    return emitOpError("result type ")
+           << resultType << " does not match type " << global.getType()
+           << " of the global memref @" << getName();
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TableGen'd op method definitions
+//===----------------------------------------------------------------------===//
+
+#define GET_OP_CLASSES
+#include "mlir/Dialect/EmitC/IR/EmitC.cpp.inc"
