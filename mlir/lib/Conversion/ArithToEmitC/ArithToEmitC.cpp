@@ -39,6 +39,39 @@ public:
   }
 };
 
+class CmpFOpConversion : public OpConversionPattern<arith::CmpFOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::CmpFOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    emitc::CmpPredicate predicate;
+    switch (op.getPredicate()) {
+    case mlir::arith::CmpFPredicate::UGT:
+      predicate = emitc::CmpPredicate::gt;
+      break;
+    case mlir::arith::CmpFPredicate::ULT:
+      predicate = emitc::CmpPredicate::lt;
+      break;
+    case mlir::arith::CmpFPredicate::UNO:
+      // isNan(rhs)  || isNan(lhs)
+      if (adaptor.getLhs() != adaptor.getRhs())
+        return rewriter.notifyMatchFailure(op.getLoc(), "not implemented");
+      // isNan(rhs) == (rhs != rhs)
+      predicate = emitc::CmpPredicate::ne;
+      break;
+    default:
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "cannot match predicate ");
+    }
+
+    rewriter.replaceOpWithNewOp<emitc::CmpOp>(
+        op, op.getType(), predicate, adaptor.getLhs(), adaptor.getRhs());
+    return success();
+  }
+};
+
 template <typename ArithOp, typename EmitCOp>
 class ArithOpConversion final : public OpConversionPattern<ArithOp> {
 public:
@@ -98,6 +131,7 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
     ArithOpConversion<arith::SubFOp, emitc::SubOp>,
     ArithOpConversion<arith::AddIOp, emitc::AddOp>,
     ArithOpConversion<arith::MulIOp, emitc::MulOp>,
+    CmpFOpConversion,
     SelectOpConversion
   >(typeConverter, ctx);
   // clang-format on
