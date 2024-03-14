@@ -2167,11 +2167,10 @@ LogicalResult ShuffleVectorOp::verify() {
 //===----------------------------------------------------------------------===//
 
 // Add the entry block to the function.
-Block *LLVMFuncOp::addEntryBlock() {
+Block *LLVMFuncOp::addEntryBlock(OpBuilder &builder) {
   assert(empty() && "function already has an entry block");
-
-  auto *entry = new Block;
-  push_back(entry);
+  OpBuilder::InsertionGuard g(builder);
+  Block *entry = builder.createBlock(&getBody());
 
   // FIXME: Allow passing in proper locations for the entry arguments.
   LLVMFunctionType type = getFunctionType();
