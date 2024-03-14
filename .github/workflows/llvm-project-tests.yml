@@ -76,10 +76,10 @@ jobs:
       # python3.10.6 libraries instead of the 64-bit libraries when building
       # lldb.  Using this setup-python action to make 3.10 the default
       # python fixes this.
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ inputs.python_version }}
+      #- name: Setup Python
+      #  uses: actions/setup-python@v4
+      #  with:
+      #    python-version: ${{ inputs.python_version }}
       - name: Install Ninja
         if: runner.os != 'Linux'
         uses: llvm/actions/install-ninja@main
@@ -91,7 +91,10 @@ jobs:
           fetch-depth: 250
       - name: Install requirements.txt
         if: inputs.projects == 'mlir'
-        run: pip install -r mlir/python/requirements.txt
+        run: |
+          apt-get update
+          apt-get install -y python3-pip
+          pip install -r mlir/python/requirements.txt
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1
         with:
