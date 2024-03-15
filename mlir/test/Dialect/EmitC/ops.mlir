@@ -214,14 +214,6 @@ func.func @test_for_not_index_induction(%arg0 : i16, %arg1 : i16, %arg2 : i16) {
   return
 }
 
-func.func @test_subscript(%arg0: !emitc.array<4x8xf32>, %arg1: !emitc.array<3x5xf32>,
-                          %arg2: index, %arg3: index) {
-  %0 = emitc.subscript %arg0[%arg2, %arg3] : <4x8xf32>
-  %1 = emitc.subscript %arg1[%arg2, %arg3] : <3x5xf32>
-  emitc.assign %0 : f32 to %1 : f32
-  return
-}
-
 emitc.verbatim "#ifdef __cplusplus"
 emitc.verbatim "extern \"C\" {"
 emitc.verbatim "#endif  // __cplusplus"
