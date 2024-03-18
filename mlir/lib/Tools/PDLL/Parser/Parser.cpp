@@ -328,8 +328,7 @@ private:
   FailureOr<ast::Expr *> parseEqualityExpr();
   FailureOr<ast::Expr *> parseRelationExpr();
   FailureOr<ast::Expr *> parseAddSubExpr();
-  FailureOr<ast::Expr *> parseModuloExpr();
-  FailureOr<ast::Expr *> parseMulDivExpr();
+  FailureOr<ast::Expr *> parseMulDivModExpr();
   FailureOr<ast::Expr *> parseLogicalNotExpr();
   FailureOr<ast::Expr *> parseOtherExpr();
 
@@ -1929,14 +1928,14 @@ FailureOr<ast::Expr *> Parser::parseEqualityExpr() {
 FailureOr<ast::Expr *> Parser::parseRelationExpr() { return parseAddSubExpr(); }
 
 FailureOr<ast::Expr *> Parser::parseAddSubExpr() {
-  auto lhs = parseModuloExpr();
+  auto lhs = parseMulDivModExpr();
   if (failed(lhs))
     return failure();
 
   switch (curToken.getKind()) {
   case Token::add: {
     consumeToken();
-    auto rhs = parseModuloExpr();
+    auto rhs = parseMulDivModExpr();
     if (failed(rhs))
       return failure();
     SmallVector<ast::Expr *> args{*lhs, *rhs};
@@ -1944,7 +1943,7 @@ FailureOr<ast::Expr *> Parser::parseAddSubExpr() {
   }
   case Token::sub: {
     consumeToken();
-    auto rhs = parseModuloExpr();
+    auto rhs = parseMulDivModExpr();
     if (failed(rhs))
       return failure();
     SmallVector<ast::Expr *> args{*lhs, *rhs};
@@ -1955,26 +1954,7 @@ FailureOr<ast::Expr *> Parser::parseAddSubExpr() {
   }
 }
 
-FailureOr<ast::Expr *> Parser::parseModuloExpr() {
-  auto lhs = parseMulDivExpr();
-  if (failed(lhs))
-    return failure();
-
-  switch (curToken.getKind()) {
-  case Token::mod: {
-    consumeToken();
-    auto rhs = parseMulDivExpr();
-    if (failed(rhs))
-      return failure();
-    SmallVector<ast::Expr *> args{*lhs, *rhs};
-    return createBuiltinCall(curToken.getLoc(), builtins.mod, args);
-  }
-  default:
-    return lhs;
-  }
-}
-
-FailureOr<ast::Expr *> Parser::parseMulDivExpr() {
+FailureOr<ast::Expr *> Parser::parseMulDivModExpr() {
   auto lhs = parseLogicalNotExpr();
   if (failed(lhs))
     return failure();
@@ -1995,6 +1975,14 @@ FailureOr<ast::Expr *> Parser::parseMulDivExpr() {
       return failure();
     SmallVector<ast::Expr *> args{*lhs, *rhs};
     return createBuiltinCall(curToken.getLoc(), builtins.div, args);
+  }
+  case Token::mod: {
+    consumeToken();
+    auto rhs = parseLogicalNotExpr();
+    if (failed(rhs))
+      return failure();
+    SmallVector<ast::Expr *> args{*lhs, *rhs};
+    return createBuiltinCall(curToken.getLoc(), builtins.mod, args);
   }
   default:
     return lhs;
