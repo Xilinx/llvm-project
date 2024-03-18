@@ -197,7 +197,7 @@ Token Lexer::lexToken() {
         ++curPtr;
         return formToken(Token::arrow, tokStart);
       }
-      return emitError(tokStart, "unexpected character");
+      return formToken(Token::sub, tokStart);
     case ':':
       return formToken(Token::colon, tokStart);
     case ',':
@@ -224,6 +224,8 @@ Token Lexer::lexToken() {
       return formToken(Token::mul, tokStart);
     case '%':
       return formToken(Token::mod, tokStart);
+    case '+':
+      return formToken(Token::add, tokStart);
     case '<':
       return formToken(Token::less, tokStart);
     case '>':

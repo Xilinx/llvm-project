@@ -88,6 +88,7 @@ TEST_F(BuiltinTest, addElemToArrayAttr) {
 TEST_F(BuiltinTest, mul) {
   auto twoi8 = rewriter.getI8IntegerAttr(2);
   auto twoi16 = rewriter.getI16IntegerAttr(2);
+
   auto largesti8 = rewriter.getI8IntegerAttr(-1);
 
   // check signless integer overflow
@@ -252,11 +253,6 @@ TEST_F(BuiltinTest, mod) {
     TestPDLResultList results(1);
     EXPECT_TRUE(
         builtin::mod(rewriter, results, {eighti8, threei8}).succeeded());
-
-    PDLValue result = results.getResults()[0];
-    EXPECT_EQ(
-        cast<IntegerAttr>(result.cast<Attribute>()).getValue().getSExtValue(),
-        2);
   }
 
   IntegerType Uint8 = rewriter.getIntegerType(8, false);
@@ -297,11 +293,6 @@ TEST_F(BuiltinTest, mod) {
   {
     TestPDLResultList results(1);
     EXPECT_TRUE(builtin::mod(rewriter, results, {twoF16, twoF16}).succeeded());
-
-    PDLValue result = results.getResults()[0];
-    EXPECT_EQ(
-        cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat(),
-        0.0);
   }
 
   // check type mismatch
@@ -311,4 +302,197 @@ TEST_F(BuiltinTest, mod) {
   }
 }
 
+TEST_F(BuiltinTest, add) {
+  auto onei16 = rewriter.getI16IntegerAttr(1);
+  auto onei32 = rewriter.getI32IntegerAttr(1);
+  auto onei8 = rewriter.getI8IntegerAttr(1);
+  auto largesti8 = rewriter.getI8IntegerAttr(-1);
+
+  // check signless integer overflow
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(onei8.getType().isSignlessInteger());
+    EXPECT_TRUE(builtin::add(rewriter, results, {onei8, largesti8}).failed());
+  }
+
+  // check correctness of result
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::add(rewriter, results, {onei16, onei16}).succeeded());
+
+    PDLValue result = results.getResults()[0];
+    EXPECT_EQ(
+        cast<IntegerAttr>(result.cast<Attribute>()).getValue().getSExtValue(),
+        2);
+  }
+
+  IntegerType Uint8 = rewriter.getIntegerType(8, false);
+  auto oneUint8 = rewriter.getIntegerAttr(Uint8, APInt(8, 1, false));
+  auto largestUint8 = rewriter.getIntegerAttr(Uint8, APInt(8, 255, false));
+
+  // check unsigned integer overflow
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(
+        builtin::add(rewriter, results, {oneUint8, largestUint8}).failed());
+  }
+
+  IntegerType SInt8 = rewriter.getIntegerType(8, true);
+  auto oneSInt8 = rewriter.getIntegerAttr(SInt8, APInt(8, 1, true));
+  auto largestSInt8 = rewriter.getIntegerAttr(SInt8, APInt(8, 127, true));
+
+  // check signed integer overflow
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(
+        builtin::add(rewriter, results, {oneSInt8, largestSInt8}).failed());
+  }
+
+  // check integer types mismatch
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::add(rewriter, results, {onei16, onei32}).failed());
+  }
+
+  auto onef16 = rewriter.getF16FloatAttr(1.0);
+  auto onef32 = rewriter.getF32FloatAttr(1.0);
+  auto zerof32 = rewriter.getF32FloatAttr(0.0);
+  auto negzerof32 = rewriter.getF32FloatAttr(-0.0);
+  auto zerof64 = rewriter.getF64FloatAttr(0.0);
+
+  auto maxValF16 = rewriter.getF16FloatAttr(
+      llvm::APFloat::getLargest(llvm::APFloat::IEEEhalf()).convertToFloat());
+
+  // check float overflow
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::add(rewriter, results, {onef16, maxValF16}).failed());
+  }
+
+  // check correctness of result
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::add(rewriter, results, {onef32, onef32}).succeeded());
+
+    PDLValue result = results.getResults()[0];
+    EXPECT_EQ(
+        cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat(),
+        2.0);
+  }
+
+  // check correctness of result
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(
+        builtin::add(rewriter, results, {zerof32, negzerof32}).succeeded());
+
+    PDLValue result = results.getResults()[0];
+    EXPECT_EQ(
+        cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat(),
+        0.0);
+  }
+
+  // check float types mismatch
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::add(rewriter, results, {zerof32, zerof64}).failed());
+  }
+}
+
+TEST_F(BuiltinTest, sub) {
+  auto onei16 = rewriter.getI16IntegerAttr(1);
+  auto onei32 = rewriter.getI32IntegerAttr(1);
+  auto onei8 = rewriter.getI8IntegerAttr(1);
+  auto largesti8 = rewriter.getI8IntegerAttr(-1);
+
+  // check signless integer overflow
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(onei8.getType().isSignlessInteger());
+    EXPECT_TRUE(builtin::sub(rewriter, results, {onei8, largesti8}).failed());
+  }
+
+  // check correctness of result
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::sub(rewriter, results, {onei16, onei16}).succeeded());
+
+    PDLValue result = results.getResults()[0];
+    EXPECT_EQ(
+        cast<IntegerAttr>(result.cast<Attribute>()).getValue().getSExtValue(),
+        0);
+  }
+
+  IntegerType Uint8 = rewriter.getIntegerType(8, false);
+  auto oneUint8 = rewriter.getIntegerAttr(Uint8, APInt(8, 1, false));
+  auto largestUint8 = rewriter.getIntegerAttr(Uint8, APInt(8, 255, false));
+
+  // check unsigned integer overflow
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(
+        builtin::sub(rewriter, results, {oneUint8, largestUint8}).failed());
+  }
+
+  IntegerType SInt8 = rewriter.getIntegerType(8, true);
+  auto minusOneSInt8 = rewriter.getIntegerAttr(SInt8, APInt(8, -1, true));
+  auto largestSInt8 = rewriter.getIntegerAttr(SInt8, APInt(8, 127, true));
+
+  // check signed integer overflow
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::sub(rewriter, results, {largestSInt8, minusOneSInt8})
+                    .failed());
+  }
+
+  // check integer types mismatch
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::sub(rewriter, results, {onei16, onei32}).failed());
+  }
+
+  auto onef16 = rewriter.getF16FloatAttr(1.0);
+  auto onef32 = rewriter.getF32FloatAttr(1.0);
+  auto zerof32 = rewriter.getF32FloatAttr(0.0);
+  auto negzerof32 = rewriter.getF32FloatAttr(-0.0);
+  auto zerof64 = rewriter.getF64FloatAttr(0.0);
+
+  auto maxValF16 = rewriter.getF16FloatAttr(
+      llvm::APFloat::getLargest(llvm::APFloat::IEEEhalf()).convertToFloat());
+
+  // check float overflow
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::sub(rewriter, results, {maxValF16, onef16}).failed());
+  }
+
+  // check correctness of result
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::sub(rewriter, results, {onef32, onef32}).succeeded());
+
+    PDLValue result = results.getResults()[0];
+    EXPECT_EQ(
+        cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat(),
+        0.0);
+  }
+
+  // check correctness of result
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(
+        builtin::sub(rewriter, results, {zerof32, negzerof32}).succeeded());
+
+    PDLValue result = results.getResults()[0];
+    EXPECT_EQ(
+        cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat(),
+        0.0);
+  }
+
+  // check float types mismatch
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::sub(rewriter, results, {zerof32, zerof64}).failed());
+  }
+}
 } // namespace

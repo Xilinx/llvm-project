@@ -2,9 +2,7 @@
 #include <cstdint>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
-#include <llvm/ADT/APSInt.h>
 #include <llvm/ADT/ArrayRef.h>
-#include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <mlir/Dialect/PDL/IR/Builtins.h>
@@ -12,7 +10,6 @@
 #include <mlir/IR/BuiltinAttributes.h>
 #include <mlir/IR/Location.h>
 #include <mlir/IR/PatternMatch.h>
-#include <mlir/Support/LLVM.h>
 #include <mlir/Support/LogicalResult.h>
 
 using namespace mlir;
@@ -52,6 +49,78 @@ mlir::Attribute addElemToArrayAttr(mlir::PatternRewriter &rewriter,
   auto values = cast<ArrayAttr>(attr).getValue().vec();
   values.push_back(element);
   return rewriter.getArrayAttr(values);
+}
+
+LogicalResult addOrSub(mlir::PatternRewriter &rewriter,
+                       mlir::PDLResultList &results,
+                       llvm::ArrayRef<mlir::PDLValue> args, const bool useAdd) {
+  assert(args.size() == 2 && "Expected 2 arguments");
+  auto lhsAttr = args[0].cast<Attribute>();
+  auto rhsAttr = args[1].cast<Attribute>();
+
+  // Integer
+  if (auto lhsIntAttr = dyn_cast_or_null<IntegerAttr>(lhsAttr)) {
+    auto rhsIntAttr = dyn_cast_or_null<IntegerAttr>(rhsAttr);
+    if (!rhsIntAttr || lhsIntAttr.getType() != rhsIntAttr.getType())
+      return failure();
+
+    auto integerType = lhsIntAttr.getType();
+    bool isOverflow;
+    llvm::APInt resultAPInt;
+    if (integerType.isUnsignedInteger() || integerType.isSignlessInteger()) {
+      if (useAdd) {
+        resultAPInt =
+            lhsIntAttr.getValue().uadd_ov(rhsIntAttr.getValue(), isOverflow);
+      } else {
+        resultAPInt =
+            lhsIntAttr.getValue().usub_ov(rhsIntAttr.getValue(), isOverflow);
+      }
+    } else {
+      if (useAdd) {
+        resultAPInt =
+            lhsIntAttr.getValue().sadd_ov(rhsIntAttr.getValue(), isOverflow);
+      } else {
+        resultAPInt =
+            lhsIntAttr.getValue().ssub_ov(rhsIntAttr.getValue(), isOverflow);
+      }
+    }
+
+    if (isOverflow) {
+      return failure();
+    }
+
+    results.push_back(rewriter.getIntegerAttr(integerType, resultAPInt));
+    return success();
+  }
+
+  // Float
+  if (auto lhsFloatAttr = dyn_cast_or_null<FloatAttr>(lhsAttr)) {
+    auto rhsFloatAttr = dyn_cast_or_null<FloatAttr>(rhsAttr);
+    if (!rhsFloatAttr || lhsFloatAttr.getType() != rhsFloatAttr.getType())
+      return failure();
+
+    APFloat lhsVal = lhsFloatAttr.getValue();
+    APFloat rhsVal = rhsFloatAttr.getValue();
+    APFloat resultVal(lhsVal);
+    auto floatType = lhsFloatAttr.getType();
+
+    APFloat::opStatus operationStatus;
+    if (useAdd) {
+      operationStatus =
+          resultVal.add(rhsVal, llvm::APFloatBase::rmNearestTiesToEven);
+    } else {
+      operationStatus =
+          resultVal.subtract(rhsVal, llvm::APFloatBase::rmNearestTiesToEven);
+    }
+
+    if (operationStatus != APFloat::opOK) {
+      return failure();
+    }
+
+    results.push_back(rewriter.getFloatAttr(floatType, resultVal));
+    return success();
+  }
+  return failure();
 }
 
 LogicalResult mulOrDiv(mlir::PatternRewriter &rewriter,
@@ -124,6 +193,16 @@ LogicalResult mulOrDiv(mlir::PatternRewriter &rewriter,
     return success();
   }
   return failure();
+}
+
+LogicalResult add(mlir::PatternRewriter &rewriter, mlir::PDLResultList &results,
+                  llvm::ArrayRef<mlir::PDLValue> args) {
+  return addOrSub(rewriter, results, args, true);
+}
+
+LogicalResult sub(mlir::PatternRewriter &rewriter, mlir::PDLResultList &results,
+                  llvm::ArrayRef<mlir::PDLValue> args) {
+  return addOrSub(rewriter, results, args, false);
 }
 
 LogicalResult mul(PatternRewriter &rewriter, PDLResultList &results,
@@ -200,5 +279,7 @@ void registerBuiltins(PDLPatternModule &pdlPattern) {
   pdlPattern.registerConstraintFunctionWithResults("__builtin_mul", mul);
   pdlPattern.registerConstraintFunctionWithResults("__builtin_div", div);
   pdlPattern.registerConstraintFunctionWithResults("__builtin_mod", mod);
+  pdlPattern.registerConstraintFunctionWithResults("__builtin_add", add);
+  pdlPattern.registerConstraintFunctionWithResults("__builtin_sub", sub);
 }
 } // namespace mlir::pdl

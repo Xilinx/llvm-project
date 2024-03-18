@@ -392,14 +392,9 @@ Pattern {
   erase _: Op;
 }
 
-// -----
-
-// CHECK: Module 
-// CHECK: UserConstraintDecl {{.*}} Name<__builtin__mul> ResultType<Attr>
-Pattern {
-  let result : Attr = attr<"4 : i32"> * attr<"5 : i32">;
-  erase _: Op;
-}
+//===----------------------------------------------------------------------===//
+// Builtins
+//===----------------------------------------------------------------------===//
 
 // -----
 
@@ -427,3 +422,22 @@ Pattern {
   let result : Attr = attr<"4 : i32"> % attr<"5 : i32">;
   erase _: Op;
 }
+
+// -----
+
+// CHECK: Module {{.*}}
+// CHECK: UserConstraintDecl {{.*}} Name<__builtin_add> ResultType<Attr>
+Pattern {
+  let resultAttr : Attr = attr<"4 : f32"> + attr<"5 : i32">;
+  erase _: Op;
+}
+
+// -----
+
+// CHECK: Module {{.*}}
+// CHECK: UserConstraintDecl {{.*}} Name<__builtin_sub> ResultType<Attr>
+Pattern {
+  let resultAttr : Attr = attr<"4 : f32"> - attr<"5 : i32">;
+  erase _: Op;
+}
+

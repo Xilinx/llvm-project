@@ -84,6 +84,8 @@ public:
     mul,
     div,
     mod,
+    add,
+    sub,
     less,
     greater,
     l_brace,

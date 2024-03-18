@@ -608,6 +608,8 @@ private:
     ast::UserConstraintDecl *mul;
     ast::UserConstraintDecl *div;
     ast::UserConstraintDecl *mod;
+    ast::UserConstraintDecl *add;
+    ast::UserConstraintDecl *sub;
   } builtins{};
 };
 } // namespace
@@ -655,8 +657,16 @@ void Parser::declareBuiltins() {
       /*returnsAttr=*/true);
   builtins.mul = declareBuiltin<ast::UserConstraintDecl>("__builtin__mul",
                                                          {"lhs", "rhs"}, true);
-  builtins.div = declareBuiltin<ast::UserConstraintDecl>("__builtin__div", {"lhs", "rhs"}, true);
-  builtins.mod = declareBuiltin<ast::UserConstraintDecl>("__builtin__mod", {"lhs", "rhs"}, true);
+  builtins.div = declareBuiltin<ast::UserConstraintDecl>("__builtin__div",
+                                                         {"lhs", "rhs"}, true);
+  builtins.mod = declareBuiltin<ast::UserConstraintDecl>("__builtin__mod",
+                                                         {"lhs", "rhs"}, true);
+  builtins.add =
+      declareBuiltin<ast::UserConstraintDecl>("__builtin_add", {"lhs", "rhs"},
+                                              /*returnsAttr=*/true);
+  builtins.sub =
+      declareBuiltin<ast::UserConstraintDecl>("__builtin_sub", {"lhs", "rhs"},
+                                              /*returnsAttr=*/true);
 }
 
 FailureOr<ast::Module *> Parser::parseModule() {
@@ -1918,7 +1928,32 @@ FailureOr<ast::Expr *> Parser::parseEqualityExpr() {
 
 FailureOr<ast::Expr *> Parser::parseRelationExpr() { return parseAddSubExpr(); }
 
-FailureOr<ast::Expr *> Parser::parseAddSubExpr() { return parseModuloExpr(); }
+FailureOr<ast::Expr *> Parser::parseAddSubExpr() {
+  auto lhs = parseModuloExpr();
+  if (failed(lhs))
+    return failure();
+
+  switch (curToken.getKind()) {
+  case Token::add: {
+    consumeToken();
+    auto rhs = parseModuloExpr();
+    if (failed(rhs))
+      return failure();
+    SmallVector<ast::Expr *> args{*lhs, *rhs};
+    return createBuiltinCall(curToken.getLoc(), builtins.add, args);
+  }
+  case Token::sub: {
+    consumeToken();
+    auto rhs = parseModuloExpr();
+    if (failed(rhs))
+      return failure();
+    SmallVector<ast::Expr *> args{*lhs, *rhs};
+    return createBuiltinCall(curToken.getLoc(), builtins.sub, args);
+  }
+  default:
+    return lhs;
+  }
+}
 
 FailureOr<ast::Expr *> Parser::parseModuloExpr() {
   auto lhs = parseMulDivExpr();
