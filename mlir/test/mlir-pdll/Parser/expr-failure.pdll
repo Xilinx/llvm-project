@@ -449,3 +449,51 @@ Pattern {
   // CHECK: expected `>` after type literal
   let foo = type<"";
 }
+
+// -----
+
+Pattern {
+  // CHECK: expected expression
+  *
+  erase _: Op;
+}
+
+// -----
+
+Pattern {
+  // CHECK: expected expression
+  let resultAttr : Attr = attr<"4 : i32"> *
+  erase _: Op;
+}
+
+// -----
+
+Pattern {
+  // CHECK: expected expression
+  /
+  erase _: Op;
+}
+
+// -----
+
+Pattern {
+  // CHECK: expected expression
+  let resultAttr : Attr = attr<"4 : i32"> /
+  erase _: Op;
+}
+
+// -----
+
+Pattern {
+  // CHECK: expected expression
+  %
+  erase _: Op;
+}
+
+// -----
+
+Pattern {
+  // CHECK: expected expression
+  let resultAttr : Attr = attr<"4 : i32"> %
+  erase _: Op;
+}

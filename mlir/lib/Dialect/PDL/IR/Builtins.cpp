@@ -1,5 +1,19 @@
+#include <cassert>
+#include <cstdint>
+#include <llvm/ADT/APFloat.h>
+#include <llvm/ADT/APInt.h>
+#include <llvm/ADT/APSInt.h>
+#include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/TypeSwitch.h>
+#include <llvm/Support/Casting.h>
+#include <llvm/Support/ErrorHandling.h>
 #include <mlir/Dialect/PDL/IR/Builtins.h>
+#include <mlir/IR/Attributes.h>
+#include <mlir/IR/BuiltinAttributes.h>
+#include <mlir/IR/Location.h>
 #include <mlir/IR/PatternMatch.h>
+#include <mlir/Support/LLVM.h>
+#include <mlir/Support/LogicalResult.h>
 
 using namespace mlir;
 
@@ -39,6 +53,137 @@ mlir::Attribute addElemToArrayAttr(mlir::PatternRewriter &rewriter,
   values.push_back(element);
   return rewriter.getArrayAttr(values);
 }
+
+LogicalResult mulOrDiv(mlir::PatternRewriter &rewriter,
+                       mlir::PDLResultList &results,
+                       llvm::ArrayRef<PDLValue> args, const bool useDiv) {
+  assert(args.size() == 2 && "Expected 2 arguments");
+  auto lhsAttr = args[0].cast<Attribute>();
+  auto rhsAttr = args[1].cast<Attribute>();
+
+  // Integer
+  if (auto lhsIntAttr = dyn_cast_or_null<IntegerAttr>(lhsAttr)) {
+    auto rhsIntAttr = dyn_cast_or_null<IntegerAttr>(rhsAttr);
+    if (!rhsIntAttr || lhsIntAttr.getType() != rhsIntAttr.getType())
+      return failure();
+
+    auto integerType = lhsIntAttr.getType();
+
+    bool isOverflow = false;
+    llvm::APInt resultAPInt;
+    if (integerType.isUnsignedInteger() || integerType.isSignlessInteger()) {
+      if (useDiv) {
+        resultAPInt = lhsIntAttr.getValue().udiv(rhsIntAttr.getValue());
+      } else {
+        resultAPInt =
+            lhsIntAttr.getValue().umul_ov(rhsIntAttr.getValue(), isOverflow);
+      }
+    } else {
+      if (useDiv) {
+        resultAPInt =
+            lhsIntAttr.getValue().sdiv_ov(rhsIntAttr.getValue(), isOverflow);
+      } else {
+        resultAPInt =
+            lhsIntAttr.getValue().smul_ov(rhsIntAttr.getValue(), isOverflow);
+      }
+    }
+
+    if (isOverflow) {
+      return failure();
+    }
+
+    results.push_back(rewriter.getIntegerAttr(integerType, resultAPInt));
+    return success();
+  }
+
+  // Float
+  if (auto lhsFloatAttr = dyn_cast_or_null<FloatAttr>(lhsAttr)) {
+    auto rhsFloatAttr = dyn_cast_or_null<FloatAttr>(rhsAttr);
+    if (!rhsFloatAttr || lhsFloatAttr.getType() != rhsFloatAttr.getType())
+      return failure();
+
+    APFloat lhsVal = lhsFloatAttr.getValue();
+    APFloat rhsVal = rhsFloatAttr.getValue();
+    APFloat resultVal(lhsVal);
+    auto floatType = lhsFloatAttr.getType();
+
+    APFloat::opStatus operationStatus;
+    if (useDiv) {
+      operationStatus =
+          resultVal.divide(rhsVal, llvm::APFloatBase::rmNearestTiesToEven);
+    } else {
+      operationStatus =
+          resultVal.multiply(rhsVal, llvm::APFloatBase::rmNearestTiesToEven);
+    }
+
+    if (operationStatus != APFloat::opOK) {
+      return failure();
+    }
+
+    results.push_back(rewriter.getFloatAttr(floatType, resultVal));
+    return success();
+  }
+  return failure();
+}
+
+LogicalResult mul(PatternRewriter &rewriter, PDLResultList &results,
+                  llvm::ArrayRef<PDLValue> args) {
+  return mulOrDiv(rewriter, results, args, false);
+}
+
+LogicalResult div(PatternRewriter &rewriter, PDLResultList &results,
+                  llvm::ArrayRef<PDLValue> args) {
+  return mulOrDiv(rewriter, results, args, true);
+}
+
+LogicalResult mod(PatternRewriter &rewriter, PDLResultList &results,
+                  llvm::ArrayRef<PDLValue> args) {
+  assert(args.size() == 2 && "Expected 2 arguments");
+  auto lhsAttr = args[0].cast<Attribute>();
+  auto rhsAttr = args[1].cast<Attribute>();
+
+  // Integer
+  if (auto lhsIntAttr = dyn_cast_or_null<IntegerAttr>(lhsAttr)) {
+    auto rhsIntAttr = dyn_cast_or_null<IntegerAttr>(rhsAttr);
+    if (!rhsIntAttr || lhsIntAttr.getType() != rhsIntAttr.getType())
+      return failure();
+
+    auto integerType = lhsIntAttr.getType();
+
+    llvm::APInt resultAPInt;
+    if (integerType.isSignlessInteger() || integerType.isUnsignedInteger()) {
+      resultAPInt = lhsIntAttr.getValue().urem(rhsIntAttr.getValue());
+    } else {
+      resultAPInt = lhsIntAttr.getValue().srem(rhsIntAttr.getValue());
+    }
+
+    results.push_back(rewriter.getIntegerAttr(integerType, resultAPInt));
+    return success();
+  }
+
+  // Float
+  if (auto lhsFloatAttr = dyn_cast_or_null<FloatAttr>(lhsAttr)) {
+    auto rhsFloatAttr = dyn_cast_or_null<FloatAttr>(rhsAttr);
+    if (!rhsFloatAttr || lhsFloatAttr.getType() != rhsFloatAttr.getType())
+      return failure();
+
+    APFloat lhsVal = lhsFloatAttr.getValue();
+    APFloat rhsVal = rhsFloatAttr.getValue();
+    APFloat resultVal(lhsVal);
+    auto floatType = lhsFloatAttr.getType();
+
+    APFloat::opStatus operationStatus;
+    operationStatus = resultVal.mod(rhsVal);
+
+    if (operationStatus != APFloat::opOK) {
+      return failure();
+    }
+
+    results.push_back(rewriter.getFloatAttr(floatType, resultVal));
+    return success();
+  }
+  return failure();
+}
 } // namespace builtin
 
 void registerBuiltins(PDLPatternModule &pdlPattern) {
@@ -52,5 +197,8 @@ void registerBuiltins(PDLPatternModule &pdlPattern) {
                                      createArrayAttr);
   pdlPattern.registerRewriteFunction("__builtin_addElemToArrayAttr",
                                      addElemToArrayAttr);
+  pdlPattern.registerConstraintFunctionWithResults("__builtin_mul", mul);
+  pdlPattern.registerConstraintFunctionWithResults("__builtin_div", div);
+  pdlPattern.registerConstraintFunctionWithResults("__builtin_mod", mod);
 }
 } // namespace mlir::pdl

@@ -328,6 +328,7 @@ private:
   FailureOr<ast::Expr *> parseEqualityExpr();
   FailureOr<ast::Expr *> parseRelationExpr();
   FailureOr<ast::Expr *> parseAddSubExpr();
+  FailureOr<ast::Expr *> parseModuloExpr();
   FailureOr<ast::Expr *> parseMulDivExpr();
   FailureOr<ast::Expr *> parseLogicalNotExpr();
   FailureOr<ast::Expr *> parseOtherExpr();
@@ -604,6 +605,9 @@ private:
     ast::UserRewriteDecl *addEntryToDictionaryAttr;
     ast::UserRewriteDecl *createArrayAttr;
     ast::UserRewriteDecl *addElemToArrayAttr;
+    ast::UserConstraintDecl *mul;
+    ast::UserConstraintDecl *div;
+    ast::UserConstraintDecl *mod;
   } builtins{};
 };
 } // namespace
@@ -631,8 +635,9 @@ T *Parser::declareBuiltin(StringRef name, ArrayRef<StringRef> argNames,
   }
   popDeclScope();
 
-  auto *constraintDecl = T::createNative(ctx, ast::Name::create(ctx, name, loc),
-                                         args, results, {}, attrTy);
+  auto *constraintDecl =
+      T::createNative(ctx, ast::Name::create(ctx, name, loc), args, results, {},
+                      createUserConstraintRewriteResultType(results));
   curDeclScope->add(constraintDecl);
   return constraintDecl;
 }
@@ -648,6 +653,10 @@ void Parser::declareBuiltins() {
   builtins.addElemToArrayAttr = declareBuiltin<ast::UserRewriteDecl>(
       "__builtin_addElemToArrayAttr", {"attr", "element"},
       /*returnsAttr=*/true);
+  builtins.mul = declareBuiltin<ast::UserConstraintDecl>("__builtin__mul",
+                                                         {"lhs", "rhs"}, true);
+  builtins.div = declareBuiltin<ast::UserConstraintDecl>("__builtin__div", {"lhs", "rhs"}, true);
+  builtins.mod = declareBuiltin<ast::UserConstraintDecl>("__builtin__mod", {"lhs", "rhs"}, true);
 }
 
 FailureOr<ast::Module *> Parser::parseModule() {
@@ -1909,10 +1918,52 @@ FailureOr<ast::Expr *> Parser::parseEqualityExpr() {
 
 FailureOr<ast::Expr *> Parser::parseRelationExpr() { return parseAddSubExpr(); }
 
-FailureOr<ast::Expr *> Parser::parseAddSubExpr() { return parseMulDivExpr(); }
+FailureOr<ast::Expr *> Parser::parseAddSubExpr() { return parseModuloExpr(); }
+
+FailureOr<ast::Expr *> Parser::parseModuloExpr() {
+  auto lhs = parseMulDivExpr();
+  if (failed(lhs))
+    return failure();
+
+  switch (curToken.getKind()) {
+  case Token::mod: {
+    consumeToken();
+    auto rhs = parseMulDivExpr();
+    if (failed(rhs))
+      return failure();
+    SmallVector<ast::Expr *> args{*lhs, *rhs};
+    return createBuiltinCall(curToken.getLoc(), builtins.mod, args);
+  }
+  default:
+    return lhs;
+  }
+}
 
 FailureOr<ast::Expr *> Parser::parseMulDivExpr() {
-  return parseLogicalNotExpr();
+  auto lhs = parseLogicalNotExpr();
+  if (failed(lhs))
+    return failure();
+
+  switch (curToken.getKind()) {
+  case Token::mul: {
+    consumeToken();
+    auto rhs = parseLogicalNotExpr();
+    if (failed(rhs))
+      return failure();
+    SmallVector<ast::Expr *> args{*lhs, *rhs};
+    return createBuiltinCall(curToken.getLoc(), builtins.mul, args);
+  }
+  case Token::div: {
+    consumeToken();
+    auto rhs = parseLogicalNotExpr();
+    if (failed(rhs))
+      return failure();
+    SmallVector<ast::Expr *> args{*lhs, *rhs};
+    return createBuiltinCall(curToken.getLoc(), builtins.div, args);
+  }
+  default:
+    return lhs;
+  }
 }
 
 FailureOr<ast::Expr *> Parser::parseLogicalNotExpr() {

@@ -391,3 +391,39 @@ Pattern {
 
   erase _: Op;
 }
+
+// -----
+
+// CHECK: Module 
+// CHECK: UserConstraintDecl {{.*}} Name<__builtin__mul> ResultType<Attr>
+Pattern {
+  let result : Attr = attr<"4 : i32"> * attr<"5 : i32">;
+  erase _: Op;
+}
+
+// -----
+
+// CHECK: Module 
+// CHECK: UserConstraintDecl {{.*}} Name<__builtin__mul> ResultType<Attr>
+Pattern {
+  let result : Attr = attr<"4 : i32"> * attr<"5 : i32">;
+  erase _: Op;
+}
+
+// -----
+
+// CHECK: Module 
+// CHECK: UserConstraintDecl {{.*}} Name<__builtin__div> ResultType<Attr>
+Pattern {
+  let result : Attr = attr<"4 : i32"> / attr<"5 : i32">;
+  erase _: Op;
+}
+
+// -----
+
+// CHECK: Module 
+// CHECK: UserConstraintDecl {{.*}} Name<__builtin__mod> ResultType<Attr>
+Pattern {
+  let result : Attr = attr<"4 : i32"> % attr<"5 : i32">;
+  erase _: Op;
+}

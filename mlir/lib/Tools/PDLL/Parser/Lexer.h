@@ -81,6 +81,9 @@ public:
     equal_arrow,
     semicolon,
     /// Paired punctuation.
+    mul,
+    div,
+    mod,
     less,
     greater,
     l_brace,
