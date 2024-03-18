@@ -248,7 +248,6 @@ Token Lexer::lexToken() {
         continue;
       }
       return formToken(Token::div, tokStart);
-      //return emitError(tokStart, "unexpected character");
 
     // Ignore whitespace characters.
     case 0:
