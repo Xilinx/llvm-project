@@ -10,11 +10,15 @@
 #include "mlir/Dialect/EmitC/IR/EmitCTraits.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/IRMapping.h"
+#include "mlir/IR/Types.h"
 #include "mlir/Interfaces/FunctionImplementation.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Casting.h"
 
 using namespace mlir;
 using namespace mlir::emitc;
@@ -52,6 +56,44 @@ Operation *EmitCDialect::materializeConstant(OpBuilder &builder,
 /// without arguments.
 void mlir::emitc::buildTerminatedBody(OpBuilder &builder, Location loc) {
   builder.create<emitc::YieldOp>(loc);
+}
+
+bool mlir::emitc::isValidEmitCType(Type type) {
+  if (isa<emitc::OpaqueType>(type)) {
+    return true;
+  }
+  if (auto ptrType = dyn_cast<emitc::PointerType>(type)) {
+    return isValidEmitCType(ptrType.getPointee());
+  }
+  if (auto arrayType = llvm::dyn_cast<emitc::ArrayType>(type)) {
+    auto elemType = arrayType.getElementType();
+    return !isa<emitc::ArrayType>(elemType) && isValidEmitCType(elemType);
+  }
+  if (type.isIndex()) {
+    return true;
+  }
+  if (isa<IntegerType>(type)) {
+    return isSupportedIntegerType(type);
+  }
+  if (auto floatType = llvm::dyn_cast<FloatType>(type)) {
+    return isSupportedFloatType(type);
+  }
+  if (auto tensorType = llvm::dyn_cast<TensorType>(type)) {
+    if (!tensorType.hasStaticShape()) {
+      return false;
+    }
+    auto elemType = tensorType.getElementType();
+    if (isa<emitc::ArrayType>(elemType)) {
+      return false;
+    }
+    return isValidEmitCType(elemType);
+  }
+  if (auto tupleType = llvm::dyn_cast<TupleType>(type)) {
+    return llvm::all_of(tupleType.getTypes(), [](Type type) {
+      return !isa<emitc::ArrayType>(type) && isValidEmitCType(type);
+    });
+  }
+  return false;
 }
 
 bool mlir::emitc::isSupportedIntegerType(Type type) {

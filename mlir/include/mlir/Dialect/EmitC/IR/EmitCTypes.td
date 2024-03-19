@@ -22,6 +22,9 @@ include "mlir/IR/BuiltinTypeInterfaces.td"
 // EmitC type definitions
 //===----------------------------------------------------------------------===//
 
+def Valid_EmitC_Type : Type<CPred<"emitc::isValidEmitCType($_self)">,
+    "EmitC dialect type">;
+
 def EmitCIntegerType : Type<CPred<"emitc::isSupportedIntegerType($_self)">,
     "integer type supported by EmitC">;
 
