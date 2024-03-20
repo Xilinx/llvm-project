@@ -13,6 +13,10 @@
 #ifndef MLIR_DIALECT_PDL_IR_BUILTINS_H_
 #define MLIR_DIALECT_PDL_IR_BUILTINS_H_
 
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Support/LogicalResult.h"
+#include "llvm/ADT/ArrayRef.h"
+
 namespace mlir {
 class PDLPatternModule;
 class Attribute;
@@ -29,6 +33,8 @@ Attribute addEntryToDictionaryAttr(PatternRewriter &rewriter,
 Attribute createArrayAttr(PatternRewriter &rewriter);
 Attribute addElemToArrayAttr(PatternRewriter &rewriter, Attribute attr,
                              Attribute element);
+LogicalResult add(PatternRewriter &rewriter, PDLResultList &results,
+                  llvm::ArrayRef<PDLValue> args);
 } // namespace builtin
 } // namespace pdl
 } // namespace mlir

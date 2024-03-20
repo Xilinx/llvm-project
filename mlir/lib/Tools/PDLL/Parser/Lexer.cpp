@@ -220,7 +220,8 @@ Token Lexer::lexToken() {
       return formToken(Token::l_square, tokStart);
     case ']':
       return formToken(Token::r_square, tokStart);
-
+    case '+':
+      return formToken(Token::add, tokStart);
     case '<':
       return formToken(Token::less, tokStart);
     case '>':

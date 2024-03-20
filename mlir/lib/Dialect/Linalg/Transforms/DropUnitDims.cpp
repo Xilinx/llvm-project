@@ -132,10 +132,12 @@ struct MoveInitOperandsToInput : public OpRewritePattern<GenericOp> {
         newIndexingMaps, genericOp.getIteratorTypesArray(),
         /*bodyBuild=*/nullptr, linalg::getPrunedAttributeList(genericOp));
 
-    OpBuilder::InsertionGuard guard(rewriter);
     Region &region = newOp.getRegion();
-    Block *block = rewriter.createBlock(&region);
+    Block *block = new Block();
+    region.push_back(block);
     IRMapping mapper;
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPointToStart(block);
     for (auto bbarg : genericOp.getRegionInputArgs())
       mapper.map(bbarg, block->addArgument(bbarg.getType(), loc));
 
