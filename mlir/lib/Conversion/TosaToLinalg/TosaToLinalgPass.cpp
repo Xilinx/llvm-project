@@ -26,6 +26,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
+#include <mlir/Dialect/Func/Transforms/FuncConversions.h>
 
 namespace mlir {
 #define GEN_PASS_DEF_TOSATOLINALG
@@ -44,6 +45,33 @@ public:
   }
 
   void runOnOperation() override {
+    TypeConverter converter;
+    converter.addConversion([&](Type type) -> std::optional<Type> {
+      if (type.isUnsignedInteger()) {
+        return IntegerType::get(&getContext(), type.getIntOrFloatBitWidth(),
+                                IntegerType::SignednessSemantics::Signless);
+      }
+      return type;
+    });
+    converter.addConversion([&](TensorType type) -> std::optional<Type> {
+      auto converted = converter.convertType(type.getElementType());
+      if (!converted)
+        return {};
+      return type.clone(converted);
+    });
+    converter.addConversion(
+        [&converter](FunctionType ty) -> std::optional<Type> {
+          SmallVector<Type> inputs;
+          if (failed(converter.convertTypes(ty.getInputs(), inputs)))
+            return std::nullopt;
+
+          SmallVector<Type> results;
+          if (failed(converter.convertTypes(ty.getResults(), results)))
+            return std::nullopt;
+
+          return FunctionType::get(ty.getContext(), inputs, results);
+        });
+
     RewritePatternSet patterns(&getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<linalg::LinalgDialect, tensor::TensorDialect,
@@ -59,11 +87,20 @@ public:
     target.addLegalOp<tosa::SliceOp>();
     target.addLegalOp<tosa::ReshapeOp>();
     target.addLegalOp<tosa::PadOp>();
-
+    target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
+      return converter.isSignatureLegal(op.getFunctionType());
+    });
+    target.addDynamicallyLegalDialect<func::FuncDialect>(
+        [&](Operation *op) { return converter.isLegal(op); });
     target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
 
     FunctionOpInterface func = getOperation();
-    mlir::tosa::populateTosaToLinalgConversionPatterns(&patterns);
+    mlir::tosa::populateTosaToLinalgConversionPatterns(converter, &patterns);
+    populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                   converter);
+    populateCallOpTypeConversionPattern(patterns, converter);
+    populateReturnOpTypeConversionPattern(patterns, converter);
+
     if (failed(applyFullConversion(func, target, std::move(patterns))))
       signalPassFailure();
   }
