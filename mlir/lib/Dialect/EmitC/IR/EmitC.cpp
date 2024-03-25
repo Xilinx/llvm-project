@@ -54,7 +54,7 @@ void mlir::emitc::buildTerminatedBody(OpBuilder &builder, Location loc) {
   builder.create<emitc::YieldOp>(loc);
 }
 
-bool mlir::emitc::isValidEmitCIntegerType(Type type) {
+bool mlir::emitc::isSupportedIntegerType(Type type) {
   if (auto intType = llvm::dyn_cast<IntegerType>(type)) {
     switch (intType.getWidth()) {
     case 1:
@@ -70,7 +70,7 @@ bool mlir::emitc::isValidEmitCIntegerType(Type type) {
   return false;
 }
 
-bool mlir::emitc::isValidEmitCFloatType(Type type) {
+bool mlir::emitc::isSupportedFloatType(Type type) {
   if (auto floatType = llvm::dyn_cast<FloatType>(type)) {
     switch (floatType.getWidth()) {
     case 32:
@@ -760,20 +760,6 @@ LogicalResult emitc::VariableOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// SubscriptOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult emitc::SubscriptOp::verify() {
-  if (getIndices().size() != (size_t)getArray().getType().getRank()) {
-    return emitOpError() << "requires number of indices ("
-                         << getIndices().size()
-                         << ") to match the rank of the array type ("
-                         << getArray().getType().getRank() << ")";
-  }
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // YieldOp
 //===----------------------------------------------------------------------===//
 
@@ -787,6 +773,20 @@ LogicalResult emitc::YieldOp::verify() {
   if (!result && containingOp->getNumResults() != 0)
     return emitOpError() << "does not yield a value to be returned by parent";
 
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SubscriptOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult emitc::SubscriptOp::verify() {
+  if (getIndices().size() != (size_t)getArray().getType().getRank()) {
+    return emitOpError() << "requires number of indices ("
+                         << getIndices().size()
+                         << ") to match the rank of the array type ("
+                         << getArray().getType().getRank() << ")";
+  }
   return success();
 }
 

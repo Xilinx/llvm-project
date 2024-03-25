@@ -18,11 +18,13 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Target/Cpp/CppEmitter.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
+#include <stack>
 #include <utility>
 
 #define DEBUG_TYPE "translate-to-cpp"
@@ -1209,7 +1211,7 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
 
   // Print floating point attributes.
   if (auto fAttr = dyn_cast<FloatAttr>(attr)) {
-    if (!fAttr.getType().isF32() && !fAttr.getType().isF64()) {
+    if (!isa<Float32Type, Float64Type>(fAttr.getType())) {
       return emitError(loc,
                        "expected floating point attribute to be f32 or f64");
     }
@@ -1217,7 +1219,7 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
     return success();
   }
   if (auto dense = dyn_cast<DenseFPElementsAttr>(attr)) {
-    if (!dense.getElementType().isF32() && !dense.getElementType().isF64()) {
+    if (!isa<Float32Type, Float64Type>(dense.getElementType())) {
       return emitError(loc,
                        "expected floating point attribute to be f32 or f64");
     }
