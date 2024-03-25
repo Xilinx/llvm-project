@@ -1409,7 +1409,7 @@ LogicalResult CppEmitter::emitGlobalVariable(GlobalOp op) {
     os << "extern ";
   else if (op.getStaticSpecifier())
     os << "static ";
-  if (op.getConstant())
+  if (op.getConstSpecifier())
     os << "const ";
 
   if (failed(emitVariableDeclaration(op->getLoc(), op.getType(),

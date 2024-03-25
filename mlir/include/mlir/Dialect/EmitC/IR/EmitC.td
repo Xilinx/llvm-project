@@ -1027,8 +1027,8 @@ def EmitC_GlobalOp : EmitC_Op<"global", [Symbol]> {
     and external linkage can be specified using the `externSpecifier` unit attribute.
     Note that the default linkage without those two keywords depends on whether
     the target is C or C++ and whether the global variable is `const`.
-    The global variable can also be marked constant using the
-    `const` unit attribute. Writing to such constant global variables is
+    The global variable can also be marked constant using the `constSpecifier`
+    unit attribute. Writing to such constant global variables is
     undefined.
 
     The global variable can be accessed by using the `emitc.get_global` to
@@ -1051,16 +1051,17 @@ def EmitC_GlobalOp : EmitC_Op<"global", [Symbol]> {
                        OptionalAttr<EmitC_OpaqueOrTypedAttr>:$initial_value,
                        UnitAttr:$externSpecifier,
                        UnitAttr:$staticSpecifier,
-                       UnitAttr:$constant);
+                       UnitAttr:$constSpecifier);
 
   let assemblyFormat = [{
-       (`extern` $externSpecifier^)? (`static` $staticSpecifier^)? (`const` $constant^)?
-       $sym_name `:` custom<EmitCGlobalOpTypeAndInitialValue>($type, $initial_value) attr-dict
+       (`extern` $externSpecifier^)?
+       (`static` $staticSpecifier^)?
+       (`const` $constSpecifier^)?
+       $sym_name
+       `:` custom<EmitCGlobalOpTypeAndInitialValue>($type, $initial_value)
+       attr-dict
   }];
 
-  let extraClassDeclaration = [{
-     bool isConstant() { return getConstant(); }
-  }];
   let hasVerifier = 1;
 }
 
