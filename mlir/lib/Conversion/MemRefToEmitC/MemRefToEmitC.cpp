@@ -74,10 +74,15 @@ struct ConvertGlobal final : public OpConversionPattern<memref::GlobalOp> {
                                          "cannot convert result type");
     }
 
+    SymbolTable::Visibility visibility = SymbolTable::getSymbolVisibility(op);
+    if (visibility == SymbolTable::Visibility::Nested) {
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "nested visibility is "
+                                         "currently not supported");
+    }
     // We are explicit in specifier the linkage because the default linkage
     // for constants is different in C and C++.
-    bool staticSpecifier =
-        SymbolTable::getSymbolVisibility(op) != SymbolTable::Visibility::Public;
+    bool staticSpecifier = visibility == SymbolTable::Visibility::Private;
     bool externSpecifier = !staticSpecifier;
 
     rewriter.replaceOpWithNewOp<emitc::GlobalOp>(
