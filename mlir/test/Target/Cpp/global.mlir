@@ -19,14 +19,17 @@ emitc.global const @myconstant : !emitc.array<2xi16> = dense<2>
 emitc.global extern const @extern_constant : !emitc.array<2xi16>
 // CHECK: extern const int16_t extern_constant[2];
 
+emitc.global static @static_var : f32
+// CHECK: static float static_var;
 
-emitc.global static @internal_linkage : f32
-// CHECK: static float internal_linkage;
+emitc.global static @static_const : f32 = 3.0
+// CHECK: static float static_const = 3.000000000e+00f;
 
 func.func @use_global(%i: index) -> f32 {
   %0 = emitc.get_global @myglobal : !emitc.array<2xf32>
   %1 = emitc.subscript %0[%i] : <2xf32>
   return %1 : f32
-  // CHECK: float use_global(size_t v1) {
-  // CHECK:   return myglobal[v1];
+  // CHECK-LABEL: use_global
+  // CHECK-SAME: (size_t [[V1:.*]])
+  // CHECK:   return myglobal[[[V1]]];
 }

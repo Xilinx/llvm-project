@@ -978,8 +978,7 @@ LogicalResult GlobalOp::verify() {
 
 LogicalResult
 GetGlobalOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
-  // Verify that the result type is same as the type of the referenced
-  // memref.global op.
+  // Verify that the type matches the type of the global variable.
   auto global =
       symbolTable.lookupNearestSymbolFrom<GlobalOp>(*this, getNameAttr());
   if (!global)
