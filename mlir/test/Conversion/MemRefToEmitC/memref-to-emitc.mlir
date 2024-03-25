@@ -41,7 +41,7 @@ func.func @memref_load_store(%in: memref<4x8xf32>, %out: memref<3x5xf32>, %i: in
 
 // CHECK-LABEL: alloca
 func.func @alloca() {
-  // CHECK "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.array<4x8xf32>
+  // CHECK: "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.array<4x8xf32>
   %0 = memref.alloca() : memref<4x8xf32>
   return
 }
@@ -49,11 +49,14 @@ func.func @alloca() {
 
 // CHECK-LABEL: globals
 module @globals {
-  memref.global "private" constant @myglobal : memref<3x7xf32> = dense<4.0>
-  // CHECK emitc.global constant @myglobal : !emitc.array<3x7xf32> = dense<4.000000e+00>
+  memref.global "private" constant @internal_global : memref<3x7xf32> = dense<4.0>
+  // CHECK: emitc.global static const @internal_global : !emitc.array<3x7xf32> = dense<4.000000e+00>
+  memref.global @public_global : memref<3x7xf32>
+  // CHECK: emitc.global @public_global : !emitc.array<3x7xf32>
+
   func.func @use_global() {
-    // CHECK emitc.get_global @myglobal : !emitc.array<3x7xf32>
-    %0 = memref.get_global @myglobal : memref<3x7xf32>
+    // CHECK: emitc.get_global @public_global : !emitc.array<3x7xf32>
+    %0 = memref.get_global @public_global : memref<3x7xf32>
     return
   }
 }
