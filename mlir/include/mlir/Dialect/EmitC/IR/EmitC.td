@@ -1022,12 +1022,10 @@ def EmitC_GlobalOp : EmitC_Op<"global", [Symbol]> {
     The `emitc.global` operation declares or defines a named global variable.
     The backing memory for the variable is allocated statically and is
     described by the type of the variable.
-    The operation is a declaration if no `initial_value` is
-    specified, else it is a definition. The `initial_value` can either be a unit
-    attribute to represent a definition of an uninitialized global variable, or
-    an elements attribute to represent the definition of a global variable with
-    an initial value. The global variable can also be marked constant using the
-    `constant` unit attribute. Writing to such constant global variables is
+    Optionally, and `initial_value` can be provided.
+    External linkage can be specified using the `extern` unit attribute.
+    The global variable can also be marked constant using the
+    `const` unit attribute. Writing to such constant global variables is
     undefined.
 
     The global variable can be accessed by using the `emitc.get_global` to
