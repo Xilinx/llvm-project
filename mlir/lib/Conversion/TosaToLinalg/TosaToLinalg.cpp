@@ -544,18 +544,6 @@ createLinalgBodyCalculationForElementwiseOp(Operation *op, ValueRange args,
     }
   }
 
-  // tosa::CustomOp
-  if (auto customOp = dyn_cast<tosa::CustomOp>(op)) {
-    // Only legalize tosa.custom_op's that are marked as implementable with
-    // 'linalg.generic' by looking at the 'implementation_attrs' attribute
-    auto implementationAttr = customOp.getImplementationAttrs();
-    if (implementationAttr == "linalg.generic") {
-      OperationState state(loc, customOp.getOperatorName(), args,
-                           resultTypes);
-      return rewriter.create(state)->getResult(0);
-    }
-  }
-
   (void)rewriter.notifyMatchFailure(
       op, "unhandled op for linalg body calculation for elementwise op");
   return nullptr;
@@ -2480,7 +2468,6 @@ void mlir::tosa::populateTosaToLinalgConversionPatterns(
       PointwiseConverter<tosa::FloorOp>,
       PointwiseConverter<tosa::ClampOp>,
       PointwiseConverter<tosa::SigmoidOp>,
-      PointwiseConverter<tosa::CustomOp>,
       IdentityNConverter<tosa::IdentityOp>,
       ReduceConverter<tosa::ReduceAllOp>,
       ReduceConverter<tosa::ReduceAnyOp>,
