@@ -390,12 +390,7 @@ func.func @logical_or_resulterror(%arg0: i32, %arg1: i32) {
 
 // -----
 
-// expected-error @+1 {{'emitc.global' op cannot define uninitialized constant}}
-emitc.global const @uninit : i32
-
-// -----
-
-// expected-error @+1 {{'emitc.global' op cannot have internal and external linkage}}
+// expected-error @+1 {{'emitc.global' op cannot have both static and extern specifiers}}
 emitc.global extern static @uninit : i32
 
 // -----

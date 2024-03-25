@@ -1023,8 +1023,10 @@ def EmitC_GlobalOp : EmitC_Op<"global", [Symbol]> {
     The backing memory for the variable is allocated statically and is
     described by the type of the variable.
     Optionally, and `initial_value` can be provided.
-    Internal linkage can be specified using the `internal` unit attribute
-    and external linkage can be specified using the `external` unit attribute.
+    Internal linkage can be specified using the `staticSpecifier` unit attribute
+    and external linkage can be specified using the `externSpecifier` unit attribute.
+    Note that the default linkage without those two keywords depends on whether
+    the target is C or C++ and whether the global variable is `const`.
     The global variable can also be marked constant using the
     `const` unit attribute. Writing to such constant global variables is
     undefined.
@@ -1047,18 +1049,16 @@ def EmitC_GlobalOp : EmitC_Op<"global", [Symbol]> {
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttr:$type,
                        OptionalAttr<EmitC_OpaqueOrTypedAttr>:$initial_value,
-                       UnitAttr:$external,
-                       UnitAttr:$internal,
+                       UnitAttr:$externSpecifier,
+                       UnitAttr:$staticSpecifier,
                        UnitAttr:$constant);
 
   let assemblyFormat = [{
-       (`extern` $external^)? (`static` $internal^)? (`const` $constant^)?
+       (`extern` $externSpecifier^)? (`static` $staticSpecifier^)? (`const` $constant^)?
        $sym_name `:` custom<EmitCGlobalOpTypeAndInitialValue>($type, $initial_value) attr-dict
   }];
 
   let extraClassDeclaration = [{
-     bool hasExternalLinkage() { return getExternal(); }
-     bool hasInternalLinkage() { return getInternal(); }
      bool isConstant() { return getConstant(); }
   }];
   let hasVerifier = 1;

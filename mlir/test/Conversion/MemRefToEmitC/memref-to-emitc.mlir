@@ -52,7 +52,7 @@ module @globals {
   memref.global "private" constant @internal_global : memref<3x7xf32> = dense<4.0>
   // CHECK: emitc.global static const @internal_global : !emitc.array<3x7xf32> = dense<4.000000e+00>
   memref.global @public_global : memref<3x7xf32>
-  // CHECK: emitc.global @public_global : !emitc.array<3x7xf32>
+  // CHECK: emitc.global extern @public_global : !emitc.array<3x7xf32>
 
   func.func @use_global() {
     // CHECK: emitc.get_global @public_global : !emitc.array<3x7xf32>

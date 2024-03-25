@@ -132,12 +132,15 @@ struct ConvertGlobal final : public OpConversionPattern<memref::GlobalOp> {
                                          "cannot convert result type");
     }
 
-    bool staticLinkage =
+    // We are explicit in specifier the linkage because the default linkage
+    // for constants is different in C and C++.
+    bool staticSpecifier =
         SymbolTable::getSymbolVisibility(op) != SymbolTable::Visibility::Public;
+    bool externSpecifier = !staticSpecifier;
 
     rewriter.replaceOpWithNewOp<emitc::GlobalOp>(
         op, operands.getSymName(), resultTy, operands.getInitialValueAttr(),
-        /*external=*/false, staticLinkage, operands.getConstant());
+        externSpecifier, staticSpecifier, operands.getConstant());
     return success();
   }
 };
