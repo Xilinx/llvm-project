@@ -390,8 +390,8 @@ func.func @logical_or_resulterror(%arg0: i32, %arg1: i32) {
 
 // -----
 
-// expected-error @+1 {{'emitc.global' op cannot declare uninitialized constant}}
-emitc.global constant @uninit : i32 = uninitialized
+// expected-error @+1 {{'emitc.global' op cannot define uninitialized constant}}
+emitc.global const @uninit : i32
 
 // -----
 

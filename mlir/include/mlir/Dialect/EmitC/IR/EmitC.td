@@ -1036,28 +1036,29 @@ def EmitC_GlobalOp : EmitC_Op<"global", [Symbol]> {
     Example:
 
     ```mlir
-    // Private variable with an initial value.
+    // Global variable with an initial value.
     emitc.global @x : emitc.array<2xf32> = dense<0.0, 2.0>
+    // External global variable
+    emitc.global extern @x : emitc.array<2xf32>
+    // Constant global variable
+    emitc.global const @x : i32 = 0
     ```
   }];
 
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttr:$type,
-                       OptionalAttr<AnyAttr>:$initial_value,
+                       OptionalAttr<EmitC_OpaqueOrTypedAttr>:$initial_value,
+                       UnitAttr:$external,
                        UnitAttr:$constant);
 
   let assemblyFormat = [{
-       (`constant` $constant^)?
-       $sym_name `:`
-       custom<EmitCGlobalOpTypeAndInitialValue>($type, $initial_value)
-       attr-dict
+       (`extern` $external^)? (`const` $constant^)?
+       $sym_name `:` custom<EmitCGlobalOpTypeAndInitialValue>($type, $initial_value) attr-dict
   }];
 
   let extraClassDeclaration = [{
-     bool isExternal() { return !getInitialValue(); }
-     bool isUninitialized() {
-       return !isExternal() && ::llvm::isa<UnitAttr>(*getInitialValue());
-     }
+     bool isExternal() { return getExternal(); }
+     bool isConstant() { return getConstant(); }
   }];
   let hasVerifier = 1;
 }

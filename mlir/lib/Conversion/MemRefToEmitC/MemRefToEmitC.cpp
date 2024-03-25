@@ -121,10 +121,10 @@ struct ConvertGlobal final : public OpConversionPattern<memref::GlobalOp> {
     }
 
     if (op.getAlignment().value_or(1) > 1) {
-      // TODO: Allow alignment if it is not more than the natural alignment
-      // of the C array.
+      // TODO: Extend GlobalOp to specify alignment via the `alignas` specifier.
       return rewriter.notifyMatchFailure(
-          op.getLoc(), "cannot global alloca with alignment requirement");
+          op.getLoc(), "global variable with alignment requirement is "
+                       "currently not supported");
     }
 
     auto resultTy = getTypeConverter()->convertType(op.getType());

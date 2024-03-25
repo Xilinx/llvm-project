@@ -893,17 +893,13 @@ LogicalResult mlir::emitc::OpaqueType::verify(
 //===----------------------------------------------------------------------===//
 // GlobalOp
 //===----------------------------------------------------------------------===//
-
 static void printEmitCGlobalOpTypeAndInitialValue(OpAsmPrinter &p, GlobalOp op,
                                                   TypeAttr type,
                                                   Attribute initialValue) {
   p << type;
-  if (!op.isExternal()) {
+  if (initialValue) {
     p << " = ";
-    if (op.isUninitialized())
-      p << "uninitialized";
-    else
-      p.printAttributeWithoutType(initialValue);
+    p.printAttributeWithoutType(initialValue);
   }
 }
 
@@ -925,13 +921,9 @@ parseEmitCGlobalOpTypeAndInitialValue(OpAsmParser &parser, TypeAttr &typeAttr,
   if (parser.parseOptionalEqual())
     return success();
 
-  if (succeeded(parser.parseOptionalKeyword("uninitialized"))) {
-    initialValue = UnitAttr::get(parser.getContext());
-    return success();
-  }
-
   if (parser.parseAttribute(initialValue, getInitializerTypeForGlobal(type)))
     return failure();
+
   if (!llvm::isa<ElementsAttr, IntegerAttr, FloatAttr>(initialValue))
     return parser.emitError(parser.getNameLoc())
            << "initial value should be a unit, integer, float or elements "
@@ -967,16 +959,14 @@ LogicalResult GlobalOp::verify() {
         return emitOpError("initial value expected to be of type ")
                << getType() << ", but was of type " << floatAttr.getType();
       }
-    } else if (isa<UnitAttr>(initValue)) {
-      if (getConstant()) {
-        return emitOpError("cannot declare uninitialized constant");
-      }
     } else {
       return emitOpError(
                  "initial value should be a unit, integer, float or elements "
                  "attribute, but got ")
              << initValue;
     }
+  } else if (isConstant() && !isExternal()) {
+    return emitOpError("cannot define uninitialized constant");
   }
   return success();
 }
