@@ -15,6 +15,7 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 using namespace mlir;
@@ -47,6 +48,17 @@ emitc::CmpOp isNan(ConversionPatternRewriter &rewriter, Location loc,
       loc, rewriter.getI1Type(), emitc::CmpPredicate::ne, operand, operand);
 }
 
+/// Return an op that return true (in i1) if the operands \p first and \p second
+/// are unordered (i.e., at least one of them is NaN).
+emitc::LogicalOrOp createCheckIsUnordered(ConversionPatternRewriter &rewriter,
+                                          Location loc, Value first,
+                                          Value second) {
+  auto firstIsNaN = isNan(rewriter, loc, first);
+  auto secondIsNaN = isNan(rewriter, loc, second);
+  return rewriter.create<emitc::LogicalOrOp>(loc, rewriter.getI1Type(),
+                                             firstIsNaN, secondIsNaN);
+}
+
 class CmpFOpConversion : public OpConversionPattern<arith::CmpFOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -54,36 +66,60 @@ public:
   LogicalResult
   matchAndRewrite(arith::CmpFOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    bool unordered = false;
     emitc::CmpPredicate predicate;
     switch (op.getPredicate()) {
+    case arith::CmpFPredicate::UEQ:
+      // unordered or equal
+      unordered = true;
+      predicate = emitc::CmpPredicate::eq;
+      break;
     case arith::CmpFPredicate::UGT:
       // unordered or greater than
+      unordered = true;
       predicate = emitc::CmpPredicate::gt;
+      break;
+    case arith::CmpFPredicate::UGE:
+      // unordered or greater equal
+      unordered = true;
+      predicate = emitc::CmpPredicate::ge;
       break;
     case arith::CmpFPredicate::ULT:
       // unordered or less than
+      unordered = true;
       predicate = emitc::CmpPredicate::lt;
+      break;
+    case arith::CmpFPredicate::ULE:
+      // unordered or less than
+      unordered = true;
+      predicate = emitc::CmpPredicate::le;
       break;
     case arith::CmpFPredicate::UNO: {
       // unordered, i.e. either operand is nan
-      auto lhsIsNan = isNan(rewriter, op.getLoc(), adaptor.getLhs());
-      if (adaptor.getLhs() == adaptor.getRhs()) {
-        rewriter.replaceOp(op, lhsIsNan);
-        return success();
-      }
-      auto rhsIsNan = isNan(rewriter, op.getLoc(), adaptor.getRhs());
-      rewriter.replaceOpWithNewOp<arith::OrIOp>(op, op.getType(), lhsIsNan,
-                                                rhsIsNan);
-      return success();
+      unordered = true;
+      predicate = emitc::CmpPredicate::ne;
+      break;
     }
     default:
       return rewriter.notifyMatchFailure(op.getLoc(),
                                          "cannot match predicate ");
     }
 
-    rewriter.replaceOpWithNewOp<emitc::CmpOp>(
-        op, op.getType(), predicate, adaptor.getLhs(), adaptor.getRhs());
-    return success();
+    // Compare the values naively
+    auto cmpResult =
+        rewriter.create<emitc::CmpOp>(op.getLoc(), op.getType(), predicate,
+                                      adaptor.getLhs(), adaptor.getRhs());
+
+    // Adjust the results the properly have unordered/ordered semantics
+    if (unordered) {
+      auto isUnordered = createCheckIsUnordered(
+          rewriter, op.getLoc(), adaptor.getLhs(), adaptor.getRhs());
+      rewriter.replaceOpWithNewOp<emitc::LogicalOrOp>(
+          op, op.getType(), isUnordered.getResult(), cmpResult);
+      return success();
+    }
+
+    return failure();
   }
 };
 

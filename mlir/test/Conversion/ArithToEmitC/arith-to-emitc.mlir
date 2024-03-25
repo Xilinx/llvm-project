@@ -58,13 +58,19 @@ func.func @arith_select(%arg0: i1, %arg1: tensor<8xi32>, %arg2: tensor<8xi32>) -
 
 // -----
 
-func.func @cmpf(%arg0: f32, %arg1: f32) {
-  // CHECK: emitc.cmp gt, %arg0, %arg1 : (f32, f32) -> i1
+func.func @cmpf_unordered(%arg0: f32, %arg1: f32) {
+  // CHECK-LABEL: cmpf_unordered
+  // CHECK-SAME: ([[Arg0:[^ ]*]]: f32, [[Arg1:[^ ]*]]: f32)
+  // CHECK-DAG: [[GT:[^ ]*]] = emitc.cmp gt, [[Arg0]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[NaNArg0:[^ ]*]] = emitc.cmp ne, [[Arg0]], [[Arg0]] : (f32, f32) -> i1
+  // CHECK-DAG: [[NaNArg1:[^ ]*]] = emitc.cmp ne, [[Arg1]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[Unordered:[^ ]*]] = emitc.logical_or [[NaNArg0]], [[NaNArg1]] : i1, i1
+  // CHECK-DAG: emitc.logical_or [[Unordered]], [[GT]] : i1, i1
   %0 = arith.cmpf ugt, %arg0, %arg1 : f32
-  // CHECK: emitc.cmp lt, %arg0, %arg1 : (f32, f32) -> i1
+  // CHECK: emitc.cmp lt, [[Arg0]], [[Arg1]] : (f32, f32) -> i1
   %1 = arith.cmpf ult, %arg0, %arg1 : f32
-  // CHECK: emitc.cmp ne, %arg0, %arg0 : (f32, f32) -> i1
-  %2 = arith.cmpf uno, %arg0, %arg0 : f32
+  // CHECK: emitc.cmp ne, [[Arg0]], [[Arg1]] : (f32, f32) -> i1
+  %2 = arith.cmpf uno, %arg0, %arg1 : f32
 
   return
 }
