@@ -22,11 +22,11 @@ include "mlir/IR/BuiltinTypeInterfaces.td"
 // EmitC type definitions
 //===----------------------------------------------------------------------===//
 
-def Valid_EmitC_Integer_Type : Type<CPred<"emitc::isValidEmitCIntegerType($_self)">,
-    "EmitC integer type">;
+def EmitCIntegerType : Type<CPred<"emitc::isSupportedIntegerType($_self)">,
+    "integer type supported by EmitC">;
 
-def Valid_EmitC_Float_Type : Type<CPred<"emitc::isValidEmitCFloatType($_self)">,
-    "EmitC floating-point type">;
+def EmitCFloatType : Type<CPred<"emitc::isSupportedFloatType($_self)">,
+    "floating-point type supported by EmitC">;
 
 class EmitC_Type<string name, string typeMnemonic, list<Trait> traits = []>
     : TypeDef<EmitC_Dialect, name, traits> {
@@ -45,7 +45,7 @@ def EmitC_ArrayType : EmitC_Type<"Array", "array", [ShapedTypeInterface]> {
     // Array emitted as `int32_t[10]`
     !emitc.array<10xi32>
     // Array emitted as `float[10][20]`
-    !emitc.ptr<10x20xf32>
+    !emitc.array<10x20xf32>
     ```
   }];
 
