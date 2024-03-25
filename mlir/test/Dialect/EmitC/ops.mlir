@@ -236,6 +236,8 @@ emitc.verbatim "typedef float f32;"
 
 emitc.global @uninit : i32
 emitc.global @myglobal_int : i32 = 4
+emitc.global extern @external_linkage : i32
+emitc.global static @internal_linkage : i32
 emitc.global @myglobal : !emitc.array<2xf32> = dense<4.000000e+00>
 emitc.global const @myconstant : !emitc.array<2xi16> = dense<2>
 

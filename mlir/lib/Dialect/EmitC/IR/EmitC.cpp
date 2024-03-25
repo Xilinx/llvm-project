@@ -965,8 +965,11 @@ LogicalResult GlobalOp::verify() {
                  "attribute, but got ")
              << initValue;
     }
-  } else if (isConstant() && !isExternal()) {
+  } else if (isConstant() && !hasExternalLinkage()) {
     return emitOpError("cannot define uninitialized constant");
+  }
+  if (hasExternalLinkage() && hasInternalLinkage()) {
+    return emitOpError("cannot have internal and external linkage");
   }
   return success();
 }

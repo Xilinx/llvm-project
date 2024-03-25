@@ -126,16 +126,18 @@ struct ConvertGlobal final : public OpConversionPattern<memref::GlobalOp> {
           op.getLoc(), "global variable with alignment requirement is "
                        "currently not supported");
     }
-
     auto resultTy = getTypeConverter()->convertType(op.getType());
     if (!resultTy) {
       return rewriter.notifyMatchFailure(op.getLoc(),
                                          "cannot convert result type");
     }
 
+    bool staticLinkage =
+        SymbolTable::getSymbolVisibility(op) != SymbolTable::Visibility::Public;
+
     rewriter.replaceOpWithNewOp<emitc::GlobalOp>(
         op, operands.getSymName(), resultTy, operands.getInitialValueAttr(),
-        operands.getConstant());
+        /*external=*/false, staticLinkage, operands.getConstant());
     return success();
   }
 };

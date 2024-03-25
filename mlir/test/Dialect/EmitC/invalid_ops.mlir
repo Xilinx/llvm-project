@@ -395,6 +395,11 @@ emitc.global const @uninit : i32
 
 // -----
 
+// expected-error @+1 {{'emitc.global' op cannot have internal and external linkage}}
+emitc.global extern static @uninit : i32
+
+// -----
+
 emitc.global @myglobal : !emitc.array<2xf32>
 
 func.func @use_global(%i: index) {

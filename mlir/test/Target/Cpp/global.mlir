@@ -19,6 +19,10 @@ emitc.global const @myconstant : !emitc.array<2xi16> = dense<2>
 emitc.global extern const @extern_constant : !emitc.array<2xi16>
 // CHECK: extern const int16_t extern_constant[2];
 
+
+emitc.global static @internal_linkage : f32
+// CHECK: static float internal_linkage;
+
 func.func @use_global(%i: index) -> f32 {
   %0 = emitc.get_global @myglobal : !emitc.array<2xf32>
   %1 = emitc.subscript %0[%i] : <2xf32>

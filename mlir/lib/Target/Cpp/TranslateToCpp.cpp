@@ -1403,8 +1403,10 @@ LogicalResult CppEmitter::emitVariableDeclaration(OpResult result,
 }
 
 LogicalResult CppEmitter::emitGlobalVariable(GlobalOp op) {
-  if (op.isExternal())
+  if (op.hasExternalLinkage())
     os << "extern ";
+  else if (op.hasInternalLinkage())
+    os << "static ";
   if (op.getConstant())
     os << "const ";
 
