@@ -16,6 +16,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 using namespace mlir;
@@ -96,9 +97,10 @@ public:
       break;
     case arith::CmpFPredicate::UNO: {
       // unordered, i.e. either operand is nan
-      unordered = true;
-      predicate = emitc::CmpPredicate::ne;
-      break;
+      auto cmp = createCheckIsUnordered(rewriter, op.getLoc(), adaptor.getLhs(),
+                                        adaptor.getRhs());
+      rewriter.replaceOp(op, cmp);
+      return success();
     }
     default:
       return rewriter.notifyMatchFailure(op.getLoc(),
