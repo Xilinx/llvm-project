@@ -120,7 +120,7 @@ public:
         rewriter.create<emitc::CmpOp>(op.getLoc(), op.getType(), predicate,
                                       adaptor.getLhs(), adaptor.getRhs());
 
-    // Adjust the results the properly have unordered/ordered semantics
+    // Adjust the results for unordered/ordered semantics
     if (unordered) {
       auto isUnordered = createCheckIsUnordered(
           rewriter, op.getLoc(), adaptor.getLhs(), adaptor.getRhs());
