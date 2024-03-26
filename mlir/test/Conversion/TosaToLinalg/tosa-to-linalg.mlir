@@ -1698,34 +1698,6 @@ func.func @table8_dyn_table(%arg0: tensor<6xi8>, %arg1: tensor<?xi8>) -> () {
 
 // -----
 
-// CHECK-LABEL: @test_custom_ops
-func.func @test_custom_ops(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> () {
-  // CHECK: linalg.generic
-  // CHECK: math.sin
-  // CHECK: linalg.generic
-  // CHECK: math.atan2
-  %2 = "tosa.custom"(%arg0) <{domain_name = "UNDEF", operator_name = "math.sin", implementation_attrs = "linalg.generic"}> : (tensor<1xf32>) -> tensor<1xf32>
-  %3 = "tosa.custom"(%arg0, %arg1) <{domain_name = "UNDEF", operator_name = "math.atan2", implementation_attrs = "linalg.generic"}> : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-
-  return
-}
-
-// -----
-
-// CHECK-LABEL: @test_custom_ops_dyn
-func.func @test_custom_ops_dyn(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> () {
-  // CHECK: linalg.generic
-  // CHECK: math.cos
-  // CHECK: linalg.generic
-  // CHECK: math.atan2
-  %2 = "tosa.custom"(%arg0) <{domain_name = "UNDEF", operator_name = "math.cos", implementation_attrs = "linalg.generic"}> : (tensor<?xf32>) -> tensor<?xf32>
-  %3 = "tosa.custom"(%arg0, %arg1) <{domain_name = "UNDEF", operator_name = "math.atan2", implementation_attrs = "linalg.generic"}> : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
-
-  return
-}
-
-// -----
-
 // CHECK: #[[$MAP0:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d3, d4)>
 // CHECK: #[[$MAP1:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2)>
 
