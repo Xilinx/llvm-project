@@ -140,6 +140,11 @@ def ArithToAMDGPUConversionPass : Pass<"convert-arith-to-amdgpu"> {
 def ConvertArithToEmitC : Pass<"convert-arith-to-emitc"> {
   let summary = "Convert Arith dialect to EmitC dialect";
   let dependentDialects = ["emitc::EmitCDialect"];
+  let options = [
+    Option<"floatToIntTruncate", "float-to-int-truncate", "bool",
+           /*default=*/"false",
+           "Whether the behavior of float-to-int cast is truncation">,
+  ];
 }
 
 //===----------------------------------------------------------------------===//

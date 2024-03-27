@@ -173,6 +173,69 @@ public:
   }
 };
 
+// Floating-point to integer conversions.
+/* Semantics of 'arith.fptosi', 'arith.fptoui':
+ *   Cast from a value interpreted as floating-point to the nearest
+ *   (rounding towards zero) signed integer value. When operating on
+ *   vectors, casts elementwise.
+ *
+ *   Rounding towards zero = truncation. Examples:
+ *      4.2 is rounded as  4
+ *      4.5 is rounded as  4
+ *      4.9 is rounded as  4
+ *     -4.2 is rounded as -4
+ *     -4.5 is rounded as -4
+ *     -4.9 is rounded as -4
+ *
+ *   See
+ * https://mlir.llvm.org/docs/Dialects/ArithOps/#arithfptosi-arithfptosiop.
+ *
+ * Achieving truncation in C/C++:
+ *   Compiler-dependent behavior, rounding mode can be specified using
+ *   a pragma (#pragma STDC FENV_ROUND {FE_TONEAREST|...}),
+ *   or via fesetround().
+ *   Therefore issuing a cast will obey these and isn't guaranteed
+ *   to truncate. Using a pass option (downstream compiler truncates)
+ *   can spare us from explicitly truncating here.
+ *
+ * For reference:
+ *   IEEE 754 standard:
+ *   https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=8766229
+ *
+ *   Proposal to deprecate fesetround():
+ *   https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2023/p2746r0.pdf
+ *
+ */
+template <typename FToICastOp>
+class FtoICastOpConversion : public OpConversionPattern<FToICastOp> {
+private:
+  bool floatToIntTruncate;
+
+public:
+  // using OpConversionPattern<FToICastOp>::OpConversionPattern;
+  FtoICastOpConversion(const TypeConverter &typeConverter, MLIRContext *context,
+                       bool optionFloatToIntTruncate)
+      : OpConversionPattern<FToICastOp>(typeConverter, context),
+        floatToIntTruncate(optionFloatToIntTruncate) {}
+
+  LogicalResult
+  matchAndRewrite(FToICastOp castOp, typename FToICastOp::Adaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    if (!floatToIntTruncate)
+      return failure();
+
+    Type dstType = this->getTypeConverter()->convertType(castOp.getType());
+    if (!dstType)
+      return rewriter.notifyMatchFailure(castOp, "type conversion failed");
+
+    rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType,
+                                               adaptor.getOperands());
+
+    return success();
+  }
+};
+
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -180,7 +243,8 @@ public:
 //===----------------------------------------------------------------------===//
 
 void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
-                                        RewritePatternSet &patterns) {
+                                        RewritePatternSet &patterns,
+                                        bool optionFloatToIntTruncate) {
   MLIRContext *ctx = patterns.getContext();
 
   // clang-format off
@@ -195,6 +259,10 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
     ArithOpConversion<arith::SubIOp, emitc::SubOp>,
     CmpFOpConversion,
     SelectOpConversion
-  >(typeConverter, ctx);
+  >(typeConverter, ctx)
+  .add<
+    FtoICastOpConversion<arith::FPToSIOp>,
+    FtoICastOpConversion<arith::FPToUIOp>
+  >(typeConverter, ctx, optionFloatToIntTruncate);
   // clang-format on
 }

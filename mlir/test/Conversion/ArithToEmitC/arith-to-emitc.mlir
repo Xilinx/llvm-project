@@ -143,3 +143,24 @@ func.func @arith_cmpf_uno(%arg0: f32, %arg1: f32) -> i1 {
   // CHECK: return [[Unordered]]
   return %2: i1
 }
+
+// -----
+
+func.func @arith_cast_ops(%arg0: f32, %arg1: f64) {
+  // CHECK: emitc.cast %arg0 : f32 to i32
+  %0 = arith.fptosi %arg0 : f32 to i32
+
+  // CHECK: emitc.cast %arg0 : f32 to i32
+  %1 = arith.fptoui %arg0 : f32 to i32
+
+  // CHECK: emitc.cast %arg1 : f64 to i32
+  %2 = arith.fptosi %arg1 : f64 to i32
+
+  // CHECK: emitc.cast %arg0 : f32 to i16
+  %3 = arith.fptosi %arg0 : f32 to i16
+
+  // CHECK: emitc.cast %arg1 : f64 to i16
+  %4 = arith.fptosi %arg1 : f64 to i16
+
+  return
+}
