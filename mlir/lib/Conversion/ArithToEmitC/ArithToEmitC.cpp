@@ -173,7 +173,7 @@ public:
   }
 };
 
-// Floating-point to integer conversions.
+// Floating-point to integer, integer to floating-point conversions.
 /* Semantics of 'arith.fptosi', 'arith.fptoui':
  *   Cast from a value interpreted as floating-point to the nearest
  *   (rounding towards zero) signed integer value. When operating on
@@ -206,29 +206,32 @@ public:
  *   https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2023/p2746r0.pdf
  *
  */
-template <typename FToICastOp>
-class FtoICastOpConversion : public OpConversionPattern<FToICastOp> {
+template <typename CastOp, bool hasTruncateSemantics>
+class CastOpConversion : public OpConversionPattern<CastOp> {
 private:
   bool floatToIntTruncate;
 
 public:
-  // using OpConversionPattern<FToICastOp>::OpConversionPattern;
-  FtoICastOpConversion(const TypeConverter &typeConverter, MLIRContext *context,
-                       bool optionFloatToIntTruncate)
-      : OpConversionPattern<FToICastOp>(typeConverter, context),
+  CastOpConversion(const TypeConverter &typeConverter, MLIRContext *context,
+                   bool optionFloatToIntTruncate)
+      : OpConversionPattern<CastOp>(typeConverter, context),
         floatToIntTruncate(optionFloatToIntTruncate) {}
 
   LogicalResult
-  matchAndRewrite(FToICastOp castOp, typename FToICastOp::Adaptor adaptor,
+  matchAndRewrite(CastOp castOp, typename CastOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    if (!floatToIntTruncate)
+    // If the op needs to truncate per arith semantics
+    // and a cast isn't guaranteed to do likewise, then
+    // this is unhandled.
+    if (hasTruncateSemantics && !floatToIntTruncate)
       return failure();
 
     Type dstType = this->getTypeConverter()->convertType(castOp.getType());
     if (!dstType)
       return rewriter.notifyMatchFailure(castOp, "type conversion failed");
 
+    // Issue a cast.
     rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType,
                                                adaptor.getOperands());
 
@@ -261,8 +264,10 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
     SelectOpConversion
   >(typeConverter, ctx)
   .add<
-    FtoICastOpConversion<arith::FPToSIOp>,
-    FtoICastOpConversion<arith::FPToUIOp>
+    CastOpConversion<arith::FPToSIOp, true>,
+    CastOpConversion<arith::FPToUIOp, true>,
+    CastOpConversion<arith::SIToFPOp, true>,
+    CastOpConversion<arith::UIToFPOp, true>
   >(typeConverter, ctx, optionFloatToIntTruncate);
   // clang-format on
 }
