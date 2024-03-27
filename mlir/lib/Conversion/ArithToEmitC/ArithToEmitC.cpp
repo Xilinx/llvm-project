@@ -227,6 +227,11 @@ public:
       return rewriter.notifyMatchFailure(castOp,
                                          "casts are only supported on scalars");
 
+    if (!(emitc::isSupportedFloatType(operandType) ||
+          emitc::isSupportedIntegerType(operandType)))
+      return rewriter.notifyMatchFailure(castOp,
+                                         "unsupported cast source type");
+
     // If the op needs to truncate per arith semantics
     // and a cast isn't guaranteed to do likewise, then
     // this is unhandled.
@@ -237,6 +242,10 @@ public:
     if (!dstType)
       return rewriter.notifyMatchFailure(castOp, "type conversion failed");
 
+    if (!(emitc::isSupportedFloatType(dstType) ||
+          emitc::isSupportedIntegerType(dstType)))
+      return rewriter.notifyMatchFailure(castOp,
+                                         "unsupported cast destination type");
     // Issue a cast.
     rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType,
                                                adaptor.getOperands());
