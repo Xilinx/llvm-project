@@ -281,8 +281,8 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
   .add<
     CastOpConversion<arith::FPToSIOp, true>,
     CastOpConversion<arith::FPToUIOp, true>,
-    CastOpConversion<arith::SIToFPOp, true>,
-    CastOpConversion<arith::UIToFPOp, true>
+    CastOpConversion<arith::SIToFPOp, false>,
+    CastOpConversion<arith::UIToFPOp, false>
   >(typeConverter, ctx, optionFloatToIntTruncate);
   // clang-format on
 }
