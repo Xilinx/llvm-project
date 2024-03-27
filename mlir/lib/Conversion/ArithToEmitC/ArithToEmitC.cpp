@@ -221,6 +221,12 @@ public:
   matchAndRewrite(CastOp castOp, typename CastOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
+    // This only works for scalars, no vectors
+    Type operandType = adaptor.getIn().getType();
+    if (!operandType.isIntOrFloat())
+      return rewriter.notifyMatchFailure(castOp,
+                                         "casts are only supported on scalars");
+
     // If the op needs to truncate per arith semantics
     // and a cast isn't guaranteed to do likewise, then
     // this is unhandled.
