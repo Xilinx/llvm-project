@@ -46,7 +46,7 @@ void ConvertArithToEmitC::runOnOperation() {
   TypeConverter typeConverter;
   typeConverter.addConversion([](Type type) { return type; });
 
-  populateArithToEmitCPatterns(typeConverter, patterns, floatToIntTruncate);
+  populateArithToEmitCPatterns(typeConverter, patterns, floatToIntTruncates);
 
   if (failed(
           applyPartialConversion(getOperation(), target, std::move(patterns))))

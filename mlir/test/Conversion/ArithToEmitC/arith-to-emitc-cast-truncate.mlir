@@ -1,4 +1,4 @@
-// RUN: mlir-opt -split-input-file --pass-pipeline="builtin.module(convert-arith-to-emitc{float-to-int-truncate})" %s | FileCheck %s
+// RUN: mlir-opt -split-input-file --pass-pipeline="builtin.module(convert-arith-to-emitc{float-to-int-truncates})" %s | FileCheck %s
 
 func.func @arith_float_to_int_cast_ops(%arg0: f32, %arg1: f64) {
   // CHECK: emitc.cast %arg0 : f32 to i32

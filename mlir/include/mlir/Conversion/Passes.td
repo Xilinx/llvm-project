@@ -139,11 +139,23 @@ def ArithToAMDGPUConversionPass : Pass<"convert-arith-to-amdgpu"> {
 
 def ConvertArithToEmitC : Pass<"convert-arith-to-emitc"> {
   let summary = "Convert Arith dialect to EmitC dialect";
+  let description = [{
+    This pass converts `arith` dialect operations to `emitc`.
+
+    The semantics of floating-point to integer conversions
+    `arith.fptosi`, `arith.fptoui` require a rounding towards 
+    zero. While this behavior can be achieved in C/C++ with a 
+    cast, the cast rounding mode needs to be set to round to 
+    zero (i.e. truncation).
+    If such a guarantee can be provided, use the 
+    `float-to-int-truncates` flag to allow conversion of 
+    `arith.fptosi`, `arith.fptoui` operations.
+  }];
   let dependentDialects = ["emitc::EmitCDialect"];
   let options = [
-    Option<"floatToIntTruncate", "float-to-int-truncate", "bool",
+    Option<"floatToIntTruncates", "float-to-int-truncates", "bool",
            /*default=*/"false",
-           "Whether the behavior of float-to-int cast is truncation">,
+           "Whether the behavior of float-to-int cast in emitc is truncation">,
   ];
 }
 

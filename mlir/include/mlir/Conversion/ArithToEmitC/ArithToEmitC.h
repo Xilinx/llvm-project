@@ -15,7 +15,7 @@ class TypeConverter;
 
 void populateArithToEmitCPatterns(TypeConverter &typeConverter,
                                   RewritePatternSet &patterns,
-                                  bool optionFloatToIntTruncate);
+                                  bool optionFloatToIntTruncates);
 } // namespace mlir
 
 #endif // MLIR_CONVERSION_ARITHTOEMITC_ARITHTOEMITC_H

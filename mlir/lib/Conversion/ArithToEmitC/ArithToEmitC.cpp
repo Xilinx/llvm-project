@@ -174,54 +174,21 @@ public:
 };
 
 // Floating-point to integer, integer to floating-point conversions.
-/* Semantics of 'arith.fptosi', 'arith.fptoui':
- *   Cast from a value interpreted as floating-point to the nearest
- *   (rounding towards zero) signed integer value. When operating on
- *   vectors, casts elementwise.
- *
- *   Rounding towards zero = truncation. Examples:
- *      4.2 is rounded as  4
- *      4.5 is rounded as  4
- *      4.9 is rounded as  4
- *     -4.2 is rounded as -4
- *     -4.5 is rounded as -4
- *     -4.9 is rounded as -4
- *
- *   See
- * https://mlir.llvm.org/docs/Dialects/ArithOps/#arithfptosi-arithfptosiop.
- *
- * Achieving truncation in C/C++:
- *   Compiler-dependent behavior, rounding mode can be specified using
- *   a pragma (#pragma STDC FENV_ROUND {FE_TONEAREST|...}),
- *   or via fesetround().
- *   Therefore issuing a cast will obey these and isn't guaranteed
- *   to truncate. Using a pass option (downstream compiler truncates)
- *   can spare us from explicitly truncating here.
- *
- * For reference:
- *   IEEE 754 standard:
- *   https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=8766229
- *
- *   Proposal to deprecate fesetround():
- *   https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2023/p2746r0.pdf
- *
- */
-template <typename CastOp, bool hasTruncateSemantics>
+template <typename CastOp, bool opHasTruncateSemantics>
 class CastOpConversion : public OpConversionPattern<CastOp> {
 private:
-  bool floatToIntTruncate;
+  bool floatToIntTruncates;
 
 public:
   CastOpConversion(const TypeConverter &typeConverter, MLIRContext *context,
-                   bool optionFloatToIntTruncate)
+                   bool optionFloatToIntTruncates)
       : OpConversionPattern<CastOp>(typeConverter, context),
-        floatToIntTruncate(optionFloatToIntTruncate) {}
+        floatToIntTruncates(optionFloatToIntTruncates) {}
 
   LogicalResult
   matchAndRewrite(CastOp castOp, typename CastOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    // This only works for scalars, no vectors
     Type operandType = adaptor.getIn().getType();
     if (!operandType.isIntOrFloat())
       return rewriter.notifyMatchFailure(castOp,
@@ -232,11 +199,10 @@ public:
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast source type");
 
-    // If the op needs to truncate per arith semantics
-    // and a cast isn't guaranteed to do likewise, then
-    // this is unhandled.
-    if (hasTruncateSemantics && !floatToIntTruncate)
-      return failure();
+    if (opHasTruncateSemantics && !floatToIntTruncates)
+      return rewriter.notifyMatchFailure(
+          castOp,
+          "conversion requires casts to use truncation as rounding mode");
 
     Type dstType = this->getTypeConverter()->convertType(castOp.getType());
     if (!dstType)
@@ -246,7 +212,7 @@ public:
           emitc::isSupportedIntegerType(dstType)))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
-    // Issue a cast.
+
     rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType,
                                                adaptor.getOperands());
 
@@ -262,7 +228,7 @@ public:
 
 void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
                                         RewritePatternSet &patterns,
-                                        bool optionFloatToIntTruncate) {
+                                        bool optionFloatToIntTruncates) {
   MLIRContext *ctx = patterns.getContext();
 
   // clang-format off
@@ -283,6 +249,6 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
     CastOpConversion<arith::FPToUIOp, true>,
     CastOpConversion<arith::SIToFPOp, false>,
     CastOpConversion<arith::UIToFPOp, false>
-  >(typeConverter, ctx, optionFloatToIntTruncate);
+  >(typeConverter, ctx, optionFloatToIntTruncates);
   // clang-format on
 }
