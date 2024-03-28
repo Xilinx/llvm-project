@@ -142,14 +142,14 @@ def ConvertArithToEmitC : Pass<"convert-arith-to-emitc"> {
   let description = [{
     This pass converts `arith` dialect operations to `emitc`.
 
-    The semantics of floating-point to integer conversions
-    `arith.fptosi`, `arith.fptoui` require a rounding towards 
-    zero. While this behavior can be achieved in C/C++ with a 
-    cast, the cast rounding mode needs to be set to round to 
-    zero (i.e. truncation).
-    If such a guarantee can be provided, use the 
-    `float-to-int-truncates` flag to allow conversion of 
-    `arith.fptosi`, `arith.fptoui` operations.
+    The semantics of floating-point to integer conversions `arith.fptosi`, 
+    `arith.fptoui` require rounding towards zero. Typical C++ implementations
+    use this behavior for float-to-integer casts, but that is not mandated by 
+    C++ and there are implementation-defined means to change the default behavior.
+    
+    If casts can be guaranteed to use round-to-zero, use the 
+    `float-to-int-truncates` flag to allow conversion of `arith.fptosi` and
+    `arith.fptoui` operations.
   }];
   let dependentDialects = ["emitc::EmitCDialect"];
   let options = [
