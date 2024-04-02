@@ -608,7 +608,7 @@ func.func @test_simple_ui8(%arg0: tensor<1xui8>) -> () {
 // -----
 
 // CHECK-LABEL: @test_simple_i32
-func.func @test_simple_i32(%arg0: tensor<1xi32>) -> () {
+func.func @test_simple_i32(%arg0: tensor<1xi32>, %arg1: tensor<1xui32>) -> () {
   // CHECK: linalg.generic
   // CHECK: arith.addi
   %0 = tosa.add %arg0, %arg0 : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
@@ -629,6 +629,9 @@ func.func @test_simple_i32(%arg0: tensor<1xi32>) -> () {
   // CHECK: linalg.generic
   // CHECK: arith.divsi
   %4 = tosa.div %arg0, %arg0 : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
+
+  // CHECK: arith.divui
+  %u4 = tosa.div %arg1, %arg1 : (tensor<1xui32>, tensor<1xui32>) -> tensor<1xui32>
 
   // CHECK: linalg.generic
   // CHECK: ^bb0(%[[ARG1:.*]]: i32, %[[ARG2:.*]]: i32):
@@ -661,6 +664,10 @@ func.func @test_simple_i32(%arg0: tensor<1xi32>) -> () {
   %11 = tosa.arithmetic_right_shift %arg0, %arg0 {round = 0 : i1} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
 
   // CHECK: linalg.generic
+  // CHECK: arith.shrui
+  %u11 = tosa.arithmetic_right_shift %arg1, %arg1 {round = 0 : i1} : (tensor<1xui32>, tensor<1xui32>) -> tensor<1xui32>
+
+  // CHECK: linalg.generic
   // CHECK: arith.constant 1
   // CHECK: arith.constant 0
   // CHECK: arith.constant true
@@ -673,6 +680,20 @@ func.func @test_simple_i32(%arg0: tensor<1xi32>) -> () {
   // CHECK: arith.extui
   // CHECK: arith.addi
   %12 = tosa.arithmetic_right_shift %arg0, %arg0 {round = 1 : i1} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
+
+  // CHECK: linalg.generic
+  // CHECK: arith.constant 1
+  // CHECK: arith.constant 0
+  // CHECK: arith.constant true
+  // CHECK: arith.cmpi
+  // CHECK: arith.subi
+  // CHECK: arith.shrui
+  // CHECK: arith.trunci
+  // CHECK: and
+  // CHECK: and
+  // CHECK: arith.extui
+  // CHECK: arith.addi
+  %u12 = tosa.arithmetic_right_shift %arg1, %arg1 {round = 1 : i1} : (tensor<1xui32>, tensor<1xui32>) -> tensor<1xui32>
 
   // CHECK: math.ctlz
   %13 = tosa.clz %arg0 : (tensor<1xi32>) -> tensor<1xi32>

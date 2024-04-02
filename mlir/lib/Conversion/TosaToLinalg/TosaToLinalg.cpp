@@ -53,6 +53,8 @@ static Value createLinalgBodyCalculationForElementwiseOp(
   auto elementTy =
       cast<ShapedType>(op->getOperand(0).getType()).getElementType();
 
+  auto convertedElementTy = args[0].getType();
+
   // tosa::AbsOp
   if (isa<tosa::AbsOp>(op) && isa<FloatType>(elementTy))
     return rewriter.create<math::AbsFOp>(loc, resultTypes, args);
@@ -227,7 +229,11 @@ static Value createLinalgBodyCalculationForElementwiseOp(
 
   // tosa::ArithmeticRightShiftOp
   if (isa<tosa::ArithmeticRightShiftOp>(op) && isa<IntegerType>(elementTy)) {
-    auto result = rewriter.create<arith::ShRSIOp>(loc, resultTypes, args);
+    auto result = elementTy.isSignlessInteger()
+                      ? rewriter.create<arith::ShRSIOp>(loc, resultTypes, args)
+                            .getResult()
+                      : rewriter.create<arith::ShRUIOp>(loc, resultTypes, args)
+                            .getResult();
     auto round = cast<BoolAttr>(op->getAttr("round")).getValue();
     if (!round) {
       return result;
@@ -235,9 +241,9 @@ static Value createLinalgBodyCalculationForElementwiseOp(
 
     Type i1Ty = IntegerType::get(rewriter.getContext(), /*width=*/1);
     auto one =
-        rewriter.create<arith::ConstantOp>(loc, IntegerAttr::get(elementTy, 1));
+        rewriter.create<arith::ConstantOp>(loc, IntegerAttr::get(convertedElementTy, 1));
     auto zero =
-        rewriter.create<arith::ConstantOp>(loc, IntegerAttr::get(elementTy, 0));
+        rewriter.create<arith::ConstantOp>(loc, IntegerAttr::get(convertedElementTy, 0));
     auto i1one =
         rewriter.create<arith::ConstantOp>(loc, IntegerAttr::get(i1Ty, 1));
 
@@ -249,10 +255,14 @@ static Value createLinalgBodyCalculationForElementwiseOp(
     auto subtract =
         rewriter.create<arith::SubIOp>(loc, resultTypes, args[1], one);
     auto shifted =
-        rewriter.create<arith::ShRSIOp>(loc, resultTypes, args[0], subtract)
-            ->getResults();
-    auto truncated =
-        rewriter.create<arith::TruncIOp>(loc, i1Ty, shifted, std::nullopt);
+        elementTy.isSignlessInteger()
+            ? rewriter
+                  .create<arith::ShRSIOp>(loc, resultTypes, args[0], subtract)
+                  .getResult()
+            : rewriter
+                  .create<arith::ShRUIOp>(loc, resultTypes, args[0], subtract)
+                  .getResult();
+    auto truncated = rewriter.create<arith::TruncIOp>(loc, i1Ty, shifted);
     auto isInputOdd =
         rewriter.create<arith::AndIOp>(loc, i1Ty, truncated, i1one);
 
