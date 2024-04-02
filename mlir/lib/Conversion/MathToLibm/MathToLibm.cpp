@@ -9,6 +9,7 @@
 #include "mlir/Conversion/MathToLibm/MathToLibm.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -150,6 +151,8 @@ ScalarOpToLibmCall<Op>::matchAndRewrite(Op op,
     // by Math dialect.
     opFunc->setAttr(LLVM::LLVMDialect::getReadnoneAttrName(),
                     UnitAttr::get(rewriter.getContext()));
+
+    opFunc->setAttr("libm", UnitAttr::get(rewriter.getContext()));
   }
   assert(isa<FunctionOpInterface>(SymbolTable::lookupSymbolIn(module, name)));
 

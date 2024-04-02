@@ -1,37 +1,37 @@
 // RUN: mlir-opt %s -convert-math-to-libm -canonicalize | FileCheck %s
 
-// CHECK-DAG: @acos(f64) -> f64 attributes {llvm.readnone}
-// CHECK-DAG: @acosf(f32) -> f32 attributes {llvm.readnone}
-// CHECK-DAG: @atan(f64) -> f64 attributes {llvm.readnone}
-// CHECK-DAG: @atanf(f32) -> f32 attributes {llvm.readnone}
-// CHECK-DAG: @erf(f64) -> f64 attributes {llvm.readnone}
-// CHECK-DAG: @erff(f32) -> f32 attributes {llvm.readnone}
-// CHECK-DAG: @expm1(f64) -> f64 attributes {llvm.readnone}
-// CHECK-DAG: @expm1f(f32) -> f32 attributes {llvm.readnone}
-// CHECK-DAG: @atan2(f64, f64) -> f64 attributes {llvm.readnone}
-// CHECK-DAG: @atan2f(f32, f32) -> f32 attributes {llvm.readnone}
-// CHECK-DAG: @cbrt(f64) -> f64 attributes {llvm.readnone}
-// CHECK-DAG: @cbrtf(f32) -> f32 attributes {llvm.readnone}
-// CHECK-DAG: @tan(f64) -> f64 attributes {llvm.readnone}
-// CHECK-DAG: @tanf(f32) -> f32 attributes {llvm.readnone}
-// CHECK-DAG: @tanh(f64) -> f64 attributes {llvm.readnone}
-// CHECK-DAG: @tanhf(f32) -> f32 attributes {llvm.readnone}
-// CHECK-DAG: @round(f64) -> f64 attributes {llvm.readnone}
-// CHECK-DAG: @roundf(f32) -> f32 attributes {llvm.readnone}
-// CHECK-DAG: @roundeven(f64) -> f64 attributes {llvm.readnone}
-// CHECK-DAG: @roundevenf(f32) -> f32 attributes {llvm.readnone}
-// CHECK-DAG: @trunc(f64) -> f64 attributes {llvm.readnone}
-// CHECK-DAG: @truncf(f32) -> f32 attributes {llvm.readnone}
-// CHECK-DAG: @cos(f64) -> f64 attributes {llvm.readnone}
-// CHECK-DAG: @cosf(f32) -> f32 attributes {llvm.readnone}
-// CHECK-DAG: @cosh(f64) -> f64 attributes {llvm.readnone}
-// CHECK-DAG: @coshf(f32) -> f32 attributes {llvm.readnone}
-// CHECK-DAG: @sin(f64) -> f64 attributes {llvm.readnone}
-// CHECK-DAG: @sinf(f32) -> f32 attributes {llvm.readnone}
-// CHECK-DAG: @floor(f64) -> f64 attributes {llvm.readnone}
-// CHECK-DAG: @floorf(f32) -> f32 attributes {llvm.readnone}
-// CHECK-DAG: @ceil(f64) -> f64 attributes {llvm.readnone}
-// CHECK-DAG: @ceilf(f32) -> f32 attributes {llvm.readnone}
+// CHECK-DAG: @acos(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @acosf(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @atan(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @atanf(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @erf(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @erff(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @expm1(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @expm1f(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @atan2(f64, f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @atan2f(f32, f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @cbrt(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @cbrtf(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @tan(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @tanf(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @tanh(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @tanhf(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @round(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @roundf(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @roundeven(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @roundevenf(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @trunc(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @truncf(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @cos(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @cosf(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @cosh(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @coshf(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @sin(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @sinf(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @floor(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @floorf(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @ceil(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @ceilf(f32) -> f32 attributes {libm, llvm.readnone}
 
 // CHECK-LABEL: func @acos_caller
 // CHECK-SAME: %[[FLOAT:.*]]: f32
