@@ -543,6 +543,15 @@ func.func @test_simple_f32(%arg0: tensor<1xf32>) -> () {
   %20 = tosa.cast %0 : (tensor<1xf32>) -> tensor<1xi32>
 
   // CHECK: linalg.generic
+  // CHECK: arith.constant 0.000000e+00
+  // CHECK: arith.constant 4.2949673E+9
+  // CHECK: math.roundeven
+  // CHECK: arith.minimumf
+  // CHECK: arith.maximumf
+  // CHECK: arith.fptoui
+  %u20 = tosa.cast %0 : (tensor<1xf32>) -> tensor<1xui32>
+
+  // CHECK: linalg.generic
   // CHECK: arith.constant 0
   // CHECK: arith.cmpf
   %21 = tosa.cast %0 : (tensor<1xf32>) -> tensor<1xi1>
@@ -741,6 +750,10 @@ func.func @test_simple_i32(%arg0: tensor<1xi32>, %arg1: tensor<1xui32>) -> () {
   // CHECK: linalg.generic
   // CHECK: arith.sitofp
   %23 = tosa.cast %0 : (tensor<1xi32>) -> tensor<1xf32>
+
+  // CHECK: linalg.generic
+  // CHECK: arith.uitofp
+  %u23 = tosa.cast %arg1 : (tensor<1xui32>) -> tensor<1xf32>
 
   // CHECK: linalg.generic
   // CHECK: arith.constant 0
