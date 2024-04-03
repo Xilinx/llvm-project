@@ -143,3 +143,18 @@ func.func @arith_cmpf_uno(%arg0: f32, %arg1: f32) -> i1 {
   // CHECK: return [[Unordered]]
   return %2: i1
 }
+
+// -----
+
+func.func @arith_int_to_float_cast_ops(%arg0: i8, %arg1: i64) {
+  // CHECK: emitc.cast %arg0 : i8 to f32
+  %0 = arith.sitofp %arg0 : i8 to f32
+
+  // CHECK: emitc.cast %arg1 : i64 to f32
+  %1 = arith.sitofp %arg1 : i64 to f32
+
+  // CHECK: emitc.cast %arg0 : i8 to f32
+  %2 = arith.uitofp %arg0 : i8 to f32
+
+  return
+}
