@@ -173,15 +173,15 @@ public:
   }
 };
 
-// Floating-point to integer, integer to floating-point conversions.
-template <typename CastOp, bool opHasTruncateSemantics>
-class CastOpConversion : public OpConversionPattern<CastOp> {
+// Floating-point to integer conversions.
+template <typename CastOp>
+class FtoICastOpConversion : public OpConversionPattern<CastOp> {
 private:
   bool floatToIntTruncates;
 
 public:
-  CastOpConversion(const TypeConverter &typeConverter, MLIRContext *context,
-                   bool optionFloatToIntTruncates)
+  FtoICastOpConversion(const TypeConverter &typeConverter, MLIRContext *context,
+                       bool optionFloatToIntTruncates)
       : OpConversionPattern<CastOp>(typeConverter, context),
         floatToIntTruncates(optionFloatToIntTruncates) {}
 
@@ -190,26 +190,51 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type operandType = adaptor.getIn().getType();
-    if (!operandType.isIntOrFloat())
-      return rewriter.notifyMatchFailure(castOp,
-                                         "casts are only supported on scalars");
-
-    if (!(emitc::isSupportedFloatType(operandType) ||
-          emitc::isSupportedIntegerType(operandType)))
+    if (!emitc::isSupportedFloatType(operandType))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast source type");
 
-    if (opHasTruncateSemantics && !floatToIntTruncates)
+    if (!floatToIntTruncates)
       return rewriter.notifyMatchFailure(
-          castOp,
-          "conversion requires casts to use truncation as rounding mode");
+          castOp, "conversion currently requires EmitC casts to use truncation "
+                  "as rounding mode");
 
     Type dstType = this->getTypeConverter()->convertType(castOp.getType());
     if (!dstType)
       return rewriter.notifyMatchFailure(castOp, "type conversion failed");
 
-    if (!(emitc::isSupportedFloatType(dstType) ||
-          emitc::isSupportedIntegerType(dstType)))
+    if (!emitc::isSupportedIntegerType(dstType))
+      return rewriter.notifyMatchFailure(castOp,
+                                         "unsupported cast destination type");
+
+    rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType,
+                                               adaptor.getOperands());
+
+    return success();
+  }
+};
+
+// Integer to floating-point conversions.
+template <typename CastOp>
+class ItoFCastOpConversion : public OpConversionPattern<CastOp> {
+public:
+  ItoFCastOpConversion(const TypeConverter &typeConverter, MLIRContext *context)
+      : OpConversionPattern<CastOp>(typeConverter, context) {}
+
+  LogicalResult
+  matchAndRewrite(CastOp castOp, typename CastOp::Adaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    Type operandType = adaptor.getIn().getType();
+    if (!emitc::isSupportedIntegerType(operandType))
+      return rewriter.notifyMatchFailure(castOp,
+                                         "unsupported cast source type");
+
+    Type dstType = this->getTypeConverter()->convertType(castOp.getType());
+    if (!dstType)
+      return rewriter.notifyMatchFailure(castOp, "type conversion failed");
+
+    if (!emitc::isSupportedFloatType(dstType))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
 
@@ -242,13 +267,13 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
     ArithOpConversion<arith::MulIOp, emitc::MulOp>,
     ArithOpConversion<arith::SubIOp, emitc::SubOp>,
     CmpFOpConversion,
-    SelectOpConversion
+    SelectOpConversion,
+    ItoFCastOpConversion<arith::SIToFPOp>,
+    ItoFCastOpConversion<arith::UIToFPOp>
   >(typeConverter, ctx)
   .add<
-    CastOpConversion<arith::FPToSIOp, /*opHasTruncateSemantics=*/true>,
-    CastOpConversion<arith::FPToUIOp, /*opHasTruncateSemantics=*/true>,
-    CastOpConversion<arith::SIToFPOp, /*opHasTruncateSemantics=*/false>,
-    CastOpConversion<arith::UIToFPOp, /*opHasTruncateSemantics=*/false>
+    FtoICastOpConversion<arith::FPToSIOp>,
+    FtoICastOpConversion<arith::FPToUIOp>
   >(typeConverter, ctx, optionFloatToIntTruncates);
   // clang-format on
 }
