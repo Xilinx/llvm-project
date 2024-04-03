@@ -20,6 +20,8 @@ namespace emitc {
 
 /// Creates an instance of the C-style expressions forming pass.
 std::unique_ptr<Pass> createFormExpressionsPass();
+/// Creates an instance of the Eliminate Libm pass.
+std::unique_ptr<Pass> createEliminateLibmPass();
 
 //===----------------------------------------------------------------------===//
 // Registration
