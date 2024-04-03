@@ -1190,8 +1190,6 @@ struct TosaFoldConstantExp
   }
 
   bool isSupportedElementType(Type type) const {
-    // Note: For now, we only support BF16 and F32 as std::erf may
-    // have an impact on the accuracy of the returned value.
     return type.isBF16() || type.isF16() || type.isF32();
   }
 };

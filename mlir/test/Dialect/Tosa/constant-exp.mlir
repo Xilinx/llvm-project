@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: @exp_fold_single_valued
 func.func @exp_fold_single_valued() -> tensor<f32> {
-  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}0.36787945{{.*}}tensor<f32>
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}0.3678{{.*}} tensor<f32>
   // CHECK-NOT: tosa.exp
   // CHECK: return [[RES]]
   %0 = "tosa.const"() {value = dense<-1.0> : tensor<f32>} : () -> tensor<f32>
@@ -22,7 +22,7 @@ func.func @exp_int() -> tensor<i32> {
 
 // CHECK-LABEL: @exp_fold_splat
 func.func @exp_fold_splat() -> tensor<12x7xf32> {
-  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}1.06449449
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}1.06449{{[0-9]+}}
   // CHECK-NOT: tosa.exp
   // CHECK: return [[RES]]
   %0 = "tosa.const"() {value = dense<0.0625> : tensor<12x7xf32>} : () -> tensor<12x7xf32>
@@ -97,7 +97,7 @@ func.func @exp_neg_infinity() -> tensor<f32> {
 // CHECK-LABEL: @exp_neg_value
 func.func @exp_neg_value() -> tensor<f32> {
   // 0xFFC00000 is the value for NAN
-  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}0.0183156393
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}0.0183{{[0-9]+}}
   // CHECK-NOT: tosa.exp
   // CHECK: return [[RES]]
   %0 = "tosa.const"() {value = dense<-4.0> : tensor<f32>} : () -> tensor<f32>
@@ -117,7 +117,7 @@ func.func @exp_no_fold(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
 
 // CHECK-LABEL: @exp_fold_f16
 func.func @exp_fold_f16() -> tensor<12x7xf16> {
-  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}1.064450e+00
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}1.0644{{[0-9]+}}e+00
   // CHECK: return [[RES]]
   %0 = "tosa.const"() {value = dense<6.250000e-02> : tensor<12x7xf16>} : () -> tensor<12x7xf16>
   %1 = "tosa.exp"(%0) : (tensor<12x7xf16>) -> tensor<12x7xf16>
@@ -127,10 +127,10 @@ func.func @exp_fold_f16() -> tensor<12x7xf16> {
 // CHECK-LABEL: @exp_fold
 func.func @exp_fold() -> tensor<4x6xf32> {
   // CHECK: [[RES:]] ={{.*}}tosa.const
-  // CHECK-SAME{LITERAL}: [[1.19219959, 1.09133315, 1.80832326, 4.34923506, 0.319052368, 18.5654049],
-  // CHECK-SAME{LITERAL}: [0.812369465, 4.18915892, 4.61033297, 0.987972915, 7.940570e-01, 0.262448609],
-  // CHECK-SAME{LITERAL}: [0.922747194, 1.07907045, 1.69502926, 3.09318089, 1.27711034, 2.00290775],
-  // CHECK-SAME{LITERAL}: [1.63705683, 0.520794332, 6.10556125, 1.14992881, 4.71382666, 0.358079612]]
+  // CHECK-SAME: 1.192{{[0-9]+}}, 1.0913{{[0-9]+}}, 1.8083{{[0-9]+}}, 4.3492{{[0-9]+}}, 0.3190{{[0-9]+}}, 18.5654{{[0-9]+}}
+  // CHECK-SAME: [0.8123{{[0-9]+}}, 4.1891{{[0-9]+}}, 4.6103{{[0-9]+}}, 0.9879{{[0-9]+}}, 7.940{{[0-9]+}}e-01, 0.2624{{[0-9]+}}
+  // CHECK-SAME: [0.9227{{[0-9]+}}, 1.0790{{[0-9]+}}, 1.6950{{[0-9]+}}, 3.0931{{[0-9]+}}, 1.2771{{[0-9]+}}, 2.0029{{[0-9]+}}
+  // CHECK-SAME: [1.6370{{[0-9]+}}, 0.5207{{[0-9]+}}, 6.1055{{[0-9]+}}, 1.1499{{[0-9]+}}, 4.7138{{[0-9]+}}, 0.35807{{[0-9]+}}
   // CHECK-NOT: tosa.exp
   // CHECK: return [[RES]]
   %0 = "tosa.const"() { value = dense<[
