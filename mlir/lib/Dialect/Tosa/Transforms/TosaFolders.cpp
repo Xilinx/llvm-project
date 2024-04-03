@@ -1170,6 +1170,32 @@ struct TosaFoldConstantErf
   }
 };
 
+struct TosaFoldConstantExp
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantExp, ExpOp> {
+  using TosaFoldConstantUnaryElementwise<
+      TosaFoldConstantExp, ExpOp>::TosaFoldConstantUnaryElementwise;
+
+  DenseElementsAttr computeFloat(DenseElementsAttr values,
+                                 PatternRewriter &rewriter, TosaOp op) const {
+    return applyElementWise<APFloat, APFloat, FloatType>(
+        values,
+        [](const APFloat &val, FloatType) {
+          auto res = APFloat(std::exp(val.convertToFloat()));
+          bool lostPrecision;
+          res.convert(val.getSemantics(), APFloat::rmNearestTiesToEven,
+                      &lostPrecision);
+          return res;
+        },
+        cast<FloatType>(values.getElementType()));
+  }
+
+  bool isSupportedElementType(Type type) const {
+    // Note: For now, we only support BF16 and F32 as std::erf may
+    // have an impact on the accuracy of the returned value.
+    return type.isBF16() || type.isF16() || type.isF32();
+  }
+};
+
 struct TosaFoldConstantLog
     : public TosaFoldConstantUnaryElementwise<TosaFoldConstantLog, LogOp> {
   using TosaFoldConstantUnaryElementwise<
@@ -1717,6 +1743,7 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
   patterns.add<TosaFoldConstantBitwiseNot>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantCeil>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantErf>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantExp>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantLog>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantBitwiseAnd>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantBitwiseOr>(ctx, foldSplatOrSingleUseOnly);
