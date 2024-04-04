@@ -244,7 +244,6 @@ public:
     }
     llvm_unreachable("unknown cmpi predicate kind");
   }
-
   LogicalResult
   matchAndRewrite(arith::CmpIOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
@@ -270,6 +269,27 @@ public:
                                                     rhs);
     }
     rewriter.replaceOpWithNewOp<emitc::CmpOp>(op, op.getType(), pred, lhs, rhs);
+    return success();
+  }
+};
+
+template <typename ArithOp>
+class CastConversion : public OpConversionPattern<ArithOp> {
+public:
+  using OpConversionPattern<ArithOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(ArithOp op, typename ArithOp::Adaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    Type type = this->getTypeConverter()->convertType(op.getType());
+    if (!isa_and_nonnull<IntegerType, IndexType>(type)) {
+      return rewriter.notifyMatchFailure(op, "expected integer type");
+    }
+
+    auto result = rewriter.template create<emitc::CastOp>(op.getLoc(), type,
+                                                          adaptor.getIn());
+    rewriter.replaceOp(op, result);
     return success();
   }
 };
@@ -478,6 +498,8 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
     CmpFOpConversion,
     CmpIOpConversion,
     SelectOpConversion,
+    CastConversion<arith::TruncIOp>,
+    CastConversion<arith::IndexCastOp>,
     ItoFCastOpConversion<arith::SIToFPOp>,
     ItoFCastOpConversion<arith::UIToFPOp>,
     FtoICastOpConversion<arith::FPToSIOp>,
