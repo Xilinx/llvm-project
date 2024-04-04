@@ -70,7 +70,7 @@ emitc::LogicalOrOp createCheckIsUnordered(ConversionPatternRewriter &rewriter,
 }
 
 /// Return an op that return true (in i1) if the operands \p first and \p second
-/// are unordered (i.e., at least one of them is NaN).
+/// are both ordered (i.e., none one of them is NaN).
 Value createCheckIsOrdered(ConversionPatternRewriter &rewriter, Location loc,
                            Value first, Value second) {
   auto firstIsNaN = isNotNan(rewriter, loc, first);
