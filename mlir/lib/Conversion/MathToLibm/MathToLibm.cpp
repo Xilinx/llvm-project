@@ -150,6 +150,8 @@ ScalarOpToLibmCall<Op>::matchAndRewrite(Op op,
     // by Math dialect.
     opFunc->setAttr(LLVM::LLVMDialect::getReadnoneAttrName(),
                     UnitAttr::get(rewriter.getContext()));
+
+    opFunc->setAttr("libm", UnitAttr::get(rewriter.getContext()));
   }
   assert(isa<FunctionOpInterface>(SymbolTable::lookupSymbolIn(module, name)));
 
