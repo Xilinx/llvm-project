@@ -33,6 +33,43 @@
 // CHECK-DAG: @ceil(f64) -> f64 attributes {libm, llvm.readnone}
 // CHECK-DAG: @ceilf(f32) -> f32 attributes {libm, llvm.readnone}
 
+// CHECK-LABEL: func @absf_caller
+// CHECK-SAME: %[[FLOAT:.*]]: f32
+// CHECK-SAME: %[[DOUBLE:.*]]: f64
+func.func @absf_caller(%float: f32, %double: f64) -> (f32, f64)  {
+  // CHECK-DAG: %[[FLOAT_RESULT:.*]] = call @fabsf(%[[FLOAT]]) : (f32) -> f32
+  %float_result = math.absf %float : f32
+  // CHECK-DAG: %[[DOUBLE_RESULT:.*]] = call @fabs(%[[DOUBLE]]) : (f64) -> f64
+  %double_result = math.absf %double : f64
+  // CHECK: return %[[FLOAT_RESULT]], %[[DOUBLE_RESULT]]
+  return %float_result, %double_result : f32, f64
+}
+
+// CHECK-LABEL:   func @absf_vec_caller(
+// CHECK-SAME:                           %[[VAL_0:.*]]: vector<2xf32>,
+// CHECK-SAME:                           %[[VAL_1:.*]]: vector<2xf64>) -> (vector<2xf32>, vector<2xf64>) {
+// CHECK-DAG:       %[[CVF:.*]] = arith.constant dense<0.000000e+00> : vector<2xf32>
+// CHECK-DAG:       %[[CVD:.*]] = arith.constant dense<0.000000e+00> : vector<2xf64>
+// CHECK:           %[[IN0_F32:.*]] = vector.extract %[[VAL_0]][0] : f32 from vector<2xf32>
+// CHECK:           %[[OUT0_F32:.*]] = call @fabsf(%[[IN0_F32]]) : (f32) -> f32
+// CHECK:           %[[VAL_8:.*]] = vector.insert %[[OUT0_F32]], %[[CVF]] [0] : f32 into vector<2xf32>
+// CHECK:           %[[IN1_F32:.*]] = vector.extract %[[VAL_0]][1] : f32 from vector<2xf32>
+// CHECK:           %[[OUT1_F32:.*]] = call @fabsf(%[[IN1_F32]]) : (f32) -> f32
+// CHECK:           %[[VAL_11:.*]] = vector.insert %[[OUT1_F32]], %[[VAL_8]] [1] : f32 into vector<2xf32>
+// CHECK:           %[[IN0_F64:.*]] = vector.extract %[[VAL_1]][0] : f64 from vector<2xf64>
+// CHECK:           %[[OUT0_F64:.*]] = call @fabs(%[[IN0_F64]]) : (f64) -> f64
+// CHECK:           %[[VAL_14:.*]] = vector.insert %[[OUT0_F64]], %[[CVD]] [0] : f64 into vector<2xf64>
+// CHECK:           %[[IN1_F64:.*]] = vector.extract %[[VAL_1]][1] : f64 from vector<2xf64>
+// CHECK:           %[[OUT1_F64:.*]] = call @fabs(%[[IN1_F64]]) : (f64) -> f64
+// CHECK:           %[[VAL_17:.*]] = vector.insert %[[OUT1_F64]], %[[VAL_14]] [1] : f64 into vector<2xf64>
+// CHECK:           return %[[VAL_11]], %[[VAL_17]] : vector<2xf32>, vector<2xf64>
+// CHECK:         }
+func.func @absf_vec_caller(%float: vector<2xf32>, %double: vector<2xf64>) -> (vector<2xf32>, vector<2xf64>) {
+  %float_result = math.absf %float : vector<2xf32>
+  %double_result = math.absf %double : vector<2xf64>
+  return %float_result, %double_result : vector<2xf32>, vector<2xf64>
+}
+
 // CHECK-LABEL: func @acos_caller
 // CHECK-SAME: %[[FLOAT:.*]]: f32
 // CHECK-SAME: %[[DOUBLE:.*]]: f64
@@ -295,6 +332,52 @@ func.func @expm1_multidim_vec_caller(%float: vector<2x2xf32>) -> (vector<2x2xf32
 // CHECK:           %[[OUT1_1_F32:.*]] = call @expm1f(%[[IN1_1_F32]]) : (f32) -> f32
 // CHECK:           %[[VAL_4:.*]] = vector.insert %[[OUT1_1_F32]], %[[VAL_3]] [1, 1] : f32 into vector<2x2xf32>
 // CHECK:           return %[[VAL_4]] : vector<2x2xf32>
+// CHECK:         }
+
+// CHECK-LABEL: func @fma_caller(
+// CHECK-SAME: %[[FLOATA:.*]]: f32, %[[FLOATB:.*]]: f32, %[[FLOATC:.*]]: f32
+// CHECK-SAME: %[[DOUBLEA:.*]]: f64, %[[DOUBLEB:.*]]: f64, %[[DOUBLEC:.*]]: f64
+func.func @fma_caller(%float_a: f32, %float_b: f32, %float_c: f32, %double_a: f64, %double_b: f64, %double_c: f64) -> (f32, f64) {
+  // CHECK-DAG: %[[FLOAT_RESULT:.*]] = call @fmaf(%[[FLOATA]], %[[FLOATB]], %[[FLOATC]]) : (f32, f32, f32) -> f32
+  %float_result = math.fma %float_a, %float_b, %float_c : f32
+  // CHECK-DAG: %[[DOUBLE_RESULT:.*]] = call @fma(%[[DOUBLEA]], %[[DOUBLEB]], %[[DOUBLEC]]) : (f64, f64, f64) -> f64
+  %double_result = math.fma %double_a, %double_b, %double_c : f64
+  // CHECK: return %[[FLOAT_RESULT]], %[[DOUBLE_RESULT]]
+  return %float_result, %double_result : f32, f64
+}
+
+func.func @fma_vec_caller(%float_a: vector<2xf32>, %float_b: vector<2xf32>, %float_c: vector<2xf32>, %double_a: vector<2xf64>, %double_b: vector<2xf64>, %double_c: vector<2xf64>) -> (vector<2xf32>, vector<2xf64>) {
+  %float_result = math.fma %float_a, %float_b, %float_c : vector<2xf32>
+  %double_result = math.fma %double_a, %double_b, %double_c : vector<2xf64>
+  return %float_result, %double_result : vector<2xf32>, vector<2xf64>
+}
+// CHECK-LABEL:   func @fma_vec_caller(
+// CHECK-SAME:                           %[[VAL_0A:.*]]: vector<2xf32>, %[[VAL_0B:.*]]: vector<2xf32>, %[[VAL_0C:.*]]: vector<2xf32>,
+// CHECK-SAME:                           %[[VAL_1A:.*]]: vector<2xf64>, %[[VAL_1B:.*]]: vector<2xf64>, %[[VAL_1C:.*]]: vector<2xf64>
+// CHECK-SAME:                           ) -> (vector<2xf32>, vector<2xf64>) {
+// CHECK-DAG:       %[[CVF:.*]] = arith.constant dense<0.000000e+00> : vector<2xf32>
+// CHECK-DAG:       %[[CVD:.*]] = arith.constant dense<0.000000e+00> : vector<2xf64>
+// CHECK:           %[[IN0_F32A:.*]] = vector.extract %[[VAL_0A]][0] : f32 from vector<2xf32>
+// CHECK:           %[[IN0_F32B:.*]] = vector.extract %[[VAL_0B]][0] : f32 from vector<2xf32>
+// CHECK:           %[[IN0_F32C:.*]] = vector.extract %[[VAL_0C]][0] : f32 from vector<2xf32>
+// CHECK:           %[[OUT0_F32:.*]] = call @fmaf(%[[IN0_F32A]], %[[IN0_F32B]], %[[IN0_F32C]]) : (f32, f32, f32) -> f32
+// CHECK:           %[[VAL_8:.*]] = vector.insert %[[OUT0_F32]], %[[CVF]] [0] : f32 into vector<2xf32>
+// CHECK:           %[[IN1_F32A:.*]] = vector.extract %[[VAL_0A]][1] : f32 from vector<2xf32>
+// CHECK:           %[[IN1_F32B:.*]] = vector.extract %[[VAL_0B]][1] : f32 from vector<2xf32>
+// CHECK:           %[[IN1_F32C:.*]] = vector.extract %[[VAL_0C]][1] : f32 from vector<2xf32>
+// CHECK:           %[[OUT1_F32:.*]] = call @fmaf(%[[IN1_F32A]], %[[IN1_F32B]], %[[IN1_F32C]]) : (f32, f32, f32) -> f32
+// CHECK:           %[[VAL_11:.*]] = vector.insert %[[OUT1_F32]], %[[VAL_8]] [1] : f32 into vector<2xf32>
+// CHECK:           %[[IN0_F64A:.*]] = vector.extract %[[VAL_1A]][0] : f64 from vector<2xf64>
+// CHECK:           %[[IN0_F64B:.*]] = vector.extract %[[VAL_1B]][0] : f64 from vector<2xf64>
+// CHECK:           %[[IN0_F64C:.*]] = vector.extract %[[VAL_1C]][0] : f64 from vector<2xf64>
+// CHECK:           %[[OUT0_F64:.*]] = call @fma(%[[IN0_F64A]], %[[IN0_F64B]], %[[IN0_F64C]]) : (f64, f64, f64) -> f64
+// CHECK:           %[[VAL_14:.*]] = vector.insert %[[OUT0_F64]], %[[CVD]] [0] : f64 into vector<2xf64>
+// CHECK:           %[[IN1_F64A:.*]] = vector.extract %[[VAL_1A]][1] : f64 from vector<2xf64>
+// CHECK:           %[[IN1_F64B:.*]] = vector.extract %[[VAL_1B]][1] : f64 from vector<2xf64>
+// CHECK:           %[[IN1_F64C:.*]] = vector.extract %[[VAL_1C]][1] : f64 from vector<2xf64>
+// CHECK:           %[[OUT1_F64:.*]] = call @fma(%[[IN1_F64A]], %[[IN1_F64B]], %[[IN1_F64C]]) : (f64, f64, f64) -> f64
+// CHECK:           %[[VAL_17:.*]] = vector.insert %[[OUT1_F64]], %[[VAL_14]] [1] : f64 into vector<2xf64>
+// CHECK:           return %[[VAL_11]], %[[VAL_17]] : vector<2xf32>, vector<2xf64>
 // CHECK:         }
 
 // CHECK-LABEL: func @round_caller
