@@ -6,8 +6,14 @@
 // CHECK-DAG: @atanf(f32) -> f32 attributes {libm, llvm.readnone}
 // CHECK-DAG: @erf(f64) -> f64 attributes {libm, llvm.readnone}
 // CHECK-DAG: @erff(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @exp(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @expf(f32) -> f32 attributes {libm, llvm.readnone}
 // CHECK-DAG: @expm1(f64) -> f64 attributes {libm, llvm.readnone}
 // CHECK-DAG: @expm1f(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @fabs(f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @fabsf(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @fma(f64, f64, f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @fmaf(f32, f32, f32) -> f32 attributes {libm, llvm.readnone}
 // CHECK-DAG: @atan2(f64, f64) -> f64 attributes {libm, llvm.readnone}
 // CHECK-DAG: @atan2f(f32, f32) -> f32 attributes {libm, llvm.readnone}
 // CHECK-DAG: @cbrt(f64) -> f64 attributes {libm, llvm.readnone}
