@@ -50,6 +50,8 @@
 // CHECK-DAG: @ceilf(f32) -> f32 attributes {libm, llvm.readnone}
 // CHECK-DAG: @sqrt(f64) -> f64 attributes {libm, llvm.readnone}
 // CHECK-DAG: @sqrtf(f32) -> f32 attributes {libm, llvm.readnone}
+// CHECK-DAG: @pow(f64, f64) -> f64 attributes {libm, llvm.readnone}
+// CHECK-DAG: @powf(f32, f32) -> f32 attributes {libm, llvm.readnone}
 
 // CHECK-LABEL: func @absf_caller
 // CHECK-SAME: %[[FLOAT:.*]]: f32
@@ -815,6 +817,48 @@ func.func @sqrt_vec_caller(%float: vector<2xf32>, %double: vector<2xf64>) -> (ve
 // CHECK:           %[[VAL_14:.*]] = vector.insert %[[OUT0_F64]], %[[CVD]] [0] : f64 into vector<2xf64>
 // CHECK:           %[[IN1_F64:.*]] = vector.extract %[[VAL_1]][1] : f64 from vector<2xf64>
 // CHECK:           %[[OUT1_F64:.*]] = call @sqrt(%[[IN1_F64]]) : (f64) -> f64
+// CHECK:           %[[VAL_17:.*]] = vector.insert %[[OUT1_F64]], %[[VAL_14]] [1] : f64 into vector<2xf64>
+// CHECK:           return %[[VAL_11]], %[[VAL_17]] : vector<2xf32>, vector<2xf64>
+// CHECK:         }
+
+// CHECK-LABEL: func @powf_caller(
+// CHECK-SAME: %[[FLOATA:.*]]: f32, %[[FLOATB:.*]]: f32
+// CHECK-SAME: %[[DOUBLEA:.*]]: f64, %[[DOUBLEB:.*]]: f64
+func.func @powf_caller(%float_a: f32, %float_b: f32, %double_a: f64, %double_b: f64) -> (f32, f64) {
+  // CHECK-DAG: %[[FLOAT_RESULT:.*]] = call @powf(%[[FLOATA]], %[[FLOATB]]) : (f32, f32) -> f32
+  %float_result = math.powf %float_a, %float_b : f32
+  // CHECK-DAG: %[[DOUBLE_RESULT:.*]] = call @pow(%[[DOUBLEA]], %[[DOUBLEB]]) : (f64, f64) -> f64
+  %double_result = math.powf %double_a, %double_b : f64
+  // CHECK: return %[[FLOAT_RESULT]], %[[DOUBLE_RESULT]]
+  return %float_result, %double_result : f32, f64
+}
+
+func.func @powf_vec_caller(%float_a: vector<2xf32>, %float_b: vector<2xf32>, %double_a: vector<2xf64>, %double_b: vector<2xf64>) -> (vector<2xf32>, vector<2xf64>) {
+  %float_result = math.powf %float_a, %float_b : vector<2xf32>
+  %double_result = math.powf %double_a, %double_b : vector<2xf64>
+  return %float_result, %double_result : vector<2xf32>, vector<2xf64>
+}
+// CHECK-LABEL:   func @powf_vec_caller(
+// CHECK-SAME:                           %[[VAL_0A:.*]]: vector<2xf32>, %[[VAL_0B:.*]]: vector<2xf32>,
+// CHECK-SAME:                           %[[VAL_1A:.*]]: vector<2xf64>, %[[VAL_1B:.*]]: vector<2xf64>
+// CHECK-SAME:                           ) -> (vector<2xf32>, vector<2xf64>) {
+// CHECK-DAG:       %[[CVF:.*]] = arith.constant dense<0.000000e+00> : vector<2xf32>
+// CHECK-DAG:       %[[CVD:.*]] = arith.constant dense<0.000000e+00> : vector<2xf64>
+// CHECK:           %[[IN0_F32A:.*]] = vector.extract %[[VAL_0A]][0] : f32 from vector<2xf32>
+// CHECK:           %[[IN0_F32B:.*]] = vector.extract %[[VAL_0B]][0] : f32 from vector<2xf32>
+// CHECK:           %[[OUT0_F32:.*]] = call @powf(%[[IN0_F32A]], %[[IN0_F32B]]) : (f32, f32) -> f32
+// CHECK:           %[[VAL_8:.*]] = vector.insert %[[OUT0_F32]], %[[CVF]] [0] : f32 into vector<2xf32>
+// CHECK:           %[[IN1_F32A:.*]] = vector.extract %[[VAL_0A]][1] : f32 from vector<2xf32>
+// CHECK:           %[[IN1_F32B:.*]] = vector.extract %[[VAL_0B]][1] : f32 from vector<2xf32>
+// CHECK:           %[[OUT1_F32:.*]] = call @powf(%[[IN1_F32A]], %[[IN1_F32B]]) : (f32, f32) -> f32
+// CHECK:           %[[VAL_11:.*]] = vector.insert %[[OUT1_F32]], %[[VAL_8]] [1] : f32 into vector<2xf32>
+// CHECK:           %[[IN0_F64A:.*]] = vector.extract %[[VAL_1A]][0] : f64 from vector<2xf64>
+// CHECK:           %[[IN0_F64B:.*]] = vector.extract %[[VAL_1B]][0] : f64 from vector<2xf64>
+// CHECK:           %[[OUT0_F64:.*]] = call @pow(%[[IN0_F64A]], %[[IN0_F64B]]) : (f64, f64) -> f64
+// CHECK:           %[[VAL_14:.*]] = vector.insert %[[OUT0_F64]], %[[CVD]] [0] : f64 into vector<2xf64>
+// CHECK:           %[[IN1_F64A:.*]] = vector.extract %[[VAL_1A]][1] : f64 from vector<2xf64>
+// CHECK:           %[[IN1_F64B:.*]] = vector.extract %[[VAL_1B]][1] : f64 from vector<2xf64>
+// CHECK:           %[[OUT1_F64:.*]] = call @pow(%[[IN1_F64A]], %[[IN1_F64B]]) : (f64, f64) -> f64
 // CHECK:           %[[VAL_17:.*]] = vector.insert %[[OUT1_F64]], %[[VAL_14]] [1] : f64 into vector<2xf64>
 // CHECK:           return %[[VAL_11]], %[[VAL_17]] : vector<2xf32>, vector<2xf64>
 // CHECK:         }

@@ -182,6 +182,7 @@ void mlir::populateMathToLibmConversionPatterns(RewritePatternSet &patterns) {
   populatePatternsForOp<math::Log2Op>(patterns, ctx, "log2f", "log2");
   populatePatternsForOp<math::Log10Op>(patterns, ctx, "log10f", "log10");
   populatePatternsForOp<math::Log1pOp>(patterns, ctx, "log1pf", "log1p");
+  populatePatternsForOp<math::PowFOp>(patterns, ctx, "powf", "pow");
   populatePatternsForOp<math::RoundEvenOp>(patterns, ctx, "roundevenf",
                                            "roundeven");
   populatePatternsForOp<math::RoundOp>(patterns, ctx, "roundf", "round");
