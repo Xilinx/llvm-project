@@ -146,6 +146,21 @@ func.func @arith_cmpf_uno(%arg0: f32, %arg1: f32) -> i1 {
 
 // -----
 
+func.func @arith_cmpf_ogt(%arg0: f32, %arg1: f32) -> i1 {
+  // CHECK-LABEL: arith_cmpf_ogt
+  // CHECK-SAME: ([[Arg0:[^ ]*]]: f32, [[Arg1:[^ ]*]]: f32)
+  // CHECK-DAG: [[GT:[^ ]*]] = emitc.cmp gt, [[Arg0]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[OrderedArg0:[^ ]*]] = emitc.cmp eq, [[Arg0]], [[Arg0]] : (f32, f32) -> i1
+  // CHECK-DAG: [[OrderedArg1:[^ ]*]] = emitc.cmp eq, [[Arg1]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[Ordered:[^ ]*]] = emitc.logical_and [[OrderedArg0]], [[OrderedArg1]] : i1, i1
+  // CHECK-DAG: [[OGT:[^ ]*]] = emitc.logical_and [[Ordered]], [[GT]] : i1, i1
+  %ule = arith.cmpf ogt, %arg0, %arg1 : f32
+  // CHECK: return [[OGT]]
+  return %ule: i1
+}
+
+// -----
+
 func.func @arith_int_to_float_cast_ops(%arg0: i8, %arg1: i64) {
   // CHECK: emitc.cast %arg0 : i8 to f32
   %0 = arith.sitofp %arg0 : i8 to f32
