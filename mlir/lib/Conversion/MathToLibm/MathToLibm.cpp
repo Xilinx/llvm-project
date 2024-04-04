@@ -174,14 +174,19 @@ void mlir::populateMathToLibmConversionPatterns(RewritePatternSet &patterns) {
   populatePatternsForOp<math::CoshOp>(patterns, ctx, "coshf", "cosh");
   populatePatternsForOp<math::ErfOp>(patterns, ctx, "erff", "erf");
   populatePatternsForOp<math::ExpOp>(patterns, ctx, "expf", "exp");
+  populatePatternsForOp<math::Exp2Op>(patterns, ctx, "exp2f", "exp2");
   populatePatternsForOp<math::ExpM1Op>(patterns, ctx, "expm1f", "expm1");
   populatePatternsForOp<math::FloorOp>(patterns, ctx, "floorf", "floor");
   populatePatternsForOp<math::FmaOp>(patterns, ctx, "fmaf", "fma");
+  populatePatternsForOp<math::LogOp>(patterns, ctx, "logf", "log");
+  populatePatternsForOp<math::Log2Op>(patterns, ctx, "log2f", "log2");
+  populatePatternsForOp<math::Log10Op>(patterns, ctx, "log10f", "log10");
   populatePatternsForOp<math::Log1pOp>(patterns, ctx, "log1pf", "log1p");
   populatePatternsForOp<math::RoundEvenOp>(patterns, ctx, "roundevenf",
                                            "roundeven");
   populatePatternsForOp<math::RoundOp>(patterns, ctx, "roundf", "round");
   populatePatternsForOp<math::SinOp>(patterns, ctx, "sinf", "sin");
+  populatePatternsForOp<math::SqrtOp>(patterns, ctx, "sqrtf", "sqrt");
   populatePatternsForOp<math::TanOp>(patterns, ctx, "tanf", "tan");
   populatePatternsForOp<math::TanhOp>(patterns, ctx, "tanhf", "tanh");
   populatePatternsForOp<math::TruncOp>(patterns, ctx, "truncf", "trunc");
