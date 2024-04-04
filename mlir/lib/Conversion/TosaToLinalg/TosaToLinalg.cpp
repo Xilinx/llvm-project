@@ -409,10 +409,15 @@ static Value createLinalgBodyCalculationForElementwiseOp(
         cast<IntegerAttr>(op->getAttr("max_int")).getValue().getSExtValue();
 
     if (intTy.isUnsignedInteger()) {
+      if (intTy.getIntOrFloatBitWidth() > 63) {
+        (void)rewriter.notifyMatchFailure(
+            op, "support for larger integers it not implemented");
+        return {};
+      }
       min = std::max(min, (int64_t)0);
-      max = std::min(
-          max,
-          APInt::getMaxValue(intTy.getIntOrFloatBitWidth()).getSExtValue());
+      max = std::min(max,
+                     (int64_t)APInt::getMaxValue(intTy.getIntOrFloatBitWidth())
+                         .getZExtValue());
     } else {
       min =
           std::max(min, APInt::getSignedMinValue(intTy.getIntOrFloatBitWidth())
@@ -426,7 +431,8 @@ static Value createLinalgBodyCalculationForElementwiseOp(
         loc, min, intTy.getIntOrFloatBitWidth());
     auto maxVal = rewriter.create<arith::ConstantIntOp>(
         loc, max, intTy.getIntOrFloatBitWidth());
-    return clampIntHelper(loc, args[0], minVal, maxVal, rewriter);
+    return clampIntHelper(loc, args[0], minVal, maxVal, rewriter,
+                          intTy.isUnsignedInteger());
   }
 
   // tosa::SigmoidOp

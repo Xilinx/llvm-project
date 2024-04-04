@@ -735,6 +735,15 @@ func.func @test_simple_i32(%arg0: tensor<1xi32>, %arg1: tensor<1xui32>) -> () {
   %19 = tosa.clamp %0 {min_int = 1 : i64, max_int = 5 : i64, min_fp = 1.0 : f32, max_fp = 5.0 : f32} : (tensor<1xi32>) -> tensor<1xi32>
 
   // CHECK: linalg.generic
+  // CHECK: bb0(%[[IN:.*]]: i32,
+  // CHECK-DAG: %[[LB:.*]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[UB:.*]] = arith.constant 5 : i32
+  // CHECK-DAG: arith.cmpi ult, %[[IN]], %[[LB]]
+  // CHECK-DAG: arith.cmpi ult, %[[UB]], %[[IN]]
+  // CHECK: select
+  %u19 = tosa.clamp %arg1 {min_int = -1 : i64, max_int = 5 : i64, min_fp = 1.0 : f32, max_fp = 5.0 : f32} : (tensor<1xui32>) -> tensor<1xui32>
+
+  // CHECK: linalg.generic
   // CHECK: arith.trunci
   %20 = tosa.cast %0 : (tensor<1xi32>) -> tensor<1xi16>
 
