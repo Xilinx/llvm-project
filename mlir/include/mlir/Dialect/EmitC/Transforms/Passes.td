@@ -28,7 +28,6 @@ def EliminateLibm : Pass<"eliminate-libm", "ModuleOp"> {
     `libm` attribute) and replaces them by a `<math.h>` inclusion.
     Calls to these functions are replaced by `emitc.opaque` calls.
   }];
-  let constructor = "mlir::emitc::createEliminateLibmPass()";
   let dependentDialects = ["emitc::EmitCDialect"];
 }
 

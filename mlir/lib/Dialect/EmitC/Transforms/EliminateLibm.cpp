@@ -26,14 +26,11 @@
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
-namespace emitc {
 #define GEN_PASS_DEF_ELIMINATELIBM
 #include "mlir/Dialect/EmitC/Transforms/Passes.h.inc"
-} // namespace emitc
 } // namespace mlir
 
 using namespace mlir;
-using namespace emitc;
 
 namespace {
 
@@ -61,8 +58,7 @@ struct OpacifyLibmCall : public OpRewritePattern<func::CallOp> {
   }
 };
 
-struct EliminateLibmPass
-    : public emitc::impl::EliminateLibmBase<EliminateLibmPass> {
+struct EliminateLibmPass : public impl::EliminateLibmBase<EliminateLibmPass> {
   void runOnOperation() override {
     ModuleOp module = getOperation();
     MLIRContext *context = module->getContext();
@@ -107,7 +103,3 @@ struct EliminateLibmPass
 };
 
 } // namespace
-
-std::unique_ptr<Pass> mlir::emitc::createEliminateLibmPass() {
-  return std::make_unique<EliminateLibmPass>();
-}

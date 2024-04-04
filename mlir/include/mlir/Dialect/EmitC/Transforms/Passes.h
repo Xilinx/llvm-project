@@ -12,6 +12,10 @@
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+
+#define GEN_PASS_DECL_ELIMINATELIBM
+#include "mlir/Dialect/EmitC/Transforms/Passes.h.inc"
+
 namespace emitc {
 
 //===----------------------------------------------------------------------===//
@@ -20,8 +24,6 @@ namespace emitc {
 
 /// Creates an instance of the C-style expressions forming pass.
 std::unique_ptr<Pass> createFormExpressionsPass();
-/// Creates an instance of the Eliminate Libm pass.
-std::unique_ptr<Pass> createEliminateLibmPass();
 
 //===----------------------------------------------------------------------===//
 // Registration
