@@ -50,6 +50,14 @@ emitc::CmpOp isNan(ConversionPatternRewriter &rewriter, Location loc,
       loc, rewriter.getI1Type(), emitc::CmpPredicate::ne, operand, operand);
 }
 
+/// Return an operation that returns true (in i1) when operand is not NaN.
+emitc::CmpOp isNotNan(ConversionPatternRewriter &rewriter, Location loc,
+                      Value operand) {
+  // A value is not NaN exactly when it compares equal to itself.
+  return rewriter.create<emitc::CmpOp>(
+      loc, rewriter.getI1Type(), emitc::CmpPredicate::eq, operand, operand);
+}
+
 /// Return an op that return true (in i1) if the operands \p first and \p second
 /// are unordered (i.e., at least one of them is NaN).
 emitc::LogicalOrOp createCheckIsUnordered(ConversionPatternRewriter &rewriter,
@@ -59,6 +67,16 @@ emitc::LogicalOrOp createCheckIsUnordered(ConversionPatternRewriter &rewriter,
   auto secondIsNaN = isNan(rewriter, loc, second);
   return rewriter.create<emitc::LogicalOrOp>(loc, rewriter.getI1Type(),
                                              firstIsNaN, secondIsNaN);
+}
+
+/// Return an op that return true (in i1) if the operands \p first and \p second
+/// are unordered (i.e., at least one of them is NaN).
+Value createCheckIsOrdered(ConversionPatternRewriter &rewriter, Location loc,
+                           Value first, Value second) {
+  auto firstIsNaN = isNotNan(rewriter, loc, first);
+  auto secondIsNaN = isNotNan(rewriter, loc, second);
+  return rewriter.create<emitc::LogicalAndOp>(loc, rewriter.getI1Type(),
+                                              firstIsNaN, secondIsNaN);
 }
 
 class CmpFOpConversion : public OpConversionPattern<arith::CmpFOp> {
@@ -110,6 +128,11 @@ public:
       rewriter.replaceOp(op, cmp);
       return success();
     }
+    case arith::CmpFPredicate::OGT:
+      // ordered and greater than
+      unordered = false;
+      predicate = emitc::CmpPredicate::gt;
+      break;
     default:
       return rewriter.notifyMatchFailure(op.getLoc(),
                                          "cannot match predicate ");
@@ -129,7 +152,11 @@ public:
       return success();
     }
 
-    return failure();
+    auto isOrdered = createCheckIsOrdered(rewriter, op.getLoc(),
+                                          adaptor.getLhs(), adaptor.getRhs());
+    rewriter.replaceOpWithNewOp<emitc::LogicalAndOp>(op, op.getType(),
+                                                     isOrdered, cmpResult);
+    return success();
   }
 };
 
