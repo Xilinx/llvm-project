@@ -21,7 +21,7 @@ def FormExpressions : Pass<"form-expressions"> {
   let dependentDialects = ["emitc::EmitCDialect"];
 }
 
-def EliminateLibm : Pass<"eliminate-libm"> {
+def EliminateLibm : Pass<"eliminate-libm", "ModuleOp"> {
   let summary = "Replace Libm function declarations by a math.h inclusion";
   let description = [{
     This pass removes of the Libm function declarations (marked by the
@@ -29,7 +29,7 @@ def EliminateLibm : Pass<"eliminate-libm"> {
     Calls to these functions are replaced by `emitc.opaque` calls.
   }];
   let constructor = "mlir::emitc::createEliminateLibmPass()";
-  let dependentDialects = ["emitc::EmitCDialect", "func::FuncDialect"];
+  let dependentDialects = ["emitc::EmitCDialect"];
 }
 
 #endif // MLIR_DIALECT_EMITC_TRANSFORMS_PASSES

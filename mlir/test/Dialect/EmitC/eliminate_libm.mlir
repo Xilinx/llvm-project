@@ -1,6 +1,6 @@
 // RUN: mlir-opt %s --eliminate-libm --verify-diagnostics --split-input-file | FileCheck %s
 
-// CHECK: emitc.include <"math.h">
+// CHECK: emitc.include <"cmath">
 // CHECK-NOT: func.func private @expm1
 // CHECK-DAG: func.func @call_expm1(%[[IN:.*]]: f64) -> f64
 // CHECK-DAG: %[[RESULT:.*]] = emitc.call_opaque "expm1"(%[[IN]]) : (f64) -> f64
@@ -15,7 +15,7 @@ module {
 
 // -----
 
-// CHECK-NOT: emitc.include <"math.h">
+// CHECK-NOT: emitc.include <"cmath">
 // CHECK: func.func private @expm1
 // CHECK: func.func @call_expm1(%[[IN:.*]]: f64) -> f64
 // CHECK-NEXT: %[[RESULT:.*]] = call @expm1(%[[IN]]) : (f64) -> f64

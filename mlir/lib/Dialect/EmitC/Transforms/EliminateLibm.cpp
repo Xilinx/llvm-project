@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements a pass that replaces C Libm standard library
+// This file implements a pass that replaces C++ Libm standard library
 // prototypes (e.g., inserted by the MathToLibm pass) by an inclusion of the
 // <math.h> header.
 //
@@ -64,13 +64,8 @@ struct OpacifyLibmCall : public OpRewritePattern<func::CallOp> {
 struct EliminateLibmPass
     : public emitc::impl::EliminateLibmBase<EliminateLibmPass> {
   void runOnOperation() override {
-    Operation *rootOp = getOperation();
-    MLIRContext *context = rootOp->getContext();
-
-    if (!llvm::isa<ModuleOp>(rootOp))
-      return;
-
-    ModuleOp module = dyn_cast<ModuleOp>(rootOp);
+    ModuleOp module = getOperation();
+    MLIRContext *context = module->getContext();
 
     // Find the first math.h inclusion
     SmallVector<func::FuncOp> libmPrototypes;
@@ -88,7 +83,7 @@ struct EliminateLibmPass
         opacifyLibmCallPatterns.getContext());
 
     if (failed(applyPatternsAndFoldGreedily(
-            rootOp, std::move(opacifyLibmCallPatterns))))
+            module, std::move(opacifyLibmCallPatterns))))
       return signalPassFailure();
 
     // Check that none of the prototypes have users
@@ -101,17 +96,13 @@ struct EliminateLibmPass
     auto firstLibmDecl = libmPrototypes.front();
     OpBuilder builder(firstLibmDecl);
 
-    auto includeOp =
-        builder.create<emitc::IncludeOp>(builder.getUnknownLoc(), "math.h");
-    includeOp->setAttr("is_standard_include", UnitAttr::get(context));
+    // This will only work if the target language is C++.
+    builder.create<emitc::IncludeOp>(builder.getUnknownLoc(), "cmath",
+                                     /*"is_standard_include=*/true);
 
     for (auto &proto : libmPrototypes) {
       proto->erase();
     }
-  }
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<emitc::EmitCDialect>();
-    registry.insert<func::FuncDialect>();
   }
 };
 
