@@ -8,7 +8,7 @@
 //
 // This file implements a pass that replaces C++ Libm standard library
 // prototypes (e.g., inserted by the MathToLibm pass) by an inclusion of the
-// <math.h> header.
+// <cmath> header.
 //
 //===----------------------------------------------------------------------===//
 
