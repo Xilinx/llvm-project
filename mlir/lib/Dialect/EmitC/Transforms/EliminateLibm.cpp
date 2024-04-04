@@ -24,6 +24,7 @@
 #include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include <optional>
 
 namespace mlir {
 #define GEN_PASS_DEF_ELIMINATELIBM
@@ -73,7 +74,7 @@ struct EliminateLibmPass : public impl::EliminateLibmBase<EliminateLibmPass> {
     if (libmPrototypes.empty())
       return;
 
-    // Replace with a rewrite pattern
+    // Use a rewrite pattern to turn calls into opaque
     RewritePatternSet opacifyLibmCallPatterns(context);
     opacifyLibmCallPatterns.add<OpacifyLibmCall>(
         opacifyLibmCallPatterns.getContext());
@@ -84,13 +85,13 @@ struct EliminateLibmPass : public impl::EliminateLibmBase<EliminateLibmPass> {
 
     // Check that none of the prototypes have users
     for (auto &proto : libmPrototypes) {
-      assert(proto->getUsers().empty());
+      auto uses = proto.getSymbolUses(module);
+      if (!uses || (!uses->empty())) {
+        return signalPassFailure();
+      }
     }
 
-    // This builder has insertion point at the first
-    // occurrence of a libm function found
-    auto firstLibmDecl = libmPrototypes.front();
-    OpBuilder builder(firstLibmDecl);
+    OpBuilder builder(module.getRegion());
 
     // This will only work if the target language is C++.
     builder.create<emitc::IncludeOp>(builder.getUnknownLoc(), "cmath",
