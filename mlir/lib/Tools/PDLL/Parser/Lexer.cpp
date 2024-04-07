@@ -139,7 +139,7 @@ int Lexer::getNextChar() {
     return static_cast<unsigned char>(curChar);
   case 0: {
     // A nul character in the stream is either the end of the current buffer
-    // or a random nul in the file. Disambiguate that here.
+    // or a random nul in the file. Disambiguate that here.r
     if (curPtr - 1 != curBuffer.end())
       return 0;
 
@@ -375,6 +375,8 @@ Token Lexer::lexIdentifier(const char *tokStart) {
                          .Case("ValueRange", Token::kw_ValueRange)
                          .Case("with", Token::kw_with)
                          .Case("_", Token::underscore)
+                         .Case("log2", Token::log2)
+                         .Case("exp2", Token::exp2)
                          .Default(Token::identifier);
   return Token(kind, str);
 }

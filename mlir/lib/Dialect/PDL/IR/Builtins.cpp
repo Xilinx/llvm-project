@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
+#include <llvm/ADT/APSInt.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
@@ -51,125 +52,146 @@ mlir::Attribute addElemToArrayAttr(mlir::PatternRewriter &rewriter,
   return rewriter.getArrayAttr(values);
 }
 
-LogicalResult addOrSub(mlir::PatternRewriter &rewriter,
-                       mlir::PDLResultList &results,
-                       llvm::ArrayRef<mlir::PDLValue> args, const bool useAdd) {
-  assert(args.size() == 2 && "Expected 2 arguments");
-  auto lhsAttr = args[0].cast<Attribute>();
-  auto rhsAttr = args[1].cast<Attribute>();
+template <UnaryOpKind T>
+LogicalResult unaryOp(PatternRewriter &rewriter, PDLResultList &results,
+                      ArrayRef<PDLValue> args) {
+  assert(args.size() == 1 && "Expected one operand for unary operation");
+  auto operandAttr = args[0].cast<Attribute>();
 
-  // Integer
-  if (auto lhsIntAttr = dyn_cast_or_null<IntegerAttr>(lhsAttr)) {
-    auto rhsIntAttr = dyn_cast_or_null<IntegerAttr>(rhsAttr);
-    if (!rhsIntAttr || lhsIntAttr.getType() != rhsIntAttr.getType())
-      return failure();
+  if (auto operandIntAttr = dyn_cast_or_null<IntegerAttr>(operandAttr)) {
+    auto integerType = cast<IntegerType>(operandIntAttr.getType());
+    auto bitWidth = integerType.getIntOrFloatBitWidth();
 
-    auto integerType = lhsIntAttr.getType();
-    bool isOverflow;
-    llvm::APInt resultAPInt;
-    if (integerType.isUnsignedInteger() || integerType.isSignlessInteger()) {
-      if (useAdd) {
-        resultAPInt =
-            lhsIntAttr.getValue().uadd_ov(rhsIntAttr.getValue(), isOverflow);
-      } else {
-        resultAPInt =
-            lhsIntAttr.getValue().usub_ov(rhsIntAttr.getValue(), isOverflow);
-      }
+    if constexpr (T == UnaryOpKind::exp2) {
+      uint64_t resultVal =
+          integerType.isUnsigned() || integerType.isSignless()
+              ? std::pow(2, operandIntAttr.getValue().getZExtValue())
+              : std::pow(2, operandIntAttr.getValue().getSExtValue());
+
+      APInt resultInt(bitWidth, resultVal, integerType.isSigned());
+
+      bool isOverflow = integerType.isSigned()
+                            ? resultInt.slt(operandIntAttr.getValue())
+                            : resultInt.ult(operandIntAttr.getValue());
+
+      if (isOverflow)
+        return failure();
+
+      results.push_back(rewriter.getIntegerAttr(integerType, resultInt));
+    } else if constexpr (T == UnaryOpKind::log2) {
+      auto getIntegerAsAttr = [&](const APSInt &value) {
+        int32_t log2Value = value.exactLogBase2();
+        assert(log2Value >= 0 &&
+               "log2 of an integer is expected to return an exact integer.");
+        return rewriter.getIntegerAttr(
+            integerType,
+            APSInt(APInt(bitWidth, log2Value), integerType.isUnsigned()));
+      };
+      // for log2 we treat signless integer as signed
+      if (integerType.isSignless())
+        results.push_back(
+            getIntegerAsAttr(APSInt(operandIntAttr.getValue(), false)));
+      else
+        results.push_back(getIntegerAsAttr(operandIntAttr.getAPSInt()));
     } else {
-      if (useAdd) {
-        resultAPInt =
-            lhsIntAttr.getValue().sadd_ov(rhsIntAttr.getValue(), isOverflow);
-      } else {
-        resultAPInt =
-            lhsIntAttr.getValue().ssub_ov(rhsIntAttr.getValue(), isOverflow);
-      }
-    }
-
-    if (isOverflow) {
+      llvm::llvm_unreachable_internal(
+          "encountered an unsupported unary operator");
       return failure();
     }
-
-    results.push_back(rewriter.getIntegerAttr(integerType, resultAPInt));
     return success();
   }
 
-  // Float
-  if (auto lhsFloatAttr = dyn_cast_or_null<FloatAttr>(lhsAttr)) {
-    auto rhsFloatAttr = dyn_cast_or_null<FloatAttr>(rhsAttr);
-    if (!rhsFloatAttr || lhsFloatAttr.getType() != rhsFloatAttr.getType())
-      return failure();
+  if (auto operandFloatAttr = dyn_cast_or_null<FloatAttr>(operandAttr)) {
+    auto floatType = operandFloatAttr.getType();
 
-    APFloat lhsVal = lhsFloatAttr.getValue();
-    APFloat rhsVal = rhsFloatAttr.getValue();
-    APFloat resultVal(lhsVal);
-    auto floatType = lhsFloatAttr.getType();
+    if constexpr (T == UnaryOpKind::exp2) {
+      auto maxVal = APFloat::getLargest(llvm::APFloat::IEEEhalf());
+      auto minVal = APFloat::getSmallest(llvm::APFloat::IEEEhalf());
 
-    APFloat::opStatus operationStatus;
-    if (useAdd) {
-      operationStatus =
-          resultVal.add(rhsVal, llvm::APFloatBase::rmNearestTiesToEven);
-    } else {
-      operationStatus =
-          resultVal.subtract(rhsVal, llvm::APFloatBase::rmNearestTiesToEven);
+      APFloat resultFloat(
+          std::exp(operandFloatAttr.getValue().convertToFloat()));
+      // check overflow
+      if (resultFloat < minVal || resultFloat > maxVal)
+        return failure();
+      results.push_back(rewriter.getFloatAttr(floatType, resultFloat));
+    } else if constexpr (T == UnaryOpKind::log2) {
+      APFloat resultFloat((float)operandFloatAttr.getValue().getExactLog2());
+      results.push_back(rewriter.getFloatAttr(floatType, resultFloat));
     }
-
-    if (operationStatus != APFloat::opOK) {
-      return failure();
-    }
-
-    results.push_back(rewriter.getFloatAttr(floatType, resultVal));
     return success();
   }
   return failure();
 }
 
-LogicalResult mulOrDiv(mlir::PatternRewriter &rewriter,
-                       mlir::PDLResultList &results,
-                       llvm::ArrayRef<PDLValue> args, const bool useDiv) {
-  assert(args.size() == 2 && "Expected 2 arguments");
+template <BinaryOpKind T>
+LogicalResult binaryOp(PatternRewriter &rewriter, PDLResultList &results,
+                       llvm::ArrayRef<PDLValue> args) {
+  assert(args.size() == 2 && "Expected two operands for binary operation");
   auto lhsAttr = args[0].cast<Attribute>();
   auto rhsAttr = args[1].cast<Attribute>();
 
-  // Integer
   if (auto lhsIntAttr = dyn_cast_or_null<IntegerAttr>(lhsAttr)) {
     auto rhsIntAttr = dyn_cast_or_null<IntegerAttr>(rhsAttr);
-    if (!rhsIntAttr || lhsIntAttr.getType() != rhsIntAttr.getType())
+    if (!rhsIntAttr || lhsIntAttr.getType() != rhsIntAttr.getType()) {
       return failure();
+    }
 
     auto integerType = lhsIntAttr.getType();
-
+    APInt resultAPInt;
     bool isOverflow = false;
-    llvm::APInt resultAPInt;
-    if (integerType.isUnsignedInteger() || integerType.isSignlessInteger()) {
-      if (useDiv) {
-        resultAPInt = lhsIntAttr.getValue().udiv(rhsIntAttr.getValue());
+    if constexpr (T == BinaryOpKind::add) {
+      if (integerType.isSignlessInteger() || integerType.isUnsignedInteger()) {
+        resultAPInt =
+            lhsIntAttr.getValue().uadd_ov(rhsIntAttr.getValue(), isOverflow);
       } else {
         resultAPInt =
-            lhsIntAttr.getValue().umul_ov(rhsIntAttr.getValue(), isOverflow);
+            lhsIntAttr.getValue().sadd_ov(rhsIntAttr.getValue(), isOverflow);
       }
-    } else {
-      if (useDiv) {
+    } else if constexpr (T == BinaryOpKind::sub) {
+      if (integerType.isSignlessInteger() || integerType.isUnsignedInteger()) {
         resultAPInt =
-            lhsIntAttr.getValue().sdiv_ov(rhsIntAttr.getValue(), isOverflow);
+            lhsIntAttr.getValue().usub_ov(rhsIntAttr.getValue(), isOverflow);
+      } else {
+        resultAPInt =
+            lhsIntAttr.getValue().ssub_ov(rhsIntAttr.getValue(), isOverflow);
+      }
+    } else if constexpr (T == BinaryOpKind::mul) {
+      if (integerType.isSignlessInteger() || integerType.isUnsignedInteger()) {
+        resultAPInt =
+            lhsIntAttr.getValue().umul_ov(rhsIntAttr.getValue(), isOverflow);
       } else {
         resultAPInt =
             lhsIntAttr.getValue().smul_ov(rhsIntAttr.getValue(), isOverflow);
       }
+    } else if constexpr (T == BinaryOpKind::div) {
+      if (integerType.isSignlessInteger() || integerType.isUnsignedInteger()) {
+        resultAPInt = lhsIntAttr.getValue().udiv(rhsIntAttr.getValue());
+      } else {
+        resultAPInt =
+            lhsIntAttr.getValue().sdiv_ov(rhsIntAttr.getValue(), isOverflow);
+      }
+    } else if constexpr (T == BinaryOpKind::mod) {
+      if (integerType.isSignlessInteger() || integerType.isUnsignedInteger()) {
+        resultAPInt = lhsIntAttr.getValue().urem(rhsIntAttr.getValue());
+      } else {
+        resultAPInt = lhsIntAttr.getValue().srem(rhsIntAttr.getValue());
+      }
+    } else {
+      assert(false && "Unsupported binary operator");
     }
 
-    if (isOverflow) {
+    if (isOverflow)
       return failure();
-    }
 
     results.push_back(rewriter.getIntegerAttr(integerType, resultAPInt));
     return success();
   }
 
-  // Float
   if (auto lhsFloatAttr = dyn_cast_or_null<FloatAttr>(lhsAttr)) {
     auto rhsFloatAttr = dyn_cast_or_null<FloatAttr>(rhsAttr);
-    if (!rhsFloatAttr || lhsFloatAttr.getType() != rhsFloatAttr.getType())
+    if (!rhsFloatAttr || lhsFloatAttr.getType() != rhsFloatAttr.getType()) {
       return failure();
+    }
 
     APFloat lhsVal = lhsFloatAttr.getValue();
     APFloat rhsVal = rhsFloatAttr.getValue();
@@ -177,12 +199,22 @@ LogicalResult mulOrDiv(mlir::PatternRewriter &rewriter,
     auto floatType = lhsFloatAttr.getType();
 
     APFloat::opStatus operationStatus;
-    if (useDiv) {
+    if constexpr (T == BinaryOpKind::add) {
       operationStatus =
-          resultVal.divide(rhsVal, llvm::APFloatBase::rmNearestTiesToEven);
-    } else {
+          resultVal.add(rhsVal, llvm::APFloatBase::rmNearestTiesToEven);
+    } else if constexpr (T == BinaryOpKind::sub) {
+      operationStatus =
+          resultVal.subtract(rhsVal, llvm::APFloatBase::rmNearestTiesToEven);
+    } else if constexpr (T == BinaryOpKind::mul) {
       operationStatus =
           resultVal.multiply(rhsVal, llvm::APFloatBase::rmNearestTiesToEven);
+    } else if constexpr (T == BinaryOpKind::div) {
+      operationStatus =
+          resultVal.divide(rhsVal, llvm::APFloatBase::rmNearestTiesToEven);
+    } else if constexpr (T == BinaryOpKind::mod) {
+      operationStatus = resultVal.mod(rhsVal);
+    } else {
+      assert(false && "Unsupported binary operator");
     }
 
     if (operationStatus != APFloat::opOK) {
@@ -197,71 +229,37 @@ LogicalResult mulOrDiv(mlir::PatternRewriter &rewriter,
 
 LogicalResult add(mlir::PatternRewriter &rewriter, mlir::PDLResultList &results,
                   llvm::ArrayRef<mlir::PDLValue> args) {
-  return addOrSub(rewriter, results, args, true);
+  return binaryOp<BinaryOpKind::add>(rewriter, results, args);
 }
 
 LogicalResult sub(mlir::PatternRewriter &rewriter, mlir::PDLResultList &results,
                   llvm::ArrayRef<mlir::PDLValue> args) {
-  return addOrSub(rewriter, results, args, false);
+  return binaryOp<BinaryOpKind::sub>(rewriter, results, args);
 }
 
 LogicalResult mul(PatternRewriter &rewriter, PDLResultList &results,
                   llvm::ArrayRef<PDLValue> args) {
-  return mulOrDiv(rewriter, results, args, false);
+  return binaryOp<BinaryOpKind::mul>(rewriter, results, args);
 }
 
 LogicalResult div(PatternRewriter &rewriter, PDLResultList &results,
                   llvm::ArrayRef<PDLValue> args) {
-  return mulOrDiv(rewriter, results, args, true);
+  return binaryOp<BinaryOpKind::div>(rewriter, results, args);
 }
 
 LogicalResult mod(PatternRewriter &rewriter, PDLResultList &results,
-                  llvm::ArrayRef<PDLValue> args) {
-  assert(args.size() == 2 && "Expected 2 arguments");
-  auto lhsAttr = args[0].cast<Attribute>();
-  auto rhsAttr = args[1].cast<Attribute>();
+                  ArrayRef<PDLValue> args) {
+  return binaryOp<BinaryOpKind::mod>(rewriter, results, args);
+}
 
-  // Integer
-  if (auto lhsIntAttr = dyn_cast_or_null<IntegerAttr>(lhsAttr)) {
-    auto rhsIntAttr = dyn_cast_or_null<IntegerAttr>(rhsAttr);
-    if (!rhsIntAttr || lhsIntAttr.getType() != rhsIntAttr.getType())
-      return failure();
+LogicalResult exp2(PatternRewriter &rewriter, PDLResultList &results,
+                   llvm::ArrayRef<PDLValue> args) {
+  return unaryOp<UnaryOpKind::exp2>(rewriter, results, args);
+}
 
-    auto integerType = lhsIntAttr.getType();
-
-    llvm::APInt resultAPInt;
-    if (integerType.isSignlessInteger() || integerType.isUnsignedInteger()) {
-      resultAPInt = lhsIntAttr.getValue().urem(rhsIntAttr.getValue());
-    } else {
-      resultAPInt = lhsIntAttr.getValue().srem(rhsIntAttr.getValue());
-    }
-
-    results.push_back(rewriter.getIntegerAttr(integerType, resultAPInt));
-    return success();
-  }
-
-  // Float
-  if (auto lhsFloatAttr = dyn_cast_or_null<FloatAttr>(lhsAttr)) {
-    auto rhsFloatAttr = dyn_cast_or_null<FloatAttr>(rhsAttr);
-    if (!rhsFloatAttr || lhsFloatAttr.getType() != rhsFloatAttr.getType())
-      return failure();
-
-    APFloat lhsVal = lhsFloatAttr.getValue();
-    APFloat rhsVal = rhsFloatAttr.getValue();
-    APFloat resultVal(lhsVal);
-    auto floatType = lhsFloatAttr.getType();
-
-    APFloat::opStatus operationStatus;
-    operationStatus = resultVal.mod(rhsVal);
-
-    if (operationStatus != APFloat::opOK) {
-      return failure();
-    }
-
-    results.push_back(rewriter.getFloatAttr(floatType, resultVal));
-    return success();
-  }
-  return failure();
+LogicalResult log2(PatternRewriter &rewriter, PDLResultList &results,
+                   llvm::ArrayRef<PDLValue> args) {
+  return unaryOp<UnaryOpKind::log2>(rewriter, results, args);
 }
 } // namespace builtin
 
@@ -276,10 +274,27 @@ void registerBuiltins(PDLPatternModule &pdlPattern) {
                                      createArrayAttr);
   pdlPattern.registerRewriteFunction("__builtin_addElemToArrayAttr",
                                      addElemToArrayAttr);
-  pdlPattern.registerConstraintFunctionWithResults("__builtin_mul", mul);
-  pdlPattern.registerConstraintFunctionWithResults("__builtin_div", div);
-  pdlPattern.registerConstraintFunctionWithResults("__builtin_mod", mod);
-  pdlPattern.registerConstraintFunctionWithResults("__builtin_add", add);
-  pdlPattern.registerConstraintFunctionWithResults("__builtin_sub", sub);
-}
+  pdlPattern.registerRewriteFunction("__builtin_mulRewrite", mul);
+  pdlPattern.registerRewriteFunction("__builtin_divRewrite", div);
+  pdlPattern.registerRewriteFunction("__builtin_modRewrite", mod);
+  pdlPattern.registerRewriteFunction("__builtin_addRewrite", add);
+  pdlPattern.registerRewriteFunction("__builtin_subRewrite", sub);
+  pdlPattern.registerRewriteFunction("__builtin_log2Rewrite", log2);
+  pdlPattern.registerRewriteFunction("__builtin_exp2Rewrite", exp2);
+
+  pdlPattern.registerConstraintFunctionWithResults("__builtin_mulConstraint",
+                                                   mul);
+  pdlPattern.registerConstraintFunctionWithResults("__builtin_divConstraint",
+                                                   div);
+  pdlPattern.registerConstraintFunctionWithResults("__builtin_modConstraint",
+                                                   mod);
+  pdlPattern.registerConstraintFunctionWithResults("__builtin_addConstraint",
+                                                   add);
+  pdlPattern.registerConstraintFunctionWithResults("__builtin_subConstraint",
+                                                   sub);
+  pdlPattern.registerConstraintFunctionWithResults("__builtin_log2Constraint",
+                                                   log2);
+  pdlPattern.registerConstraintFunctionWithResults("__builtin_exp2Constraint",
+                                                   exp2);
+} // namespace builtin
 } // namespace mlir::pdl

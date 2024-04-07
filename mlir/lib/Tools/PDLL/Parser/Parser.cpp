@@ -91,6 +91,13 @@ private:
     Interface,
   };
 
+  /// The current context of how a native operator is used. This differentiates
+  /// between whether the result of the operations is assigned to a variable.
+  enum class NativeOperatorContext {
+    Generic,
+    Let,
+  };
+
   //===--------------------------------------------------------------------===//
   // Parsing
   //===--------------------------------------------------------------------===//
@@ -327,6 +334,7 @@ private:
   FailureOr<ast::Expr *> parseLogicalAndExpr();
   FailureOr<ast::Expr *> parseEqualityExpr();
   FailureOr<ast::Expr *> parseRelationExpr();
+  FailureOr<ast::Expr *> parseExp2Log2Expr();
   FailureOr<ast::Expr *> parseAddSubExpr();
   FailureOr<ast::Expr *> parseMulDivModExpr();
   FailureOr<ast::Expr *> parseLogicalNotExpr();
@@ -588,6 +596,9 @@ private:
   /// The current context of the parser.
   ParserContext parserContext = ParserContext::Global;
 
+  /// The default PDLL native operator context
+  NativeOperatorContext nativeOperatorContext = NativeOperatorContext::Generic;
+
   /// Cached types to simplify verification and expression creation.
   ast::Type typeTy, valueTy;
   ast::RangeType typeRangeTy, valueRangeTy;
@@ -604,11 +615,20 @@ private:
     ast::UserRewriteDecl *addEntryToDictionaryAttr;
     ast::UserRewriteDecl *createArrayAttr;
     ast::UserRewriteDecl *addElemToArrayAttr;
-    ast::UserConstraintDecl *mul;
-    ast::UserConstraintDecl *div;
-    ast::UserConstraintDecl *mod;
-    ast::UserConstraintDecl *add;
-    ast::UserConstraintDecl *sub;
+    ast::UserRewriteDecl *mulRewrite;
+    ast::UserRewriteDecl *divRewrite;
+    ast::UserRewriteDecl *modRewrite;
+    ast::UserRewriteDecl *addRewrite;
+    ast::UserRewriteDecl *subRewrite;
+    ast::UserRewriteDecl *log2Rewrite;
+    ast::UserRewriteDecl *exp2Rewrite;
+    ast::UserConstraintDecl *mulConstraint;
+    ast::UserConstraintDecl *divConstraint;
+    ast::UserConstraintDecl *modConstraint;
+    ast::UserConstraintDecl *addConstraint;
+    ast::UserConstraintDecl *subConstraint;
+    ast::UserConstraintDecl *log2Constraint;
+    ast::UserConstraintDecl *exp2Constraint;
   } builtins{};
 };
 } // namespace
@@ -654,18 +674,34 @@ void Parser::declareBuiltins() {
   builtins.addElemToArrayAttr = declareBuiltin<ast::UserRewriteDecl>(
       "__builtin_addElemToArrayAttr", {"attr", "element"},
       /*returnsAttr=*/true);
-  builtins.mul = declareBuiltin<ast::UserConstraintDecl>("__builtin__mul",
-                                                         {"lhs", "rhs"}, true);
-  builtins.div = declareBuiltin<ast::UserConstraintDecl>("__builtin__div",
-                                                         {"lhs", "rhs"}, true);
-  builtins.mod = declareBuiltin<ast::UserConstraintDecl>("__builtin__mod",
-                                                         {"lhs", "rhs"}, true);
-  builtins.add =
-      declareBuiltin<ast::UserConstraintDecl>("__builtin_add", {"lhs", "rhs"},
-                                              /*returnsAttr=*/true);
-  builtins.sub =
-      declareBuiltin<ast::UserConstraintDecl>("__builtin_sub", {"lhs", "rhs"},
-                                              /*returnsAttr=*/true);
+  builtins.mulRewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_mulRewrite", {"lhs", "rhs"}, true);
+  builtins.divRewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_divRewrite", {"lhs", "rhs"}, true);
+  builtins.modRewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_modRewrite", {"lhs", "rhs"}, true);
+  builtins.addRewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_addRewrite", {"lhs", "rhs"}, true);
+  builtins.subRewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_subRewrite", {"lhs", "rhs"}, true);
+  builtins.log2Rewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_log2Rewrite", {"Attr"}, true);
+  builtins.exp2Rewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_exp2Rewrite", {"Attr"}, true);
+  builtins.mulConstraint = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_mulConstraint", {"lhs", "rhs"}, true);
+  builtins.divConstraint = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_divConstraint", {"lhs", "rhs"}, true);
+  builtins.modConstraint = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_modConstraint", {"lhs", "rhs"}, true);
+  builtins.addConstraint = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_addConstraint", {"lhs", "rhs"}, true);
+  builtins.subConstraint = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_subConstraint", {"lhs", "rhs"}, true);
+  builtins.log2Constraint = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_log2Constraint", {"Attr"}, true);
+  builtins.exp2Constraint = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_exp2Constraint", {"Attr"}, true);
 }
 
 FailureOr<ast::Module *> Parser::parseModule() {
@@ -1932,60 +1968,173 @@ FailureOr<ast::Expr *> Parser::parseAddSubExpr() {
   if (failed(lhs))
     return failure();
 
-  switch (curToken.getKind()) {
-  case Token::add: {
-    consumeToken();
-    auto rhs = parseMulDivModExpr();
-    if (failed(rhs))
-      return failure();
-    SmallVector<ast::Expr *> args{*lhs, *rhs};
-    return createBuiltinCall(curToken.getLoc(), builtins.add, args);
-  }
-  case Token::sub: {
-    consumeToken();
-    auto rhs = parseMulDivModExpr();
-    if (failed(rhs))
-      return failure();
-    SmallVector<ast::Expr *> args{*lhs, *rhs};
-    return createBuiltinCall(curToken.getLoc(), builtins.sub, args);
-  }
-  default:
-    return lhs;
+  for (;;) {
+    switch (curToken.getKind()) {
+    case Token::add: {
+      consumeToken();
+      auto rhs = parseMulDivModExpr();
+      if (failed(rhs))
+        return failure();
+      SmallVector<ast::Expr *> args{*lhs, *rhs};
+
+      // Check if it is in rewrite section but not in the let statement
+      bool inRewriteSection = parserContext == ParserContext::Rewrite;
+      if (inRewriteSection &&
+          nativeOperatorContext == NativeOperatorContext::Generic)
+        return emitError(
+            "nodiscard rule for add operator is applied in rewrite section");
+
+      lhs = inRewriteSection ? createBuiltinCall(curToken.getLoc(),
+                                                 builtins.addRewrite, args)
+                             : createBuiltinCall(curToken.getLoc(),
+                                                 builtins.addConstraint, args);
+      continue;
+    }
+    case Token::sub: {
+      consumeToken();
+      auto rhs = parseMulDivModExpr();
+      if (failed(rhs))
+        return failure();
+      SmallVector<ast::Expr *> args{*lhs, *rhs};
+
+      // Check if it is in rewrite section but not in the let statement
+      bool inRewriteSection = parserContext == ParserContext::Rewrite;
+      if (inRewriteSection &&
+          nativeOperatorContext == NativeOperatorContext::Generic)
+        return emitError(
+            "nodiscard rule for sub operator is applied in rewrite section");
+
+      lhs = inRewriteSection ? createBuiltinCall(curToken.getLoc(),
+                                                 builtins.subRewrite, args)
+                             : createBuiltinCall(curToken.getLoc(),
+                                                 builtins.subConstraint, args);
+      continue;
+    }
+    default:
+      return lhs;
+    }
   }
 }
 
 FailureOr<ast::Expr *> Parser::parseMulDivModExpr() {
-  auto lhs = parseLogicalNotExpr();
+  auto lhs = parseExp2Log2Expr();
   if (failed(lhs))
     return failure();
 
+  for (;;) {
+    switch (curToken.getKind()) {
+    case Token::mul: {
+      consumeToken();
+      auto rhs = parseExp2Log2Expr();
+      if (failed(rhs))
+        return failure();
+      SmallVector<ast::Expr *> args{*lhs, *rhs};
+
+      // Check if it is in rewrite section but not in the let statement
+      bool inRewriteSection = parserContext == ParserContext::Rewrite;
+      if (inRewriteSection &&
+          nativeOperatorContext == NativeOperatorContext::Generic)
+        return emitError(
+            "nodiscard rule for mul operator is applied in rewrite section");
+
+      lhs = inRewriteSection ? createBuiltinCall(curToken.getLoc(),
+                                                 builtins.mulRewrite, args)
+                             : createBuiltinCall(curToken.getLoc(),
+                                                 builtins.mulConstraint, args);
+      continue;
+    }
+    case Token::div: {
+      consumeToken();
+      auto rhs = parseExp2Log2Expr();
+      if (failed(rhs))
+        return failure();
+      SmallVector<ast::Expr *> args{*lhs, *rhs};
+
+      // Check if it is in rewrite section but not in the let statement
+      bool inRewriteSection = parserContext == ParserContext::Rewrite;
+      if (inRewriteSection &&
+          nativeOperatorContext == NativeOperatorContext::Generic)
+        return emitError(
+            "nodiscard rule for div operator is applied in rewrite section");
+
+      lhs = inRewriteSection ? createBuiltinCall(curToken.getLoc(),
+                                                 builtins.divRewrite, args)
+                             : createBuiltinCall(curToken.getLoc(),
+                                                 builtins.divConstraint, args);
+      continue;
+    }
+    case Token::mod: {
+      consumeToken();
+      auto rhs = parseExp2Log2Expr();
+      if (failed(rhs))
+        return failure();
+      SmallVector<ast::Expr *> args{*lhs, *rhs};
+      bool inRewriteSection = parserContext == ParserContext::Rewrite;
+      if (inRewriteSection &&
+          nativeOperatorContext == NativeOperatorContext::Generic)
+        return emitError(
+            "nodiscard rule for mod operator is applied in rewrite section");
+
+      lhs = inRewriteSection ? createBuiltinCall(curToken.getLoc(),
+                                                 builtins.modRewrite, args)
+                             : createBuiltinCall(curToken.getLoc(),
+                                                 builtins.modConstraint, args);
+      continue;
+    }
+    default:
+      return lhs;
+    }
+  }
+}
+
+FailureOr<ast::Expr *> Parser::parseExp2Log2Expr() {
+  FailureOr<ast::Expr *> expr = nullptr;
+
   switch (curToken.getKind()) {
-  case Token::mul: {
+  case Token::log2: {
     consumeToken();
-    auto rhs = parseLogicalNotExpr();
-    if (failed(rhs))
+    consumeToken(Token::l_paren);
+    expr = parseAddSubExpr();
+    if (failed(expr))
       return failure();
-    SmallVector<ast::Expr *> args{*lhs, *rhs};
-    return createBuiltinCall(curToken.getLoc(), builtins.mul, args);
+
+    // Check if it is in rewrite section but not in the let statement
+    bool inRewriteSection = parserContext == ParserContext::Rewrite;
+    if (inRewriteSection &&
+        nativeOperatorContext == NativeOperatorContext::Generic)
+      return emitError(
+          "nodiscard rule for log2 operator is applied in rewrite section");
+
+    consumeToken(Token::r_paren);
+    return inRewriteSection
+               ? createBuiltinCall(curToken.getLoc(), builtins.log2Rewrite,
+                                   {*expr})
+               : createBuiltinCall(curToken.getLoc(), builtins.log2Constraint,
+                                   {*expr});
   }
-  case Token::div: {
+  case Token::exp2: {
     consumeToken();
-    auto rhs = parseLogicalNotExpr();
-    if (failed(rhs))
+    consumeToken(Token::l_paren);
+    expr = parseAddSubExpr();
+    if (failed(expr))
       return failure();
-    SmallVector<ast::Expr *> args{*lhs, *rhs};
-    return createBuiltinCall(curToken.getLoc(), builtins.div, args);
-  }
-  case Token::mod: {
-    consumeToken();
-    auto rhs = parseLogicalNotExpr();
-    if (failed(rhs))
-      return failure();
-    SmallVector<ast::Expr *> args{*lhs, *rhs};
-    return createBuiltinCall(curToken.getLoc(), builtins.mod, args);
+
+    // Check if it is in rewrite section but not in the let statement
+    bool inRewriteSection = parserContext == ParserContext::Rewrite;
+    if (inRewriteSection &&
+        nativeOperatorContext == NativeOperatorContext::Generic)
+      return emitError(
+          "nodiscard rule for exp2 operator is applied in rewrite section");
+
+    consumeToken(Token::r_paren);
+    return inRewriteSection
+               ? createBuiltinCall(curToken.getLoc(), builtins.exp2Rewrite,
+                                   {*expr})
+               : createBuiltinCall(curToken.getLoc(), builtins.exp2Constraint,
+                                   {*expr});
   }
   default:
-    return lhs;
+    return parseLogicalNotExpr();
   }
 }
 
@@ -2611,9 +2760,12 @@ FailureOr<ast::Stmt *> Parser::parseStmt(bool expectTerminalSemicolon) {
   case Token::kw_erase:
     stmt = parseEraseStmt();
     break;
-  case Token::kw_let:
+  case Token::kw_let: {
     stmt = parseLetStmt();
+    llvm::SaveAndRestore saveCtx(nativeOperatorContext,
+                                 NativeOperatorContext::Generic);
     break;
+  }
   case Token::kw_replace:
     stmt = parseReplaceStmt();
     break;
@@ -2673,6 +2825,10 @@ FailureOr<ast::EraseStmt *> Parser::parseEraseStmt() {
 FailureOr<ast::LetStmt *> Parser::parseLetStmt() {
   SMRange loc = curToken.getLoc();
   consumeToken(Token::kw_let);
+
+  // The rewrite body of this statement is within a rewrite context.
+  llvm::SaveAndRestore saveCtx(nativeOperatorContext,
+                               NativeOperatorContext::Let);
 
   // Parse the name of the new variable.
   SMRange varLoc = curToken.getLoc();

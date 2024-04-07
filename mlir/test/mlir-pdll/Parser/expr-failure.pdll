@@ -490,7 +490,7 @@ Pattern {
 
 Pattern {
   // CHECK: expected expression
-  let resultAttr : Attr = attr<"4 : i32"> *
+  log2()
   erase _: Op;
 }
 
@@ -498,30 +498,83 @@ Pattern {
 
 Pattern {
   // CHECK: expected expression
-  let resultAttr : Attr = attr<"4 : i32"> /
+  exp2()
   erase _: Op;
 }
 
 // -----
 
 Pattern {
-  // CHECK: expected expression
-  let resultAttr : Attr = attr<"4 : i32"> %
-  erase _: Op;
+  // CHECK: nodiscard rule for add operator is applied in rewrite section
+  let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
+  rewrite root with {
+    attr<"4 : i32"> + attr<"5 : i32">;
+    erase root;
+  };
 }
 
 // -----
 
 Pattern {
-  // CHECK: expected expression
-  let resultAttr : Attr = attr<"4 : i32"> +
-  erase _: Op;
+  // CHECK: nodiscard rule for sub operator is applied in rewrite section
+  let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
+  rewrite root with {
+    attr<"4 : i32"> - attr<"5 : i32">;
+    erase root;
+  };
 }
 
 // -----
 
 Pattern {
-  // CHECK: expected expression
-  let resultAttr : Attr = attr<"4 : i32"> -
-  erase _: Op;
+  // CHECK: nodiscard rule for mul operator is applied in rewrite section
+  let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
+  rewrite root with {
+    attr<"4 : i32"> * attr<"5 : i32">;
+    erase root;
+  };
+}
+
+// -----
+
+Pattern {
+  // CHECK: nodiscard rule for div operator is applied in rewrite section
+  let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
+  rewrite root with {
+    attr<"4 : i32"> / attr<"5 : i32">;
+    erase root;
+  };
+}
+
+// -----
+
+Pattern {
+  // CHECK: nodiscard rule for mod operator is applied in rewrite section
+  let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
+  rewrite root with {
+    attr<"4 : i32"> % attr<"5 : i32">;
+    erase root;
+  };
+}
+
+// -----
+
+Pattern {
+  // CHECK: nodiscard rule for log2 operator is applied in rewrite section
+  let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
+  rewrite root with {
+    log2(attr<"4 : i32">);
+    erase root;
+  };
+}
+
+// -----
+
+Pattern {
+  // CHECK: nodiscard rule for exp2 operator is applied in rewrite section
+  let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
+  rewrite root with {
+    exp2(attr<"4 : i32">);
+    erase root;
+  };
 }
