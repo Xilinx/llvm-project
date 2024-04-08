@@ -708,6 +708,12 @@ def ConvertMathToLibm : Pass<"convert-math-to-libm", "ModuleOp"> {
     "func::FuncDialect",
     "vector::VectorDialect",
   ];
+  let options = [
+    Option<"emitC23", "emit-c23", "bool", "true",
+           "Use C23 functions (roundeven)">,
+    Option<"roundingModeIsDefault", "rounding-mode-is-default", "bool", "false",
+           "Assume default rounding mode">
+  ];
 }
 
 //===----------------------------------------------------------------------===//

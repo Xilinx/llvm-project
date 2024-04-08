@@ -161,7 +161,9 @@ ScalarOpToLibmCall<Op>::matchAndRewrite(Op op,
   return success();
 }
 
-void mlir::populateMathToLibmConversionPatterns(RewritePatternSet &patterns) {
+void mlir::populateMathToLibmConversionPatterns(RewritePatternSet &patterns,
+                                                bool useC23Functions,
+                                                bool isDefaultRoundingMode) {
   MLIRContext *ctx = patterns.getContext();
 
   populatePatternsForOp<math::AbsFOp>(patterns, ctx, "fabsf", "fabs");
@@ -183,8 +185,12 @@ void mlir::populateMathToLibmConversionPatterns(RewritePatternSet &patterns) {
   populatePatternsForOp<math::Log10Op>(patterns, ctx, "log10f", "log10");
   populatePatternsForOp<math::Log1pOp>(patterns, ctx, "log1pf", "log1p");
   populatePatternsForOp<math::PowFOp>(patterns, ctx, "powf", "pow");
-  populatePatternsForOp<math::RoundEvenOp>(patterns, ctx, "roundevenf",
-                                           "roundeven");
+  if (useC23Functions)
+    populatePatternsForOp<math::RoundEvenOp>(patterns, ctx, "roundevenf",
+                                             "roundeven");
+  else if (isDefaultRoundingMode)
+    populatePatternsForOp<math::RoundEvenOp>(patterns, ctx, "nearbyintf",
+                                             "nearbyint");
   populatePatternsForOp<math::RoundOp>(patterns, ctx, "roundf", "round");
   populatePatternsForOp<math::SinOp>(patterns, ctx, "sinf", "sin");
   populatePatternsForOp<math::SqrtOp>(patterns, ctx, "sqrtf", "sqrt");
@@ -196,6 +202,7 @@ void mlir::populateMathToLibmConversionPatterns(RewritePatternSet &patterns) {
 namespace {
 struct ConvertMathToLibmPass
     : public impl::ConvertMathToLibmBase<ConvertMathToLibmPass> {
+  using Base::Base;
   void runOnOperation() override;
 };
 } // namespace
@@ -204,7 +211,8 @@ void ConvertMathToLibmPass::runOnOperation() {
   auto module = getOperation();
 
   RewritePatternSet patterns(&getContext());
-  populateMathToLibmConversionPatterns(patterns);
+  populateMathToLibmConversionPatterns(patterns, emitC23,
+                                       roundingModeIsDefault);
 
   ConversionTarget target(getContext());
   target.addLegalDialect<arith::ArithDialect, BuiltinDialect, func::FuncDialect,
@@ -216,4 +224,9 @@ void ConvertMathToLibmPass::runOnOperation() {
 
 std::unique_ptr<OperationPass<ModuleOp>> mlir::createConvertMathToLibmPass() {
   return std::make_unique<ConvertMathToLibmPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>>
+mlir::createConvertMathToLibmPass(const ConvertMathToLibmOptions &options) {
+  return std::make_unique<ConvertMathToLibmPass>(options);
 }
