@@ -254,6 +254,36 @@ Pattern RewriteMultiplyElementsArrayAttr {
 }
 
 // -----
+
+// CHECK-LABEL:    pdl.pattern @ConstraintWithEmptyDictionary : benefit(0) {
+//        CHECK:    %[[DICT:.+]] = apply_native_constraint "__builtin_createDictionaryAttr_constraint" : !pdl.attribute
+//        CHECK:    rewrite %{{.*}} {
+//   CHECK-NEXT:      operation "test.success"  {"importantAttr" = %[[DICT]]}
+
+Pattern ConstraintWithEmptyDictionary {
+  let dict = {};
+  replace op<test.op> with op<test.success>() { importantAttr = dict };
+}
+
+// -----
+// CHECK-LABEL:    pdl.pattern @ConstraintWithTwoEntriesDictionary : benefit(0) {
+//        CHECK:    %[[DICT:.+]] = apply_native_constraint "__builtin_createDictionaryAttr_constraint" : !pdl.attribute
+//   CHECK-NEXT:    %[[KEY:.+]] = attribute = "hello"
+//   CHECK-NEXT:    %[[VAL:.+]] = attribute = "world"
+//   CHECK-NEXT:    %[[DICT2:.+]] = apply_native_constraint "__builtin_addEntryToDictionaryAttr_constraint"(%[[DICT]], %[[KEY]], %[[VAL]] : !pdl.attribute, !pdl.attribute, !pdl.attribute) : !pdl.attribute
+//   CHECK-NEXT:    %[[KEY2:.+]] = attribute = "bye"
+//   CHECK-NEXT:    %[[VAL2:.+]] = attribute = 100 : ui8
+//   CHECK-NEXT:    %[[DICT3:.+]] = apply_native_constraint "__builtin_addEntryToDictionaryAttr_constraint"(%[[DICT2]], %[[KEY2]], %[[VAL2]] : !pdl.attribute, !pdl.attribute, !pdl.attribute) : !pdl.attribute
+//        CHECK:    rewrite %{{.*}} {
+//   CHECK-NEXT:      operation "test.success"  {"importantAttr" = %[[DICT3]]}
+
+
+Pattern ConstraintWithTwoEntriesDictionary {
+  let dict = { hello = "world", bye = 100 : ui8 };
+  replace op<test.op> with op<test.success>() { importantAttr = dict };
+}
+
+// -----
 // CHECK-LABEL:    pdl.pattern @TestAdd : benefit(0) {
 // CHECK:            %[[VAL_0:.*]] = attribute = 4 : i32
 // CHECK:            %[[VAL_1:.*]] = attribute = 5 : i32

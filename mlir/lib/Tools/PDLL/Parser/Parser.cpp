@@ -600,8 +600,10 @@ private:
   CodeCompleteContext *codeCompleteContext;
 
   struct {
-    ast::UserRewriteDecl *createDictionaryAttr;
-    ast::UserRewriteDecl *addEntryToDictionaryAttr;
+    ast::UserRewriteDecl *createDictionaryAttr_Rewrite;
+    ast::UserConstraintDecl *createDictionaryAttr_Constraint;
+    ast::UserRewriteDecl *addEntryToDictionaryAttr_Rewrite;
+    ast::UserConstraintDecl *addEntryToDictionaryAttr_Constraint;
     ast::UserRewriteDecl *createArrayAttr;
     ast::UserRewriteDecl *addElemToArrayAttr;
     ast::UserConstraintDecl *add;
@@ -655,7 +657,7 @@ void Parser::declareBuiltins() {
       declareBuiltin<ast::UserConstraintDecl>(
           "__builtin_addEntryToDictionaryAttr_constraint",
           {"attr", "attrName", "attrEntry"},
-      /*returnsAttr=*/true);
+          /*returnsAttr=*/true);
   builtins.createArrayAttr = declareBuiltin<ast::UserRewriteDecl>(
       "__builtin_createArrayAttr", {}, /*returnsAttr=*/true);
   builtins.addElemToArrayAttr = declareBuiltin<ast::UserRewriteDecl>(
@@ -2121,13 +2123,21 @@ FailureOr<ast::Expr *> Parser::parseDictAttrExpr() {
   consumeToken(Token::l_brace);
   SMRange loc = curToken.getLoc();
 
-  if (parserContext != ParserContext::Rewrite)
-    return emitError(
-        "Parsing of dictionary attributes as constraint not supported!");
-
-  auto dictAttrCall = createBuiltinCall(loc, builtins.createDictionaryAttr, {});
+  FailureOr<ast::Expr *> dictAttrCall;
+  if (parserContext == ParserContext::Rewrite) {
+    dictAttrCall =
+        createBuiltinCall(loc, builtins.createDictionaryAttr_Rewrite, {});
+  } else {
+    dictAttrCall =
+        createBuiltinCall(loc, builtins.createDictionaryAttr_Constraint, {});
+  }
   if (failed(dictAttrCall))
     return failure();
+
+  // No key-values inside dictionary
+  if (consumeIf(Token::r_brace)) {
+    return dictAttrCall;
+  }
 
   // Add each nested attribute to the dict
   do {
@@ -2159,8 +2169,15 @@ FailureOr<ast::Expr *> Parser::parseDictAttrExpr() {
     // Create addEntryToDictionaryAttr native call.
     SmallVector<ast::Expr *> arrayAttrArgs{*dictAttrCall, *stringAttrRef,
                                            namedDecl->getValue()};
-    auto entryToDictionaryCall = createBuiltinCall(
-        loc, builtins.addEntryToDictionaryAttr, arrayAttrArgs);
+
+    FailureOr<ast::Expr *> entryToDictionaryCall;
+    if (parserContext == ParserContext::Rewrite) {
+      entryToDictionaryCall = createBuiltinCall(
+          loc, builtins.addEntryToDictionaryAttr_Rewrite, arrayAttrArgs);
+    } else {
+      entryToDictionaryCall = createBuiltinCall(
+          loc, builtins.addEntryToDictionaryAttr_Constraint, arrayAttrArgs);
+    }
     if (failed(entryToDictionaryCall))
       return failure();
 
