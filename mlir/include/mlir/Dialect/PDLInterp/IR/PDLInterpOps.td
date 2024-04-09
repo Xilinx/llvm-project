@@ -106,7 +106,7 @@ def PDLInterp_ApplyConstraintOp : PDLInterp_PredicateOp<"apply_constraint"> {
                        DefaultValuedAttr<BoolAttr, "false">:$isNegated);
   let results = (outs Variadic<PDL_AnyType>:$results);
   let assemblyFormat = [{
-    $name `(` $args `:` type($args) `)` (`:` type($results)^)? attr-dict `->` successors
+    $name (`(` $args^ `:` type($args) `)`)? (`:` type($results)^)? attr-dict `->` successors
   }];
 }
 

@@ -92,8 +92,8 @@ static void visit(Operation *op, DenseSet<Operation *> &visited) {
 //===----------------------------------------------------------------------===//
 
 LogicalResult ApplyNativeConstraintOp::verify() {
-  if (getNumOperands() == 0)
-    return emitOpError("expected at least one argument");
+  if (getNumOperands() == 0 && getNumResults() == 0)
+    return emitOpError("expected at least one argument or result");
   return success();
 }
 

@@ -167,9 +167,9 @@ Pattern TypeExpr => erase op<> -> (type<"i32">);
 // CHECK:           %[[VAL_1:.*]] = operation "test.op"
 // CHECK:           %[[VAL_2:.*]] = attribute = "test"
 // CHECK:           rewrite %[[VAL_1]] {
-// CHECK:             %[[VAL_3:.*]] = apply_native_rewrite "__builtin_createDictionaryAttr"
+// CHECK:             %[[VAL_3:.*]] = apply_native_rewrite "__builtin_createDictionaryAttr_rewrite"
 // CHECK:             %[[VAL_4:.*]] = attribute = "firstAttr"
-// CHECK:             %[[VAL_5:.*]] = apply_native_rewrite "__builtin_addEntryToDictionaryAttr"(%[[VAL_3]], %[[VAL_4]], %[[VAL_2]]
+// CHECK:             %[[VAL_5:.*]] = apply_native_rewrite "__builtin_addEntryToDictionaryAttr_rewrite"(%[[VAL_3]], %[[VAL_4]], %[[VAL_2]]
 // CHECK:             %[[VAL_6:.*]] = operation "test.success"  {"some_dictionary" = %[[VAL_5]]}
 // CHECK:             replace %[[VAL_1]] with %[[VAL_6]]
 Pattern RewriteOneEntryDictionary {
@@ -188,14 +188,14 @@ Pattern RewriteOneEntryDictionary {
 // CHECK:           %[[VAL_2:.*]] = attribute = "test2"
 // CHECK:           %[[VAL_3:.*]] = attribute = "test3"
 // CHECK:           rewrite %[[VAL_1]] {
-// CHECK:             %[[VAL_4:.*]] = apply_native_rewrite "__builtin_createDictionaryAttr"
+// CHECK:             %[[VAL_4:.*]] = apply_native_rewrite "__builtin_createDictionaryAttr_rewrite"
 // CHECK:             %[[VAL_5:.*]] = attribute = "firstAttr"
 // CHECK:             %[[VAL_6:.*]] = attribute = "test1"
-// CHECK:             %[[VAL_7:.*]] = apply_native_rewrite "__builtin_addEntryToDictionaryAttr"(%[[VAL_4]], %[[VAL_5]], %[[VAL_6]]
+// CHECK:             %[[VAL_7:.*]] = apply_native_rewrite "__builtin_addEntryToDictionaryAttr_rewrite"(%[[VAL_4]], %[[VAL_5]], %[[VAL_6]]
 // CHECK:             %[[VAL_8:.*]] = attribute = "secondAttr"
-// CHECK:             %[[VAL_9:.*]] = apply_native_rewrite "__builtin_addEntryToDictionaryAttr"(%[[VAL_7]], %[[VAL_8]], %[[VAL_2]]
+// CHECK:             %[[VAL_9:.*]] = apply_native_rewrite "__builtin_addEntryToDictionaryAttr_rewrite"(%[[VAL_7]], %[[VAL_8]], %[[VAL_2]]
 // CHECK:             %[[VAL_10:.*]] = attribute = "thirdAttr"
-// CHECK:             %[[VAL_11:.*]] = apply_native_rewrite "__builtin_addEntryToDictionaryAttr"(%[[VAL_9]], %[[VAL_10]], %[[VAL_3]]
+// CHECK:             %[[VAL_11:.*]] = apply_native_rewrite "__builtin_addEntryToDictionaryAttr_rewrite"(%[[VAL_9]], %[[VAL_10]], %[[VAL_3]]
 // CHECK:             %[[VAL_12:.*]] = operation "test.success"  {"some_dictionary" = %[[VAL_11]]}
 // CHECK:             replace %[[VAL_1]] with %[[VAL_12]]
 Pattern RewriteMultipleEntriesDictionary {
@@ -214,10 +214,10 @@ Pattern RewriteMultipleEntriesDictionary {
 // CHECK:           %[[VAL_1:.*]] = operation "test.op"
 // CHECK:           rewrite %[[VAL_1]] {
 // CHECK:             %[[VAL_2:.*]] = apply_native_rewrite "__builtin_createArrayAttr"
-// CHECK:             %[[VAL_3:.*]] = apply_native_rewrite "__builtin_createDictionaryAttr"
+// CHECK:             %[[VAL_3:.*]] = apply_native_rewrite "__builtin_createDictionaryAttr_rewrite"
 // CHECK:             %[[VAL_4:.*]] = attribute = "firstAttr"
 // CHECK:             %[[VAL_5:.*]] = attribute = "test1"
-// CHECK:             %[[VAL_6:.*]] = apply_native_rewrite "__builtin_addEntryToDictionaryAttr"(%[[VAL_3]], %[[VAL_4]], %[[VAL_5]]
+// CHECK:             %[[VAL_6:.*]] = apply_native_rewrite "__builtin_addEntryToDictionaryAttr_rewrite"(%[[VAL_3]], %[[VAL_4]], %[[VAL_5]]
 // CHECK:             %[[VAL_7:.*]] = apply_native_rewrite "__builtin_addElemToArrayAttr"(%[[VAL_2]], %[[VAL_6]]
 // CHECK:             %[[VAL_8:.*]] = operation "test.success"  {"some_array" = %[[VAL_7]]}
 // CHECK:             replace %[[VAL_1]] with %[[VAL_8]]
@@ -236,10 +236,10 @@ Pattern RewriteOneDictionaryArrayAttr {
 // CHECK:           %[[VAL_2:.*]] = attribute = "test2"
 // CHECK:           rewrite %[[VAL_1]] {
 // CHECK:             %[[VAL_3:.*]] = apply_native_rewrite "__builtin_createArrayAttr"
-// CHECK:             %[[VAL_4:.*]] = apply_native_rewrite "__builtin_createDictionaryAttr"
+// CHECK:             %[[VAL_4:.*]] = apply_native_rewrite "__builtin_createDictionaryAttr_rewrite"
 // CHECK:             %[[VAL_5:.*]] = attribute = "firstAttr"
 // CHECK:             %[[VAL_6:.*]] = attribute = "test1"
-// CHECK:             %[[VAL_7:.*]] = apply_native_rewrite "__builtin_addEntryToDictionaryAttr"(%[[VAL_4]], %[[VAL_5]], %[[VAL_6]]
+// CHECK:             %[[VAL_7:.*]] = apply_native_rewrite "__builtin_addEntryToDictionaryAttr_rewrite"(%[[VAL_4]], %[[VAL_5]], %[[VAL_6]]
 // CHECK:             %[[VAL_8:.*]] = apply_native_rewrite "__builtin_addElemToArrayAttr"(%[[VAL_3]], %[[VAL_7]]
 // CHECK:             %[[VAL_9:.*]] = apply_native_rewrite "__builtin_addElemToArrayAttr"(%[[VAL_8]], %[[VAL_2]]
 // CHECK:             %[[VAL_10:.*]] = operation "test.success"  {"some_array" = %[[VAL_9]]}
@@ -251,6 +251,36 @@ Pattern RewriteMultiplyElementsArrayAttr {
       let newRoot = op<test.success>() { some_array = [ {"firstAttr" = attr<"\"test1\"">}, attr2]} -> ();
       replace root with newRoot;
   };
+}
+
+// -----
+
+// CHECK-LABEL:    pdl.pattern @ConstraintWithEmptyDictionary : benefit(0) {
+//        CHECK:    %[[DICT:.+]] = apply_native_constraint "__builtin_createDictionaryAttr_constraint" : !pdl.attribute
+//        CHECK:    rewrite %{{.*}} {
+//   CHECK-NEXT:      operation "test.success"  {"importantAttr" = %[[DICT]]}
+
+Pattern ConstraintWithEmptyDictionary {
+  let dict = {};
+  replace op<test.op> with op<test.success>() { importantAttr = dict };
+}
+
+// -----
+// CHECK-LABEL:    pdl.pattern @ConstraintWithTwoEntriesDictionary : benefit(0) {
+//        CHECK:    %[[DICT:.+]] = apply_native_constraint "__builtin_createDictionaryAttr_constraint" : !pdl.attribute
+//   CHECK-NEXT:    %[[KEY:.+]] = attribute = "hello"
+//   CHECK-NEXT:    %[[VAL:.+]] = attribute = "world"
+//   CHECK-NEXT:    %[[DICT2:.+]] = apply_native_constraint "__builtin_addEntryToDictionaryAttr_constraint"(%[[DICT]], %[[KEY]], %[[VAL]] : !pdl.attribute, !pdl.attribute, !pdl.attribute) : !pdl.attribute
+//   CHECK-NEXT:    %[[KEY2:.+]] = attribute = "bye"
+//   CHECK-NEXT:    %[[VAL2:.+]] = attribute = 100 : ui8
+//   CHECK-NEXT:    %[[DICT3:.+]] = apply_native_constraint "__builtin_addEntryToDictionaryAttr_constraint"(%[[DICT2]], %[[KEY2]], %[[VAL2]] : !pdl.attribute, !pdl.attribute, !pdl.attribute) : !pdl.attribute
+//        CHECK:    rewrite %{{.*}} {
+//   CHECK-NEXT:      operation "test.success"  {"importantAttr" = %[[DICT3]]}
+
+
+Pattern ConstraintWithTwoEntriesDictionary {
+  let dict = { hello = "world", bye = 100 : ui8 };
+  replace op<test.op> with op<test.success>() { importantAttr = dict };
 }
 
 // -----

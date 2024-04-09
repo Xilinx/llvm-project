@@ -49,7 +49,9 @@ def PDL_ApplyNativeConstraintOp
                        Variadic<PDL_AnyType>:$args,
                        DefaultValuedAttr<BoolAttr, "false">:$isNegated);
   let results = (outs Variadic<PDL_AnyType>:$results);
-  let assemblyFormat = "$name `(` $args `:` type($args) `)` (`:`  type($results)^ )? attr-dict";
+  let assemblyFormat = [{
+    $name (`(` $args^ `:` type($args) `)`)? (`:` type($results)^)? attr-dict
+  }];
   let hasVerifier = 1;
 }
 
