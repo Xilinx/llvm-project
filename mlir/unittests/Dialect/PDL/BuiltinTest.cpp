@@ -678,10 +678,26 @@ TEST_F(BuiltinTest, exp2) {
         (uint64_t)2);
   }
 
-  // Check unsigned integer overflow
+  // unsigned integer: overflow
   {
     TestPDLResultList results(1);
     EXPECT_TRUE(builtin::exp2(rewriter, results, {eightUInt8}).failed());
+  }
+
+  auto hundredFortyF32 = rewriter.getF32FloatAttr(140.0);
+
+  // Float: overflow
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::exp2(rewriter, results, {hundredFortyF32}).failed());
+  }
+
+  // Float: underflow
+  auto minusHundredFiftyF32 = rewriter.getF32FloatAttr(-150.0);
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(
+        builtin::exp2(rewriter, results, {minusHundredFiftyF32}).failed());
   }
 }
 } // namespace

@@ -4,6 +4,7 @@
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/APSInt.h>
 #include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/TypeSwitch.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <mlir/Dialect/PDL/IR/Builtins.h>
@@ -102,21 +103,49 @@ LogicalResult unaryOp(PatternRewriter &rewriter, PDLResultList &results,
   }
 
   if (auto operandFloatAttr = dyn_cast_or_null<FloatAttr>(operandAttr)) {
-    auto floatType = operandFloatAttr.getType();
+    // auto floatType = operandFloatAttr.getType();
 
     if constexpr (T == UnaryOpKind::exp2) {
-      auto maxVal = APFloat::getLargest(llvm::APFloat::IEEEhalf());
-      auto minVal = APFloat::getSmallest(llvm::APFloat::IEEEhalf());
+      // auto maxVal = APFloat::getLargest(llvm::APFloat::IEEEhalf());
+      // auto minVal = APFloat::getSmallest(llvm::APFloat::IEEEhalf());
 
-      APFloat resultFloat(
-          std::exp(operandFloatAttr.getValue().convertToFloat()));
-      // check overflow
-      if (resultFloat < minVal || resultFloat > maxVal)
-        return failure();
-      results.push_back(rewriter.getFloatAttr(floatType, resultFloat));
+      auto type = operandFloatAttr.getType();
+
+      return TypeSwitch<Type, LogicalResult>(type)
+          .template Case<Float64Type>([&results, &rewriter,
+                                       &operandFloatAttr](auto floatType) {
+            APFloat resultAPFloat(
+                std::exp2(operandFloatAttr.getValue().convertToDouble()));
+
+            // check overflow
+            if (!resultAPFloat.isNormal())
+              return failure();
+
+            results.push_back(rewriter.getFloatAttr(floatType, resultAPFloat));
+            return success();
+          })
+          .template Case<Float32Type, Float16Type, BFloat16Type>(
+              [&results, &rewriter, &operandFloatAttr](auto floatType) {
+                APFloat resultAPFloat(
+                    std::exp2(operandFloatAttr.getValue().convertToFloat()));
+
+                // check overflow and underflow
+                // If overflow happens, resultAPFloat is inf
+                // If underflow happens, resultAPFloat is 0
+                if (!resultAPFloat.isNormal())
+                  return failure();
+
+                results.push_back(
+                    rewriter.getFloatAttr(floatType, resultAPFloat));
+                return success();
+              })
+          .Default([](Type /*type*/) { return failure(); });
     } else if constexpr (T == UnaryOpKind::log2) {
+      auto minF32 = APFloat::getSmallest(llvm::APFloat::IEEEsingle());
+
       APFloat resultFloat((float)operandFloatAttr.getValue().getExactLog2());
-      results.push_back(rewriter.getFloatAttr(floatType, resultFloat));
+      results.push_back(
+          rewriter.getFloatAttr(operandFloatAttr.getType(), resultFloat));
     }
     return success();
   }

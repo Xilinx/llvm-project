@@ -1980,9 +1980,9 @@ FailureOr<ast::Expr *> Parser::parseAddSubExpr() {
       // Check if it is in rewrite section but not in the let statement
       bool inRewriteSection = parserContext == ParserContext::Rewrite;
       if (inRewriteSection &&
-          nativeOperatorContext == NativeOperatorContext::Generic)
-        return emitError(
-            "nodiscard rule for add operator is applied in rewrite section");
+          nativeOperatorContext != NativeOperatorContext::Let)
+        return emitError("cannot evaluate add operator in rewrite section. "
+                         "Assign to a variable with `let`");
 
       lhs = inRewriteSection ? createBuiltinCall(curToken.getLoc(),
                                                  builtins.addRewrite, args)
@@ -2000,9 +2000,9 @@ FailureOr<ast::Expr *> Parser::parseAddSubExpr() {
       // Check if it is in rewrite section but not in the let statement
       bool inRewriteSection = parserContext == ParserContext::Rewrite;
       if (inRewriteSection &&
-          nativeOperatorContext == NativeOperatorContext::Generic)
-        return emitError(
-            "nodiscard rule for sub operator is applied in rewrite section");
+          nativeOperatorContext != NativeOperatorContext::Let)
+        return emitError("cannot evaluate sub operator in rewrite section. "
+                         "Assign to a variable with `let`");
 
       lhs = inRewriteSection ? createBuiltinCall(curToken.getLoc(),
                                                  builtins.subRewrite, args)
@@ -2033,9 +2033,9 @@ FailureOr<ast::Expr *> Parser::parseMulDivModExpr() {
       // Check if it is in rewrite section but not in the let statement
       bool inRewriteSection = parserContext == ParserContext::Rewrite;
       if (inRewriteSection &&
-          nativeOperatorContext == NativeOperatorContext::Generic)
-        return emitError(
-            "nodiscard rule for mul operator is applied in rewrite section");
+          nativeOperatorContext != NativeOperatorContext::Let)
+        return emitError("cannot evaluate mul operator in rewrite section. "
+                         "Assign to a variable with `let`");
 
       lhs = inRewriteSection ? createBuiltinCall(curToken.getLoc(),
                                                  builtins.mulRewrite, args)
@@ -2053,9 +2053,9 @@ FailureOr<ast::Expr *> Parser::parseMulDivModExpr() {
       // Check if it is in rewrite section but not in the let statement
       bool inRewriteSection = parserContext == ParserContext::Rewrite;
       if (inRewriteSection &&
-          nativeOperatorContext == NativeOperatorContext::Generic)
-        return emitError(
-            "nodiscard rule for div operator is applied in rewrite section");
+          nativeOperatorContext != NativeOperatorContext::Let)
+        return emitError("cannot evaluate div operator in rewrite section. "
+                         "Assign to a variable with `let`");
 
       lhs = inRewriteSection ? createBuiltinCall(curToken.getLoc(),
                                                  builtins.divRewrite, args)
@@ -2071,9 +2071,9 @@ FailureOr<ast::Expr *> Parser::parseMulDivModExpr() {
       SmallVector<ast::Expr *> args{*lhs, *rhs};
       bool inRewriteSection = parserContext == ParserContext::Rewrite;
       if (inRewriteSection &&
-          nativeOperatorContext == NativeOperatorContext::Generic)
-        return emitError(
-            "nodiscard rule for mod operator is applied in rewrite section");
+          nativeOperatorContext != NativeOperatorContext::Let)
+        return emitError("cannot evaluate mod operator in rewrite section. "
+                         "Assign to a variable with `let`");
 
       lhs = inRewriteSection ? createBuiltinCall(curToken.getLoc(),
                                                  builtins.modRewrite, args)
@@ -2100,10 +2100,9 @@ FailureOr<ast::Expr *> Parser::parseExp2Log2Expr() {
 
     // Check if it is in rewrite section but not in the let statement
     bool inRewriteSection = parserContext == ParserContext::Rewrite;
-    if (inRewriteSection &&
-        nativeOperatorContext == NativeOperatorContext::Generic)
-      return emitError(
-          "nodiscard rule for log2 operator is applied in rewrite section");
+    if (inRewriteSection && nativeOperatorContext != NativeOperatorContext::Let)
+      return emitError("cannot evaluate log2 operator in rewrite section. "
+                       "Assign to a variable with `let`");
 
     consumeToken(Token::r_paren);
     return inRewriteSection
@@ -2121,10 +2120,9 @@ FailureOr<ast::Expr *> Parser::parseExp2Log2Expr() {
 
     // Check if it is in rewrite section but not in the let statement
     bool inRewriteSection = parserContext == ParserContext::Rewrite;
-    if (inRewriteSection &&
-        nativeOperatorContext == NativeOperatorContext::Generic)
-      return emitError(
-          "nodiscard rule for exp2 operator is applied in rewrite section");
+    if (inRewriteSection && nativeOperatorContext != NativeOperatorContext::Let)
+      return emitError("cannot evaluate exp2 operator in rewrite section. "
+                       "Assign to a variable with `let`");
 
     consumeToken(Token::r_paren);
     return inRewriteSection
@@ -2762,8 +2760,6 @@ FailureOr<ast::Stmt *> Parser::parseStmt(bool expectTerminalSemicolon) {
     break;
   case Token::kw_let: {
     stmt = parseLetStmt();
-    llvm::SaveAndRestore saveCtx(nativeOperatorContext,
-                                 NativeOperatorContext::Generic);
     break;
   }
   case Token::kw_replace:
