@@ -161,9 +161,8 @@ ScalarOpToLibmCall<Op>::matchAndRewrite(Op op,
   return success();
 }
 
-void mlir::populateMathToLibmConversionPatterns(RewritePatternSet &patterns,
-                                                bool useC23Functions,
-                                                bool isDefaultRoundingMode) {
+void mlir::populateMathToLibmConversionPatterns(
+    RewritePatternSet &patterns, const ConvertMathToLibmOptions &options) {
   MLIRContext *ctx = patterns.getContext();
 
   populatePatternsForOp<math::AbsFOp>(patterns, ctx, "fabsf", "fabs");
@@ -185,10 +184,10 @@ void mlir::populateMathToLibmConversionPatterns(RewritePatternSet &patterns,
   populatePatternsForOp<math::Log10Op>(patterns, ctx, "log10f", "log10");
   populatePatternsForOp<math::Log1pOp>(patterns, ctx, "log1pf", "log1p");
   populatePatternsForOp<math::PowFOp>(patterns, ctx, "powf", "pow");
-  if (useC23Functions)
+  if (options.emitC23)
     populatePatternsForOp<math::RoundEvenOp>(patterns, ctx, "roundevenf",
                                              "roundeven");
-  else if (isDefaultRoundingMode)
+  else if (options.roundingModeIsDefault)
     populatePatternsForOp<math::RoundEvenOp>(patterns, ctx, "nearbyintf",
                                              "nearbyint");
   populatePatternsForOp<math::RoundOp>(patterns, ctx, "roundf", "round");
@@ -211,8 +210,9 @@ void ConvertMathToLibmPass::runOnOperation() {
   auto module = getOperation();
 
   RewritePatternSet patterns(&getContext());
-  populateMathToLibmConversionPatterns(patterns, emitC23,
-                                       roundingModeIsDefault);
+  populateMathToLibmConversionPatterns(
+      patterns, {/*emitC23=*/emitC23,
+                 /*roundingModeIsDefault=*/roundingModeIsDefault});
 
   ConversionTarget target(getContext());
   target.addLegalDialect<arith::ArithDialect, BuiltinDialect, func::FuncDialect,
