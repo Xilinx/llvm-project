@@ -44,6 +44,10 @@ func.func @arith_integer_ops(%arg0: i32, %arg1: i32) {
   %1 = arith.subi %arg0, %arg1 : i32
   // CHECK: emitc.mul %arg0, %arg1 : (i32, i32) -> i32
   %2 = arith.muli %arg0, %arg1 : i32
+  // CHECK: emitc.div %arg0, %arg1 : (i32, i32) -> i32
+  %3 = arith.divsi %arg0, %arg1 : i32
+  // CHECK: emitc.rem %arg0, %arg1 : (i32, i32) -> i32
+  %4 = arith.remsi %arg0, %arg1 : i32
 
   return
 }
