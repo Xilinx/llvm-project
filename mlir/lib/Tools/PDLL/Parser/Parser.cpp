@@ -640,10 +640,21 @@ T *Parser::declareBuiltin(StringRef name, ArrayRef<StringRef> argNames,
 }
 
 void Parser::declareBuiltins() {
-  builtins.createDictionaryAttr = declareBuiltin<ast::UserRewriteDecl>(
-      "__builtin_createDictionaryAttr", {}, /*returnsAttr=*/true);
-  builtins.addEntryToDictionaryAttr = declareBuiltin<ast::UserRewriteDecl>(
-      "__builtin_addEntryToDictionaryAttr", {"attr", "attrName", "attrEntry"},
+  builtins.createDictionaryAttr_Rewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_createDictionaryAttr_rewrite", {}, /*returnsAttr=*/true);
+  builtins.createDictionaryAttr_Constraint =
+      declareBuiltin<ast::UserConstraintDecl>(
+          "__builtin_createDictionaryAttr_constraint", {},
+          /*returnsAttr=*/true);
+  builtins.addEntryToDictionaryAttr_Rewrite =
+      declareBuiltin<ast::UserRewriteDecl>(
+          "__builtin_addEntryToDictionaryAttr_rewrite",
+          {"attr", "attrName", "attrEntry"},
+          /*returnsAttr=*/true);
+  builtins.addEntryToDictionaryAttr_Constraint =
+      declareBuiltin<ast::UserConstraintDecl>(
+          "__builtin_addEntryToDictionaryAttr_constraint",
+          {"attr", "attrName", "attrEntry"},
       /*returnsAttr=*/true);
   builtins.createArrayAttr = declareBuiltin<ast::UserRewriteDecl>(
       "__builtin_createArrayAttr", {}, /*returnsAttr=*/true);

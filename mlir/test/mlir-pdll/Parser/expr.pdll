@@ -38,10 +38,10 @@ Pattern {
 // CHECK:     CallExpr {{.*}} Type<Attr>
 // CHECK:       UserRewriteDecl {{.*}} Name<__builtin_createArrayAttr> ResultType<Attr>
 // CHECK:     CallExpr {{.*}} Type<Attr>
-// CHECK:       UserRewriteDecl {{.*}} Name<__builtin_addEntryToDictionaryAttr> ResultType<Attr>
+// CHECK:       UserRewriteDecl {{.*}} Name<__builtin_addEntryToDictionaryAttr_rewrite> ResultType<Attr>
 // CHECK:         `Arguments`
 // CHECK:           CallExpr {{.*}} Type<Attr>
-// CHECK:             UserRewriteDecl {{.*}} Name<__builtin_createDictionaryAttr> ResultType<Attr>
+// CHECK:             UserRewriteDecl {{.*}} Name<__builtin_createDictionaryAttr_rewrite> ResultType<Attr>
 // CHECK:             AttributeExpr {{.*}} Value<""firstAttr"">
 
 Pattern {

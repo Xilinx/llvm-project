@@ -16,18 +16,22 @@ using namespace mlir;
 
 namespace mlir::pdl {
 namespace builtin {
-mlir::Attribute createDictionaryAttr(mlir::PatternRewriter &rewriter) {
-  return rewriter.getDictionaryAttr({});
+
+LogicalResult createDictionaryAttr(PatternRewriter &rewriter,
+                                   PDLResultList &results,
+                                   ArrayRef<PDLValue> args) {
+  results.push_back(rewriter.getDictionaryAttr({}));
+  return success();
 }
 
-mlir::Attribute addEntryToDictionaryAttr(mlir::PatternRewriter &rewriter,
-                                         mlir::Attribute dictAttr,
-                                         mlir::Attribute attrName,
-                                         mlir::Attribute attrEntry) {
-  assert(isa<DictionaryAttr>(dictAttr));
-  auto attr = dictAttr.cast<DictionaryAttr>();
-  auto name = attrName.cast<StringAttr>();
-  std::vector<NamedAttribute> values = attr.getValue().vec();
+LogicalResult addEntryToDictionaryAttr(PatternRewriter &rewriter,
+                                       PDLResultList &results,
+                                       ArrayRef<PDLValue> args) {
+  auto dictAttr = cast<DictionaryAttr>(args[0].cast<Attribute>());
+  auto name = cast<StringAttr>(args[1].cast<Attribute>());
+  auto attrEntry = args[2].cast<Attribute>();
+
+  std::vector<NamedAttribute> values = dictAttr.getValue().vec();
 
   // Remove entry if it exists in the dictionary.
   llvm::erase_if(values, [&](NamedAttribute &namedAttr) {
@@ -35,7 +39,8 @@ mlir::Attribute addEntryToDictionaryAttr(mlir::PatternRewriter &rewriter,
   });
 
   values.push_back(rewriter.getNamedAttr(name, attrEntry));
-  return rewriter.getDictionaryAttr(values);
+  results.push_back(rewriter.getDictionaryAttr(values));
+  return success();
 }
 
 mlir::Attribute createArrayAttr(mlir::PatternRewriter &rewriter) {
@@ -110,14 +115,19 @@ LogicalResult add(mlir::PatternRewriter &rewriter, mlir::PDLResultList &results,
 void registerBuiltins(PDLPatternModule &pdlPattern) {
   using namespace builtin;
   // See Parser::defineBuiltins()
-  pdlPattern.registerRewriteFunction("__builtin_createDictionaryAttr",
+  pdlPattern.registerRewriteFunction("__builtin_createDictionaryAttr_rewrite",
                                      createDictionaryAttr);
-  pdlPattern.registerRewriteFunction("__builtin_addEntryToDictionaryAttr",
-                                     addEntryToDictionaryAttr);
+  pdlPattern.registerRewriteFunction(
+      "__builtin_addEntryToDictionaryAttr_rewrite", addEntryToDictionaryAttr);
   pdlPattern.registerRewriteFunction("__builtin_createArrayAttr",
                                      createArrayAttr);
   pdlPattern.registerRewriteFunction("__builtin_addElemToArrayAttr",
                                      addElemToArrayAttr);
+  pdlPattern.registerConstraintFunctionWithResults(
+      "__builtin_createDictionaryAttr_constraint", createDictionaryAttr);
+  pdlPattern.registerConstraintFunctionWithResults(
+      "__builtin_addEntryToDictionaryAttr_constraint",
+      addEntryToDictionaryAttr);
   pdlPattern.registerConstraintFunctionWithResults("__builtin_add", add);
 }
 } // namespace mlir::pdl
