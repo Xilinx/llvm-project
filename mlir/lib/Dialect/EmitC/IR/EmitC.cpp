@@ -59,26 +59,21 @@ void mlir::emitc::buildTerminatedBody(OpBuilder &builder, Location loc) {
 }
 
 bool mlir::emitc::isSupportedEmitCType(Type type) {
-  if (llvm::isa<emitc::OpaqueType>(type)) {
+  if (llvm::isa<emitc::OpaqueType>(type))
     return true;
-  }
-  if (auto ptrType = llvm::dyn_cast<emitc::PointerType>(type)) {
+  if (auto ptrType = llvm::dyn_cast<emitc::PointerType>(type))
     return isSupportedEmitCType(ptrType.getPointee());
-  }
   if (auto arrayType = llvm::dyn_cast<emitc::ArrayType>(type)) {
     auto elemType = arrayType.getElementType();
     return !llvm::isa<emitc::ArrayType>(elemType) &&
            isSupportedEmitCType(elemType);
   }
-  if (type.isIndex()) {
+  if (type.isIndex())
     return true;
-  }
-  if (llvm::isa<IntegerType>(type)) {
+  if (llvm::isa<IntegerType>(type))
     return isSupportedIntegerType(type);
-  }
-  if (llvm::isa<FloatType>(type)) {
+  if (llvm::isa<FloatType>(type))
     return isSupportedFloatType(type);
-  }
   if (auto tensorType = llvm::dyn_cast<TensorType>(type)) {
     if (!tensorType.hasStaticShape()) {
       return false;
