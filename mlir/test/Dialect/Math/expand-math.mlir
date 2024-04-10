@@ -512,3 +512,18 @@ func.func @roundeven16(%arg: f16) -> f16 {
 // CHECK:     %[[COPYSIGN:.*]] = math.copysign %[[RESULT]], %[[VAL_0]] : f16
 
 // CHECK: return %[[COPYSIGN]] : f16
+
+// -----
+
+// CHECK-LABEL:   func.func @rsqrt
+// CHECK-SAME:     (%[[ARG:.*]]: f32)
+// CHECK-SAME:    -> f32
+// CHECK-DAG:     %[[CST:.*]] = arith.constant 1.000000e+00 : f32
+// CHECK-DAG:     %[[SQRT:.*]] = math.sqrt %[[ARG]] : f32
+// CHECK-DAG:     %[[DIV:.*]] = arith.divf %[[CST]], %[[SQRT]] : f32
+// CHECK:         return %[[DIV]] : f32
+func.func @rsqrt(%float: f32) -> (f32)  {
+  %float_result = math.rsqrt %float : f32
+  return %float_result : f32
+}
+
