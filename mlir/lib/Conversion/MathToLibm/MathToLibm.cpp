@@ -190,6 +190,9 @@ void mlir::populateMathToLibmConversionPatterns(
   else if (options.roundingModeIsDefault)
     populatePatternsForOp<math::RoundEvenOp>(patterns, ctx, "nearbyintf",
                                              "nearbyint");
+  // Roundeven: using nearbyint (pre-C23) for roundeven requires the
+  // rounding mode to be FE_TONEAREST (the default). Otherwise we need to
+  // issue a call to set the rounding mode (which this pass currently can't do).
   populatePatternsForOp<math::RoundOp>(patterns, ctx, "roundf", "round");
   populatePatternsForOp<math::SinOp>(patterns, ctx, "sinf", "sin");
   populatePatternsForOp<math::SqrtOp>(patterns, ctx, "sqrtf", "sqrt");
