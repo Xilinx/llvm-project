@@ -58,16 +58,16 @@ void mlir::emitc::buildTerminatedBody(OpBuilder &builder, Location loc) {
   builder.create<emitc::YieldOp>(loc);
 }
 
-bool mlir::emitc::isValidEmitCType(Type type) {
+bool mlir::emitc::isSupportedEmitCType(Type type) {
   if (isa<emitc::OpaqueType>(type)) {
     return true;
   }
   if (auto ptrType = dyn_cast<emitc::PointerType>(type)) {
-    return isValidEmitCType(ptrType.getPointee());
+    return isSupportedEmitCType(ptrType.getPointee());
   }
   if (auto arrayType = llvm::dyn_cast<emitc::ArrayType>(type)) {
     auto elemType = arrayType.getElementType();
-    return !isa<emitc::ArrayType>(elemType) && isValidEmitCType(elemType);
+    return !isa<emitc::ArrayType>(elemType) && isSupportedEmitCType(elemType);
   }
   if (type.isIndex()) {
     return true;
@@ -86,11 +86,11 @@ bool mlir::emitc::isValidEmitCType(Type type) {
     if (isa<emitc::ArrayType>(elemType)) {
       return false;
     }
-    return isValidEmitCType(elemType);
+    return isSupportedEmitCType(elemType);
   }
   if (auto tupleType = llvm::dyn_cast<TupleType>(type)) {
     return llvm::all_of(tupleType.getTypes(), [](Type type) {
-      return !isa<emitc::ArrayType>(type) && isValidEmitCType(type);
+      return !isa<emitc::ArrayType>(type) && isSupportedEmitCType(type);
     });
   }
   return false;
