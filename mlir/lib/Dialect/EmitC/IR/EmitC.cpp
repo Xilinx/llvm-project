@@ -59,23 +59,24 @@ void mlir::emitc::buildTerminatedBody(OpBuilder &builder, Location loc) {
 }
 
 bool mlir::emitc::isSupportedEmitCType(Type type) {
-  if (isa<emitc::OpaqueType>(type)) {
+  if (llvm::isa<emitc::OpaqueType>(type)) {
     return true;
   }
-  if (auto ptrType = dyn_cast<emitc::PointerType>(type)) {
+  if (auto ptrType = llvm::dyn_cast<emitc::PointerType>(type)) {
     return isSupportedEmitCType(ptrType.getPointee());
   }
   if (auto arrayType = llvm::dyn_cast<emitc::ArrayType>(type)) {
     auto elemType = arrayType.getElementType();
-    return !isa<emitc::ArrayType>(elemType) && isSupportedEmitCType(elemType);
+    return !llvm::isa<emitc::ArrayType>(elemType) &&
+           isSupportedEmitCType(elemType);
   }
   if (type.isIndex()) {
     return true;
   }
-  if (isa<IntegerType>(type)) {
+  if (llvm::isa<IntegerType>(type)) {
     return isSupportedIntegerType(type);
   }
-  if (auto floatType = llvm::dyn_cast<FloatType>(type)) {
+  if (llvm::isa<FloatType>(type)) {
     return isSupportedFloatType(type);
   }
   if (auto tensorType = llvm::dyn_cast<TensorType>(type)) {
@@ -83,14 +84,14 @@ bool mlir::emitc::isSupportedEmitCType(Type type) {
       return false;
     }
     auto elemType = tensorType.getElementType();
-    if (isa<emitc::ArrayType>(elemType)) {
+    if (llvm::isa<emitc::ArrayType>(elemType)) {
       return false;
     }
     return isSupportedEmitCType(elemType);
   }
   if (auto tupleType = llvm::dyn_cast<TupleType>(type)) {
     return llvm::all_of(tupleType.getTypes(), [](Type type) {
-      return !isa<emitc::ArrayType>(type) && isSupportedEmitCType(type);
+      return !llvm::isa<emitc::ArrayType>(type) && isSupportedEmitCType(type);
     });
   }
   return false;
