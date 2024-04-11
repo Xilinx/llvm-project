@@ -252,6 +252,8 @@ public:
   matchAndRewrite(CastOp castOp, typename CastOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
+    Location loc = castOp.getLoc();
+
     Type operandType = adaptor.getIn().getType();
     if (!emitc::isSupportedIntegerType(operandType))
       return rewriter.notifyMatchFailure(castOp,
@@ -265,8 +267,27 @@ public:
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
 
-    rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType,
-                                               adaptor.getOperands());
+    // Figure out signedness
+    ValueRange castSource = adaptor.getOperands();
+    if (auto intType = dyn_cast<IntegerType>(operandType)) {
+      IntegerType::SignednessSemantics operandSignedness =
+          intType.getSignedness();
+      if (operandSignedness == IntegerType::SignednessSemantics::Signless) {
+        bool isSourceSigned = isa<arith::SIToFPOp>(castOp);
+        castSource = ValueRange{rewriter.create<emitc::CastOp>(
+            loc, rewriter.getIntegerType(intType.getWidth(), isSourceSigned),
+            adaptor.getOperands())};
+      } else if ((isa<arith::SIToFPOp>(castOp) &&
+                  operandSignedness ==
+                      IntegerType::SignednessSemantics::Unsigned) ||
+                 (isa<arith::UIToFPOp>(castOp) &&
+                  operandSignedness ==
+                      IntegerType::SignednessSemantics::Signed))
+        return rewriter.notifyMatchFailure(
+            castOp, "unsupported cast source signedness");
+    }
+
+    rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType, castSource);
 
     return success();
   }
