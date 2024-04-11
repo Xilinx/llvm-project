@@ -540,3 +540,17 @@ func.func @rsqrt_vec(%float: vector<5xf32>) -> (vector<5xf32>)  {
   %float_result = math.rsqrt %float : vector<5xf32>
   return %float_result : vector<5xf32>
 }
+
+// -----
+
+// CHECK-LABEL:   func.func @rsqrt_tns
+// CHECK-SAME:     (%[[ARG:.*]]: tensor<5x8xf32>)
+// CHECK-SAME:    -> tensor<5x8xf32>
+// CHECK-DAG:     %[[CST:.*]] = arith.constant dense<1.000000e+00> : tensor<5x8xf32>
+// CHECK-DAG:     %[[SQRT:.*]] = math.sqrt %[[ARG]] : tensor<5x8xf32>
+// CHECK-DAG:     %[[DIV:.*]] = arith.divf %[[CST]], %[[SQRT]] : tensor<5x8xf32>
+// CHECK:         return %[[DIV]] : tensor<5x8xf32>
+func.func @rsqrt_tns(%float: tensor<5x8xf32>) -> (tensor<5x8xf32>)  {
+  %float_result = math.rsqrt %float : tensor<5x8xf32>
+  return %float_result : tensor<5x8xf32>
+}
