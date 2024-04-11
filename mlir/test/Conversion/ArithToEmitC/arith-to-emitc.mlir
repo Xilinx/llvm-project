@@ -162,12 +162,10 @@ func.func @arith_cmpf_ogt(%arg0: f32, %arg1: f32) -> i1 {
 // -----
 
 func.func @arith_int_to_float_cast_ops(%arg0: i8, %arg1: i64) {
-  // CHECK: %[[CAST_SI8:.*]] = emitc.cast %arg0 : i8 to si8
-  // CHECK: emitc.cast %[[CAST_SI8]] : si8 to f32
+  // CHECK: emitc.cast %arg0 : i8 to f32
   %0 = arith.sitofp %arg0 : i8 to f32
 
-  // CHECK: %[[CAST_SI64:.*]] = emitc.cast %arg1 : i64 to si64
-  // CHECK: emitc.cast %[[CAST_SI64]] : si64 to f32
+  // CHECK: emitc.cast %arg1 : i64 to f32
   %1 = arith.sitofp %arg1 : i64 to f32
 
   // CHECK: %[[CAST_UNS:.*]] = emitc.cast %arg0 : i8 to ui8

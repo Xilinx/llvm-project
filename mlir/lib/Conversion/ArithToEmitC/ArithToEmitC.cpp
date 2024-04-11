@@ -160,6 +160,23 @@ public:
   }
 };
 
+/// Add an explicit C-style cast operation to unsigned, to force
+/// the unsigned interpretation of a signless integer.
+Value castSignlessToUnsigned(ConversionPatternRewriter &rewriter, Location loc,
+                             Value operand) {
+  auto intType = dyn_cast<IntegerType>(operand.getType());
+  if (!intType)
+    return operand;
+
+  IntegerType::SignednessSemantics operandSignedness = intType.getSignedness();
+  if (operandSignedness == IntegerType::SignednessSemantics::Signless) {
+    return rewriter.create<emitc::CastOp>(
+        loc, rewriter.getIntegerType(intType.getWidth(), false), operand);
+  }
+
+  return operand;
+}
+
 template <typename ArithOp, typename EmitCOp>
 class ArithOpConversion final : public OpConversionPattern<ArithOp> {
 public:
@@ -254,6 +271,7 @@ public:
 
     Location loc = castOp.getLoc();
 
+    // Vectors in particular are not supported
     Type operandType = adaptor.getIn().getType();
     if (!emitc::isSupportedIntegerType(operandType))
       return rewriter.notifyMatchFailure(castOp,
@@ -267,26 +285,16 @@ public:
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
 
-    // Figure out signedness
-    ValueRange castSource = adaptor.getOperands();
-    if (auto intType = dyn_cast<IntegerType>(operandType)) {
-      IntegerType::SignednessSemantics operandSignedness =
-          intType.getSignedness();
-      if (operandSignedness == IntegerType::SignednessSemantics::Signless) {
-        bool isSourceSigned = isa<arith::SIToFPOp>(castOp);
-        castSource = ValueRange{rewriter.create<emitc::CastOp>(
-            loc, rewriter.getIntegerType(intType.getWidth(), isSourceSigned),
-            adaptor.getOperands())};
-      } else if ((isa<arith::SIToFPOp>(castOp) &&
-                  operandSignedness ==
-                      IntegerType::SignednessSemantics::Unsigned) ||
-                 (isa<arith::UIToFPOp>(castOp) &&
-                  operandSignedness ==
-                      IntegerType::SignednessSemantics::Signed))
-        return rewriter.notifyMatchFailure(
-            castOp, "unsupported cast source signedness");
-    }
+    ValueRange opers = adaptor.getOperands();
 
+    // Convert to unsigned if it's the "ui" variant
+    // Signless is interpreted as signed, so no need to cast for "si"
+
+    // Note this needs to be changed to handle vectors
+    // (won't show up until these are supported EmitC types though)
+    Value castSource = opers.front();
+    if (isa<arith::UIToFPOp>(castOp))
+      castSource = castSignlessToUnsigned(rewriter, loc, castSource);
     rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType, castSource);
 
     return success();
