@@ -529,20 +529,6 @@ func.func @rsqrt(%float: f32) -> (f32)  {
 
 // -----
 
-// CHECK-LABEL:   func.func @rsqrt
-// CHECK-SAME:     (%[[ARG:.*]]: f32)
-// CHECK-SAME:    -> f32
-// CHECK-DAG:     %[[CST:.*]] = arith.constant 1.000000e+00 : f32
-// CHECK-DAG:     %[[SQRT:.*]] = math.sqrt %[[ARG]] : f32
-// CHECK-DAG:     %[[DIV:.*]] = arith.divf %[[CST]], %[[SQRT]] : f32
-// CHECK:         return %[[DIV]] : f32
-func.func @rsqrt(%float: f32) -> (f32)  {
-  %float_result = math.rsqrt %float : f32
-  return %float_result : f32
-}
-
-// -----
-
 // CHECK-LABEL:   func.func @rsqrt_vec
 // CHECK-SAME:     (%[[ARG:.*]]: vector<5xf32>)
 // CHECK-SAME:    -> vector<5xf32>
