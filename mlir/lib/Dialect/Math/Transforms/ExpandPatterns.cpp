@@ -441,7 +441,7 @@ static LogicalResult convertRoundEvenOp(math::RoundEvenOp op,
   return success();
 }
 
-// Convert `math.sqrt` into `arith.divf` + `math.sqrt`
+// Convert `math.rsqrt` into `arith.divf` + `math.sqrt`
 static LogicalResult convertRsqrtOp(math::RsqrtOp op,
                                     PatternRewriter &rewriter) {
 
