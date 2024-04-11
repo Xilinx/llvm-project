@@ -448,15 +448,14 @@ static LogicalResult convertRsqrtOp(math::RsqrtOp op,
   auto operand = op.getOperand();
   auto operandTy = operand.getType();
   auto eTy = getElementTypeOrSelf(operandTy);
-  Location loc = op->getLoc();
-
   if (!isa<FloatType>(eTy))
     return failure();
 
-  auto constOneFloat = createFloatConst(loc, eTy, 1.0, rewriter);
+  Location loc = op->getLoc();
+  auto constOneFloat = createFloatConst(loc, operandTy, 1.0, rewriter);
   auto sqrtOp = rewriter.create<math::SqrtOp>(loc, op->getOperand(0));
   auto fdivOp = rewriter.create<arith::DivFOp>(
-      loc, eTy, ValueRange{constOneFloat, sqrtOp});
+      loc, operandTy, ValueRange{constOneFloat, sqrtOp});
   rewriter.replaceOp(op, fdivOp);
   return success();
 }
