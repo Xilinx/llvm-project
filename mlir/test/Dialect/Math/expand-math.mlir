@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s --split-input-file -test-expand-math | FileCheck %s
+// RUN: mlir-opt %s --split-input-file --pass-pipeline='builtin.module(expand-math{expand-ctlz=1 expand-tan=1 expand-tanh=1 expand-fmaf=1 expand-floorf=1 expand-ceilf=1 expand-exp2f=1 expand-powf=1 expand-roundf=1 expand-roundeven=1 expand-rsqrt=1})' | FileCheck %s
 
 // CHECK-LABEL: func @tanh
 func.func @tanh(%arg: f32) -> f32 {
