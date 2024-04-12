@@ -191,7 +191,33 @@ func.func @arith_cmpi_ult(%arg0: i32, %arg1: i32) -> i1 {
   // CHECK-DAG: [[CastArg0:[^ ]*]] = emitc.cast [[Arg0]] : i32 to ui32
   // CHECK-DAG: [[CastArg1:[^ ]*]] = emitc.cast [[Arg1]] : i32 to ui32
   // CHECK-DAG: [[ULT:[^ ]*]] = emitc.cmp lt, [[CastArg0]], [[CastArg1]] : (ui32, ui32) -> i1
-  %eq = arith.cmpi ult, %arg0, %arg1 : i32
+  %ult = arith.cmpi ult, %arg0, %arg1 : i32
+
   // CHECK: return [[ULT]]
-  return %eq: i1
+  return %ult: i1
+}
+
+func.func @arith_cmpi_predicates(%arg0: i32, %arg1: i32) {
+  // CHECK: emitc.cmp lt, {{.*}} : (ui32, ui32) -> i1
+  %ult = arith.cmpi ult, %arg0, %arg1 : i32
+  // CHECK: emitc.cmp lt, {{.*}} : (i32, i32) -> i1
+  %slt = arith.cmpi slt, %arg0, %arg1 : i32
+  // CHECK: emitc.cmp le, {{.*}} : (ui32, ui32) -> i1
+  %ule = arith.cmpi ule, %arg0, %arg1 : i32
+  // CHECK: emitc.cmp le, {{.*}} : (i32, i32) -> i1
+  %sle = arith.cmpi sle, %arg0, %arg1 : i32
+  // CHECK: emitc.cmp gt, {{.*}} : (ui32, ui32) -> i1
+  %ugt = arith.cmpi ugt, %arg0, %arg1 : i32
+  // CHECK: emitc.cmp gt, {{.*}} : (i32, i32) -> i1
+  %sgt = arith.cmpi sgt, %arg0, %arg1 : i32
+  // CHECK: emitc.cmp ge, {{.*}} : (ui32, ui32) -> i1
+  %uge = arith.cmpi uge, %arg0, %arg1 : i32
+  // CHECK: emitc.cmp ge, {{.*}} : (i32, i32) -> i1
+  %sge = arith.cmpi sge, %arg0, %arg1 : i32
+  // CHECK: emitc.cmp eq, {{.*}} : (i32, i32) -> i1
+  %eq = arith.cmpi eq, %arg0, %arg1 : i32
+  // CHECK: emitc.cmp ne, {{.*}} : (i32, i32) -> i1
+  %ne = arith.cmpi ne, %arg0, %arg1 : i32
+  
+  return
 }
