@@ -411,7 +411,7 @@ static Value createLinalgBodyCalculationForElementwiseOp(
     if (intTy.isUnsignedInteger()) {
       if (intTy.getIntOrFloatBitWidth() > 63) {
         (void)rewriter.notifyMatchFailure(
-            op, "support for larger integers it not implemented");
+            op, "support for 64-bit or larger integers is not implemented");
         return {};
       }
       min = std::max(min, (int64_t)0);
