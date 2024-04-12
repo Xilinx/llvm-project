@@ -184,7 +184,7 @@ void mlir::populateMathToLibmConversionPatterns(
   populatePatternsForOp<math::Log10Op>(patterns, ctx, "log10f", "log10");
   populatePatternsForOp<math::Log1pOp>(patterns, ctx, "log1pf", "log1p");
   populatePatternsForOp<math::PowFOp>(patterns, ctx, "powf", "pow");
-  if (options.emitC23)
+  if (options.allowC23Features)
     populatePatternsForOp<math::RoundEvenOp>(patterns, ctx, "roundevenf",
                                              "roundeven");
   else if (options.roundingModeIsDefault)
@@ -214,7 +214,7 @@ void ConvertMathToLibmPass::runOnOperation() {
 
   RewritePatternSet patterns(&getContext());
   populateMathToLibmConversionPatterns(
-      patterns, {/*emitC23=*/emitC23,
+      patterns, {/*allowC23Features=*/allowC23Features,
                  /*roundingModeIsDefault=*/roundingModeIsDefault});
 
   ConversionTarget target(getContext());

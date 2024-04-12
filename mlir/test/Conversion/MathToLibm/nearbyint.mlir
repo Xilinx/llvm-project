@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s --pass-pipeline='builtin.module(convert-math-to-libm{emit-c23=0 rounding-mode-is-default}, canonicalize)' | FileCheck %s
+// RUN: mlir-opt %s --pass-pipeline='builtin.module(convert-math-to-libm{allow-c23-features=0 rounding-mode-is-default}, canonicalize)' | FileCheck %s
 
 // CHECK-DAG: @nearbyint(f64) -> f64 attributes {libm, llvm.readnone}
 // CHECK-DAG: @nearbyintf(f32) -> f32 attributes {libm, llvm.readnone}
