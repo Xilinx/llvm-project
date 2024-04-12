@@ -160,18 +160,31 @@ public:
   }
 };
 
-/// Add an explicit C-style cast operation to unsigned, to force
-/// the unsigned interpretation of a signless integer.
-Value castSignlessToUnsigned(ConversionPatternRewriter &rewriter, Location loc,
-                             Value operand) {
+/// Add an explicit C-style cast operation when signedness of
+/// the operand does not match signedness of the operation
+Value convertOperandSignedness(ConversionPatternRewriter &rewriter,
+                               Location loc, Value operand,
+                               bool operationIsUnsigned) {
   auto intType = dyn_cast<IntegerType>(operand.getType());
   if (!intType)
     return operand;
 
+  // Signless is interpreted as signed
+  // Conversion to unsigned necessary when unsigned operation, signless or
+  // signed operand Conversion to signed necessary when signed operation,
+  // unsigned operand
+
   IntegerType::SignednessSemantics operandSignedness = intType.getSignedness();
-  if (operandSignedness == IntegerType::SignednessSemantics::Signless) {
+  if (operationIsUnsigned &&
+      (operandSignedness == IntegerType::SignednessSemantics::Signless ||
+       operandSignedness == IntegerType::SignednessSemantics::Signed)) {
     return rewriter.create<emitc::CastOp>(
         loc, rewriter.getIntegerType(intType.getWidth(), false), operand);
+  }
+  if (!operationIsUnsigned &&
+      (operandSignedness == IntegerType::SignednessSemantics::Unsigned)) {
+    return rewriter.create<emitc::CastOp>(
+        loc, rewriter.getIntegerType(intType.getWidth(), true), operand);
   }
 
   return operand;
@@ -268,9 +281,6 @@ public:
   LogicalResult
   matchAndRewrite(CastOp castOp, typename CastOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-
-    Location loc = castOp.getLoc();
-
     // Vectors in particular are not supported
     // (see use of front() below)
     Type operandType = adaptor.getIn().getType();
@@ -288,11 +298,11 @@ public:
 
     ValueRange opers = adaptor.getOperands();
 
+    Location loc = castOp.getLoc();
     // Convert to unsigned if it's the "ui" variant
     // Signless is interpreted as signed, so no need to cast for "si"
-    Value castSource = opers.front();
-    if (isa<arith::UIToFPOp>(castOp))
-      castSource = castSignlessToUnsigned(rewriter, loc, castSource);
+    Value castSource = convertOperandSignedness(rewriter, loc, opers.front(),
+                                                isa<arith::UIToFPOp>(castOp));
     rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType, castSource);
 
     return success();
