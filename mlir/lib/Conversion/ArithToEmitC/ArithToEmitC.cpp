@@ -234,7 +234,16 @@ public:
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
 
-    rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType,
+    // Convert to unsigned if it's the "ui" variant
+    // Signless is interpreted as signed, so no need to cast for "si"
+    Type actualResultType = dstType;
+    if (isa<arith::FPToUIOp>(castOp)) {
+      actualResultType =
+          rewriter.getIntegerType(operandType.getIntOrFloatBitWidth(),
+                                  /*isSigned=*/false);
+    }
+
+    rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, actualResultType,
                                                adaptor.getOperands());
 
     return success();
