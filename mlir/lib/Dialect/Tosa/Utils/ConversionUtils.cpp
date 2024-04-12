@@ -38,13 +38,14 @@ Value mlir::tosa::clampFloatHelper(Location loc, Value arg, Value min,
 }
 
 Value mlir::tosa::clampIntHelper(Location loc, Value arg, Value min, Value max,
-                                 OpBuilder &rewriter) {
+                                 OpBuilder &rewriter, bool isUnsigned) {
+  auto predicate =
+      isUnsigned ? arith::CmpIPredicate::ult : arith::CmpIPredicate::slt;
   auto smallerThanMin =
-      rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, arg, min);
+      rewriter.create<arith::CmpIOp>(loc, predicate, arg, min);
   auto minOrArg =
       rewriter.create<arith::SelectOp>(loc, smallerThanMin, min, arg);
-  auto largerThanMax =
-      rewriter.create<arith::CmpIOp>(loc, arith::CmpIPredicate::slt, max, arg);
+  auto largerThanMax = rewriter.create<arith::CmpIOp>(loc, predicate, max, arg);
   return rewriter.create<arith::SelectOp>(loc, largerThanMax, max, minOrArg);
 }
 
