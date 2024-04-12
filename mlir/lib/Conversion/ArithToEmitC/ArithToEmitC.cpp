@@ -243,8 +243,13 @@ public:
                                   /*isSigned=*/false);
     }
 
-    rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, actualResultType,
-                                               adaptor.getOperands());
+    Value result = rewriter.create<emitc::CastOp>(
+        castOp.getLoc(), actualResultType, adaptor.getOperands());
+
+    if (isa<arith::FPToUIOp>(castOp)) {
+      result = rewriter.create<emitc::CastOp>(castOp.getLoc(), dstType, result);
+    }
+    rewriter.replaceOp(castOp, result);
 
     return success();
   }
@@ -261,7 +266,6 @@ public:
   matchAndRewrite(CastOp castOp, typename CastOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     // Vectors in particular are not supported
-    // (see use of front() below)
     Type operandType = adaptor.getIn().getType();
     if (!emitc::isSupportedIntegerType(operandType))
       return rewriter.notifyMatchFailure(castOp,
@@ -275,8 +279,6 @@ public:
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
 
-    ValueRange opers = adaptor.getOperands();
-
     // Convert to unsigned if it's the "ui" variant
     // Signless is interpreted as signed, so no need to cast for "si"
     Type actualOperandType = operandType;
@@ -285,7 +287,7 @@ public:
           rewriter.getIntegerType(operandType.getIntOrFloatBitWidth(),
                                   /*isSigned=*/false);
     }
-    Value fpCastOperand = opers.front();
+    Value fpCastOperand = adaptor.getIn();
     if (actualOperandType != operandType) {
       fpCastOperand = rewriter.template create<emitc::CastOp>(
           castOp.getLoc(), actualOperandType, fpCastOperand);
