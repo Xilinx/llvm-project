@@ -272,6 +272,7 @@ public:
     Location loc = castOp.getLoc();
 
     // Vectors in particular are not supported
+    // (see use of front() below)
     Type operandType = adaptor.getIn().getType();
     if (!emitc::isSupportedIntegerType(operandType))
       return rewriter.notifyMatchFailure(castOp,
@@ -289,9 +290,6 @@ public:
 
     // Convert to unsigned if it's the "ui" variant
     // Signless is interpreted as signed, so no need to cast for "si"
-
-    // Note this needs to be changed to handle vectors
-    // (won't show up until these are supported EmitC types though)
     Value castSource = opers.front();
     if (isa<arith::UIToFPOp>(castOp))
       castSource = castSignlessToUnsigned(rewriter, loc, castSource);
