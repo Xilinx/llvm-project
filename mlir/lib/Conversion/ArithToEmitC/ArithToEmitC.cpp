@@ -19,7 +19,6 @@
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "llvm/ADT/APInt.h"
 
 using namespace mlir;
 
@@ -80,13 +79,6 @@ Value createCheckIsOrdered(ConversionPatternRewriter &rewriter, Location loc,
                                               firstIsNaN, secondIsNaN);
 }
 
-emitc::ConstantOp getConstant(OpBuilder rewriter, Location loc,
-                              llvm::APInt val) {
-  auto type = rewriter.getIntegerType(val.getBitWidth());
-  return rewriter.create<emitc::ConstantOp>(loc, type,
-                                            rewriter.getIntegerAttr(type, val));
-}
-
 class CmpFOpConversion : public OpConversionPattern<arith::CmpFOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -105,7 +97,9 @@ public:
     emitc::CmpPredicate predicate;
     switch (op.getPredicate()) {
     case arith::CmpFPredicate::AlwaysFalse: {
-      auto constant = getConstant(rewriter, op->getLoc(), llvm::APInt(1, 0));
+      auto constant = rewriter.create<emitc::ConstantOp>(
+          op.getLoc(), rewriter.getI1Type(),
+          rewriter.getBoolAttr(/*value=*/false));
       rewriter.replaceOp(op, constant);
       return success();
     }
@@ -174,7 +168,9 @@ public:
       return success();
     }
     case arith::CmpFPredicate::AlwaysTrue: {
-      auto constant = getConstant(rewriter, op->getLoc(), llvm::APInt(1, 1));
+      auto constant = rewriter.create<emitc::ConstantOp>(
+          op.getLoc(), rewriter.getI1Type(),
+          rewriter.getBoolAttr(/*value=*/true));
       rewriter.replaceOp(op, constant);
       return success();
     }
