@@ -234,8 +234,22 @@ public:
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
 
-    rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType,
-                                               adaptor.getOperands());
+    // Convert to unsigned if it's the "ui" variant
+    // Signless is interpreted as signed, so no need to cast for "si"
+    Type actualResultType = dstType;
+    if (isa<arith::FPToUIOp>(castOp)) {
+      actualResultType =
+          rewriter.getIntegerType(operandType.getIntOrFloatBitWidth(),
+                                  /*isSigned=*/false);
+    }
+
+    Value result = rewriter.create<emitc::CastOp>(
+        castOp.getLoc(), actualResultType, adaptor.getOperands());
+
+    if (isa<arith::FPToUIOp>(castOp)) {
+      result = rewriter.create<emitc::CastOp>(castOp.getLoc(), dstType, result);
+    }
+    rewriter.replaceOp(castOp, result);
 
     return success();
   }
@@ -251,7 +265,7 @@ public:
   LogicalResult
   matchAndRewrite(CastOp castOp, typename CastOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-
+    // Vectors in particular are not supported
     Type operandType = adaptor.getIn().getType();
     if (!emitc::isSupportedIntegerType(operandType))
       return rewriter.notifyMatchFailure(castOp,
@@ -265,8 +279,20 @@ public:
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
 
-    rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType,
-                                               adaptor.getOperands());
+    // Convert to unsigned if it's the "ui" variant
+    // Signless is interpreted as signed, so no need to cast for "si"
+    Type actualOperandType = operandType;
+    if (isa<arith::UIToFPOp>(castOp)) {
+      actualOperandType =
+          rewriter.getIntegerType(operandType.getIntOrFloatBitWidth(),
+                                  /*isSigned=*/false);
+    }
+    Value fpCastOperand = adaptor.getIn();
+    if (actualOperandType != operandType) {
+      fpCastOperand = rewriter.template create<emitc::CastOp>(
+          castOp.getLoc(), actualOperandType, fpCastOperand);
+    }
+    rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType, fpCastOperand);
 
     return success();
   }

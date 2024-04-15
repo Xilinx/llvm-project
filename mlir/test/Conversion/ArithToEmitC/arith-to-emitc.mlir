@@ -172,7 +172,8 @@ func.func @arith_int_to_float_cast_ops(%arg0: i8, %arg1: i64) {
   // CHECK: emitc.cast %arg1 : i64 to f32
   %1 = arith.sitofp %arg1 : i64 to f32
 
-  // CHECK: emitc.cast %arg0 : i8 to f32
+  // CHECK: %[[CAST_UNS:.*]] = emitc.cast %arg0 : i8 to ui8
+  // CHECK: emitc.cast %[[CAST_UNS]] : ui8 to f32
   %2 = arith.uitofp %arg0 : i8 to f32
 
   return
