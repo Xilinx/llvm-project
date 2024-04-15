@@ -573,6 +573,38 @@ static APFloat computeReciprocal(const APFloat &floatVal, FloatType floatTy) {
   return recip;
 }
 
+/// Fold reshapes. This is similar to ReshapeOp::fold, but also allows
+/// to fold with multiple users.
+struct TosaFoldConstantReshape
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantReshape,
+                                              ReshapeOp> {
+  using TosaFoldConstantUnaryElementwise::TosaFoldConstantUnaryElementwise;
+
+  LogicalResult matchAndRewrite(ReshapeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto inputTensor = op.getOperand();
+    // Check that we can apply folding
+    auto preCondCheck =
+        notifyIfNoTosaDenseConstantTensor(inputTensor, op, rewriter);
+    if (failed(preCondCheck)) {
+      return preCondCheck;
+    }
+
+    // Extract the tensor values
+    DenseElementsAttr inputValues;
+    matchPattern(inputTensor, m_Constant(&inputValues));
+
+    // Check whether this should be folded.
+    if (!constantUnaryOpShouldBeFolded(op, inputValues)) {
+      return rewriter.notifyMatchFailure(
+          op, "expected reshape op to have a single user");
+    }
+    DenseElementsAttr newTensor = inputValues.reshape(op.getType());
+    rewriter.replaceOpWithNewOp<ConstOp>(op, newTensor.getType(), newTensor);
+    return success();
+  }
+};
+
 struct TosaFoldConstantReciprocal
     : public TosaFoldConstantUnaryElementwise<TosaFoldConstantReciprocal, ReciprocalOp> {
   using TosaFoldConstantUnaryElementwise<TosaFoldConstantReciprocal,
@@ -1723,6 +1755,8 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
     MLIRContext *ctx, RewritePatternSet &patterns,
     bool foldSplatOrSingleUseOnly,
     bool enableIntCastFolding) {
+
+  patterns.add<TosaFoldConstantReshape>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantTranspose>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantReciprocal>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantRSQRT>(ctx, foldSplatOrSingleUseOnly);
