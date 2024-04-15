@@ -454,9 +454,8 @@ static LogicalResult convertRsqrtOp(math::RsqrtOp op,
   Location loc = op->getLoc();
   auto constOneFloat = createFloatConst(loc, operandTy, 1.0, rewriter);
   auto sqrtOp = rewriter.create<math::SqrtOp>(loc, op->getOperand(0));
-  auto fdivOp = rewriter.create<arith::DivFOp>(
-      loc, operandTy, ValueRange{constOneFloat, sqrtOp});
-  rewriter.replaceOp(op, fdivOp);
+  rewriter.replaceOpWithNewOp<arith::DivFOp>(op, operandTy,
+                                             ValueRange{constOneFloat, sqrtOp});
   return success();
 }
 
