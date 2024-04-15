@@ -244,12 +244,8 @@ static LogicalResult verifyConvOp(T op) {
     return failure();
   }
 
-  // Quantized type must have constructed the quantizationattr, and unquantized
-  // types should not have a quantizationattr.
-  if ((inputIsQuant && !op.getQuantizationInfo()) ||
-      (!inputIsQuant && op.getQuantizationInfo())) {
-    op.emitOpError("quantizationattr is required for quantized type, and not "
-                   "allowed for float type");
+  if (!inputIsQuant && op.getQuantizationInfo()) {
+    op.emitOpError("quantizationattr is not allowed for float type");
     return failure();
   }
 
