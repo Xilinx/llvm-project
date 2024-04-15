@@ -62,6 +62,105 @@ func.func @arith_select(%arg0: i1, %arg1: tensor<8xi32>, %arg2: tensor<8xi32>) -
 
 // -----
 
+func.func @arith_cmpf_false(%arg0: f32, %arg1: f32) -> i1 {
+  // CHECK-LABEL: arith_cmpf_false
+  // CHECK-SAME: ([[Arg0:[^ ]*]]: f32, [[Arg1:[^ ]*]]: f32)
+  // CHECK-DAG: [[False:[^ ]*]] = "emitc.constant"() <{value = false}> : () -> i1
+  %ueq = arith.cmpf false, %arg0, %arg1 : f32
+  // CHECK: return [[False]]
+  return %ueq: i1
+}
+
+// -----
+
+func.func @arith_cmpf_oeq(%arg0: f32, %arg1: f32) -> i1 {
+  // CHECK-LABEL: arith_cmpf_oeq
+  // CHECK-SAME: ([[Arg0:[^ ]*]]: f32, [[Arg1:[^ ]*]]: f32)
+  // CHECK-DAG: [[EQ:[^ ]*]] = emitc.cmp eq, [[Arg0]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[NaNArg0:[^ ]*]] = emitc.cmp eq, [[Arg0]], [[Arg0]] : (f32, f32) -> i1
+  // CHECK-DAG: [[NaNArg1:[^ ]*]] = emitc.cmp eq, [[Arg1]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[Ordered:[^ ]*]] = emitc.logical_and [[NaNArg0]], [[NaNArg1]] : i1, i1
+  // CHECK-DAG: [[OEQ:[^ ]*]] = emitc.logical_and [[Ordered]], [[EQ]] : i1, i1
+  %ueq = arith.cmpf oeq, %arg0, %arg1 : f32
+  // CHECK: return [[OEQ]]
+  return %ueq: i1
+}
+
+// -----
+
+func.func @arith_cmpf_ogt(%arg0: f32, %arg1: f32) -> i1 {
+  // CHECK-LABEL: arith_cmpf_ogt
+  // CHECK-SAME: ([[Arg0:[^ ]*]]: f32, [[Arg1:[^ ]*]]: f32)
+  // CHECK-DAG: [[GT:[^ ]*]] = emitc.cmp gt, [[Arg0]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[OrderedArg0:[^ ]*]] = emitc.cmp eq, [[Arg0]], [[Arg0]] : (f32, f32) -> i1
+  // CHECK-DAG: [[OrderedArg1:[^ ]*]] = emitc.cmp eq, [[Arg1]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[Ordered:[^ ]*]] = emitc.logical_and [[OrderedArg0]], [[OrderedArg1]] : i1, i1
+  // CHECK-DAG: [[OGT:[^ ]*]] = emitc.logical_and [[Ordered]], [[GT]] : i1, i1
+  %ogt = arith.cmpf ogt, %arg0, %arg1 : f32
+  // CHECK: return [[OGT]]
+  return %ogt: i1
+}
+
+// -----
+
+func.func @arith_cmpf_oge(%arg0: f32, %arg1: f32) -> i1 {
+  // CHECK-LABEL: arith_cmpf_oge
+  // CHECK-SAME: ([[Arg0:[^ ]*]]: f32, [[Arg1:[^ ]*]]: f32)
+  // CHECK-DAG: [[GE:[^ ]*]] = emitc.cmp ge, [[Arg0]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[NaNArg0:[^ ]*]] = emitc.cmp eq, [[Arg0]], [[Arg0]] : (f32, f32) -> i1
+  // CHECK-DAG: [[NaNArg1:[^ ]*]] = emitc.cmp eq, [[Arg1]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[Ordered:[^ ]*]] = emitc.logical_and [[NaNArg0]], [[NaNArg1]] : i1, i1
+  // CHECK-DAG: [[OGE:[^ ]*]] = emitc.logical_and [[Ordered]], [[GE]] : i1, i1
+  %ueq = arith.cmpf oge, %arg0, %arg1 : f32
+  // CHECK: return [[OGE]]
+  return %ueq: i1
+}
+
+// -----
+
+func.func @arith_cmpf_olt(%arg0: f32, %arg1: f32) -> i1 {
+  // CHECK-LABEL: arith_cmpf_olt
+  // CHECK-SAME: ([[Arg0:[^ ]*]]: f32, [[Arg1:[^ ]*]]: f32)
+  // CHECK-DAG: [[LT:[^ ]*]] = emitc.cmp lt, [[Arg0]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[NaNArg0:[^ ]*]] = emitc.cmp eq, [[Arg0]], [[Arg0]] : (f32, f32) -> i1
+  // CHECK-DAG: [[NaNArg1:[^ ]*]] = emitc.cmp eq, [[Arg1]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[Ordered:[^ ]*]] = emitc.logical_and [[NaNArg0]], [[NaNArg1]] : i1, i1
+  // CHECK-DAG: [[UEQ:[^ ]*]] = emitc.logical_and [[Ordered]], [[LT]] : i1, i1
+  %ueq = arith.cmpf olt, %arg0, %arg1 : f32
+  // CHECK: return [[UEQ]]
+  return %ueq: i1
+}
+
+// -----
+
+func.func @arith_cmpf_one(%arg0: f32, %arg1: f32) -> i1 {
+  // CHECK-LABEL: arith_cmpf_one
+  // CHECK-SAME: ([[Arg0:[^ ]*]]: f32, [[Arg1:[^ ]*]]: f32)
+  // CHECK-DAG: [[NEQ:[^ ]*]] = emitc.cmp ne, [[Arg0]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[NaNArg0:[^ ]*]] = emitc.cmp eq, [[Arg0]], [[Arg0]] : (f32, f32) -> i1
+  // CHECK-DAG: [[NaNArg1:[^ ]*]] = emitc.cmp eq, [[Arg1]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[Ordered:[^ ]*]] = emitc.logical_and [[NaNArg0]], [[NaNArg1]] : i1, i1
+  // CHECK-DAG: [[ONE:[^ ]*]] = emitc.logical_and [[Ordered]], [[NEQ]] : i1, i1
+  %ueq = arith.cmpf one, %arg0, %arg1 : f32
+  // CHECK: return [[ONE]]
+  return %ueq: i1
+}
+
+// -----
+
+func.func @arith_cmpf_ord(%arg0: f32, %arg1: f32) -> i1 {
+  // CHECK-LABEL: arith_cmpf_ord
+  // CHECK-SAME: ([[Arg0:[^ ]*]]: f32, [[Arg1:[^ ]*]]: f32)
+  // CHECK-DAG: [[NaNArg0:[^ ]*]] = emitc.cmp eq, [[Arg0]], [[Arg0]] : (f32, f32) -> i1
+  // CHECK-DAG: [[NaNArg1:[^ ]*]] = emitc.cmp eq, [[Arg1]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[Ordered:[^ ]*]] = emitc.logical_and [[NaNArg0]], [[NaNArg1]] : i1, i1
+  %ueq = arith.cmpf ord, %arg0, %arg1 : f32
+  // CHECK: return [[Ordered]]
+  return %ueq: i1
+}
+
+// -----
+
 func.func @arith_cmpf_ueq(%arg0: f32, %arg1: f32) -> i1 {
   // CHECK-LABEL: arith_cmpf_ueq
   // CHECK-SAME: ([[Arg0:[^ ]*]]: f32, [[Arg1:[^ ]*]]: f32)
@@ -137,30 +236,41 @@ func.func @arith_cmpf_ule(%arg0: f32, %arg1: f32) -> i1 {
 
 // -----
 
+func.func @arith_cmpf_une(%arg0: f32, %arg1: f32) -> i1 {
+  // CHECK-LABEL: arith_cmpf_une
+  // CHECK-SAME: ([[Arg0:[^ ]*]]: f32, [[Arg1:[^ ]*]]: f32)
+  // CHECK-DAG: [[NEQ:[^ ]*]] = emitc.cmp ne, [[Arg0]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[NaNArg0:[^ ]*]] = emitc.cmp ne, [[Arg0]], [[Arg0]] : (f32, f32) -> i1
+  // CHECK-DAG: [[NaNArg1:[^ ]*]] = emitc.cmp ne, [[Arg1]], [[Arg1]] : (f32, f32) -> i1
+  // CHECK-DAG: [[Unordered:[^ ]*]] = emitc.logical_or [[NaNArg0]], [[NaNArg1]] : i1, i1
+  // CHECK-DAG: [[UNE:[^ ]*]] = emitc.logical_or [[Unordered]], [[NEQ]] : i1, i1
+  %une = arith.cmpf une, %arg0, %arg1 : f32
+  // CHECK: return [[UNE]]
+  return %une: i1
+}
+
+// -----
+
 func.func @arith_cmpf_uno(%arg0: f32, %arg1: f32) -> i1 {
   // CHECK-LABEL: arith_cmpf_uno
   // CHECK-SAME: ([[Arg0:[^ ]*]]: f32, [[Arg1:[^ ]*]]: f32)
   // CHECK-DAG: [[NaNArg0:[^ ]*]] = emitc.cmp ne, [[Arg0]], [[Arg0]] : (f32, f32) -> i1
   // CHECK-DAG: [[NaNArg1:[^ ]*]] = emitc.cmp ne, [[Arg1]], [[Arg1]] : (f32, f32) -> i1
   // CHECK-DAG: [[Unordered:[^ ]*]] = emitc.logical_or [[NaNArg0]], [[NaNArg1]] : i1, i1
-  %2 = arith.cmpf uno, %arg0, %arg1 : f32
+  %uno = arith.cmpf uno, %arg0, %arg1 : f32
   // CHECK: return [[Unordered]]
-  return %2: i1
+  return %uno: i1
 }
 
 // -----
 
-func.func @arith_cmpf_ogt(%arg0: f32, %arg1: f32) -> i1 {
-  // CHECK-LABEL: arith_cmpf_ogt
+func.func @arith_cmpf_true(%arg0: f32, %arg1: f32) -> i1 {
+  // CHECK-LABEL: arith_cmpf_true
   // CHECK-SAME: ([[Arg0:[^ ]*]]: f32, [[Arg1:[^ ]*]]: f32)
-  // CHECK-DAG: [[GT:[^ ]*]] = emitc.cmp gt, [[Arg0]], [[Arg1]] : (f32, f32) -> i1
-  // CHECK-DAG: [[OrderedArg0:[^ ]*]] = emitc.cmp eq, [[Arg0]], [[Arg0]] : (f32, f32) -> i1
-  // CHECK-DAG: [[OrderedArg1:[^ ]*]] = emitc.cmp eq, [[Arg1]], [[Arg1]] : (f32, f32) -> i1
-  // CHECK-DAG: [[Ordered:[^ ]*]] = emitc.logical_and [[OrderedArg0]], [[OrderedArg1]] : i1, i1
-  // CHECK-DAG: [[OGT:[^ ]*]] = emitc.logical_and [[Ordered]], [[GT]] : i1, i1
-  %ule = arith.cmpf ogt, %arg0, %arg1 : f32
-  // CHECK: return [[OGT]]
-  return %ule: i1
+  // CHECK-DAG: [[True:[^ ]*]] = "emitc.constant"() <{value = true}> : () -> i1
+  %ueq = arith.cmpf true, %arg0, %arg1 : f32
+  // CHECK: return [[True]]
+  return %ueq: i1
 }
 
 // -----

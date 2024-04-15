@@ -96,6 +96,41 @@ public:
     bool unordered = false;
     emitc::CmpPredicate predicate;
     switch (op.getPredicate()) {
+    case arith::CmpFPredicate::AlwaysFalse: {
+      auto constant = rewriter.create<emitc::ConstantOp>(
+          op.getLoc(), rewriter.getI1Type(),
+          rewriter.getBoolAttr(/*value=*/false));
+      rewriter.replaceOp(op, constant);
+      return success();
+    }
+    case arith::CmpFPredicate::OEQ:
+      unordered = false;
+      predicate = emitc::CmpPredicate::eq;
+      break;
+    case arith::CmpFPredicate::OGT:
+      // ordered and greater than
+      unordered = false;
+      predicate = emitc::CmpPredicate::gt;
+      break;
+    case arith::CmpFPredicate::OGE:
+      unordered = false;
+      predicate = emitc::CmpPredicate::ge;
+      break;
+    case arith::CmpFPredicate::OLT:
+      unordered = false;
+      predicate = emitc::CmpPredicate::lt;
+      break;
+    case arith::CmpFPredicate::ONE:
+      unordered = false;
+      predicate = emitc::CmpPredicate::ne;
+      break;
+    case arith::CmpFPredicate::ORD: {
+      // ordered, i.e. none of the operands is NaN
+      auto cmp = createCheckIsOrdered(rewriter, op.getLoc(), adaptor.getLhs(),
+                                      adaptor.getRhs());
+      rewriter.replaceOp(op, cmp);
+      return success();
+    }
     case arith::CmpFPredicate::UEQ:
       // unordered or equal
       unordered = true;
@@ -121,6 +156,10 @@ public:
       unordered = true;
       predicate = emitc::CmpPredicate::le;
       break;
+    case arith::CmpFPredicate::UNE:
+      unordered = true;
+      predicate = emitc::CmpPredicate::ne;
+      break;
     case arith::CmpFPredicate::UNO: {
       // unordered, i.e. either operand is nan
       auto cmp = createCheckIsUnordered(rewriter, op.getLoc(), adaptor.getLhs(),
@@ -128,11 +167,13 @@ public:
       rewriter.replaceOp(op, cmp);
       return success();
     }
-    case arith::CmpFPredicate::OGT:
-      // ordered and greater than
-      unordered = false;
-      predicate = emitc::CmpPredicate::gt;
-      break;
+    case arith::CmpFPredicate::AlwaysTrue: {
+      auto constant = rewriter.create<emitc::ConstantOp>(
+          op.getLoc(), rewriter.getI1Type(),
+          rewriter.getBoolAttr(/*value=*/true));
+      rewriter.replaceOp(op, constant);
+      return success();
+    }
     default:
       return rewriter.notifyMatchFailure(op.getLoc(),
                                          "cannot match predicate ");
