@@ -210,7 +210,7 @@ public:
 
     Type type = adaptor.getLhs().getType();
     if (!isa_and_nonnull<IntegerType, IndexType>(type)) {
-      return rewriter.notifyMatchFailure(op, "expected integer type");
+      return rewriter.notifyMatchFailure(op, "expected integer or index type");
     }
 
     bool needsUnsigned = needsUnsignedCmp(op.getPredicate());
