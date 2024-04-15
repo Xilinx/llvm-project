@@ -16,3 +16,4 @@ add_mlir_library(MLIRRewrite
   MLIRPDLToPDLInterp
   MLIRSideEffectInterfaces
   )
+target_compile_options(obj.MLIRRewrite PRIVATE -g3 -O0)
