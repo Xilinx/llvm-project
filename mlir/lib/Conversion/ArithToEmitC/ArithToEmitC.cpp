@@ -438,6 +438,8 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
     CmpFOpConversion,
     CmpIOpConversion,
     SelectOpConversion,
+    CastConversion<arith::TruncIOp>,
+    CastConversion<arith::IndexCastOp>,
     ItoFCastOpConversion<arith::SIToFPOp>,
     ItoFCastOpConversion<arith::UIToFPOp>
   >(typeConverter, ctx)
