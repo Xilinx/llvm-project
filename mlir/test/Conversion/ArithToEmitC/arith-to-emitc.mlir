@@ -334,5 +334,19 @@ func.func @arith_cmpi_predicates(%arg0: i32, %arg1: i32) {
   // CHECK: emitc.cmp ne, {{.*}} : (i32, i32) -> i1
   %ne = arith.cmpi ne, %arg0, %arg1 : i32
   
+// -----
+
+func.func @casts(%arg0: i32) {
+  // CHECK-LABEL: casts
+  // CHECK-SAME: ([[Arg0:[^ ]*]]: i32)
+  // CHECK: emitc.cast [[Arg0]] : i32 to i8
+  arith.trunci %arg0 : i32 to i8
+
+  // CHECK: emitc.cast [[Arg0]] : i32 to i64
+  arith.extsi %arg0 : i32 to i64
+
+  %idx = arith.index_cast %arg0 : i32 to index
+  arith.index_cast %idx : index to i32
+
   return
 }
