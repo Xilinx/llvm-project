@@ -38,10 +38,10 @@ Pattern {
 // CHECK:     CallExpr {{.*}} Type<Attr>
 // CHECK:       UserRewriteDecl {{.*}} Name<__builtin_createArrayAttr> ResultType<Attr>
 // CHECK:     CallExpr {{.*}} Type<Attr>
-// CHECK:       UserRewriteDecl {{.*}} Name<__builtin_addEntryToDictionaryAttr> ResultType<Attr>
+// CHECK:       UserRewriteDecl {{.*}} Name<__builtin_addEntryToDictionaryAttr_rewrite> ResultType<Attr>
 // CHECK:         `Arguments`
 // CHECK:           CallExpr {{.*}} Type<Attr>
-// CHECK:             UserRewriteDecl {{.*}} Name<__builtin_createDictionaryAttr> ResultType<Attr>
+// CHECK:             UserRewriteDecl {{.*}} Name<__builtin_createDictionaryAttr_rewrite> ResultType<Attr>
 // CHECK:             AttributeExpr {{.*}} Value<""firstAttr"">
 
 Pattern {
@@ -51,6 +51,50 @@ Pattern {
       let newRoot = op<test.success>() { some_array =  [ {"firstAttr" = attr<"\"test\"">}], attr} -> ();
       replace root with newRoot;
   };
+}
+
+// -----
+
+//     CHECK:LetStmt {{.*}}
+//CHECK-NEXT:`-VariableDecl {{.*}} Name<dictionary> Type<Attr>
+//CHECK-NEXT:  `-CallExpr {{.*}} Type<Attr>
+//CHECK-NEXT:    `-DeclRefExpr {{.*}} Type<Constraint>
+//CHECK-NEXT:      `-UserConstraintDecl {{.*}} Name<__builtin_createDictionaryAttr_constraint> ResultType<Attr>
+//CHECK-NEXT:        `Results`
+//CHECK-NEXT:          `-VariableDecl {{.*}} Name<> Type<Attr>
+//CHECK-NEXT:            `Constraints`
+//CHECK-NEXT:              `-AttrConstraintDecl {{.*}}
+//CHECK-NEXT:ReturnStmt {{.*}}
+
+Constraint getEmptyDict() -> Attr {
+  let dictionary = {};
+  return dictionary;
+}
+
+// -----
+
+//     CHECK:LetStmt {{.*}}
+//CHECK-NEXT:`-VariableDecl {{.*}} Name<dictionary> Type<Attr>
+//CHECK-NEXT:  `-CallExpr {{.*}} Type<Attr>
+//CHECK-NEXT:    `-DeclRefExpr {{.*}} Type<Constraint>
+//CHECK-NEXT:      `-UserConstraintDecl {{.*}} Name<__builtin_addEntryToDictionaryAttr_constraint> ResultType<Attr>
+//     CHECK:    `Arguments`
+//CHECK-NEXT:      |-CallExpr {{.*}} Type<Attr>
+//CHECK-NEXT:      | `-DeclRefExpr {{.*}} Type<Constraint>
+//CHECK-NEXT:      |   `-UserConstraintDecl {{.*}} Name<__builtin_createDictionaryAttr_constraint> ResultType<Attr>
+//CHECK-NEXT:      |     `Results`
+//CHECK-NEXT:      |       `-VariableDecl {{.*}} Name<> Type<Attr>
+//CHECK-NEXT:      |         `Constraints`
+//CHECK-NEXT:      |           `-AttrConstraintDecl {{.*}}
+//CHECK-NEXT:      |-DeclRefExpr {{.*}} Type<Attr>
+//CHECK-NEXT:      | `-VariableDecl {{.*}} Name<dict0> Type<Attr>
+//CHECK-NEXT:      |   `-AttributeExpr {{.*}} Value<""test"">
+//CHECK-NEXT:      `-AttributeExpr {{.*}} Value<""String"">
+//CHECK-NEXT:ReturnStmt {{.*}}
+
+Constraint getPopulatedDict() -> Attr {
+  let dictionary = { test = "String" };
+  return dictionary;
 }
 
 // -----

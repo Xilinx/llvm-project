@@ -100,6 +100,26 @@ func.func @test_add_0d(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 
 // -----
 
+// CHECK: #[[$MAP0:.*]] = affine_map<() -> ()>
+// CHECK-LABEL: @test_add_uint8
+// CHECK-SAME: [[ARG0:%[0-9a-zA-Z_]*]]:
+// CHECK-SAME: [[ARG1:%[0-9a-zA-Z_]*]]:
+func.func @test_add_uint8(%arg0: tensor<ui8>, %arg1: tensor<ui8>) -> tensor<ui8> {
+
+  // CHECK: [[EMPTY:%.+]] = tensor.empty() : tensor<i8>
+  // CHECK: [[RESULT:%.+]] = linalg.generic {indexing_maps = [#map, #map, #map], iterator_types = []} ins([[ARG0]], [[ARG1]] : tensor<i8>, tensor<i8>) outs([[EMPTY]] : tensor<i8>) {
+  // CHECK: ^bb0([[IN0:%.+]]: i8, [[IN1:%.+]]: i8, [[OUT0:%.+]]: i8):
+  // CHECK:   [[ADDF:%.+]] = arith.addi [[IN0]], [[IN1]] : i8
+  // CHECK:   linalg.yield [[ADDF]] : i8
+  // CHECK: } -> tensor<i8>
+  %0 = tosa.add %arg0, %arg1 : (tensor<ui8>, tensor<ui8>) -> tensor<ui8>
+
+  // CHECK: return [[RESULT]] : tensor<i8>
+  return %0 : tensor<ui8>
+}
+
+// -----
+
 // CHECK: #[[$MAP0:.+]] = affine_map<(d0) -> (0)>
 // CHECK: #[[$MAP1:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL: @test_add_1d_all_dynamic
@@ -523,6 +543,15 @@ func.func @test_simple_f32(%arg0: tensor<1xf32>) -> () {
   %20 = tosa.cast %0 : (tensor<1xf32>) -> tensor<1xi32>
 
   // CHECK: linalg.generic
+  // CHECK: arith.constant 0.000000e+00
+  // CHECK: arith.constant 4.2949673E+9
+  // CHECK: math.roundeven
+  // CHECK: arith.minimumf
+  // CHECK: arith.maximumf
+  // CHECK: arith.fptoui
+  %u20 = tosa.cast %0 : (tensor<1xf32>) -> tensor<1xui32>
+
+  // CHECK: linalg.generic
   // CHECK: arith.constant 0
   // CHECK: arith.cmpf
   %21 = tosa.cast %0 : (tensor<1xf32>) -> tensor<1xi1>
@@ -588,7 +617,7 @@ func.func @test_simple_ui8(%arg0: tensor<1xui8>) -> () {
 // -----
 
 // CHECK-LABEL: @test_simple_i32
-func.func @test_simple_i32(%arg0: tensor<1xi32>) -> () {
+func.func @test_simple_i32(%arg0: tensor<1xi32>, %arg1: tensor<1xui32>) -> () {
   // CHECK: linalg.generic
   // CHECK: arith.addi
   %0 = tosa.add %arg0, %arg0 : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
@@ -609,6 +638,9 @@ func.func @test_simple_i32(%arg0: tensor<1xi32>) -> () {
   // CHECK: linalg.generic
   // CHECK: arith.divsi
   %4 = tosa.div %arg0, %arg0 : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
+
+  // CHECK: arith.divui
+  %u4 = tosa.div %arg1, %arg1 : (tensor<1xui32>, tensor<1xui32>) -> tensor<1xui32>
 
   // CHECK: linalg.generic
   // CHECK: ^bb0(%[[ARG1:.*]]: i32, %[[ARG2:.*]]: i32):
@@ -641,6 +673,10 @@ func.func @test_simple_i32(%arg0: tensor<1xi32>) -> () {
   %11 = tosa.arithmetic_right_shift %arg0, %arg0 {round = 0 : i1} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
 
   // CHECK: linalg.generic
+  // CHECK: arith.shrui
+  %u11 = tosa.arithmetic_right_shift %arg1, %arg1 {round = 0 : i1} : (tensor<1xui32>, tensor<1xui32>) -> tensor<1xui32>
+
+  // CHECK: linalg.generic
   // CHECK: arith.constant 1
   // CHECK: arith.constant 0
   // CHECK: arith.constant true
@@ -653,6 +689,20 @@ func.func @test_simple_i32(%arg0: tensor<1xi32>) -> () {
   // CHECK: arith.extui
   // CHECK: arith.addi
   %12 = tosa.arithmetic_right_shift %arg0, %arg0 {round = 1 : i1} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
+
+  // CHECK: linalg.generic
+  // CHECK: arith.constant 1
+  // CHECK: arith.constant 0
+  // CHECK: arith.constant true
+  // CHECK: arith.cmpi
+  // CHECK: arith.subi
+  // CHECK: arith.shrui
+  // CHECK: arith.trunci
+  // CHECK: and
+  // CHECK: and
+  // CHECK: arith.extui
+  // CHECK: arith.addi
+  %u12 = tosa.arithmetic_right_shift %arg1, %arg1 {round = 1 : i1} : (tensor<1xui32>, tensor<1xui32>) -> tensor<1xui32>
 
   // CHECK: math.ctlz
   %13 = tosa.clz %arg0 : (tensor<1xi32>) -> tensor<1xi32>
@@ -685,6 +735,15 @@ func.func @test_simple_i32(%arg0: tensor<1xi32>) -> () {
   %19 = tosa.clamp %0 {min_int = 1 : i64, max_int = 5 : i64, min_fp = 1.0 : f32, max_fp = 5.0 : f32} : (tensor<1xi32>) -> tensor<1xi32>
 
   // CHECK: linalg.generic
+  // CHECK: bb0(%[[IN:.*]]: i32,
+  // CHECK-DAG: %[[LB:.*]] = arith.constant 0 : i32
+  // CHECK-DAG: %[[UB:.*]] = arith.constant 5 : i32
+  // CHECK-DAG: arith.cmpi ult, %[[IN]], %[[LB]]
+  // CHECK-DAG: arith.cmpi ult, %[[UB]], %[[IN]]
+  // CHECK: select
+  %u19 = tosa.clamp %arg1 {min_int = -1 : i64, max_int = 5 : i64, min_fp = 1.0 : f32, max_fp = 5.0 : f32} : (tensor<1xui32>) -> tensor<1xui32>
+
+  // CHECK: linalg.generic
   // CHECK: arith.trunci
   %20 = tosa.cast %0 : (tensor<1xi32>) -> tensor<1xi16>
 
@@ -700,6 +759,10 @@ func.func @test_simple_i32(%arg0: tensor<1xi32>) -> () {
   // CHECK: linalg.generic
   // CHECK: arith.sitofp
   %23 = tosa.cast %0 : (tensor<1xi32>) -> tensor<1xf32>
+
+  // CHECK: linalg.generic
+  // CHECK: arith.uitofp
+  %u23 = tosa.cast %arg1 : (tensor<1xui32>) -> tensor<1xf32>
 
   // CHECK: linalg.generic
   // CHECK: arith.constant 0
@@ -1148,8 +1211,8 @@ func.func @rescale_i8(%arg0 : tensor<2xi8>) -> () {
   // CHECK: [[C0:%.+]] = arith.constant 19689
   // CHECK: [[C1:%.+]] = arith.constant 15
   // CHECK: [[INIT:%.+]] = tensor.empty()
-  // CHECK: [[GENERIC:%.+]] = linalg.generic {indexing_maps = [#[[$MAP0]], #[[$MAP0]]], iterator_types = ["parallel"]} ins(%[[ARG0]] : tensor<2xi8>) outs([[INIT]] : tensor<2xui8>)
-  // CHECK: ^bb0([[IN:%.+]]: i8, [[UNUSED:%.+]]: ui8):
+  // CHECK: [[GENERIC:%.+]] = linalg.generic {indexing_maps = [#[[$MAP0]], #[[$MAP0]]], iterator_types = ["parallel"]} ins(%[[ARG0]] : tensor<2xi8>) outs([[INIT]] : tensor<2xi8>)
+  // CHECK: ^bb0([[IN:%.+]]: i8, [[UNUSED:%.+]]: i8):
   // CHECK: [[C17:%.+]] = arith.constant 17
   // CHECK: [[C22:%.+]] = arith.constant 22
   // CHECK-DAG: [[IN32:%.+]] = arith.extsi [[IN]]
@@ -1163,8 +1226,7 @@ func.func @rescale_i8(%arg0 : tensor<2xi8>) -> () {
   // CHECK-DAG: [[MAXLT:%.+]] = arith.cmpi slt, [[CMAX]], [[SCALED_ZEROED]]
   // CHECK-DAG: [[BOUNDED:%.+]] = arith.select [[MAXLT]], [[CMAX]], [[LOWER]]
   // CHECK-DAG: [[TRUNC:%.+]] = arith.trunci [[BOUNDED]]
-  // CHECK-DAG: [[CAST:%.+]] = builtin.unrealized_conversion_cast [[TRUNC]] : i8 to ui8
-  // CHECK: linalg.yield [[CAST]]
+  // CHECK: linalg.yield [[TRUNC]]
   %1 = tosa.rescale %arg0 {input_zp = 17 : i32, output_zp = 22 : i32, multiplier = array<i32: 19689>, shift = array<i32: 15>, scale32 = false, double_round = false, per_channel = false} : (tensor<2xi8>) -> tensor<2xui8>
 
   // CHECK: return
@@ -1186,8 +1248,8 @@ func.func @rescale_i8_dyn_batch(%arg0 : tensor<?x2xi8>) -> () {
 
   // CHECK: %[[C0:.+]] = arith.constant 0
   // CHECK: %[[BATCH:.+]] = tensor.dim %[[ARG0]], %[[C0]]
-  // CHECK: %[[INIT:.+]] = tensor.empty(%[[BATCH]]) : tensor<?x2xui8>
-  // CHECK: [[GENERIC:%.+]] = linalg.generic {indexing_maps = [#[[$MAP0]], #[[$MAP0]]], iterator_types = ["parallel", "parallel"]} ins(%[[ARG0]] : tensor<?x2xi8>) outs(%[[INIT]] : tensor<?x2xui8>)
+  // CHECK: %[[INIT:.+]] = tensor.empty(%[[BATCH]]) : tensor<?x2xi8>
+  // CHECK: [[GENERIC:%.+]] = linalg.generic {indexing_maps = [#[[$MAP0]], #[[$MAP0]]], iterator_types = ["parallel", "parallel"]} ins(%[[ARG0]] : tensor<?x2xi8>) outs(%[[INIT]] : tensor<?x2xi8>)
   %1 = tosa.rescale %arg0 {input_zp = 17 : i32, output_zp = 22 : i32, multiplier = array<i32: 19689>, shift = array<i32: 15>, scale32 = false, double_round = false, per_channel = false} : (tensor<?x2xi8>) -> tensor<?x2xui8>
 
   return
@@ -1220,12 +1282,11 @@ func.func @rescale_ui8(%arg0 : tensor<2xui8>) -> () {
   // CHECK: [[C0:%.+]] = arith.constant 19689
   // CHECK: [[C1:%.+]] = arith.constant 15
   // CHECK: [[INIT:%.+]] = tensor.empty()
-  // CHECK: [[GENERIC:%.+]] = linalg.generic {indexing_maps = [#[[$MAP0]], #[[$MAP0]]], iterator_types = ["parallel"]} ins(%[[ARG0]] : tensor<2xui8>) outs([[INIT]] : tensor<2xi8>)
-  // CHECK: ^bb0([[IN:%.+]]: ui8, [[UNUSED:%.+]]: i8):
+  // CHECK: [[GENERIC:%.+]] = linalg.generic {indexing_maps = [#[[$MAP0]], #[[$MAP0]]], iterator_types = ["parallel"]} ins(%[[ARG0]] : tensor<2xi8>) outs([[INIT]] : tensor<2xi8>)
+  // CHECK: ^bb0([[IN:%.+]]: i8, [[UNUSED:%.+]]: i8):
   // CHECK: [[C17:%.+]] = arith.constant 17
   // CHECK: [[C22:%.+]] = arith.constant 22
-  // CHECK-DAG: [[CAST:%.+]] = builtin.unrealized_conversion_cast [[IN]] : ui8 to i8
-  // CHECK-DAG: [[IN32:%.+]] = arith.extui [[CAST]]
+  // CHECK-DAG: [[IN32:%.+]] = arith.extui [[IN]]
   // CHECK-DAG: [[IN_ZEROED:%.+]] = arith.subi [[IN32]], [[C17]]
   // CHECK-DAG: [[SCALED:%.+]] = tosa.apply_scale [[IN_ZEROED]], [[C0]], [[C1]] {double_round = false}
   // CHECK-DAG: [[SCALED_ZEROED:%.+]] = arith.addi [[SCALED]], [[C22]]
@@ -1693,34 +1754,6 @@ func.func @table8_dyn_table(%arg0: tensor<6xi8>, %arg1: tensor<?xi8>) -> () {
   // CHECK:   %[[EXTRACT:.+]] = tensor.extract %[[ARG1]][%[[ADD]]]
   // CHECK:   linalg.yield %[[EXTRACT]]
   %0 = tosa.table %arg0, %arg1 : (tensor<6xi8>, tensor<?xi8>)  -> tensor<6xi8>
-  return
-}
-
-// -----
-
-// CHECK-LABEL: @test_custom_ops
-func.func @test_custom_ops(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> () {
-  // CHECK: linalg.generic
-  // CHECK: math.sin
-  // CHECK: linalg.generic
-  // CHECK: math.atan2
-  %2 = "tosa.custom"(%arg0) <{domain_name = "UNDEF", operator_name = "math.sin", implementation_attrs = "linalg.generic"}> : (tensor<1xf32>) -> tensor<1xf32>
-  %3 = "tosa.custom"(%arg0, %arg1) <{domain_name = "UNDEF", operator_name = "math.atan2", implementation_attrs = "linalg.generic"}> : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-
-  return
-}
-
-// -----
-
-// CHECK-LABEL: @test_custom_ops_dyn
-func.func @test_custom_ops_dyn(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>) -> () {
-  // CHECK: linalg.generic
-  // CHECK: math.cos
-  // CHECK: linalg.generic
-  // CHECK: math.atan2
-  %2 = "tosa.custom"(%arg0) <{domain_name = "UNDEF", operator_name = "math.cos", implementation_attrs = "linalg.generic"}> : (tensor<?xf32>) -> tensor<?xf32>
-  %3 = "tosa.custom"(%arg0, %arg1) <{domain_name = "UNDEF", operator_name = "math.atan2", implementation_attrs = "linalg.generic"}> : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
-
   return
 }
 

@@ -111,7 +111,7 @@ def Tosa_Weight : AnyTypeOf<[Tosa_Int4, Tosa_Int8,
 // Tensor types
 //===----------------------------------------------------------------------===//
 
-def Tosa_Int32Tensor : TensorOf<[Tosa_Int32]>;
+def Tosa_IntTensor : TensorOf<[Tosa_Int]>;
 def Tosa_Int32Or64Tensor : TensorOf<[Tosa_Int32Or64]>;
 
 // Either ranked or unranked tensor of TOSA supported element types.

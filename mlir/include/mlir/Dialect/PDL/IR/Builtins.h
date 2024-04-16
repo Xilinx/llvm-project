@@ -39,10 +39,12 @@ enum class UnaryOpKind {
   exp2,
 };
 
-Attribute createDictionaryAttr(PatternRewriter &rewriter);
-Attribute addEntryToDictionaryAttr(PatternRewriter &rewriter,
-                                   Attribute dictAttr, Attribute attrName,
-                                   Attribute attrEntry);
+LogicalResult createDictionaryAttr(PatternRewriter &rewriter,
+                                   PDLResultList &results,
+                                   ArrayRef<PDLValue> args);
+LogicalResult addEntryToDictionaryAttr(PatternRewriter &rewriter,
+                                       PDLResultList &results,
+                                       ArrayRef<PDLValue> args);
 Attribute createArrayAttr(PatternRewriter &rewriter);
 Attribute addElemToArrayAttr(PatternRewriter &rewriter, Attribute attr,
                              Attribute element);
