@@ -196,6 +196,18 @@
 // CHECK-NEXT:        "kind": 8,
 // CHECK-NEXT:        "label": "ValueCst",
 // CHECK-NEXT:        "sortText": "2_ValueCst"
+// CHECK-NEXT:      },
+// CHECK-NEXT:      {
+// CHECK-NEXT:        "detail": "(Attr: Attr) -> Attr",
+// CHECK-NEXT:        "kind": 8,
+// CHECK-NEXT:        "label": "__builtin_exp2Constraint",
+// CHECK-NEXT:        "sortText": "2___builtin_exp2Constraint"
+// CHECK-NEXT:      },
+// CHECK-NEXT:      {
+// CHECK-NEXT:        "detail": "(Attr: Attr) -> Attr",
+// CHECK-NEXT:        "kind": 8,
+// CHECK-NEXT:        "label": "__builtin_log2Constraint",
+// CHECK-NEXT:        "sortText": "2___builtin_log2Constraint"
 // CHECK-NEXT:      }
 // CHECK-NEXT:    ]
 // CHECK-NEXT:  }

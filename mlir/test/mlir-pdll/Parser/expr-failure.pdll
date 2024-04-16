@@ -466,6 +466,128 @@ Pattern {
 
 Pattern {
   // CHECK: expected expression
-  let resultAttr : Attr = attr<"4 : i32"> +
+  *
   erase _: Op;
+}
+
+// -----
+
+Pattern {
+  // CHECK: expected expression
+  /
+  erase _: Op;
+}
+
+// -----
+
+Pattern {
+  // CHECK: expected expression
+  %
+  erase _: Op;
+}
+
+// -----
+
+Pattern {
+  // CHECK: expected expression
+  log2()
+  erase _: Op;
+}
+
+// -----
+
+Pattern {
+  // CHECK: expected expression
+  exp2()
+  erase _: Op;
+}
+
+// -----
+
+Pattern {
+  // CHECK: cannot evaluate add operator in rewrite section. Assign to a variable with `let`
+  let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
+  rewrite root with {
+    attr<"4 : i32"> + attr<"5 : i32">;
+    erase root;
+  };
+}
+
+// -----
+
+Pattern {
+  // CHECK: cannot evaluate sub operator in rewrite section. Assign to a variable with `let`
+  let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
+  rewrite root with {
+    attr<"4 : i32"> - attr<"5 : i32">;
+    erase root;
+  };
+}
+
+// -----
+
+Pattern {
+  // CHECK: cannot evaluate mul operator in rewrite section. Assign to a variable with `let`
+  let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
+  rewrite root with {
+    attr<"4 : i32"> * attr<"5 : i32">;
+    erase root;
+  };
+}
+
+// -----
+
+Pattern {
+  // CHECK: cannot evaluate div operator in rewrite section. Assign to a variable with `let`
+  let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
+  rewrite root with {
+    attr<"4 : i32"> / attr<"5 : i32">;
+    erase root;
+  };
+}
+
+// -----
+
+Pattern {
+  // CHECK: cannot evaluate mod operator in rewrite section. Assign to a variable with `let`
+  let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
+  rewrite root with {
+    attr<"4 : i32"> % attr<"5 : i32">;
+    erase root;
+  };
+}
+
+// -----
+
+Pattern {
+  // CHECK: cannot evaluate log2 operator in rewrite section. Assign to a variable with `let`
+  let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
+  rewrite root with {
+    log2(attr<"4 : i32">);
+    erase root;
+  };
+}
+
+// -----
+
+Pattern {
+  // CHECK: cannot evaluate exp2 operator in rewrite section. Assign to a variable with `let`
+  let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
+  rewrite root with {
+    exp2(attr<"4 : i32">);
+    erase root;
+  };
+}
+
+// -----
+
+// check llvm::saveAndRestore works
+Pattern {
+  // CHECK: cannot evaluate exp2 operator in rewrite section. Assign to a variable with `let`
+  let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
+  rewrite root with {
+    let a : Attr = attr<"4 : i32"> + attr<"5 : i32">;
+    exp2(attr<"4 : i32">);
+    erase root;
+  };
 }

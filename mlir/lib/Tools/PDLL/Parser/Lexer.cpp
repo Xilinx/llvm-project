@@ -139,7 +139,7 @@ int Lexer::getNextChar() {
     return static_cast<unsigned char>(curChar);
   case 0: {
     // A nul character in the stream is either the end of the current buffer
-    // or a random nul in the file. Disambiguate that here.
+    // or a random nul in the file. Disambiguate that here.r
     if (curPtr - 1 != curBuffer.end())
       return 0;
 
@@ -197,7 +197,7 @@ Token Lexer::lexToken() {
         ++curPtr;
         return formToken(Token::arrow, tokStart);
       }
-      return emitError(tokStart, "unexpected character");
+      return formToken(Token::sub, tokStart);
     case ':':
       return formToken(Token::colon, tokStart);
     case ',':
@@ -220,6 +220,10 @@ Token Lexer::lexToken() {
       return formToken(Token::l_square, tokStart);
     case ']':
       return formToken(Token::r_square, tokStart);
+    case '*':
+      return formToken(Token::mul, tokStart);
+    case '%':
+      return formToken(Token::mod, tokStart);
     case '+':
       return formToken(Token::add, tokStart);
     case '<':
@@ -243,7 +247,7 @@ Token Lexer::lexToken() {
           return emitError(tokStart, "unterminated comment, expected '*/'");
         continue;
       }
-      return emitError(tokStart, "unexpected character");
+      return formToken(Token::div, tokStart);
 
     // Ignore whitespace characters.
     case 0:
@@ -371,6 +375,8 @@ Token Lexer::lexIdentifier(const char *tokStart) {
                          .Case("ValueRange", Token::kw_ValueRange)
                          .Case("with", Token::kw_with)
                          .Case("_", Token::underscore)
+                         .Case("log2", Token::log2)
+                         .Case("exp2", Token::exp2)
                          .Default(Token::identifier);
   return Token(kind, str);
 }
