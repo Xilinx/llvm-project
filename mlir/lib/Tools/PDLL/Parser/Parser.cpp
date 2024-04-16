@@ -2786,10 +2786,9 @@ FailureOr<ast::Stmt *> Parser::parseStmt(bool expectTerminalSemicolon) {
   case Token::kw_erase:
     stmt = parseEraseStmt();
     break;
-  case Token::kw_let: {
+  case Token::kw_let:
     stmt = parseLetStmt();
     break;
-  }
   case Token::kw_replace:
     stmt = parseReplaceStmt();
     break;
