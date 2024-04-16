@@ -443,6 +443,46 @@ public:
   }
 };
 
+template <typename ArithOp, typename EmitCOp, bool booleansLegal>
+class BitwiseOpConversion final : public OpConversionPattern<ArithOp> {
+public:
+  using OpConversionPattern<ArithOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(ArithOp op, typename ArithOp::Adaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    Type type = this->getTypeConverter()->convertType(op.getType());
+    if (!isa_and_nonnull<IntegerType, emitc::SignedSizeTType, emitc::SizeTType>(
+            type)) {
+      return rewriter.notifyMatchFailure(
+          op, "expected integer or size_t/ssize_t type");
+    }
+
+    if (type.isInteger(1)) {
+      if (!booleansLegal)
+        return rewriter.notifyMatchFailure(op, "i1 type is not implemented");
+
+      rewriter.replaceOpWithNewOp<EmitCOp>(op, type, adaptor.getLhs(),
+                                           adaptor.getRhs());
+      return success();
+    }
+
+    Type arithmeticType = adaptIntegralTypeSignedness(type, true);
+
+    Value lhs = adaptValueType(adaptor.getLhs(), rewriter, arithmeticType);
+    Value rhs = adaptValueType(adaptor.getRhs(), rewriter, arithmeticType);
+
+    Value arithmeticResult = rewriter.template create<EmitCOp>(
+        op.getLoc(), arithmeticType, lhs, rhs);
+
+    Value result = adaptValueType(arithmeticResult, rewriter, type);
+
+    rewriter.replaceOp(op, result);
+    return success();
+  }
+};
+
 class SelectOpConversion : public OpConversionPattern<arith::SelectOp> {
 public:
   using OpConversionPattern<arith::SelectOp>::OpConversionPattern;
@@ -581,6 +621,11 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
     IntegerOpConversion<arith::AddIOp, emitc::AddOp>,
     IntegerOpConversion<arith::MulIOp, emitc::MulOp>,
     IntegerOpConversion<arith::SubIOp, emitc::SubOp>,
+    BitwiseOpConversion<arith::AndIOp, emitc::BitwiseAndOp, true>,
+    BitwiseOpConversion<arith::OrIOp, emitc::BitwiseOrOp, true>,
+    BitwiseOpConversion<arith::XOrIOp, emitc::BitwiseXorOp, true>,
+    BitwiseOpConversion<arith::ShLIOp, emitc::BitwiseLeftShiftOp, false>,
+    BitwiseOpConversion<arith::ShRSIOp, emitc::BitwiseRightShiftOp, false>,
     CmpFOpConversion,
     CmpIOpConversion,
     SelectOpConversion,
