@@ -51,4 +51,17 @@ def DuplicateFunctionEliminationPass : Pass<"duplicate-function-elimination",
   let constructor = "mlir::func::createDuplicateFunctionEliminationPass()";
 }
 
+def AnnotateInputTypes : Pass<"annotate-input-types", "mlir::func::FuncOp"> {
+  let summary = "Annotate function arguments with a type attribute";
+  let description = [{
+    Annotates all the inputs of func.func operators with a type attribute. The
+    type attribute mirrors the actual type of the argument.
+
+    This pass can be used to trace back the original input types of func.func
+    operators in case they need to be modified.
+  }];
+
+  let constructor = "mlir::func::createAnnotateInputTypesPass()";
+}
+
 #endif // MLIR_DIALECT_FUNC_TRANSFORMS_PASSES_TD

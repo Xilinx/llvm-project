@@ -29,6 +29,9 @@ namespace func {
 #define GEN_PASS_DECL
 #include "mlir/Dialect/Func/Transforms/Passes.h.inc"
 
+/// Creates type attributes for func parameters, that mirror the actual type
+std::unique_ptr<Pass> createAnnotateInputTypesPass();
+
 /// Creates an instance of func bufferization pass.
 std::unique_ptr<Pass> createFuncBufferizePass();
 
