@@ -80,7 +80,7 @@ FailureOr<Value> mlir::bufferization::castOrReallocMemRefValue(
     return failure();
   }
   if (failed(options.createMemCpy(b, loc, value, *copy))) {
-    return {};
+    return failure();
   }
   return copy;
 }
