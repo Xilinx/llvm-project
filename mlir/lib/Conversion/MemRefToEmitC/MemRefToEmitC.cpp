@@ -6,82 +6,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file implements a pass to convert memref ops into emitc ops.
+// This file implements patterns to convert memref ops into emitc ops.
 //
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Conversion/MemRefToEmitC/MemRefToEmitC.h"
 
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Func/Transforms/FuncConversions.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/IRMapping.h"
-#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/Passes.h"
-
-namespace mlir {
-#define GEN_PASS_DEF_CONVERTMEMREFTOEMITC
-#include "mlir/Conversion/Passes.h.inc"
-} // namespace mlir
 
 using namespace mlir;
 
 namespace {
-
-/// Disallow all memrefs even though we only have conversions
-/// for memrefs with static shape right now to have good diagnostics.
-bool isLegal(Type t) { return !isa<BaseMemRefType>(t); }
-
-template <typename RangeT>
-std::enable_if_t<!std::is_convertible<RangeT, Type>::value &&
-                     !std::is_convertible<RangeT, Operation *>::value,
-                 bool>
-isLegal(RangeT &&range) {
-  return llvm::all_of(range, [](Type type) { return isLegal(type); });
-}
-
-bool isLegal(Operation *op) {
-  return isLegal(op->getOperandTypes()) && isLegal(op->getResultTypes());
-}
-
-bool isSignatureLegal(FunctionType ty) {
-  return isLegal(llvm::concat<const Type>(ty.getInputs(), ty.getResults()));
-}
-
-struct ConvertLoad final : public OpConversionPattern<memref::LoadOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(memref::LoadOp op, OpAdaptor operands,
-                  ConversionPatternRewriter &rewriter) const override {
-
-    rewriter.replaceOpWithNewOp<emitc::SubscriptOp>(op, operands.getMemref(),
-                                                    operands.getIndices());
-    return success();
-  }
-};
-
-struct ConvertStore final : public OpConversionPattern<memref::StoreOp> {
-  using OpConversionPattern::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(memref::StoreOp op, OpAdaptor operands,
-                  ConversionPatternRewriter &rewriter) const override {
-
-    auto subscript = rewriter.create<emitc::SubscriptOp>(
-        op.getLoc(), operands.getMemref(), operands.getIndices());
-    rewriter.replaceOpWithNewOp<emitc::AssignOp>(op, subscript,
-                                                 operands.getValue());
-    return success();
-  }
-};
-
 struct ConvertAlloca final : public OpConversionPattern<memref::AllocaOp> {
   using OpConversionPattern::OpConversionPattern;
 
@@ -102,69 +41,136 @@ struct ConvertAlloca final : public OpConversionPattern<memref::AllocaOp> {
     }
 
     auto resultTy = getTypeConverter()->convertType(op.getType());
+    if (!resultTy) {
+      return rewriter.notifyMatchFailure(op.getLoc(), "cannot convert type");
+    }
     auto noInit = emitc::OpaqueAttr::get(getContext(), "");
     rewriter.replaceOpWithNewOp<emitc::VariableOp>(op, resultTy, noInit);
     return success();
   }
 };
 
-struct ConvertMemRefToEmitCPass
-    : public impl::ConvertMemRefToEmitCBase<ConvertMemRefToEmitCPass> {
-  void runOnOperation() override {
-    TypeConverter converter;
-    // Pass through for all other types.
-    converter.addConversion([](Type type) { return type; });
+struct ConvertGlobal final : public OpConversionPattern<memref::GlobalOp> {
+  using OpConversionPattern::OpConversionPattern;
 
-    converter.addConversion([](MemRefType memRefType) -> std::optional<Type> {
-      if (memRefType.hasStaticShape()) {
-        return emitc::ArrayType::get(memRefType.getShape(),
-                                     memRefType.getElementType());
-      }
-      return {};
-    });
+  LogicalResult
+  matchAndRewrite(memref::GlobalOp op, OpAdaptor operands,
+                  ConversionPatternRewriter &rewriter) const override {
 
-    converter.addConversion(
-        [&converter](FunctionType ty) -> std::optional<Type> {
-          SmallVector<Type> inputs;
-          if (failed(converter.convertTypes(ty.getInputs(), inputs)))
-            return std::nullopt;
+    if (!op.getType().hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op.getLoc(), "cannot transform global with dynamic shape");
+    }
 
-          SmallVector<Type> results;
-          if (failed(converter.convertTypes(ty.getResults(), results)))
-            return std::nullopt;
+    if (op.getAlignment().value_or(1) > 1) {
+      // TODO: Extend GlobalOp to specify alignment via the `alignas` specifier.
+      return rewriter.notifyMatchFailure(
+          op.getLoc(), "global variable with alignment requirement is "
+                       "currently not supported");
+    }
+    auto resultTy = getTypeConverter()->convertType(op.getType());
+    if (!resultTy) {
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "cannot convert result type");
+    }
 
-          return FunctionType::get(ty.getContext(), inputs, results);
-        });
+    SymbolTable::Visibility visibility = SymbolTable::getSymbolVisibility(op);
+    if (visibility != SymbolTable::Visibility::Public &&
+        visibility != SymbolTable::Visibility::Private) {
+      return rewriter.notifyMatchFailure(
+          op.getLoc(),
+          "only public and private visibility is currently supported");
+    }
+    // We are explicit in specifier the linkage because the default linkage
+    // for constants is different in C and C++.
+    bool staticSpecifier = visibility == SymbolTable::Visibility::Private;
+    bool externSpecifier = !staticSpecifier;
 
-    RewritePatternSet patterns(&getContext());
-    populateMemRefToEmitCConversionPatterns(patterns, converter);
+    rewriter.replaceOpWithNewOp<emitc::GlobalOp>(
+        op, operands.getSymName(), resultTy, operands.getInitialValueAttr(),
+        externSpecifier, staticSpecifier, operands.getConstant());
+    return success();
+  }
+};
 
-    ConversionTarget target(getContext());
-    target.addDynamicallyLegalOp<func::FuncOp>(
-        [](func::FuncOp op) { return isSignatureLegal(op.getFunctionType()); });
-    target.addDynamicallyLegalDialect<func::FuncDialect>(
-        [](Operation *op) { return isLegal(op); });
-    target.addIllegalDialect<memref::MemRefDialect>();
-    target.addLegalDialect<emitc::EmitCDialect>();
+struct ConvertGetGlobal final
+    : public OpConversionPattern<memref::GetGlobalOp> {
+  using OpConversionPattern::OpConversionPattern;
 
-    if (failed(applyPartialConversion(getOperation(), target,
-                                      std::move(patterns))))
-      return signalPassFailure();
+  LogicalResult
+  matchAndRewrite(memref::GetGlobalOp op, OpAdaptor operands,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    auto resultTy = getTypeConverter()->convertType(op.getType());
+    if (!resultTy) {
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "cannot convert result type");
+    }
+    rewriter.replaceOpWithNewOp<emitc::GetGlobalOp>(op, resultTy,
+                                                    operands.getNameAttr());
+    return success();
+  }
+};
+
+struct ConvertLoad final : public OpConversionPattern<memref::LoadOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::LoadOp op, OpAdaptor operands,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    auto resultTy = getTypeConverter()->convertType(op.getType());
+    if (!resultTy) {
+      return rewriter.notifyMatchFailure(op.getLoc(), "cannot convert type");
+    }
+
+    auto subscript = rewriter.create<emitc::SubscriptOp>(
+        op.getLoc(), operands.getMemref(), operands.getIndices());
+
+    auto noInit = emitc::OpaqueAttr::get(getContext(), "");
+    auto var =
+        rewriter.create<emitc::VariableOp>(op.getLoc(), resultTy, noInit);
+
+    rewriter.create<emitc::AssignOp>(op.getLoc(), var, subscript);
+    rewriter.replaceOp(op, var);
+    return success();
+  }
+};
+
+struct ConvertStore final : public OpConversionPattern<memref::StoreOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::StoreOp op, OpAdaptor operands,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    auto subscript = rewriter.create<emitc::SubscriptOp>(
+        op.getLoc(), operands.getMemref(), operands.getIndices());
+    rewriter.replaceOpWithNewOp<emitc::AssignOp>(op, subscript,
+                                                 operands.getValue());
+    return success();
   }
 };
 } // namespace
 
-void mlir::populateMemRefToEmitCConversionPatterns(RewritePatternSet &patterns,
-                                                   TypeConverter &converter) {
-
-  populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
-                                                                 converter);
-  populateCallOpTypeConversionPattern(patterns, converter);
-  populateReturnOpTypeConversionPattern(patterns, converter);
-  patterns.add<ConvertLoad, ConvertStore, ConvertAlloca>(converter,
-                                                         patterns.getContext());
+void mlir::populateMemRefToEmitCTypeConversion(TypeConverter &typeConverter) {
+  typeConverter.addConversion(
+      [&](MemRefType memRefType) -> std::optional<Type> {
+        if (!memRefType.hasStaticShape() ||
+            !memRefType.getLayout().isIdentity() || memRefType.getRank() == 0) {
+          return {};
+        }
+        Type convertedElementType =
+            typeConverter.convertType(memRefType.getElementType());
+        if (!convertedElementType)
+          return {};
+        return emitc::ArrayType::get(memRefType.getShape(),
+                                     convertedElementType);
+      });
 }
 
-std::unique_ptr<OperationPass<>> mlir::createConvertMemRefToEmitCPass() {
-  return std::make_unique<ConvertMemRefToEmitCPass>();
+void mlir::populateMemRefToEmitCConversionPatterns(RewritePatternSet &patterns,
+                                                   TypeConverter &converter) {
+  patterns.add<ConvertAlloca, ConvertGlobal, ConvertGetGlobal, ConvertLoad,
+               ConvertStore>(converter, patterns.getContext());
 }

@@ -42,26 +42,37 @@ public:
 };
 
 TEST_F(BuiltinTest, createDictionaryAttr) {
-  auto attr = builtin::createDictionaryAttr(rewriter);
-  auto dict = dyn_cast<DictionaryAttr>(attr);
-  EXPECT_TRUE(dict);
+  TestPDLResultList results(1);
+  EXPECT_TRUE(succeeded(builtin::createDictionaryAttr(rewriter, results, {})));
+  ASSERT_TRUE(results.getResults().size() == 1);
+  auto dict = dyn_cast_or_null<DictionaryAttr>(
+      results.getResults().back().cast<Attribute>());
+  ASSERT_TRUE(dict);
   EXPECT_TRUE(dict.empty());
 }
 
 TEST_F(BuiltinTest, addEntryToDictionaryAttr) {
+  TestPDLResultList results(1);
+
   auto dictAttr = rewriter.getDictionaryAttr({});
+  EXPECT_TRUE(succeeded(builtin::addEntryToDictionaryAttr(
+      rewriter, results,
+      {dictAttr, rewriter.getStringAttr("testAttr"),
+       rewriter.getI16IntegerAttr(0)})));
+  ASSERT_TRUE(results.getResults().size() == 1);
+  mlir::Attribute updated = results.getResults().front().cast<Attribute>();
+  EXPECT_TRUE(cast<DictionaryAttr>(updated).contains("testAttr"));
 
-  mlir::Attribute updated = builtin::addEntryToDictionaryAttr(
-      rewriter, dictAttr, rewriter.getStringAttr("testAttr"),
-      rewriter.getI16IntegerAttr(0));
+  results = TestPDLResultList(1);
+  EXPECT_TRUE(succeeded(builtin::addEntryToDictionaryAttr(
+      rewriter, results,
+      {updated, rewriter.getStringAttr("testAttr2"),
+       rewriter.getI16IntegerAttr(0)})));
+  ASSERT_TRUE(results.getResults().size() == 1);
+  mlir::Attribute second = results.getResults().front().cast<Attribute>();
 
-  EXPECT_TRUE(updated.cast<DictionaryAttr>().contains("testAttr"));
-
-  auto second = builtin::addEntryToDictionaryAttr(
-      rewriter, updated, rewriter.getStringAttr("testAttr2"),
-      rewriter.getI16IntegerAttr(0));
-  EXPECT_TRUE(second.cast<DictionaryAttr>().contains("testAttr"));
-  EXPECT_TRUE(second.cast<DictionaryAttr>().contains("testAttr2"));
+  EXPECT_TRUE(cast<DictionaryAttr>(second).contains("testAttr"));
+  EXPECT_TRUE(cast<DictionaryAttr>(second).contains("testAttr2"));
 }
 
 TEST_F(BuiltinTest, createArrayAttr) {

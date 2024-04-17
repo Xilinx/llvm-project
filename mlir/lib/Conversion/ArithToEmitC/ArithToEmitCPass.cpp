@@ -29,6 +29,8 @@ using namespace mlir;
 namespace {
 struct ConvertArithToEmitC
     : public impl::ConvertArithToEmitCBase<ConvertArithToEmitC> {
+  using Base::Base;
+
   void runOnOperation() override;
 };
 } // namespace
@@ -44,7 +46,7 @@ void ConvertArithToEmitC::runOnOperation() {
   TypeConverter typeConverter;
   typeConverter.addConversion([](Type type) { return type; });
 
-  populateArithToEmitCPatterns(typeConverter, patterns);
+  populateArithToEmitCPatterns(typeConverter, patterns, floatToIntTruncates);
 
   if (failed(
           applyPartialConversion(getOperation(), target, std::move(patterns))))

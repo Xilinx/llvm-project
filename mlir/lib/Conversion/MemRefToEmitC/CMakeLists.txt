@@ -1,5 +1,6 @@
 add_mlir_conversion_library(MLIRMemRefToEmitC
   MemRefToEmitC.cpp
+  MemRefToEmitCPass.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Conversion/MemRefToEmitC
@@ -12,8 +13,6 @@ add_mlir_conversion_library(MLIRMemRefToEmitC
 
   LINK_LIBS PUBLIC
   MLIREmitCDialect
-  MLIRFuncDialect
-  MLIRFuncTransforms
   MLIRMemRefDialect
   MLIRTransforms
   )

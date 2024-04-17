@@ -214,14 +214,6 @@ func.func @test_for_not_index_induction(%arg0 : i16, %arg1 : i16, %arg2 : i16) {
   return
 }
 
-func.func @test_subscript(%arg0: !emitc.array<4x8xf32>, %arg1: !emitc.array<3x5xf32>,
-                          %arg2: index, %arg3: index) {
-  %0 = emitc.subscript %arg0[%arg2, %arg3] : <4x8xf32>
-  %1 = emitc.subscript %arg1[%arg2, %arg3] : <3x5xf32>
-  emitc.assign %0 : f32 to %1 : f32
-  return
-}
-
 emitc.verbatim "#ifdef __cplusplus"
 emitc.verbatim "extern \"C\" {"
 emitc.verbatim "#endif  // __cplusplus"
@@ -232,3 +224,17 @@ emitc.verbatim "#endif  // __cplusplus"
 
 emitc.verbatim "typedef int32_t i32;"
 emitc.verbatim "typedef float f32;"
+
+
+emitc.global @uninit : i32
+emitc.global @myglobal_int : i32 = 4
+emitc.global extern @external_linkage : i32
+emitc.global static @internal_linkage : i32
+emitc.global @myglobal : !emitc.array<2xf32> = dense<4.000000e+00>
+emitc.global const @myconstant : !emitc.array<2xi16> = dense<2>
+
+func.func @use_global(%i: index) -> f32 {
+  %0 = emitc.get_global @myglobal : !emitc.array<2xf32>
+  %1 = emitc.subscript %0[%i] : <2xf32>, index
+  return %1 : f32
+}

@@ -1767,8 +1767,6 @@ cc_library(
         ":EmitCDialect",
         ":FuncDialect",
         ":IR",
-        ":MathDialect",
-        ":SCFDialect",
         ":Support",
         ":TranslateLib",
         "//llvm:Support",
@@ -4040,6 +4038,7 @@ cc_library(
         ":MathToLLVM",
         ":MathToLibm",
         ":MathToSPIRV",
+        ":MemRefToEmitC",
         ":MemRefToLLVM",
         ":MemRefToSPIRV",
         ":NVGPUToNVVM",
@@ -8042,6 +8041,32 @@ cc_library(
         ":SPIRVDialect",
         ":SPIRVUtils",
         ":Support",
+        ":Transforms",
+        "//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "MemRefToEmitC",
+    srcs = glob([
+        "lib/Conversion/MemRefToEmitC/*.cpp",
+        "lib/Conversion/MemRefToEmitC/*.h",
+    ]),
+    hdrs = glob([
+        "include/mlir/Conversion/MemRefToEmitC/*.h",
+    ]),
+    includes = [
+        "include",
+        "lib/Conversion/MemRefToEmitC",
+    ],
+    deps = [
+        ":ConversionPassIncGen",
+        ":EmitCDialect",
+        ":MemRefDialect",
+        ":IR",
+        ":Pass",
+        ":Support",
+        ":TransformUtils",
         ":Transforms",
         "//llvm:Support",
     ],

@@ -615,12 +615,12 @@ def Tosa_DivOp : Tosa_ElementwiseOp<"div", [SameOperandsAndResultElementType]> {
   }];
 
   let arguments = (ins
-    Tosa_Int32Tensor:$input1,
-    Tosa_Int32Tensor:$input2
+    Tosa_IntTensor:$input1,
+    Tosa_IntTensor:$input2
   );
 
   let results = (outs
-    Tosa_Int32Tensor:$output
+    Tosa_IntTensor:$output
   );
 
   let hasFolder = 1;

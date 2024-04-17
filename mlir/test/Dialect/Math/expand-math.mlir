@@ -512,3 +512,45 @@ func.func @roundeven16(%arg: f16) -> f16 {
 // CHECK:     %[[COPYSIGN:.*]] = math.copysign %[[RESULT]], %[[VAL_0]] : f16
 
 // CHECK: return %[[COPYSIGN]] : f16
+
+// -----
+
+// CHECK-LABEL:   func.func @rsqrt
+// CHECK-SAME:     (%[[ARG:.*]]: f32)
+// CHECK-SAME:    -> f32
+// CHECK-DAG:     %[[CST:.*]] = arith.constant 1.000000e+00 : f32
+// CHECK-DAG:     %[[SQRT:.*]] = math.sqrt %[[ARG]] : f32
+// CHECK-DAG:     %[[DIV:.*]] = arith.divf %[[CST]], %[[SQRT]] : f32
+// CHECK:         return %[[DIV]] : f32
+func.func @rsqrt(%float: f32) -> (f32)  {
+  %float_result = math.rsqrt %float : f32
+  return %float_result : f32
+}
+
+// -----
+
+// CHECK-LABEL:   func.func @rsqrt_vec
+// CHECK-SAME:     (%[[ARG:.*]]: vector<5xf32>)
+// CHECK-SAME:    -> vector<5xf32>
+// CHECK-DAG:     %[[CST:.*]] = arith.constant dense<1.000000e+00> : vector<5xf32>
+// CHECK-DAG:     %[[SQRT:.*]] = math.sqrt %[[ARG]] : vector<5xf32>
+// CHECK-DAG:     %[[DIV:.*]] = arith.divf %[[CST]], %[[SQRT]] : vector<5xf32>
+// CHECK:         return %[[DIV]] : vector<5xf32>
+func.func @rsqrt_vec(%float: vector<5xf32>) -> (vector<5xf32>)  {
+  %float_result = math.rsqrt %float : vector<5xf32>
+  return %float_result : vector<5xf32>
+}
+
+// -----
+
+// CHECK-LABEL:   func.func @rsqrt_tns
+// CHECK-SAME:     (%[[ARG:.*]]: tensor<5x8xf32>)
+// CHECK-SAME:    -> tensor<5x8xf32>
+// CHECK-DAG:     %[[CST:.*]] = arith.constant dense<1.000000e+00> : tensor<5x8xf32>
+// CHECK-DAG:     %[[SQRT:.*]] = math.sqrt %[[ARG]] : tensor<5x8xf32>
+// CHECK-DAG:     %[[DIV:.*]] = arith.divf %[[CST]], %[[SQRT]] : tensor<5x8xf32>
+// CHECK:         return %[[DIV]] : tensor<5x8xf32>
+func.func @rsqrt_tns(%float: tensor<5x8xf32>) -> (tensor<5x8xf32>)  {
+  %float_result = math.rsqrt %float : tensor<5x8xf32>
+  return %float_result : tensor<5x8xf32>
+}

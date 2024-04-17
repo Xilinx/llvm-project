@@ -15,3 +15,12 @@ func.func @tensor_with_unknown_rank(%arg0: tensor<*xi8>) -> tensor<*xi8> {
   %0 = "tosa.abs"(%arg0) : (tensor<*xi8>) -> tensor<*xi8>
   return %0 : tensor<*xi8>
 }
+
+// -----
+
+// CHECK-LABEL: @clamp_on_large_int
+func.func @clamp_on_large_int(%arg0: tensor<1xui64>) -> tensor<1xui64> {
+  // expected-error@+1 {{failed to legalize operation 'tosa.clamp'}}
+  %0 = tosa.clamp %arg0 {min_int = -1 : i64, max_int = 5 : i64, min_fp = 1.0 : f32, max_fp = 5.0 : f32} : (tensor<1xui64>) -> tensor<1xui64>
+  return %0 : tensor<1xui64>
+}

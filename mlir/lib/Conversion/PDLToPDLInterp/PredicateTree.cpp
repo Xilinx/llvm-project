@@ -265,14 +265,24 @@ static void getConstraintPredicates(pdl::ApplyNativeConstraintOp op,
                                     DenseMap<Value, Position *> &inputs) {
   OperandRange arguments = op.getArgs();
 
+  Position *pos = nullptr;
   std::vector<Position *> allPositions;
-  allPositions.reserve(arguments.size());
-  for (Value arg : arguments)
-    allPositions.push_back(inputs.lookup(arg));
 
-  // Push the constraint to the furthest position.
-  Position *pos = *std::max_element(allPositions.begin(), allPositions.end(),
-                                    comparePosDepth);
+  // If this constraint has no arguments, this means it has no dependencies, and
+  // the same applies to all results
+  if (arguments.empty()) {
+    pos = builder.getRoot();
+  } else {
+    allPositions.reserve(arguments.size());
+    for (Value arg : arguments)
+      allPositions.push_back(inputs.lookup(arg));
+
+    // Push the constraint to the furthest position.
+    pos = *std::max_element(allPositions.begin(), allPositions.end(),
+                            comparePosDepth);
+  }
+  assert(pos && "Must have a non-null value");
+
   ResultRange results = op.getResults();
   PredicateBuilder::Predicate pred = builder.getConstraint(
       op.getName(), allPositions, SmallVector<Type>(results.getTypes()),
