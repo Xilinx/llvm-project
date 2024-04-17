@@ -77,7 +77,7 @@ FailureOr<Value> mlir::bufferization::castOrReallocMemRefValue(
   FailureOr<Value> copy =
       options.createAlloc(b, loc, destType, dynamicOperands);
   if (failed(copy)) {
-    return {};
+    return failure();
   }
   if (failed(options.createMemCpy(b, loc, value, *copy))) {
     return {};
