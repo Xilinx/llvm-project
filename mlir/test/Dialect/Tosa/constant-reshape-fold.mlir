@@ -1,5 +1,6 @@
 // RUN: mlir-opt --split-input-file --tosa-layerwise-constant-fold %s | FileCheck %s
 // RUN: mlir-opt --split-input-file --tosa-layerwise-constant-fold="fold-splat-or-single-use-only=0" %s | FileCheck %s --check-prefix CHECK-MULTI
+
 // CHECK-LABEL: @reshape_single_user
 func.func @reshape_single_user() -> tensor<1x2xf32> {
   // CHECK: %[[RES:.*]] = "tosa.const"{{.*}}-> tensor<1x2xf32>
@@ -9,7 +10,7 @@ func.func @reshape_single_user() -> tensor<1x2xf32> {
   return %1 : tensor<1x2xf32>
 }
 
-// CHECK-LABEL: @reshape_multi_user
+// CHECK-LABEL: @reshape_multi_user_splat
 func.func @reshape_multi_user_splat() -> (tensor<1x2xf32>, tensor<2xf32>) {
   // CHECK-DAG: %[[RES:.*]] = "tosa.const"{{.*}}-> tensor<2xf32>
   // CHECK-DAG: %[[RESHAPED:.*]] = "tosa.const"{{.*}}-> tensor<1x2xf32>
