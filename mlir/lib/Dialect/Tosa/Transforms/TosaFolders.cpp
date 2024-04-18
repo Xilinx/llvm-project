@@ -586,9 +586,8 @@ struct TosaFoldConstantReshape
     // Check that we can apply folding
     auto preCondCheck =
         notifyIfNoTosaDenseConstantTensor(inputTensor, op, rewriter);
-    if (failed(preCondCheck)) {
+    if (failed(preCondCheck))
       return preCondCheck;
-    }
 
     // Extract the tensor values
     DenseElementsAttr inputValues;
@@ -1756,9 +1755,9 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
     bool foldSplatOrSingleUseOnly,
     bool enableIntCastFolding) {
 
-  patterns.add<TosaFoldConstantReshape>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantTranspose>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantReciprocal>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantReshape>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantRSQRT>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantLogicalNot>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantPow>(ctx, foldSplatOrSingleUseOnly);
