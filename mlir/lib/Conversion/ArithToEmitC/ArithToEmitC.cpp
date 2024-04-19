@@ -366,9 +366,6 @@ public:
 // Floating-point to integer conversions.
 template <typename CastOp>
 class FtoICastOpConversion : public OpConversionPattern<CastOp> {
-private:
-  bool floatToIntTruncates;
-
 public:
   FtoICastOpConversion(const TypeConverter &typeConverter, MLIRContext *context)
       : OpConversionPattern<CastOp>(typeConverter, context) {}

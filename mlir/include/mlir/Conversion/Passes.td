@@ -139,9 +139,6 @@ def ArithToAMDGPUConversionPass : Pass<"convert-arith-to-amdgpu"> {
 
 def ConvertArithToEmitC : Pass<"convert-arith-to-emitc"> {
   let summary = "Convert Arith dialect to EmitC dialect";
-  let description = [{
-    This pass converts `arith` dialect operations to `emitc`.
-  }];
   let dependentDialects = ["emitc::EmitCDialect"];
 }
 
