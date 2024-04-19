@@ -325,6 +325,28 @@ func.func @arith_int_to_float_cast_ops(%arg0: i8, %arg1: i64) {
 
 // -----
 
+func.func @arith_float_to_int_cast_ops(%arg0: f32, %arg1: f64) {
+  // CHECK: emitc.cast %arg0 : f32 to i32
+  %0 = arith.fptosi %arg0 : f32 to i32
+
+  // CHECK: emitc.cast %arg1 : f64 to i32
+  %1 = arith.fptosi %arg1 : f64 to i32
+
+  // CHECK: emitc.cast %arg0 : f32 to i16
+  %2 = arith.fptosi %arg0 : f32 to i16
+
+  // CHECK: emitc.cast %arg1 : f64 to i16
+  %3 = arith.fptosi %arg1 : f64 to i16
+
+  // CHECK: %[[CAST0:.*]] = emitc.cast %arg0 : f32 to ui32
+  // CHECK: emitc.cast %[[CAST0]] : ui32 to i32
+  %4 = arith.fptoui %arg0 : f32 to i32
+  
+  return
+}
+
+// -----
+
 func.func @arith_cmpi_eq(%arg0: i32, %arg1: i32) -> i1 {
   // CHECK-LABEL: arith_cmpi_eq
   // CHECK-SAME: ([[Arg0:[^ ]*]]: i32, [[Arg1:[^ ]*]]: i32)
