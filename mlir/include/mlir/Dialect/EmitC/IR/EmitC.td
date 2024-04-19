@@ -1242,7 +1242,7 @@ def EmitC_SubscriptOp : EmitC_Op<"subscript", []> {
       EmitC_OpaqueType,
       EmitC_PointerType]>,
     "the value to subscript">:$value,
-    Variadic<AnyType>:$indices);
+    Variadic<EmitCType>:$indices);
   let results = (outs EmitCType:$result);
 
   let builders = [
