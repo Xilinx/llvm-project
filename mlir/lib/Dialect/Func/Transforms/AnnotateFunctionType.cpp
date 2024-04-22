@@ -21,7 +21,6 @@
 using namespace mlir;
 
 namespace mlir::func {
-#define GEN_PASS_DECL_ANNOTATEFUNCTIONTYPE
 #define GEN_PASS_DEF_ANNOTATEFUNCTIONTYPE
 #include "mlir/Dialect/Func/Transforms/Passes.h.inc"
 } // namespace mlir::func
