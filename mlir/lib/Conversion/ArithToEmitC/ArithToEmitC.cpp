@@ -367,8 +367,7 @@ public:
 template <typename CastOp>
 class FtoICastOpConversion : public OpConversionPattern<CastOp> {
 public:
-  FtoICastOpConversion(const TypeConverter &typeConverter, MLIRContext *context)
-      : OpConversionPattern<CastOp>(typeConverter, context) {}
+  using OpConversionPattern<CastOp>::OpConversionPattern;
 
   LogicalResult
   matchAndRewrite(CastOp castOp, typename CastOp::Adaptor adaptor,
@@ -412,8 +411,7 @@ public:
 template <typename CastOp>
 class ItoFCastOpConversion : public OpConversionPattern<CastOp> {
 public:
-  ItoFCastOpConversion(const TypeConverter &typeConverter, MLIRContext *context)
-      : OpConversionPattern<CastOp>(typeConverter, context) {}
+  using OpConversionPattern<CastOp>::OpConversionPattern;
 
   LogicalResult
   matchAndRewrite(CastOp castOp, typename CastOp::Adaptor adaptor,
