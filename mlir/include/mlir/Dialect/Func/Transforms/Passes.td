@@ -57,7 +57,7 @@ def AnnotateFunctionType: Pass<"annotate-function-type", "func::FuncOp"> {
     Annotates all the inputs and outputs of func.func operators with a type
     attribute. The type attribute mirrors the actual type of the inputs/outputs.
 
-    This pass can be used to trace back the original input types of func.func
+    This pass can be used to trace back the original types of func.func
     operators in case they need to be modified.
   }];
 }
