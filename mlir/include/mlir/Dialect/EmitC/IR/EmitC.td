@@ -1020,7 +1020,7 @@ def EmitC_GlobalOp : EmitC_Op<"global", [Symbol]> {
     The `emitc.global` operation declares or defines a named global variable.
     The backing memory for the variable is allocated statically and is
     described by the type of the variable.
-    Optionally, and `initial_value` can be provided.
+    Optionally, an `initial_value` can be provided.
     Internal linkage can be specified using the `staticSpecifier` unit attribute
     and external linkage can be specified using the `externSpecifier` unit attribute.
     Note that the default linkage without those two keywords depends on whether
@@ -1047,14 +1047,14 @@ def EmitC_GlobalOp : EmitC_Op<"global", [Symbol]> {
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttr:$type,
                        OptionalAttr<EmitC_OpaqueOrTypedAttr>:$initial_value,
-                       UnitAttr:$externSpecifier,
-                       UnitAttr:$staticSpecifier,
-                       UnitAttr:$constSpecifier);
+                       UnitAttr:$extern_specifier,
+                       UnitAttr:$static_specifier,
+                       UnitAttr:$const_specifier);
 
   let assemblyFormat = [{
-       (`extern` $externSpecifier^)?
-       (`static` $staticSpecifier^)?
-       (`const` $constSpecifier^)?
+       (`extern` $extern_specifier^)?
+       (`static` $static_specifier^)?
+       (`const` $const_specifier^)?
        $sym_name
        `:` custom<EmitCGlobalOpTypeAndInitialValue>($type, $initial_value)
        attr-dict
