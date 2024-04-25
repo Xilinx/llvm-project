@@ -1,6 +1,5 @@
 #include <cassert>
 #include <cstdint>
-#include <iostream>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/APSInt.h>
