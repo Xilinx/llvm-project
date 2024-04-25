@@ -25,6 +25,7 @@
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/EmitC/Transforms/Passes.h"
 #include "mlir/Dialect/Func/Transforms/Passes.h"
+#include "mlir/Dialect/GPU/Pipelines/Passes.h"
 #include "mlir/Dialect/GPU/Transforms/Passes.h"
 #include "mlir/Dialect/LLVMIR/Transforms/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
@@ -33,6 +34,7 @@
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Mesh/Transforms/Passes.h"
 #include "mlir/Dialect/NVGPU/Transforms/Passes.h"
+#include "mlir/Dialect/OpenACC/Transforms/Passes.h"
 #include "mlir/Dialect/SCF/Transforms/Passes.h"
 #include "mlir/Dialect/SPIRV/Transforms/Passes.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
@@ -63,6 +65,7 @@ inline void registerAllPasses() {
   registerConversionPasses();
 
   // Dialect passes
+  acc::registerOpenACCPasses();
   affine::registerAffinePasses();
   amdgpu::registerAMDGPUPasses();
   registerAsyncPasses();
@@ -93,6 +96,9 @@ inline void registerAllPasses() {
   bufferization::registerBufferizationPipelines();
   sparse_tensor::registerSparseTensorPipelines();
   tosa::registerTosaToLinalgPipelines();
+#if MLIR_CUDA_CONVERSIONS_ENABLED
+  gpu::registerGPUToNVVMPipeline();
+#endif
 }
 
 } // namespace mlir

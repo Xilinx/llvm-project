@@ -29,9 +29,9 @@ func.func @reshape_multi_user_non_splat() -> (tensor<1x2xf32>, tensor<2xf32>) {
   // CHECK: %[[CONST:.*]] = "tosa.const"{{.*}}-> tensor<2xf32>
   // CHECK: %[[RES:.*]] = tosa.reshape
   // CHECK: return %[[RES]], %[[CONST]]
-  // CHECK-ALWAYS-DAG: %[[RES:.*]] = "tosa.const"{{.*}}-> tensor<2xf32>
-  // CHECK-ALWAYS-DAG: %[[RESHAPED:.*]] = "tosa.const"{{.*}}-> tensor<1x2xf32>
-  // CHECK-ALWAYS: return %[[RESHAPED]], %[[RES]]
+  // CHECK-ALWAYS: %[[CONST_1:.*]] = "tosa.const"() <{value = dense<4.000000e+00> : tensor<2xf32>}> : () -> tensor<2xf32>
+  // CHECK-ALWAYS: %[[CONST_2:.*]] = "tosa.const"() <{value = dense<4.000000e+00> : tensor<1x2xf32>}> : () -> tensor<1x2xf32>
+  // CHECK-ALWAYS: return %[[CONST_2]], %[[CONST_1]]
   %0 = "tosa.const"() {value = dense<[4.0, 3.0]> : tensor<2xf32>} : () -> tensor<2xf32>
   %1 = tosa.reshape %0 {new_shape = array<i64: 1, 2>}: (tensor<2xf32>) -> tensor<1x2xf32>
   return %1, %0 : tensor<1x2xf32>, tensor<2xf32>

@@ -18,6 +18,7 @@
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"
 #include "mlir/Dialect/Tosa/Utils/ShapeUtils.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Matchers.h"
@@ -26,6 +27,7 @@
 #include "mlir/Transforms/InliningUtils.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/TypeSwitch.h"
 
@@ -113,7 +115,7 @@ LogicalResult SelectOp::canonicalize(SelectOp op, PatternRewriter &rewriter) {
   auto notOp = op.getPred().getDefiningOp<tosa::LogicalNotOp>();
   if (!notOp)
     return failure();
-  rewriter.updateRootInPlace(op, [&]() {
+  rewriter.modifyOpInPlace(op, [&]() {
     op.getOperation()->setOperands(
         {notOp.getInput1(), op.getOnFalse(), op.getOnTrue()});
   });
@@ -737,27 +739,6 @@ OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
   return mulBinaryFolder(lhsAttr, rhsAttr, resultTy, getShift());
 }
 
-OpFoldResult ReciprocalOp::fold(FoldAdaptor adaptor) {
-
-  auto constantAttr = dyn_cast_or_null<DenseElementsAttr>(adaptor.getOperands()[0]);
-  auto lhsTy = dyn_cast<RankedTensorType>(getInput1().getType());
-
-  if (!lhsTy || !constantAttr) {
-    return {};
-  }
-
-  if (!constantAttr.isSplat()) {
-    return {};
-  }
-
-  auto floatVal = constantAttr.getSplatValue<llvm::APFloat>();
-
-  auto recipAttr = FloatAttr::get(lhsTy.getElementType(), 1.0);
-  APFloat recip = recipAttr.getValue();
-  recip.divide(floatVal, APFloat::rmNearestTiesToEven);
-  return DenseElementsAttr::get(lhsTy, recip);
-}
-
 OpFoldResult SubOp::fold(FoldAdaptor adaptor) {
   auto lhsTy = llvm::dyn_cast<RankedTensorType>(getInput1().getType());
   auto rhsTy = llvm::dyn_cast<RankedTensorType>(getInput2().getType());
@@ -939,6 +920,8 @@ OpFoldResult ConstOp::fold(FoldAdaptor adaptor) { return getValueAttr(); }
   OpFoldResult OP::fold(FoldAdaptor adaptor) {                                 \
     ShapedType inputTy = llvm::cast<ShapedType>(getInput().getType());         \
     if (!inputTy.hasRank())                                                    \
+      return {};                                                               \
+    if (inputTy != getType())                                                  \
       return {};                                                               \
     if (inputTy.getRank() == 0 || inputTy.getDimSize(getAxis()) == 1)          \
       return getInput();                                                       \
@@ -1223,4 +1206,22 @@ OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
 
   getOperation()->setOperands(concatOperands);
   return getResult();
+}
+
+OpFoldResult tosa::ReciprocalOp::fold(FoldAdaptor adaptor) {
+  auto input = adaptor.getInput1();
+
+  auto inputAttr = llvm::dyn_cast_if_present<DenseElementsAttr>(input);
+  // Fold splat inputs only.
+  if (!inputAttr || !inputAttr.isSplat())
+    return {};
+
+  auto shapeType = llvm::cast<ShapedType>(getType());
+  if (auto floatType = llvm::dyn_cast<FloatType>(inputAttr.getElementType())) {
+    auto floatVal = inputAttr.getSplatValue<APFloat>();
+    return DenseElementsAttr::get(shapeType,
+                                  ReciprocalOp::calcOneElement(floatVal));
+  }
+
+  return {};
 }

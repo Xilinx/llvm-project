@@ -345,6 +345,11 @@ static cl::opt<bool> EnableImageIntrinsicOptimizer(
     cl::desc("Enable image intrinsic optimizer pass"), cl::init(true),
     cl::Hidden);
 
+static cl::opt<bool>
+    EnableLoopPrefetch("amdgpu-loop-prefetch",
+                       cl::desc("Enable loop data prefetch on AMDGPU"),
+                       cl::Hidden, cl::init(false));
+
 static cl::opt<bool> EnableMaxIlpSchedStrategy(
     "amdgpu-enable-max-ilp-scheduling-strategy",
     cl::desc("Enable scheduling strategy to maximize ILP for a single wave."),
@@ -377,6 +382,7 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeAMDGPUTarget() {
   initializeSILowerI1CopiesPass(*PR);
   initializeAMDGPUGlobalISelDivergenceLoweringPass(*PR);
   initializeSILowerWWMCopiesPass(*PR);
+  initializeAMDGPUMarkLastScratchLoadPass(*PR);
   initializeSILowerSGPRSpillsPass(*PR);
   initializeSIFixSGPRCopiesPass(*PR);
   initializeSIFixVGPRCopiesPass(*PR);
@@ -455,7 +461,8 @@ createGCNMaxOccupancyMachineScheduler(MachineSchedContext *C) {
   DAG->addMutation(createLoadClusterDAGMutation(DAG->TII, DAG->TRI));
   if (ST.shouldClusterStores())
     DAG->addMutation(createStoreClusterDAGMutation(DAG->TII, DAG->TRI));
-  DAG->addMutation(createIGroupLPDAGMutation(/*IsPostRA=*/false));
+  DAG->addMutation(
+      createIGroupLPDAGMutation(AMDGPU::SchedulingPhase::Initial, nullptr));
   DAG->addMutation(createAMDGPUMacroFusionDAGMutation());
   DAG->addMutation(createAMDGPUExportClusteringDAGMutation());
   return DAG;
@@ -465,7 +472,8 @@ static ScheduleDAGInstrs *
 createGCNMaxILPMachineScheduler(MachineSchedContext *C) {
   ScheduleDAGMILive *DAG =
       new GCNScheduleDAGMILive(C, std::make_unique<GCNMaxILPSchedStrategy>(C));
-  DAG->addMutation(createIGroupLPDAGMutation(/*IsPostRA=*/false));
+  DAG->addMutation(
+      createIGroupLPDAGMutation(AMDGPU::SchedulingPhase::Initial, nullptr));
   return DAG;
 }
 
@@ -565,7 +573,7 @@ static Reloc::Model getEffectiveRelocModel(std::optional<Reloc::Model> RM) {
 
 AMDGPUTargetMachine::AMDGPUTargetMachine(const Target &T, const Triple &TT,
                                          StringRef CPU, StringRef FS,
-                                         TargetOptions Options,
+                                         const TargetOptions &Options,
                                          std::optional<Reloc::Model> RM,
                                          std::optional<CodeModel::Model> CM,
                                          CodeGenOptLevel OptLevel)
@@ -615,7 +623,8 @@ void AMDGPUTargetMachine::registerDefaultAliasAnalyses(AAManager &AAM) {
   AAM.registerFunctionAnalysis<AMDGPUAA>();
 }
 
-void AMDGPUTargetMachine::registerPassBuilderCallbacks(PassBuilder &PB) {
+void AMDGPUTargetMachine::registerPassBuilderCallbacks(
+    PassBuilder &PB, bool PopulateClassToPassNames) {
   PB.registerPipelineParsingCallback(
       [this](StringRef PassName, ModulePassManager &PM,
              ArrayRef<PassBuilder::PipelineElement>) {
@@ -856,7 +865,7 @@ AMDGPUTargetMachine::getAddressSpaceForPseudoSourceKind(unsigned Kind) const {
 
 GCNTargetMachine::GCNTargetMachine(const Target &T, const Triple &TT,
                                    StringRef CPU, StringRef FS,
-                                   TargetOptions Options,
+                                   const TargetOptions &Options,
                                    std::optional<Reloc::Model> RM,
                                    std::optional<CodeModel::Model> CM,
                                    CodeGenOptLevel OL, bool JIT)
@@ -927,7 +936,8 @@ public:
     if (ST.shouldClusterStores())
       DAG->addMutation(createStoreClusterDAGMutation(DAG->TII, DAG->TRI));
     DAG->addMutation(ST.createFillMFMAShadowMutation(DAG->TII));
-    DAG->addMutation(createIGroupLPDAGMutation(/*IsPostRA=*/true));
+    DAG->addMutation(
+        createIGroupLPDAGMutation(AMDGPU::SchedulingPhase::PostRA, nullptr));
     if (isPassEnabled(EnableVOPD, CodeGenOptLevel::Less))
       DAG->addMutation(createVOPDPairingMutation());
     return DAG;
@@ -982,6 +992,8 @@ void AMDGPUPassConfig::addEarlyCSEOrGVNPass() {
 }
 
 void AMDGPUPassConfig::addStraightLineScalarOptimizationPasses() {
+  if (isPassEnabled(EnableLoopPrefetch, CodeGenOptLevel::Aggressive))
+    addPass(createLoopDataPrefetchPass());
   addPass(createSeparateConstOffsetFromGEPPass());
   // ReassociateGEPs exposes more opportunities for SLSR. See
   // the example in reassociate-geps-and-slsr.ll.
@@ -1046,7 +1058,7 @@ void AMDGPUPassConfig::addIRPasses() {
     addPass(createAMDGPUAtomicOptimizerPass(AMDGPUAtomicOptimizerStrategy));
   }
 
-  addPass(createAtomicExpandPass());
+  addPass(createAtomicExpandLegacyPass());
 
   if (TM.getOptLevel() > CodeGenOptLevel::None) {
     addPass(createAMDGPUPromoteAlloca());
@@ -1415,6 +1427,8 @@ bool GCNPassConfig::addRegAssignAndRewriteOptimized() {
 
   addPreRewrite();
   addPass(&VirtRegRewriterID);
+
+  addPass(&AMDGPUMarkLastScratchLoadID);
 
   return true;
 }

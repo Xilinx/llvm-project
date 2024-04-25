@@ -77,16 +77,32 @@ protected:
     return runDataflowAnalysis(*CFCtx, Analysis, Env);
   }
 
+  /// Returns the `CFGBlock` containing `S` (and asserts that it exists).
+  const CFGBlock *blockForStmt(const Stmt &S) {
+    const CFGBlock *Block = CFCtx->getStmtToBlock().lookup(&S);
+    assert(Block != nullptr);
+    return Block;
+  }
+
   template <typename StateT>
   const StateT &
   blockStateForStmt(const std::vector<std::optional<StateT>> &BlockStates,
-                    const Stmt *S) {
-    const CFGBlock *Block = CFCtx->getStmtToBlock().lookup(S);
-    assert(Block != nullptr);
-    const std::optional<StateT> &MaybeState = BlockStates[Block->getBlockID()];
+                    const Stmt &S) {
+    const std::optional<StateT> &MaybeState =
+        BlockStates[blockForStmt(S)->getBlockID()];
     assert(MaybeState.has_value());
     return *MaybeState;
-  };
+  }
+
+  /// Returns the first node that matches `Matcher` (and asserts that the match
+  /// was successful, i.e. the returned node is not null).
+  template <typename NodeT, typename MatcherT>
+  const NodeT &matchNode(MatcherT Matcher) {
+    const auto *Node = selectFirst<NodeT>(
+        "node", match(Matcher.bind("node"), AST->getASTContext()));
+    assert(Node != nullptr);
+    return *Node;
+  }
 
   std::unique_ptr<ASTUnit> AST;
   std::unique_ptr<ControlFlowContext> CFCtx;
@@ -130,6 +146,79 @@ TEST_F(DataflowAnalysisTest, DiagnoseFunctionDiagnoserCalledOnEachElement) {
                                    " (Lifetime ends)\n")));
 }
 
+// Tests for the statement-to-block map.
+using StmtToBlockTest = DataflowAnalysisTest;
+
+TEST_F(StmtToBlockTest, ConditionalOperator) {
+  std::string Code = R"(
+    void target(bool b) {
+      int i = b ? 1 : 0;
+    }
+  )";
+  ASSERT_THAT_ERROR(runAnalysis<NoopAnalysis>(
+                        Code, [](ASTContext &C) { return NoopAnalysis(C); })
+                        .takeError(),
+                    llvm::Succeeded());
+
+  const auto &IDecl = matchNode<DeclStmt>(declStmt(has(varDecl(hasName("i")))));
+  const auto &ConditionalOp =
+      matchNode<ConditionalOperator>(conditionalOperator());
+
+  // The conditional operator should be associated with the same block as the
+  // `DeclStmt` for `i`. (Specifically, the conditional operator should not be
+  // associated with the block for which it is the terminator.)
+  EXPECT_EQ(blockForStmt(IDecl), blockForStmt(ConditionalOp));
+}
+
+TEST_F(StmtToBlockTest, LogicalAnd) {
+  std::string Code = R"(
+    void target(bool b1, bool b2) {
+      bool b = b1 && b2;
+    }
+  )";
+  ASSERT_THAT_ERROR(runAnalysis<NoopAnalysis>(
+                        Code, [](ASTContext &C) { return NoopAnalysis(C); })
+                        .takeError(),
+                    llvm::Succeeded());
+
+  const auto &BDecl = matchNode<DeclStmt>(declStmt(has(varDecl(hasName("b")))));
+  const auto &AndOp =
+      matchNode<BinaryOperator>(binaryOperator(hasOperatorName("&&")));
+
+  // The `&&` operator should be associated with the same block as the
+  // `DeclStmt` for `b`. (Specifically, the `&&` operator should not be
+  // associated with the block for which it is the terminator.)
+  EXPECT_EQ(blockForStmt(BDecl), blockForStmt(AndOp));
+}
+
+TEST_F(StmtToBlockTest, IfStatementWithLogicalAnd) {
+  std::string Code = R"(
+    void target(bool b1, bool b2) {
+      if (b1 && b2)
+        ;
+    }
+  )";
+  ASSERT_THAT_ERROR(runAnalysis<NoopAnalysis>(
+                        Code, [](ASTContext &C) { return NoopAnalysis(C); })
+                        .takeError(),
+                    llvm::Succeeded());
+
+  const auto &If = matchNode<IfStmt>(ifStmt());
+  const auto &B2 =
+      matchNode<DeclRefExpr>(declRefExpr(to(varDecl(hasName("b2")))));
+  const auto &AndOp =
+      matchNode<BinaryOperator>(binaryOperator(hasOperatorName("&&")));
+
+  // The if statement is the terminator for the block that contains both `b2`
+  // and the `&&` operator (which appears only as a terminator condition, not
+  // as a regular `CFGElement`).
+  const CFGBlock *IfBlock = blockForStmt(If);
+  const CFGBlock *B2Block = blockForStmt(B2);
+  const CFGBlock *AndOpBlock = blockForStmt(AndOp);
+  EXPECT_EQ(IfBlock, B2Block);
+  EXPECT_EQ(IfBlock, AndOpBlock);
+}
+
 // Tests that check we discard state for expressions correctly.
 using DiscardExprStateTest = DataflowAnalysisTest;
 
@@ -144,25 +233,20 @@ TEST_F(DiscardExprStateTest, WhileStatement) {
   auto BlockStates = llvm::cantFail(runAnalysis<NoopAnalysis>(
       Code, [](ASTContext &C) { return NoopAnalysis(C); }));
 
-  auto *NotEqOp = selectFirst<BinaryOperator>(
-      "op", match(binaryOperator(hasOperatorName("!=")).bind("op"),
-                  AST->getASTContext()));
-  ASSERT_NE(NotEqOp, nullptr);
-
-  auto *CallFoo = selectFirst<CallExpr>(
-      "call", match(callExpr(callee(functionDecl(hasName("foo")))).bind("call"),
-                    AST->getASTContext()));
-  ASSERT_NE(CallFoo, nullptr);
+  const auto &NotEqOp =
+      matchNode<BinaryOperator>(binaryOperator(hasOperatorName("!=")));
+  const auto &CallFoo =
+      matchNode<CallExpr>(callExpr(callee(functionDecl(hasName("foo")))));
 
   // In the block that evaluates the expression `p != nullptr`, this expression
   // is associated with a value.
   const auto &NotEqOpState = blockStateForStmt(BlockStates, NotEqOp);
-  EXPECT_NE(NotEqOpState.Env.getValue(*NotEqOp), nullptr);
+  EXPECT_NE(NotEqOpState.Env.getValue(NotEqOp), nullptr);
 
   // In the block that calls `foo(p)`, the value for `p != nullptr` is discarded
   // because it is not consumed by this block.
   const auto &CallFooState = blockStateForStmt(BlockStates, CallFoo);
-  EXPECT_EQ(CallFooState.Env.getValue(*NotEqOp), nullptr);
+  EXPECT_EQ(CallFooState.Env.getValue(NotEqOp), nullptr);
 }
 
 TEST_F(DiscardExprStateTest, BooleanOperator) {
@@ -174,29 +258,24 @@ TEST_F(DiscardExprStateTest, BooleanOperator) {
   auto BlockStates = llvm::cantFail(runAnalysis<NoopAnalysis>(
       Code, [](ASTContext &C) { return NoopAnalysis(C); }));
 
-  auto *AndOp = selectFirst<BinaryOperator>(
-      "op", match(binaryOperator(hasOperatorName("&&")).bind("op"),
-                  AST->getASTContext()));
-  ASSERT_NE(AndOp, nullptr);
-
-  auto *Return = selectFirst<ReturnStmt>(
-      "return", match(returnStmt().bind("return"), AST->getASTContext()));
-  ASSERT_NE(Return, nullptr);
+  const auto &AndOp =
+      matchNode<BinaryOperator>(binaryOperator(hasOperatorName("&&")));
+  const auto &Return = matchNode<ReturnStmt>(returnStmt());
 
   // In the block that evaluates the LHS of the `&&` operator, the LHS is
   // associated with a value, while the right-hand side is not (unsurprisingly,
   // as it hasn't been evaluated yet).
-  const auto &LHSState = blockStateForStmt(BlockStates, AndOp->getLHS());
-  auto *LHSValue = cast<BoolValue>(LHSState.Env.getValue(*AndOp->getLHS()));
+  const auto &LHSState = blockStateForStmt(BlockStates, *AndOp.getLHS());
+  auto *LHSValue = cast<BoolValue>(LHSState.Env.getValue(*AndOp.getLHS()));
   ASSERT_NE(LHSValue, nullptr);
-  EXPECT_EQ(LHSState.Env.getValue(*AndOp->getRHS()), nullptr);
+  EXPECT_EQ(LHSState.Env.getValue(*AndOp.getRHS()), nullptr);
 
   // In the block that evaluates the RHS, the RHS is associated with a
   // value. The value for the LHS has been discarded as it is not consumed by
   // this block.
-  const auto &RHSState = blockStateForStmt(BlockStates, AndOp->getRHS());
-  EXPECT_EQ(RHSState.Env.getValue(*AndOp->getLHS()), nullptr);
-  auto *RHSValue = cast<BoolValue>(RHSState.Env.getValue(*AndOp->getRHS()));
+  const auto &RHSState = blockStateForStmt(BlockStates, *AndOp.getRHS());
+  EXPECT_EQ(RHSState.Env.getValue(*AndOp.getLHS()), nullptr);
+  auto *RHSValue = cast<BoolValue>(RHSState.Env.getValue(*AndOp.getRHS()));
   ASSERT_NE(RHSValue, nullptr);
 
   // In the block that evaluates the return statement, the expression `b1 && b2`
@@ -217,9 +296,9 @@ TEST_F(DiscardExprStateTest, BooleanOperator) {
   // operands, rather than from the environment for the block that contains the
   // `&&`.
   const auto &ReturnState = blockStateForStmt(BlockStates, Return);
-  EXPECT_EQ(ReturnState.Env.getValue(*AndOp->getLHS()), nullptr);
-  EXPECT_EQ(ReturnState.Env.getValue(*AndOp->getRHS()), nullptr);
-  EXPECT_EQ(ReturnState.Env.getValue(*AndOp),
+  EXPECT_EQ(ReturnState.Env.getValue(*AndOp.getLHS()), nullptr);
+  EXPECT_EQ(ReturnState.Env.getValue(*AndOp.getRHS()), nullptr);
+  EXPECT_EQ(ReturnState.Env.getValue(AndOp),
             &ReturnState.Env.makeAnd(*LHSValue, *RHSValue));
 }
 
@@ -263,7 +342,7 @@ TEST_F(DataflowAnalysisTest, NonConvergingAnalysis) {
   auto Res = runAnalysis<NonConvergingAnalysis>(
       Code, [](ASTContext &C) { return NonConvergingAnalysis(C); });
   EXPECT_EQ(llvm::toString(Res.takeError()),
-            "maximum number of iterations reached");
+            "maximum number of blocks processed");
 }
 
 // Regression test for joins of bool-typed lvalue expressions. The first loop
@@ -623,11 +702,11 @@ TEST_F(JoinFlowConditionsTest, JoinDistinctButProvablyEquivalentValues) {
       });
 }
 
-class OptionalIntAnalysis final
-    : public DataflowAnalysis<OptionalIntAnalysis, NoopLattice> {
+class NullPointerAnalysis final
+    : public DataflowAnalysis<NullPointerAnalysis, NoopLattice> {
 public:
-  explicit OptionalIntAnalysis(ASTContext &Context)
-      : DataflowAnalysis<OptionalIntAnalysis, NoopLattice>(Context) {}
+  explicit NullPointerAnalysis(ASTContext &Context)
+      : DataflowAnalysis<NullPointerAnalysis, NoopLattice>(Context) {}
 
   static NoopLattice initialElement() { return {}; }
 
@@ -636,66 +715,59 @@ public:
     if (!CS)
       return;
     const Stmt *S = CS->getStmt();
-    auto OptionalIntRecordDecl = recordDecl(hasName("OptionalInt"));
-    auto HasOptionalIntType = hasType(OptionalIntRecordDecl);
+    const Expr *E = dyn_cast<Expr>(S);
+    if (!E)
+      return;
 
-    SmallVector<BoundNodes, 1> Matches = match(
-        stmt(anyOf(cxxConstructExpr(HasOptionalIntType).bind("construct"),
-                   cxxOperatorCallExpr(
-                       callee(cxxMethodDecl(ofClass(OptionalIntRecordDecl))))
-                       .bind("operator"))),
-        *S, getASTContext());
-    if (const auto *E = selectFirst<CXXConstructExpr>(
-            "construct", Matches)) {
-      cast<RecordValue>(Env.getValue(*E))
-          ->setProperty("has_value", Env.getBoolLiteralValue(false));
-    } else if (const auto *E =
-                   selectFirst<CXXOperatorCallExpr>("operator", Matches)) {
-      assert(E->getNumArgs() > 0);
-      auto *Object = E->getArg(0);
-      assert(Object != nullptr);
+    if (!E->getType()->isPointerType())
+      return;
 
-      refreshRecordValue(*Object, Env)
-          .setProperty("has_value", Env.getBoolLiteralValue(true));
+    // Make sure we have a `PointerValue` for `E`.
+    auto *PtrVal = cast_or_null<PointerValue>(Env.getValue(*E));
+    if (PtrVal == nullptr) {
+      PtrVal = cast<PointerValue>(Env.createValue(E->getType()));
+      Env.setValue(*E, *PtrVal);
     }
+
+    if (auto *Cast = dyn_cast<ImplicitCastExpr>(E);
+        Cast && Cast->getCastKind() == CK_NullToPointer)
+      PtrVal->setProperty("is_null", Env.getBoolLiteralValue(true));
+    else if (auto *Op = dyn_cast<UnaryOperator>(E);
+             Op && Op->getOpcode() == UO_AddrOf)
+      PtrVal->setProperty("is_null", Env.getBoolLiteralValue(false));
   }
 
   ComparisonResult compare(QualType Type, const Value &Val1,
                            const Environment &Env1, const Value &Val2,
                            const Environment &Env2) override {
-    // Nothing to say about a value that does not model an `OptionalInt`.
-    if (!Type->isRecordType() ||
-        Type->getAsCXXRecordDecl()->getQualifiedNameAsString() != "OptionalInt")
+    // Nothing to say about a value that is not a pointer.
+    if (!Type->isPointerType())
       return ComparisonResult::Unknown;
 
-    auto *Prop1 = Val1.getProperty("has_value");
-    auto *Prop2 = Val2.getProperty("has_value");
+    auto *Prop1 = Val1.getProperty("is_null");
+    auto *Prop2 = Val2.getProperty("is_null");
     assert(Prop1 != nullptr && Prop2 != nullptr);
     return areEquivalentValues(*Prop1, *Prop2) ? ComparisonResult::Same
                                                : ComparisonResult::Different;
   }
 
-  bool merge(QualType Type, const Value &Val1, const Environment &Env1,
-             const Value &Val2, const Environment &Env2, Value &MergedVal,
-             Environment &MergedEnv) override {
-    // Nothing to say about a value that does not model an `OptionalInt`.
-    if (!Type->isRecordType() ||
-        Type->getAsCXXRecordDecl()->getQualifiedNameAsString() != "OptionalInt")
-      return false;
+  void join(QualType Type, const Value &Val1, const Environment &Env1,
+            const Value &Val2, const Environment &Env2, Value &JoinedVal,
+            Environment &JoinedEnv) override {
+    // Nothing to say about a value that is not a pointer...
+    if (!Type->isPointerType())
+      return;
 
-    auto *HasValue1 = cast_or_null<BoolValue>(Val1.getProperty("has_value"));
-    if (HasValue1 == nullptr)
-      return false;
+    // ... or, a pointer without the `is_null` property.
+    auto *IsNull1 = cast_or_null<BoolValue>(Val1.getProperty("is_null"));
+    auto *IsNull2 = cast_or_null<BoolValue>(Val2.getProperty("is_null"));
+    if (IsNull1 == nullptr || IsNull2 == nullptr)
+      return;
 
-    auto *HasValue2 = cast_or_null<BoolValue>(Val2.getProperty("has_value"));
-    if (HasValue2 == nullptr)
-      return false;
-
-    if (HasValue1 == HasValue2)
-      MergedVal.setProperty("has_value", *HasValue1);
+    if (IsNull1 == IsNull2)
+      JoinedVal.setProperty("is_null", *IsNull1);
     else
-      MergedVal.setProperty("has_value", MergedEnv.makeTopBoolValue());
-    return true;
+      JoinedVal.setProperty("is_null", JoinedEnv.makeTopBoolValue());
   }
 };
 
@@ -703,23 +775,14 @@ class WideningTest : public Test {
 protected:
   template <typename Matcher>
   void runDataflow(llvm::StringRef Code, Matcher Match) {
-    tooling::FileContentMappings FilesContents;
-    FilesContents.push_back(
-        std::make_pair<std::string, std::string>("widening_test_defs.h", R"(
-      struct OptionalInt {
-        OptionalInt() = default;
-        OptionalInt& operator=(int);
-      };
-    )"));
     ASSERT_THAT_ERROR(
-        checkDataflow<OptionalIntAnalysis>(
-            AnalysisInputs<OptionalIntAnalysis>(
+        checkDataflow<NullPointerAnalysis>(
+            AnalysisInputs<NullPointerAnalysis>(
                 Code, ast_matchers::hasName("target"),
                 [](ASTContext &Context, Environment &Env) {
-                  return OptionalIntAnalysis(Context);
+                  return NullPointerAnalysis(Context);
                 })
-                .withASTBuildArgs({"-fsyntax-only", "-std=c++17"})
-                .withASTBuildVirtualMappedFiles(std::move(FilesContents)),
+                .withASTBuildArgs({"-fsyntax-only", "-std=c++17"}),
             /*VerifyResults=*/[&Match](const llvm::StringMap<
                                            DataflowAnalysisState<NoopLattice>>
                                            &Results,
@@ -731,13 +794,12 @@ protected:
 
 TEST_F(WideningTest, JoinDistinctValuesWithDistinctProperties) {
   std::string Code = R"(
-    #include "widening_test_defs.h"
-
     void target(bool Cond) {
-      OptionalInt Foo;
+      int *Foo = nullptr;
+      int i = 0;
       /*[[p1]]*/
       if (Cond) {
-        Foo = 1;
+        Foo = &i;
         /*[[p2]]*/
       }
       (void)0;
@@ -760,27 +822,27 @@ TEST_F(WideningTest, JoinDistinctValuesWithDistinctProperties) {
           return Env.getValue(*FooDecl);
         };
 
-        EXPECT_EQ(GetFooValue(Env1)->getProperty("has_value"),
-                  &Env1.getBoolLiteralValue(false));
-        EXPECT_EQ(GetFooValue(Env2)->getProperty("has_value"),
-                  &Env2.getBoolLiteralValue(true));
+        EXPECT_EQ(GetFooValue(Env1)->getProperty("is_null"),
+                  &Env1.getBoolLiteralValue(true));
+        EXPECT_EQ(GetFooValue(Env2)->getProperty("is_null"),
+                  &Env2.getBoolLiteralValue(false));
         EXPECT_TRUE(
-            isa<TopBoolValue>(GetFooValue(Env3)->getProperty("has_value")));
+            isa<TopBoolValue>(GetFooValue(Env3)->getProperty("is_null")));
       });
 }
 
 TEST_F(WideningTest, JoinDistinctValuesWithSameProperties) {
   std::string Code = R"(
-    #include "widening_test_defs.h"
-
     void target(bool Cond) {
-      OptionalInt Foo;
+      int *Foo = nullptr;
+      int i1 = 0;
+      int i2 = 0;
       /*[[p1]]*/
       if (Cond) {
-        Foo = 1;
+        Foo = &i1;
         /*[[p2]]*/
       } else {
-        Foo = 2;
+        Foo = &i2;
         /*[[p3]]*/
       }
       (void)0;
@@ -805,14 +867,14 @@ TEST_F(WideningTest, JoinDistinctValuesWithSameProperties) {
           return Env.getValue(*FooDecl);
         };
 
-        EXPECT_EQ(GetFooValue(Env1)->getProperty("has_value"),
-                  &Env1.getBoolLiteralValue(false));
-        EXPECT_EQ(GetFooValue(Env2)->getProperty("has_value"),
-                  &Env2.getBoolLiteralValue(true));
-        EXPECT_EQ(GetFooValue(Env3)->getProperty("has_value"),
-                  &Env3.getBoolLiteralValue(true));
-        EXPECT_EQ(GetFooValue(Env4)->getProperty("has_value"),
-                  &Env4.getBoolLiteralValue(true));
+        EXPECT_EQ(GetFooValue(Env1)->getProperty("is_null"),
+                  &Env1.getBoolLiteralValue(true));
+        EXPECT_EQ(GetFooValue(Env2)->getProperty("is_null"),
+                  &Env2.getBoolLiteralValue(false));
+        EXPECT_EQ(GetFooValue(Env3)->getProperty("is_null"),
+                  &Env3.getBoolLiteralValue(false));
+        EXPECT_EQ(GetFooValue(Env4)->getProperty("is_null"),
+                  &Env4.getBoolLiteralValue(false));
       });
 }
 
@@ -849,13 +911,13 @@ TEST_F(WideningTest, DistinctPointersToTheSameLocationAreEquivalent) {
 
 TEST_F(WideningTest, DistinctValuesWithSamePropertiesAreEquivalent) {
   std::string Code = R"(
-    #include "widening_test_defs.h"
-
     void target(bool Cond) {
-      OptionalInt Foo;
-      Foo = 1;
+      int *Foo;
+      int i1 = 0;
+      int i2 = 0;
+      Foo = &i1;
       while (Cond) {
-        Foo = 2;
+        Foo = &i2;
       }
       (void)0;
       /*[[p]]*/
@@ -872,8 +934,8 @@ TEST_F(WideningTest, DistinctValuesWithSamePropertiesAreEquivalent) {
         ASSERT_THAT(FooDecl, NotNull());
 
         const auto *FooVal = Env.getValue(*FooDecl);
-        EXPECT_EQ(FooVal->getProperty("has_value"),
-                  &Env.getBoolLiteralValue(true));
+        EXPECT_EQ(FooVal->getProperty("is_null"),
+                  &Env.getBoolLiteralValue(false));
       });
 }
 
@@ -1190,7 +1252,7 @@ TEST_F(FlowConditionTest, Join) {
 // Note: currently, arbitrary function calls are uninterpreted, so the test
 // exercises this case. If and when we change that, this test will not add to
 // coverage (although it may still test a valuable case).
-TEST_F(FlowConditionTest, OpaqueFlowConditionMergesToOpaqueBool) {
+TEST_F(FlowConditionTest, OpaqueFlowConditionJoinsToOpaqueBool) {
   std::string Code = R"(
     bool foo();
 
@@ -1225,7 +1287,7 @@ TEST_F(FlowConditionTest, OpaqueFlowConditionMergesToOpaqueBool) {
 // the first instance), so the test exercises this case. If and when we change
 // that, this test will not add to coverage (although it may still test a
 // valuable case).
-TEST_F(FlowConditionTest, OpaqueFieldFlowConditionMergesToOpaqueBool) {
+TEST_F(FlowConditionTest, OpaqueFieldFlowConditionJoinsToOpaqueBool) {
   std::string Code = R"(
     struct Rec {
       Rec* Next;
@@ -1263,7 +1325,7 @@ TEST_F(FlowConditionTest, OpaqueFieldFlowConditionMergesToOpaqueBool) {
 // condition is not meaningfully interpreted. Adds to above by nesting the
 // interestnig case inside a normal branch. This protects against degenerate
 // solutions which only test for empty flow conditions, for example.
-TEST_F(FlowConditionTest, OpaqueFlowConditionInsideBranchMergesToOpaqueBool) {
+TEST_F(FlowConditionTest, OpaqueFlowConditionInsideBranchJoinsToOpaqueBool) {
   std::string Code = R"(
     bool foo();
 

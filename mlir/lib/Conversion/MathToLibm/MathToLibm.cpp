@@ -167,8 +167,12 @@ void mlir::populateMathToLibmConversionPatterns(
 
   populatePatternsForOp<math::AbsFOp>(patterns, ctx, "fabsf", "fabs");
   populatePatternsForOp<math::AcosOp>(patterns, ctx, "acosf", "acos");
+  populatePatternsForOp<math::AcoshOp>(patterns, ctx, "acoshf", "acosh");
+  populatePatternsForOp<math::AsinOp>(patterns, ctx, "asinf", "asin");
+  populatePatternsForOp<math::AsinhOp>(patterns, ctx, "asinhf", "asinh");
   populatePatternsForOp<math::Atan2Op>(patterns, ctx, "atan2f", "atan2");
   populatePatternsForOp<math::AtanOp>(patterns, ctx, "atanf", "atan");
+  populatePatternsForOp<math::AtanhOp>(patterns, ctx, "atanhf", "atanh");
   populatePatternsForOp<math::CbrtOp>(patterns, ctx, "cbrtf", "cbrt");
   populatePatternsForOp<math::CeilOp>(patterns, ctx, "ceilf", "ceil");
   populatePatternsForOp<math::CosOp>(patterns, ctx, "cosf", "cos");
@@ -195,6 +199,7 @@ void mlir::populateMathToLibmConversionPatterns(
   // issue a call to set the rounding mode (which this pass currently can't do).
   populatePatternsForOp<math::RoundOp>(patterns, ctx, "roundf", "round");
   populatePatternsForOp<math::SinOp>(patterns, ctx, "sinf", "sin");
+  populatePatternsForOp<math::SinhOp>(patterns, ctx, "sinhf", "sinh");
   populatePatternsForOp<math::SqrtOp>(patterns, ctx, "sqrtf", "sqrt");
   populatePatternsForOp<math::TanOp>(patterns, ctx, "tanf", "tan");
   populatePatternsForOp<math::TanhOp>(patterns, ctx, "tanhf", "tanh");

@@ -455,12 +455,11 @@ Error InstrProfWriter::writeImpl(ProfOStream &OS) {
   Header.MemProfOffset = 0;
   Header.BinaryIdOffset = 0;
   Header.TemporalProfTracesOffset = 0;
-  int N = sizeof(IndexedInstrProf::Header) / sizeof(uint64_t);
+  Header.VTableNamesOffset = 0;
 
-  // Only write out all the fields except 'HashOffset', 'MemProfOffset',
-  // 'BinaryIdOffset' and `TemporalProfTracesOffset`. We need to remember the
-  // offset of these fields to allow back patching later.
-  for (int I = 0; I < N - 4; I++)
+  // Only write out the first four fields. We need to remember the offset of the
+  // remaining fields to allow back patching later.
+  for (int I = 0; I < 4; I++)
     OS.write(reinterpret_cast<uint64_t *>(&Header)[I]);
 
   // Save the location of Header.HashOffset field in \c OS.
@@ -482,6 +481,9 @@ Error InstrProfWriter::writeImpl(ProfOStream &OS) {
   OS.write(0);
 
   uint64_t TemporalProfTracesOffset = OS.tell();
+  OS.write(0);
+
+  uint64_t VTableNamesOffset = OS.tell();
   OS.write(0);
 
   // Reserve space to write profile summary data.
@@ -536,7 +538,12 @@ Error InstrProfWriter::writeImpl(ProfOStream &OS) {
       // Insert the key (func hash) and value (memprof record).
       RecordTableGenerator.insert(I.first, I.second);
     }
+    // Release the memory of this MapVector as it is no longer needed.
+    MemProfRecordData.clear();
 
+    // The call to Emit invokes RecordWriterTrait::EmitData which destructs
+    // the memprof record copies owned by the RecordTableGenerator. This works
+    // because the RecordTableGenerator is not used after this point.
     uint64_t RecordTableOffset =
         RecordTableGenerator.Emit(OS.OS, *RecordWriter);
 
@@ -549,6 +556,8 @@ Error InstrProfWriter::writeImpl(ProfOStream &OS) {
       // Insert the key (frame id) and value (frame contents).
       FrameTableGenerator.insert(I.first, I.second);
     }
+    // Release the memory of this MapVector as it is no longer needed.
+    MemProfFrameData.clear();
 
     uint64_t FrameTableOffset = FrameTableGenerator.Emit(OS.OS, *FrameWriter);
 
@@ -597,6 +606,31 @@ Error InstrProfWriter::writeImpl(ProfOStream &OS) {
       OS.writeByte(0);
   }
 
+  uint64_t VTableNamesSectionStart = OS.tell();
+
+  // Use a dummy (and uncompressed) string as compressed vtable names and get
+  // the necessary profile format change in place for version 12.
+  // TODO: Store the list of vtable names in InstrProfWriter and use the
+  // real compressed name.
+  std::string CompressedVTableNames = "VTableNames";
+
+  uint64_t CompressedStringLen = CompressedVTableNames.length();
+
+  // Record the length of compressed string.
+  OS.write(CompressedStringLen);
+
+  // Write the chars in compressed strings.
+  for (auto &c : CompressedVTableNames)
+    OS.writeByte(static_cast<uint8_t>(c));
+
+  // Pad up to a multiple of 8.
+  // InstrProfReader would read bytes according to 'CompressedStringLen'.
+  uint64_t PaddedLength = alignTo(CompressedStringLen, 8);
+
+  for (uint64_t K = CompressedStringLen; K < PaddedLength; K++) {
+    OS.writeByte(0);
+  }
+
   uint64_t TemporalProfTracesSectionStart = 0;
   if (static_cast<bool>(ProfileKind & InstrProfKind::TemporalProfile)) {
     TemporalProfTracesSectionStart = OS.tell();
@@ -640,6 +674,7 @@ Error InstrProfWriter::writeImpl(ProfOStream &OS) {
       // Patch the Header.TemporalProfTracesOffset (=0 for profiles without
       // traces).
       {TemporalProfTracesOffset, &TemporalProfTracesSectionStart, 1},
+      {VTableNamesOffset, &VTableNamesSectionStart, 1},
       // Patch the summary data.
       {SummaryOffset, reinterpret_cast<uint64_t *>(TheSummary.get()),
        (int)(SummarySize / sizeof(uint64_t))},
@@ -692,7 +727,8 @@ Error InstrProfWriter::validateRecord(const InstrProfRecord &Func) {
       std::unique_ptr<InstrProfValueData[]> VD = Func.getValueForSite(VK, S);
       DenseSet<uint64_t> SeenValues;
       for (uint32_t I = 0; I < ND; I++)
-        if ((VK != IPVK_IndirectCallTarget) && !SeenValues.insert(VD[I].Value).second)
+        if ((VK != IPVK_IndirectCallTarget && VK != IPVK_VTableTarget) &&
+            !SeenValues.insert(VD[I].Value).second)
           return make_error<InstrProfError>(instrprof_error::invalid_prof);
     }
   }
@@ -740,7 +776,7 @@ void InstrProfWriter::writeRecordInText(StringRef Name, uint64_t Hash,
       OS << ND << "\n";
       std::unique_ptr<InstrProfValueData[]> VD = Func.getValueForSite(VK, S);
       for (uint32_t I = 0; I < ND; I++) {
-        if (VK == IPVK_IndirectCallTarget)
+        if (VK == IPVK_IndirectCallTarget || VK == IPVK_VTableTarget)
           OS << Symtab.getFuncOrVarNameIfDefined(VD[I].Value) << ":"
              << VD[I].Count << "\n";
         else
