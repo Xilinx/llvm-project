@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdint>
+#include <iostream>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/APSInt.h>
@@ -102,18 +103,12 @@ LogicalResult unaryOp(PatternRewriter &rewriter, PDLResultList &results,
     } else {
       llvm::llvm_unreachable_internal(
           "encountered an unsupported unary operator");
-      return failure();
     }
     return success();
   }
 
   if (auto operandFloatAttr = dyn_cast_or_null<FloatAttr>(operandAttr)) {
-    // auto floatType = operandFloatAttr.getType();
-
     if constexpr (T == UnaryOpKind::exp2) {
-      // auto maxVal = APFloat::getLargest(llvm::APFloat::IEEEhalf());
-      // auto minVal = APFloat::getSmallest(llvm::APFloat::IEEEhalf());
-
       auto type = operandFloatAttr.getType();
 
       return TypeSwitch<Type, LogicalResult>(type)
@@ -166,9 +161,8 @@ LogicalResult binaryOp(PatternRewriter &rewriter, PDLResultList &results,
 
   if (auto lhsIntAttr = dyn_cast_or_null<IntegerAttr>(lhsAttr)) {
     auto rhsIntAttr = dyn_cast_or_null<IntegerAttr>(rhsAttr);
-    if (!rhsIntAttr || lhsIntAttr.getType() != rhsIntAttr.getType()) {
+    if (!rhsIntAttr || lhsIntAttr.getType() != rhsIntAttr.getType())
       return failure();
-    }
 
     auto integerType = lhsIntAttr.getType();
     APInt resultAPInt;
@@ -211,7 +205,8 @@ LogicalResult binaryOp(PatternRewriter &rewriter, PDLResultList &results,
         resultAPInt = lhsIntAttr.getValue().srem(rhsIntAttr.getValue());
       }
     } else {
-      assert(false && "Unsupported binary operator");
+      llvm::llvm_unreachable_internal(
+          "encounter an unsupported binary operator.");
     }
 
     if (isOverflow)
@@ -223,9 +218,8 @@ LogicalResult binaryOp(PatternRewriter &rewriter, PDLResultList &results,
 
   if (auto lhsFloatAttr = dyn_cast_or_null<FloatAttr>(lhsAttr)) {
     auto rhsFloatAttr = dyn_cast_or_null<FloatAttr>(rhsAttr);
-    if (!rhsFloatAttr || lhsFloatAttr.getType() != rhsFloatAttr.getType()) {
+    if (!rhsFloatAttr || lhsFloatAttr.getType() != rhsFloatAttr.getType())
       return failure();
-    }
 
     APFloat lhsVal = lhsFloatAttr.getValue();
     APFloat rhsVal = rhsFloatAttr.getValue();
@@ -248,13 +242,19 @@ LogicalResult binaryOp(PatternRewriter &rewriter, PDLResultList &results,
     } else if constexpr (T == BinaryOpKind::mod) {
       operationStatus = resultVal.mod(rhsVal);
     } else {
-      assert(false && "Unsupported binary operator");
+      llvm::llvm_unreachable_internal(
+          "encounter an unsupported binary operator.");
     }
 
     if (operationStatus != APFloat::opOK) {
-      return failure();
-    }
+      if (operationStatus != APFloat::opInexact)
+        return failure();
 
+      emitWarning(rewriter.getUnknownLoc())
+          << "Binary arithmetic operation between " << lhsVal.convertToFloat()
+          << " and " << rhsVal.convertToFloat()
+          << " produced an inexact result";
+    }
     results.push_back(rewriter.getFloatAttr(floatType, resultVal));
     return success();
   }
