@@ -253,10 +253,19 @@ TEST_F(BuiltinTest, div) {
                  "Divide by zero?");
   }
 
-  auto smallF16 = rewriter.getF16FloatAttr(0.0001);
+  auto BF16Type = rewriter.getBF16Type();
+  auto oneBF16 = rewriter.getFloatAttr(BF16Type, 1.0);
+  auto nineBF16 = rewriter.getFloatAttr(BF16Type, 9.0);
+
+  // float: inexact result
+  // return success(), but warning is emitted.
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(
+        builtin::div(rewriter, results, {oneBF16, nineBF16}).succeeded());
+  }
+
   auto twoF16 = rewriter.getF16FloatAttr(2.0);
-  auto maxValF16 = rewriter.getF16FloatAttr(
-      llvm::APFloat::getLargest(llvm::APFloat::IEEEhalf()).convertToFloat());
   auto zeroF16 = rewriter.getF16FloatAttr(0.0);
   auto negzeroF16 = rewriter.getF16FloatAttr(-0.0);
 
@@ -270,13 +279,6 @@ TEST_F(BuiltinTest, div) {
   {
     TestPDLResultList results(1);
     EXPECT_TRUE(builtin::div(rewriter, results, {twoF16, negzeroF16}).failed());
-  }
-
-  // float: overflow
-  {
-    TestPDLResultList results(1);
-    EXPECT_TRUE(
-        builtin::div(rewriter, results, {maxValF16, smallF16}).failed());
   }
 
   // float: correctness
@@ -456,19 +458,17 @@ TEST_F(BuiltinTest, add) {
     EXPECT_TRUE(builtin::add(rewriter, results, {oneI16, oneI32}).failed());
   }
 
-  auto oneF16 = rewriter.getF16FloatAttr(1.0);
   auto oneF32 = rewriter.getF32FloatAttr(1.0);
   auto zeroF32 = rewriter.getF32FloatAttr(0.0);
   auto negzeroF32 = rewriter.getF32FloatAttr(-0.0);
   auto zeroF64 = rewriter.getF64FloatAttr(0.0);
-
-  auto maxValF16 = rewriter.getF16FloatAttr(
-      llvm::APFloat::getLargest(llvm::APFloat::IEEEhalf()).convertToFloat());
+  auto overflowF16 = rewriter.getF16FloatAttr(32768);
 
   // float: overflow
   {
     TestPDLResultList results(1);
-    EXPECT_TRUE(builtin::add(rewriter, results, {oneF16, maxValF16}).failed());
+    EXPECT_TRUE(
+        builtin::add(rewriter, results, {overflowF16, overflowF16}).failed());
   }
 
   // float: correctness
@@ -553,19 +553,17 @@ TEST_F(BuiltinTest, sub) {
     EXPECT_TRUE(builtin::sub(rewriter, results, {oneI16, oneI32}).failed());
   }
 
-  auto oneF16 = rewriter.getF16FloatAttr(1.0);
+  auto oneF16 = rewriter.getF16FloatAttr(100.0);
   auto oneF32 = rewriter.getF32FloatAttr(1.0);
   auto zeroF32 = rewriter.getF32FloatAttr(0.0);
   auto negzeroF32 = rewriter.getF32FloatAttr(-0.0);
   auto zeroF64 = rewriter.getF64FloatAttr(0.0);
-
-  auto maxValF16 = rewriter.getF16FloatAttr(
-      llvm::APFloat::getLargest(llvm::APFloat::IEEEhalf()).convertToFloat());
+  auto minValF16 = rewriter.getF16FloatAttr(-65504);
 
   // float: overflow
   {
     TestPDLResultList results(1);
-    EXPECT_TRUE(builtin::sub(rewriter, results, {maxValF16, oneF16}).failed());
+    EXPECT_TRUE(builtin::sub(rewriter, results, {oneF16, minValF16}).failed());
   }
 
   // float: correctness
