@@ -108,6 +108,11 @@ bool mlir::emitc::isSupportedIntegerType(Type type) {
   return false;
 }
 
+bool mlir::emitc::isIntegerIndexOrOpaqueType(Type type) {
+  return llvm::isa<IndexType, emitc::OpaqueType>(type) ||
+         isSupportedIntegerType(type);
+}
+
 bool mlir::emitc::isSupportedFloatType(Type type) {
   if (auto floatType = llvm::dyn_cast<FloatType>(type)) {
     switch (floatType.getWidth()) {
@@ -155,13 +160,13 @@ LogicalResult AddOp::verify() {
   Type lhsType = getLhs().getType();
   Type rhsType = getRhs().getType();
 
-  if (lhsType.isa<emitc::PointerType>() && rhsType.isa<emitc::PointerType>())
+  if (isa<emitc::PointerType>(lhsType) && isa<emitc::PointerType>(rhsType))
     return emitOpError("requires that at most one operand is a pointer");
 
-  if ((lhsType.isa<emitc::PointerType>() &&
-       !rhsType.isa<IntegerType, emitc::OpaqueType>()) ||
-      (rhsType.isa<emitc::PointerType>() &&
-       !lhsType.isa<IntegerType, emitc::OpaqueType>()))
+  if ((isa<emitc::PointerType>(lhsType) &&
+       !isa<IntegerType, emitc::OpaqueType>(rhsType)) ||
+      (isa<emitc::PointerType>(rhsType) &&
+       !isa<IntegerType, emitc::OpaqueType>(lhsType)))
     return emitOpError("requires that one operand is an integer or of opaque "
                        "type if the other is a pointer");
 
@@ -262,8 +267,7 @@ LogicalResult emitc::CallOpaqueOp::verify() {
     }
   }
 
-  if (llvm::any_of(getResultTypes(),
-                   [](Type type) { return isa<ArrayType>(type); })) {
+  if (llvm::any_of(getResultTypes(), llvm::IsaPred<ArrayType>)) {
     return emitOpError() << "cannot return array type";
   }
 
@@ -774,16 +778,16 @@ LogicalResult SubOp::verify() {
   Type rhsType = getRhs().getType();
   Type resultType = getResult().getType();
 
-  if (rhsType.isa<emitc::PointerType>() && !lhsType.isa<emitc::PointerType>())
+  if (isa<emitc::PointerType>(rhsType) && !isa<emitc::PointerType>(lhsType))
     return emitOpError("rhs can only be a pointer if lhs is a pointer");
 
-  if (lhsType.isa<emitc::PointerType>() &&
-      !rhsType.isa<IntegerType, emitc::OpaqueType, emitc::PointerType>())
+  if (isa<emitc::PointerType>(lhsType) &&
+      !isa<IntegerType, emitc::OpaqueType, emitc::PointerType>(rhsType))
     return emitOpError("requires that rhs is an integer, pointer or of opaque "
                        "type if lhs is a pointer");
 
-  if (lhsType.isa<emitc::PointerType>() && rhsType.isa<emitc::PointerType>() &&
-      !resultType.isa<IntegerType, emitc::OpaqueType>())
+  if (isa<emitc::PointerType>(lhsType) && isa<emitc::PointerType>(rhsType) &&
+      !isa<IntegerType, emitc::OpaqueType>(resultType))
     return emitOpError("requires that the result is an integer or of opaque "
                        "type if lhs and rhs are pointers");
   return success();
@@ -819,12 +823,61 @@ LogicalResult emitc::YieldOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult emitc::SubscriptOp::verify() {
-  if (getIndices().size() != (size_t)getArray().getType().getRank()) {
-    return emitOpError() << "requires number of indices ("
-                         << getIndices().size()
-                         << ") to match the rank of the array type ("
-                         << getArray().getType().getRank() << ")";
+  // Checks for array operand.
+  if (auto arrayType = llvm::dyn_cast<emitc::ArrayType>(getValue().getType())) {
+    // Check number of indices.
+    if (getIndices().size() != (size_t)arrayType.getRank()) {
+      return emitOpError() << "on array operand requires number of indices ("
+                           << getIndices().size()
+                           << ") to match the rank of the array type ("
+                           << arrayType.getRank() << ")";
+    }
+    // Check types of index operands.
+    for (unsigned i = 0, e = getIndices().size(); i != e; ++i) {
+      Type type = getIndices()[i].getType();
+      if (!isIntegerIndexOrOpaqueType(type)) {
+        return emitOpError() << "on array operand requires index operand " << i
+                             << " to be integer-like, but got " << type;
+      }
+    }
+    // Check element type.
+    Type elementType = arrayType.getElementType();
+    if (elementType != getType()) {
+      return emitOpError() << "on array operand requires element type ("
+                           << elementType << ") and result type (" << getType()
+                           << ") to match";
+    }
+    return success();
   }
+
+  // Checks for pointer operand.
+  if (auto pointerType =
+          llvm::dyn_cast<emitc::PointerType>(getValue().getType())) {
+    // Check number of indices.
+    if (getIndices().size() != 1) {
+      return emitOpError()
+             << "on pointer operand requires one index operand, but got "
+             << getIndices().size();
+    }
+    // Check types of index operand.
+    Type type = getIndices()[0].getType();
+    if (!isIntegerIndexOrOpaqueType(type)) {
+      return emitOpError() << "on pointer operand requires index operand to be "
+                              "integer-like, but got "
+                           << type;
+    }
+    // Check pointee type.
+    Type pointeeType = pointerType.getPointee();
+    if (pointeeType != getType()) {
+      return emitOpError() << "on pointer operand requires pointee type ("
+                           << pointeeType << ") and result type (" << getType()
+                           << ") to match";
+    }
+    return success();
+  }
+
+  // The operand has opaque type, so we can't assume anything about the number
+  // or types of index operands.
   return success();
 }
 
@@ -962,16 +1015,18 @@ parseEmitCGlobalOpTypeAndInitialValue(OpAsmParser &parser, TypeAttr &typeAttr,
   if (parser.parseAttribute(initialValue, getInitializerTypeForGlobal(type)))
     return failure();
 
-  if (!llvm::isa<ElementsAttr, IntegerAttr, FloatAttr>(initialValue))
+  if (!llvm::isa<ElementsAttr, IntegerAttr, FloatAttr, emitc::OpaqueAttr>(
+          initialValue))
     return parser.emitError(parser.getNameLoc())
-           << "initial value should be a unit, integer, float or elements "
+           << "initial value should be a integer, float, elements or opaque "
               "attribute";
   return success();
 }
 
 LogicalResult GlobalOp::verify() {
-  // Verify that the initial value, if present, is either a unit attribute or
-  // an elements attribute.
+  if (!isSupportedEmitCType(getType())) {
+    return emitOpError("expected valid emitc type");
+  }
   if (getInitialValue().has_value()) {
     Attribute initValue = getInitialValue().value();
     // Check that the type of the initial value is compatible with the type of
@@ -997,10 +1052,9 @@ LogicalResult GlobalOp::verify() {
         return emitOpError("initial value expected to be of type ")
                << getType() << ", but was of type " << floatAttr.getType();
       }
-    } else {
-      return emitOpError(
-                 "initial value should be a unit, integer, float or elements "
-                 "attribute, but got ")
+    } else if (!isa<emitc::OpaqueAttr>(initValue)) {
+      return emitOpError("initial value should be a integer, float, elements "
+                         "or opaque attribute, but got ")
              << initValue;
     }
   }

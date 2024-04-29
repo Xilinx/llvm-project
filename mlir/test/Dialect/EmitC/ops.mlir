@@ -214,6 +214,13 @@ func.func @test_for_not_index_induction(%arg0 : i16, %arg1 : i16, %arg2 : i16) {
   return
 }
 
+func.func @test_subscript(%arg0 : !emitc.array<2x3xf32>, %arg1 : !emitc.ptr<i32>, %arg2 : !emitc.opaque<"std::map<char, int>">, %idx0 : index, %idx1 : i32, %idx2 : !emitc.opaque<"char">) {
+  %0 = emitc.subscript %arg0[%idx0, %idx1] : (!emitc.array<2x3xf32>, index, i32) -> f32
+  %1 = emitc.subscript %arg1[%idx0] : (!emitc.ptr<i32>, index) -> i32
+  %2 = emitc.subscript %arg2[%idx2] : (!emitc.opaque<"std::map<char, int>">, !emitc.opaque<"char">) -> !emitc.opaque<"int">
+  return
+}
+
 emitc.verbatim "#ifdef __cplusplus"
 emitc.verbatim "extern \"C\" {"
 emitc.verbatim "#endif  // __cplusplus"
@@ -235,6 +242,6 @@ emitc.global const @myconstant : !emitc.array<2xi16> = dense<2>
 
 func.func @use_global(%i: index) -> f32 {
   %0 = emitc.get_global @myglobal : !emitc.array<2xf32>
-  %1 = emitc.subscript %0[%i] : <2xf32>, index
+  %1 = emitc.subscript %0[%i] : (!emitc.array<2xf32>, index) -> f32
   return %1 : f32
 }
