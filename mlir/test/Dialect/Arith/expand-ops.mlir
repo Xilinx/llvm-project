@@ -303,7 +303,7 @@ func.func @maxsi(%a: i32, %b: i32) -> i32 {
   return %result : i32
 }
 // CHECK-LABEL: func @maxsi
-// CHECK-SAME: %[[LHS:.*]]: i32, %[[RHS:.*]]: i32)
+// CHECK-SAME: %[[LHS:.*]]: i32, %[[RHS:.*]]: i32
 // CHECK-NEXT: %[[CMP:.*]] = arith.cmpi sgt, %[[LHS]], %[[RHS]] : i32
 // CHECK-NEXT: %[[RESULT:.*]] = arith.select %[[CMP]], %[[LHS]], %[[RHS]] : i32
 // CHECK-NEXT: return %[[RESULT]] : i32
@@ -315,7 +315,7 @@ func.func @minsi(%a: i32, %b: i32) -> i32 {
   return %result : i32
 }
 // CHECK-LABEL: func @minsi
-// CHECK-SAME: %[[LHS:.*]]: i32, %[[RHS:.*]]: i32)
+// CHECK-SAME: %[[LHS:.*]]: i32, %[[RHS:.*]]: i32
 // CHECK-NEXT: %[[CMP:.*]] = arith.cmpi slt, %[[LHS]], %[[RHS]] : i32
 // CHECK-NEXT: %[[RESULT:.*]] = arith.select %[[CMP]], %[[LHS]], %[[RHS]] : i32
 // CHECK-NEXT: return %[[RESULT]] : i32
@@ -327,7 +327,7 @@ func.func @maxui(%a: i32, %b: i32) -> i32 {
   return %result : i32
 }
 // CHECK-LABEL: func @maxui
-// CHECK-SAME: %[[LHS:.*]]: i32, %[[RHS:.*]]: i32)
+// CHECK-SAME: %[[LHS:.*]]: i32, %[[RHS:.*]]: i32
 // CHECK-NEXT: %[[CMP:.*]] = arith.cmpi ugt, %[[LHS]], %[[RHS]] : i32
 // CHECK-NEXT: %[[RESULT:.*]] = arith.select %[[CMP]], %[[LHS]], %[[RHS]] : i32
 // CHECK-NEXT: return %[[RESULT]] : i32
@@ -339,7 +339,7 @@ func.func @minui(%a: i32, %b: i32) -> i32 {
   return %result : i32
 }
 // CHECK-LABEL: func @minui
-// CHECK-SAME: %[[LHS:.*]]: i32, %[[RHS:.*]]: i32)
+// CHECK-SAME: %[[LHS:.*]]: i32, %[[RHS:.*]]: i32
 // CHECK-NEXT: %[[CMP:.*]] = arith.cmpi ult, %[[LHS]], %[[RHS]] : i32
 // CHECK-NEXT: %[[RESULT:.*]] = arith.select %[[CMP]], %[[LHS]], %[[RHS]] : i32
 // CHECK-NEXT: return %[[RESULT]] : i32
