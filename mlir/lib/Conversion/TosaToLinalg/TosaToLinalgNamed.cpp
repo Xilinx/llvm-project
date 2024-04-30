@@ -760,17 +760,23 @@ public:
   }
 };
 
-class MaxPool2dConverter : public OpRewritePattern<tosa::MaxPool2dOp> {
+class MaxPool2dConverter : public OpConversionPattern<tosa::MaxPool2dOp> {
 public:
-  using OpRewritePattern<tosa::MaxPool2dOp>::OpRewritePattern;
+  using OpConversionPattern::OpConversionPattern;
 
-  LogicalResult matchAndRewrite(tosa::MaxPool2dOp op,
-                                PatternRewriter &rewriter) const final {
+  LogicalResult
+  matchAndRewrite(tosa::MaxPool2dOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const final {
     Location loc = op.getLoc();
-    Value input = op.getInput();
+    Value input = adaptor.getInput();
     ShapedType inputTy = cast<ShapedType>(input.getType());
 
-    ShapedType resultTy = cast<ShapedType>(op.getType());
+    bool isUnsigned =
+        cast<ShapedType>(op.getType()).getElementType().isUnsignedInteger();
+    ShapedType resultTy =
+        cast<ShapedType>(getTypeConverter()->convertType(op.getType()));
+    if (!resultTy)
+      return rewriter.notifyMatchFailure(op, "failed to convert type");
     Type resultETy = inputTy.getElementType();
 
     auto dynamicDimsOr =
@@ -786,7 +792,10 @@ public:
           resultETy, APFloat::getLargest(
                          cast<FloatType>(resultETy).getFloatSemantics(), true));
 
-    if (isa<IntegerType>(resultETy))
+    else if (isUnsigned)
+      initialAttr = rewriter.getIntegerAttr(
+          resultETy, APInt::getMinValue(resultETy.getIntOrFloatBitWidth()));
+    else if (isa<IntegerType>(resultETy))
       initialAttr = rewriter.getIntegerAttr(
           resultETy,
           APInt::getSignedMinValue(resultETy.getIntOrFloatBitWidth()));
@@ -823,9 +832,15 @@ public:
     Value fakeWindowDims =
         rewriter.create<tensor::EmptyOp>(loc, kernel, resultETy);
 
-    rewriter.replaceOpWithNewOp<linalg::PoolingNhwcMaxOp>(
-        op, ArrayRef<Type>{resultTy}, ValueRange{paddedInput, fakeWindowDims},
-        filledEmptyTensor, strideAttr, dilationAttr);
+    if (isUnsigned) {
+      rewriter.replaceOpWithNewOp<linalg::PoolingNhwcMaxUnsignedOp>(
+          op, ArrayRef<Type>{resultTy}, ValueRange{paddedInput, fakeWindowDims},
+          filledEmptyTensor, strideAttr, dilationAttr);
+    } else {
+      rewriter.replaceOpWithNewOp<linalg::PoolingNhwcMaxOp>(
+          op, ArrayRef<Type>{resultTy}, ValueRange{paddedInput, fakeWindowDims},
+          filledEmptyTensor, strideAttr, dilationAttr);
+    }
     return success();
   }
 };
@@ -1091,7 +1106,7 @@ public:
 } // namespace
 
 void mlir::tosa::populateTosaToLinalgNamedConversionPatterns(
-    RewritePatternSet *patterns, const TosaToLinalgNamedOptions &options) {
+     TypeConverter &converter, RewritePatternSet *patterns, const TosaToLinalgNamedOptions &options) {
   if (options.preferConv2DKernelLayoutHWCF) {
     patterns->add<ConvConverter<tosa::Conv2DOp, linalg::Conv2DNhwcHwcfOp,
                                 linalg::Conv2DNhwcHwcfQOp>>(
@@ -1105,11 +1120,14 @@ void mlir::tosa::populateTosaToLinalgNamedConversionPatterns(
       // clang-format off
       ConvConverter<tosa::Conv3DOp, linalg::Conv3DNdhwcDhwcfOp, linalg::Conv3DNdhwcDhwcfQOp>,
       DepthwiseConvConverter,
-      MaxPool2dConverter,
       AvgPool2dConverter,
       FullyConnectedConverter,
       TransposeConverter
   >(patterns->getContext());
+  patterns->add<
+      // clang-format off
+      MaxPool2dConverter
+    >(converter, patterns->getContext());
   patterns->add<
       MatMulConverter>(patterns->getContext(), options.useMatmulForSingleBatch);
   // clang-format on

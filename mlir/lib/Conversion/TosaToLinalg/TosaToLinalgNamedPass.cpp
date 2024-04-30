@@ -47,6 +47,9 @@ public:
   }
 
   void runOnOperation() override {
+    TypeConverter converter;
+    mlir::tosa::populateTosaToLinalgTypeConversion(converter);
+
     RewritePatternSet patterns(&getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<linalg::LinalgDialect, tosa::TosaDialect,
@@ -68,7 +71,7 @@ public:
     TosaToLinalgNamedOptions options;
     options.preferConv2DKernelLayoutHWCF = preferConv2DKernelLayoutHWCF;
     options.useMatmulForSingleBatch = useMatmulForSingleBatch;
-    tosa::populateTosaToLinalgNamedConversionPatterns(&patterns, options);
+    tosa::populateTosaToLinalgNamedConversionPatterns(converter, &patterns, options);
     if (failed(applyFullConversion(func, target, std::move(patterns))))
       signalPassFailure();
   }
