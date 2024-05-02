@@ -54,6 +54,150 @@ convertPDLToPDLInterp(ModuleOp pdlModule,
 }
 #endif // MLIR_ENABLE_PDL_IN_PATTERNMATCH
 
+class PdllRewritePattern : public RewritePattern {
+  mutable PDLPatternModule pdllModule;
+  class State {
+  public:
+    // using Payload = llvm::PointerUnion<Operation *, Attribute, Value>;
+    using Payload = PDLValue;
+    DenseMap<Value, PDLValue> s;
+    void add(Value constraint, PDLValue target) {
+      Payload p = target;
+      s.try_emplace(constraint, p);
+    }
+    void add(ResultRange results, ArrayRef<PDLValue> targets) {
+      for (auto it : llvm::zip(results, targets)) {
+        add(std::get<0>(it), std::get<1>(it));
+      }
+    }
+    PDLValue get(Value constraint) { return s.at(constraint); }
+  };
+
+public:
+  class MyPDLResultList : public PDLResultList {
+  public:
+    MyPDLResultList(unsigned maxNumResults) : PDLResultList(maxNumResults) {}
+
+    /// Return the list of PDL results.
+    MutableArrayRef<PDLValue> getResults() { return results; }
+  };
+
+  PdllRewritePattern(PDLPatternModule pdllModule)
+      : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1,
+                       pdllModule.getModule().getContext()),
+        pdllModule(std::move(pdllModule)) {}
+  FailureOr<State> tryMatch(PatternRewriter &rewriter, pdl::PatternOp pattern,
+                            Operation *target) const {
+
+    State state;
+    for (Operation &constraint :
+         pattern.getBodyRegion().front().without_terminator()) {
+      assert(!isa<pdl::RewriteOp>(constraint));
+      if (auto operation = dyn_cast<pdl::OperationOp>(constraint)) {
+        if (auto name = operation.getOpName()) {
+          llvm::errs() << "name: " << target->getName().getStringRef() << " "
+                       << *name << "\n";
+          if (target->getName().getStringRef() != *operation.getOpName())
+            return rewriter.notifyMatchFailure(target, "name doesn't match");
+        }
+        for (auto it : llvm::zip(operation.getAttributeValueNames(),
+                                 operation.getAttributeValues())) {
+          auto name = cast<StringAttr>(std::get<0>(it)).getValue();
+          auto val = state.get(std::get<1>(it)).cast<Attribute>();
+          if (target->getAttr(name) != val) {
+            return rewriter.notifyMatchFailure(
+                target, Twine("attr doesn't match: ") + name);
+          }
+        }
+        state.add(operation.getResult(), target);
+      } else if (auto operands = dyn_cast<pdl::OperandsOp>(constraint)) {
+        state.add(operands.getResult(), nullptr);
+      } else if (auto type = dyn_cast<pdl::TypeOp>(constraint)) {
+        state.add(type.getResult(), nullptr);
+      } else if (auto attr = dyn_cast<pdl::AttributeOp>(constraint)) {
+        if (auto val = attr.getValue()) {
+          state.add(attr.getResult(), *val);
+        } else {
+          state.add(attr.getResult(), nullptr);
+        }
+        // TODO: use attribute value type
+      } else if (auto result = dyn_cast<pdl::ResultOp>(constraint)) {
+        state.add(result.getResult(), state.get(result.getParent())
+                                          .cast<Operation *>()
+                                          ->getResult(result.getIndex()));
+      } else if (auto applyNativeConstraint =
+                     dyn_cast<pdl::ApplyNativeConstraintOp>(constraint)) {
+        // MyPDLResultList results(applyNativeConstraint->getNumResults());
+        auto fn = pdllModule.getConstraintFunctions().at(
+            applyNativeConstraint.getName());
+        SmallVector<PDLValue> args;
+        for (auto arg : applyNativeConstraint->getOperands()) {
+          args.push_back(state.get(arg));
+        }
+        if (failed(
+                fn(rewriter, args)) /*!= applyNativeConstraint.getIsNegated()*/)
+          return rewriter.notifyMatchFailure(
+              target, Twine("Native constraint failed: ") +
+                          applyNativeConstraint.getName());
+
+        // state.add(applyNativeConstraint.getResults(), results.getResults());
+      } else {
+        constraint.dump();
+        assert(false);
+      }
+    }
+
+    return state;
+  }
+
+  LogicalResult applyRewrite(Operation *op, PatternRewriter &rewriter,
+                             pdl::RewriteOp rewrite, State &state) const {
+    for (Operation &child :
+         rewrite.getBodyRegion().front().without_terminator()) {
+      if (auto applyNativeRewrite =
+              dyn_cast<pdl::ApplyNativeRewriteOp>(child)) {
+        MyPDLResultList results(applyNativeRewrite->getNumResults());
+        auto fn =
+            pdllModule.getRewriteFunctions().at(applyNativeRewrite.getName());
+        SmallVector<PDLValue> args;
+        for (auto arg : applyNativeRewrite->getOperands()) {
+          args.push_back(state.get(arg));
+        }
+        if (failed(fn(rewriter, results, args)))
+          assert(false && "Native rewrite failed");
+
+        state.add(applyNativeRewrite.getResults(), results.getResults());
+      } else if (auto attr = dyn_cast<pdl::AttributeOp>(child)) {
+        assert(attr.getValue());
+        state.add(attr.getResult(), *attr.getValue());
+      } else {
+        child.dump();
+        assert(false);
+      }
+    }
+    return success();
+  }
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const final {
+    pdl::RewriteOp rewrite;
+    State bestState;
+    int32_t maxBenefit = -1;
+    pdllModule.getModule().walk([&](pdl::PatternOp pattern) {
+      FailureOr<State> state = tryMatch(rewriter, pattern, op);
+      if (failed(state))
+        return;
+      if ((int32_t)pattern.getBenefit() > maxBenefit) {
+        maxBenefit = (int32_t)pattern.getBenefit();
+        rewrite = pattern.getRewriter();
+        bestState = *state;
+      }
+    });
+    if (rewrite) {
+      return applyRewrite(op, rewriter, rewrite, bestState);
+    }
+    return rewriter.notifyMatchFailure(op, "No pattern matched");
+  }
+};
 //===----------------------------------------------------------------------===//
 // FrozenRewritePatternSet
 //===----------------------------------------------------------------------===//
@@ -132,19 +276,21 @@ FrozenRewritePatternSet::FrozenRewritePatternSet(
   ModuleOp pdlModule = pdlPatterns.getModule();
   if (!pdlModule)
     return;
-  DenseMap<Operation *, PDLPatternConfigSet *> configMap =
-      pdlPatterns.takeConfigMap();
-  if (failed(convertPDLToPDLInterp(pdlModule, configMap)))
+  /*if (failed(convertPDLToPDLInterp(pdlModule, configMap)))
     llvm::report_fatal_error(
         "failed to lower PDL pattern module to the PDL Interpreter");
-
+*/
   pdl::registerBuiltins(pdlPatterns);
 
+  std::unique_ptr<PdllRewritePattern> pattern =
+      RewritePattern::create<PdllRewritePattern>(std::move(pdlPatterns));
+  impl->nativeAnyOpPatterns.push_back(std::move(pattern));
+
   // Generate the pdl bytecode.
-  impl->pdlByteCode = std::make_unique<detail::PDLByteCode>(
+  /*impl->pdlByteCode = std::make_unique<detail::PDLByteCode>(
       pdlModule, pdlPatterns.takeConfigs(), configMap,
       pdlPatterns.takeConstraintFunctions(),
-      pdlPatterns.takeRewriteFunctions());
+      pdlPatterns.takeRewriteFunctions());*/
 #endif // MLIR_ENABLE_PDL_IN_PATTERNMATCH
 }
 

@@ -9,6 +9,7 @@
 #include "mlir/Dialect/PDL/IR/PDL.h"
 #include "mlir/Dialect/PDL/IR/PDLOps.h"
 #include "mlir/Dialect/PDL/IR/PDLTypes.h"
+#include "mlir/Dialect/Transform/IR/TransformInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Interfaces/InferTypeOpInterface.h"
 #include "llvm/ADT/DenseSet.h"
@@ -23,6 +24,74 @@ using namespace mlir::pdl;
 //===----------------------------------------------------------------------===//
 // PDLDialect
 //===----------------------------------------------------------------------===//
+namespace {
+
+struct OperationOpTransform
+    : public transform::TransformOpInterface::ExternalModel<
+          OperationOpTransform, OperationOp> {
+
+  static ::mlir::DiagnosedSilenceableFailure
+  apply(Operation *op, ::mlir::transform::TransformRewriter &rewriter,
+        ::mlir::transform::TransformResults &results,
+        ::mlir::transform::TransformState &state) {
+    auto operation = cast<OperationOp>(op);
+
+    if (auto name = operation.getOpName()) {
+      state.getTopLevel()->dump();
+      llvm::errs() << "name: " << state.getTopLevel()->getName().getStringRef()
+                   << "\n";
+      // if(state.getTopLevel()->getName().getStringRef() == *name) {
+      //   transformResults.setMappedValues(OpResult handle,
+      //   ArrayRef<MappedValue> values)
+      // }
+      results.setRemainingToEmpty(
+          cast<mlir::transform::TransformOpInterface>(op));
+      return DiagnosedSilenceableFailure::success();
+    }
+    return DiagnosedSilenceableFailure::definiteFailure();
+  }
+};
+struct PatternOpTransform
+    : public transform::TransformOpInterface::ExternalModel<PatternOpTransform,
+                                                            PatternOp> {
+
+  static ::mlir::DiagnosedSilenceableFailure
+  apply(Operation *op, ::mlir::transform::TransformRewriter &rewriter,
+        ::mlir::transform::TransformResults &results,
+        ::mlir::transform::TransformState &state) {
+
+    llvm::errs() << "getNumTopLevelMappings" << state.getNumTopLevelMappings()
+                 << "\n";
+    auto pattern = cast<PatternOp>(op);
+    auto scope = state.make_region_scope(pattern.getBodyRegion());
+
+    // Apply the sequenced ops one by one.
+    for (Operation &transform :
+         pattern.getBodyRegion().front().without_terminator()) {
+      DiagnosedSilenceableFailure result = state.applyTransform(
+          cast<transform::TransformOpInterface>(transform));
+      if (result.isDefiniteFailure())
+        return DiagnosedSilenceableFailure::success();
+    }
+
+    // Forward the operation mapping for values yielded from the sequence to the
+    // values produced by the sequence op.
+    // transform::detail::forwardTerminatorOperands(&block, state, results);
+    results.setRemainingToEmpty(
+        cast<mlir::transform::TransformOpInterface>(op));
+    return DiagnosedSilenceableFailure::success();
+  }
+};
+
+template <class T>
+struct MemIf : public MemoryEffectOpInterface::ExternalModel<MemIf<T>, T> {
+
+  // No side effects.
+  static void
+  getEffects(Operation *,
+             SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {}
+};
+} // namespace
 
 void PDLDialect::initialize() {
   addOperations<
@@ -30,6 +99,11 @@ void PDLDialect::initialize() {
 #include "mlir/Dialect/PDL/IR/PDLOps.cpp.inc"
       >();
   registerTypes();
+
+  PatternOp::attachInterface<PatternOpTransform, MemIf<PatternOp>>(
+      *getContext());
+  OperationOp::attachInterface<OperationOpTransform, MemIf<OperationOp>>(
+      *getContext());
 }
 
 //===----------------------------------------------------------------------===//

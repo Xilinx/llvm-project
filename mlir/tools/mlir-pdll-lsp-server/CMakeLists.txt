@@ -1,5 +1,6 @@
 set(LIBS
   MLIRPdllLspServerLib
+  MLIRTransformDialect
   )
 
 add_mlir_tool(mlir-pdll-lsp-server

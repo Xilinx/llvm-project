@@ -10,6 +10,7 @@ set(LIBS
   MLIRPDLLCodeGen
   MLIRPDLLODS
   MLIRPDLLParser
+  MLIRTransformDialect
   )
 
 add_tablegen(mlir-pdll MLIR_PDLL
