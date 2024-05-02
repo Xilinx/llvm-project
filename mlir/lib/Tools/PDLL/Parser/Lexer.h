@@ -88,6 +88,7 @@ public:
     sub,
     log2,
     exp2,
+    abs,
     less,
     greater,
     l_brace,

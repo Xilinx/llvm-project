@@ -208,6 +208,12 @@
 // CHECK-NEXT:        "kind": 8,
 // CHECK-NEXT:        "label": "__builtin_log2Constraint",
 // CHECK-NEXT:        "sortText": "2___builtin_log2Constraint"
+// CHECK-NEXT:      },
+// CHECK-NEXT:      {
+// CHECK-NEXT:        "detail": "(Attr: Attr) -> Attr",
+// CHECK-NEXT:        "kind": 8,
+// CHECK-NEXT:        "label": "__builtin_absConstraint",
+// CHECK-NEXT:        "sortText": "2___builtin_absConstraint"
 // CHECK-NEXT:      }
 // CHECK-NEXT:    ]
 // CHECK-NEXT:  }

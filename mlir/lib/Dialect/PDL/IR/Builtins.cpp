@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdint>
+#include <iostream>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/APSInt.h>
@@ -59,8 +60,8 @@ mlir::Attribute addElemToArrayAttr(mlir::PatternRewriter &rewriter,
 }
 
 template <UnaryOpKind T>
-LogicalResult unaryOp(PatternRewriter &rewriter, PDLResultList &results,
-                      ArrayRef<PDLValue> args) {
+LogicalResult static unaryOp(PatternRewriter &rewriter, PDLResultList &results,
+                             ArrayRef<PDLValue> args) {
   assert(args.size() == 1 && "Expected one operand for unary operation");
   auto operandAttr = args[0].cast<Attribute>();
 
@@ -99,6 +100,33 @@ LogicalResult unaryOp(PatternRewriter &rewriter, PDLResultList &results,
             getIntegerAsAttr(APSInt(operandIntAttr.getValue(), false)));
       else
         results.push_back(getIntegerAsAttr(operandIntAttr.getAPSInt()));
+    } else if constexpr (T == UnaryOpKind::abs) {
+      if (integerType.isSigned()) {
+        // check overflow
+        if (operandIntAttr.getAPSInt() ==
+            APSInt::getMinValue(integerType.getIntOrFloatBitWidth(), false))
+          return failure();
+
+        results.push_back(rewriter.getIntegerAttr(
+            integerType, std::abs(operandIntAttr.getSInt())));
+        return success();
+      }
+      if (integerType.isSignless()) {
+        auto resultVal = rewriter.getIntegerAttr(
+            integerType, std::abs(operandIntAttr.getInt()));
+        results.push_back(rewriter.getIntegerAttr(
+            integerType, std::abs(operandIntAttr.getInt())));
+
+        std::cout << "Input: "
+                  << (uint8_t)operandIntAttr.getValue().getZExtValue()
+                  << std::endl;
+        std::cout << "Result store in IntegerAttr: " << resultVal.getInt()
+                  << std::endl;
+        return success();
+      }
+      // If unsigned, don't do anything
+      results.push_back(operandIntAttr);
+      return success();
     } else {
       llvm::llvm_unreachable_internal(
           "encountered an unsupported unary operator");
@@ -140,11 +168,16 @@ LogicalResult unaryOp(PatternRewriter &rewriter, PDLResultList &results,
               })
           .Default([](Type /*type*/) { return failure(); });
     } else if constexpr (T == UnaryOpKind::log2) {
-      auto minF32 = APFloat::getSmallest(llvm::APFloat::IEEEsingle());
-
-      APFloat resultFloat((float)operandFloatAttr.getValue().getExactLog2());
-      results.push_back(
-          rewriter.getFloatAttr(operandFloatAttr.getType(), resultFloat));
+      results.push_back(rewriter.getFloatAttr(
+          operandFloatAttr.getType(),
+          (double)operandFloatAttr.getValue().getExactLog2()));
+    } else if constexpr (T == UnaryOpKind::abs) {
+      results.push_back(rewriter.getFloatAttr(
+          operandFloatAttr.getType(),
+          std::abs(operandFloatAttr.getValue().convertToFloat())));
+    } else {
+      llvm::llvm_unreachable_internal(
+          "encountered an unsupported unary operator");
     }
     return success();
   }
@@ -152,8 +185,8 @@ LogicalResult unaryOp(PatternRewriter &rewriter, PDLResultList &results,
 }
 
 template <BinaryOpKind T>
-LogicalResult binaryOp(PatternRewriter &rewriter, PDLResultList &results,
-                       llvm::ArrayRef<PDLValue> args) {
+LogicalResult static binaryOp(PatternRewriter &rewriter, PDLResultList &results,
+                              llvm::ArrayRef<PDLValue> args) {
   assert(args.size() == 2 && "Expected two operands for binary operation");
   auto lhsAttr = args[0].cast<Attribute>();
   auto rhsAttr = args[1].cast<Attribute>();
@@ -294,6 +327,10 @@ LogicalResult log2(PatternRewriter &rewriter, PDLResultList &results,
                    llvm::ArrayRef<PDLValue> args) {
   return unaryOp<UnaryOpKind::log2>(rewriter, results, args);
 }
+LogicalResult abs(PatternRewriter &rewriter, PDLResultList &results,
+                  llvm::ArrayRef<PDLValue> args) {
+  return unaryOp<UnaryOpKind::abs>(rewriter, results, args);
+}
 } // namespace builtin
 
 void registerBuiltins(PDLPatternModule &pdlPattern) {
@@ -319,7 +356,7 @@ void registerBuiltins(PDLPatternModule &pdlPattern) {
   pdlPattern.registerRewriteFunction("__builtin_subRewrite", sub);
   pdlPattern.registerRewriteFunction("__builtin_log2Rewrite", log2);
   pdlPattern.registerRewriteFunction("__builtin_exp2Rewrite", exp2);
-
+  pdlPattern.registerRewriteFunction("__builtin_absRewrite", abs);
   pdlPattern.registerConstraintFunctionWithResults("__builtin_mulConstraint",
                                                    mul);
   pdlPattern.registerConstraintFunctionWithResults("__builtin_divConstraint",
@@ -334,5 +371,7 @@ void registerBuiltins(PDLPatternModule &pdlPattern) {
                                                    log2);
   pdlPattern.registerConstraintFunctionWithResults("__builtin_exp2Constraint",
                                                    exp2);
+  pdlPattern.registerConstraintFunctionWithResults("__builtin_absConstraint",
+                                                   abs);
 }
 } // namespace mlir::pdl

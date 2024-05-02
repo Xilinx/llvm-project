@@ -617,12 +617,12 @@ TEST_F(BuiltinTest, log2) {
                  "log2 of an integer is expected to return an exact integer.");
   }
 
-  auto fourF32 = rewriter.getF32FloatAttr(4.0);
+  auto fourF16 = rewriter.getF16FloatAttr(4.0);
 
   // check correctness
   {
     TestPDLResultList results(1);
-    EXPECT_TRUE(builtin::log2(rewriter, results, {fourF32}).succeeded());
+    EXPECT_TRUE(builtin::log2(rewriter, results, {fourF16}).succeeded());
 
     PDLValue result = results.getResults()[0];
     EXPECT_EQ(
@@ -707,6 +707,60 @@ TEST_F(BuiltinTest, exp2) {
     TestPDLResultList results(1);
     EXPECT_TRUE(
         builtin::exp2(rewriter, results, {minusHundredFiftyF32}).failed());
+  }
+}
+
+TEST_F(BuiltinTest, abs) {
+  // signed integer overflow
+  {
+    auto SI8Type = rewriter.getIntegerType(8, true);
+    auto value = rewriter.getIntegerAttr(SI8Type, -128);
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::abs(rewriter, results, {value}).failed());
+  }
+
+  // signed integer correctness
+  {
+    auto value = rewriter.getSI32IntegerAttr(-1);
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::abs(rewriter, results, {value}).succeeded());
+    auto result = results.getResults()[0];
+    EXPECT_EQ(
+        cast<IntegerAttr>(result.cast<Attribute>()).getValue().getSExtValue(),
+        1);
+  }
+
+  // unsigned integer
+  {
+    auto value = rewriter.getUI32IntegerAttr(1);
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::abs(rewriter, results, {value}).succeeded());
+    auto result = results.getResults()[0];
+    EXPECT_EQ(
+        cast<IntegerAttr>(result.cast<Attribute>()).getValue().getZExtValue(),
+        (uint64_t)1);
+  }
+
+  // signless integer
+  {
+    auto value = rewriter.getI8IntegerAttr(-7);
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::abs(rewriter, results, {value}).succeeded());
+    auto result = results.getResults()[0];
+    EXPECT_EQ(
+        cast<IntegerAttr>(result.cast<Attribute>()).getValue().getSExtValue(),
+        7);
+  }
+
+  // float
+  {
+    auto value = rewriter.getF32FloatAttr(-1.0);
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::abs(rewriter, results, {value}).succeeded());
+    auto result = results.getResults()[0];
+    EXPECT_EQ(
+        cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat(),
+        1.0);
   }
 }
 } // namespace
