@@ -1,6 +1,5 @@
 #include <cassert>
 #include <cstdint>
-#include <iostream>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/APSInt.h>
@@ -112,16 +111,8 @@ LogicalResult static unaryOp(PatternRewriter &rewriter, PDLResultList &results,
         return success();
       }
       if (integerType.isSignless()) {
-        auto resultVal = rewriter.getIntegerAttr(
-            integerType, std::abs(operandIntAttr.getInt()));
         results.push_back(rewriter.getIntegerAttr(
             integerType, std::abs(operandIntAttr.getInt())));
-
-        std::cout << "Input: "
-                  << (uint8_t)operandIntAttr.getValue().getZExtValue()
-                  << std::endl;
-        std::cout << "Result store in IntegerAttr: " << resultVal.getInt()
-                  << std::endl;
         return success();
       }
       // If unsigned, don't do anything
