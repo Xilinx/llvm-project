@@ -347,9 +347,8 @@ def EmitC_ConstantOp : EmitC_Op<"constant", [ConstantLike]> {
     %0 = "emitc.constant"(){value = 42 : i32} : () -> i32
 
     // Constant emitted as `char = CHAR_MIN;`
-    %1 = "emitc.constant"()
-        {value = #emitc.opaque<"CHAR_MIN"> : !emitc.opaque<"char">}
-        : () -> !emitc.opaque<"char">
+    %1 = "emitc.constant"() {value = #emitc.opaque<"CHAR_MIN">}
+      : () -> !emitc.opaque<"char">
     ```
   }];
 
@@ -992,9 +991,8 @@ def EmitC_VariableOp : EmitC_Op<"variable", []> {
     %0 = "emitc.variable"(){value = 42 : i32} : () -> i32
 
     // Variable emitted as `int32_t* = NULL;`
-    %1 = "emitc.variable"()
-        {value = #emitc.opaque<"NULL"> : !emitc.opaque<"int32_t*">}
-        : () -> !emitc.opaque<"int32_t*">
+    %1 = "emitc.variable"() {value = #emitc.opaque<"NULL">} 
+      : () -> !emitc.ptr<!emitc.opaque<"int32_t">>
     ```
 
     Since folding is not supported, it can be used with pointers.
@@ -1022,12 +1020,12 @@ def EmitC_GlobalOp : EmitC_Op<"global", [Symbol]> {
     The `emitc.global` operation declares or defines a named global variable.
     The backing memory for the variable is allocated statically and is
     described by the type of the variable.
-    Optionally, and `initial_value` can be provided.
-    Internal linkage can be specified using the `staticSpecifier` unit attribute
-    and external linkage can be specified using the `externSpecifier` unit attribute.
+    Optionally, an `initial_value` can be provided.
+    Internal linkage can be specified using the `static_specifier` unit attribute
+    and external linkage can be specified using the `extern_specifier` unit attribute.
     Note that the default linkage without those two keywords depends on whether
     the target is C or C++ and whether the global variable is `const`.
-    The global variable can also be marked constant using the `constSpecifier`
+    The global variable can also be marked constant using the `const_specifier`
     unit attribute. Writing to such constant global variables is
     undefined.
 
@@ -1049,14 +1047,14 @@ def EmitC_GlobalOp : EmitC_Op<"global", [Symbol]> {
   let arguments = (ins SymbolNameAttr:$sym_name,
                        TypeAttr:$type,
                        OptionalAttr<EmitC_OpaqueOrTypedAttr>:$initial_value,
-                       UnitAttr:$externSpecifier,
-                       UnitAttr:$staticSpecifier,
-                       UnitAttr:$constSpecifier);
+                       UnitAttr:$extern_specifier,
+                       UnitAttr:$static_specifier,
+                       UnitAttr:$const_specifier);
 
   let assemblyFormat = [{
-       (`extern` $externSpecifier^)?
-       (`static` $staticSpecifier^)?
-       (`const` $constSpecifier^)?
+       (`extern` $extern_specifier^)?
+       (`static` $static_specifier^)?
+       (`const` $const_specifier^)?
        $sym_name
        `:` custom<EmitCGlobalOpTypeAndInitialValue>($type, $initial_value)
        attr-dict
@@ -1224,35 +1222,41 @@ def EmitC_IfOp : EmitC_Op<"if",
   let hasCustomAssemblyFormat = 1;
 }
 
-def EmitC_SubscriptOp : EmitC_Op<"subscript",
-  [TypesMatchWith<"result type matches element type of 'array'",
-                  "array", "result",
-                  "::llvm::cast<ArrayType>($_self).getElementType()">]> {
-  let summary = "Array subscript operation";
+def EmitC_SubscriptOp : EmitC_Op<"subscript", []> {
+  let summary = "Subscript operation";
   let description = [{
     With the `subscript` operation the subscript operator `[]` can be applied
-    to variables or arguments of array type.
+    to variables or arguments of array, pointer and opaque type.
 
     Example:
 
     ```mlir
     %i = index.constant 1
     %j = index.constant 7
-    %0 = emitc.subscript %arg0[%i, %j] : <4x8xf32>, index, index
+    %0 = emitc.subscript %arg0[%i, %j] : !emitc.array<4x8xf32>, index, index
+    %1 = emitc.subscript %arg1[%i] : !emitc.ptr<i32>, index
     ```
   }];
-  let arguments = (ins Arg<EmitC_ArrayType, "the reference to load from">:$array,
-                       Variadic<IntegerIndexOrOpaqueType>:$indices);
+  let arguments = (ins Arg<AnyTypeOf<[
+      EmitC_ArrayType,
+      EmitC_OpaqueType,
+      EmitC_PointerType]>,
+    "the value to subscript">:$value,
+    Variadic<EmitCType>:$indices);
   let results = (outs EmitCType:$result);
 
   let builders = [
-    OpBuilder<(ins "Value":$array, "ValueRange":$indices), [{
-      build($_builder, $_state, cast<ArrayType>(array.getType()).getElementType(), array, indices);
+    OpBuilder<(ins "TypedValue<ArrayType>":$array, "ValueRange":$indices), [{
+      build($_builder, $_state, array.getType().getElementType(), array, indices);
+    }]>,
+    OpBuilder<(ins "TypedValue<PointerType>":$pointer, "Value":$index), [{
+      build($_builder, $_state, pointer.getType().getPointee(), pointer,
+            ValueRange{index});
     }]>
   ];
 
   let hasVerifier = 1;
-  let assemblyFormat = "$array `[` $indices `]` attr-dict `:` type($array) `,` type($indices)";
+  let assemblyFormat = "$value `[` $indices `]` attr-dict `:` functional-type(operands, results)";
 }
 
 

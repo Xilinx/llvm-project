@@ -30,7 +30,6 @@ namespace {
 struct ConvertArithToEmitC
     : public impl::ConvertArithToEmitCBase<ConvertArithToEmitC> {
   using Base::Base;
-
   void runOnOperation() override;
 };
 } // namespace

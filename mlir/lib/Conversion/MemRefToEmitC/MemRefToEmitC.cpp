@@ -81,14 +81,18 @@ struct ConvertGlobal final : public OpConversionPattern<memref::GlobalOp> {
           op.getLoc(),
           "only public and private visibility is currently supported");
     }
-    // We are explicit in specifier the linkage because the default linkage
+    // We are explicit in specifing the linkage because the default linkage
     // for constants is different in C and C++.
     bool staticSpecifier = visibility == SymbolTable::Visibility::Private;
     bool externSpecifier = !staticSpecifier;
 
+    Attribute initialValue = operands.getInitialValueAttr();
+    if (isa_and_present<UnitAttr>(initialValue))
+      initialValue = {};
+
     rewriter.replaceOpWithNewOp<emitc::GlobalOp>(
-        op, operands.getSymName(), resultTy, operands.getInitialValueAttr(),
-        externSpecifier, staticSpecifier, operands.getConstant());
+        op, operands.getSymName(), resultTy, initialValue, externSpecifier,
+        staticSpecifier, operands.getConstant());
     return success();
   }
 };
@@ -124,8 +128,14 @@ struct ConvertLoad final : public OpConversionPattern<memref::LoadOp> {
       return rewriter.notifyMatchFailure(op.getLoc(), "cannot convert type");
     }
 
+    auto arrayValue =
+        dyn_cast<TypedValue<emitc::ArrayType>>(operands.getMemref());
+    if (!arrayValue) {
+      return rewriter.notifyMatchFailure(op.getLoc(), "expected array type");
+    }
+
     auto subscript = rewriter.create<emitc::SubscriptOp>(
-        op.getLoc(), operands.getMemref(), operands.getIndices());
+        op.getLoc(), arrayValue, operands.getIndices());
 
     auto noInit = emitc::OpaqueAttr::get(getContext(), "");
     auto var =
@@ -143,9 +153,14 @@ struct ConvertStore final : public OpConversionPattern<memref::StoreOp> {
   LogicalResult
   matchAndRewrite(memref::StoreOp op, OpAdaptor operands,
                   ConversionPatternRewriter &rewriter) const override {
+    auto arrayValue =
+        dyn_cast<TypedValue<emitc::ArrayType>>(operands.getMemref());
+    if (!arrayValue) {
+      return rewriter.notifyMatchFailure(op.getLoc(), "expected array type");
+    }
 
     auto subscript = rewriter.create<emitc::SubscriptOp>(
-        op.getLoc(), operands.getMemref(), operands.getIndices());
+        op.getLoc(), arrayValue, operands.getIndices());
     rewriter.replaceOpWithNewOp<emitc::AssignOp>(op, subscript,
                                                  operands.getValue());
     return success();
