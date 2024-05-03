@@ -28,15 +28,16 @@ void registerBuiltins(PDLPatternModule &pdlPattern);
 namespace builtin {
 enum class BinaryOpKind {
   add,
-  sub,
-  mul,
   div,
   mod,
+  mul,
+  sub,
 };
 
 enum class UnaryOpKind {
-  log2,
+  abs,
   exp2,
+  log2,
 };
 
 LogicalResult createDictionaryAttr(PatternRewriter &rewriter,
@@ -48,9 +49,6 @@ LogicalResult addEntryToDictionaryAttr(PatternRewriter &rewriter,
 Attribute createArrayAttr(PatternRewriter &rewriter);
 Attribute addElemToArrayAttr(PatternRewriter &rewriter, Attribute attr,
                              Attribute element);
-template <BinaryOpKind T>
-LogicalResult binaryOp(PatternRewriter &rewriter, PDLResultList &results,
-                       llvm::ArrayRef<PDLValue> args);
 LogicalResult mul(PatternRewriter &rewriter, PDLResultList &results,
                   llvm::ArrayRef<PDLValue> args);
 LogicalResult div(PatternRewriter &rewriter, PDLResultList &results,
@@ -65,10 +63,8 @@ LogicalResult log2(PatternRewriter &rewriter, PDLResultList &results,
                    llvm::ArrayRef<PDLValue> args);
 LogicalResult exp2(PatternRewriter &rewriter, PDLResultList &results,
                    llvm::ArrayRef<PDLValue> args);
-
-template <BinaryOpKind T>
-LogicalResult binaryOp(PatternRewriter &rewriter, PDLResultList &results,
-                       llvm::ArrayRef<PDLValue> args);
+LogicalResult abs(PatternRewriter &rewriter, PDLResultList &results,
+                  llvm::ArrayRef<PDLValue> args);
 } // namespace builtin
 } // namespace pdl
 } // namespace mlir

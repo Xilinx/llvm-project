@@ -309,6 +309,7 @@ Pattern TestAdd {
 // CHECK:            apply_native_constraint "__builtin_modConstraint"(%[[VAL_0]], %[[VAL_1]] : !pdl.attribute, !pdl.attribute) : !pdl.attribute
 // CHECK:            apply_native_constraint "__builtin_log2Constraint"(%[[VAL_0]] : !pdl.attribute) : !pdl.attribute
 // CHECK:            apply_native_constraint "__builtin_exp2Constraint"(%[[VAL_0]] : !pdl.attribute) : !pdl.attribute
+// CHECK:            apply_native_constraint "__builtin_absConstraint"(%[[VAL_0]] : !pdl.attribute) : !pdl.attribute
 
 Pattern TestOperatorsNotInRewriteSection {
   let a : Attr = attr<"4 : i32">;
@@ -320,6 +321,7 @@ Pattern TestOperatorsNotInRewriteSection {
   let modConstraint : Attr = a % b;
   let log2Constraint : Attr = log2(a);
   let exp2Constraint : Attr = exp2(a);
+  let absConstraint : Attr = abs(a);
   replace op<test.simple> with op<test.success>;
 }
 
@@ -336,6 +338,7 @@ Pattern TestOperatorsNotInRewriteSection {
 // CHECK:              apply_native_rewrite "__builtin_modRewrite"(%[[VAL_0]], %[[VAL_1]] : !pdl.attribute, !pdl.attribute) : !pdl.attribute
 // CHECK:              apply_native_rewrite "__builtin_log2Rewrite"(%[[VAL_0]] : !pdl.attribute) : !pdl.attribute
 // CHECK:              apply_native_rewrite "__builtin_exp2Rewrite"(%[[VAL_0]] : !pdl.attribute) : !pdl.attribute
+// CHECK:              apply_native_rewrite "__builtin_absRewrite"(%[[VAL_0]] : !pdl.attribute) : !pdl.attribute
 Pattern TestOperatorsInRewriteSection {
   let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
   rewrite root with {
@@ -348,6 +351,7 @@ Pattern TestOperatorsInRewriteSection {
     let modRewrite : Attr = a % b;
     let log2Rewrite : Attr = log2(a);
     let exp2Rewrite : Attr = exp2(a);
+    let absRewrite : Attr = abs(a);
     erase root;
   };
 }

@@ -334,7 +334,7 @@ private:
   FailureOr<ast::Expr *> parseLogicalAndExpr();
   FailureOr<ast::Expr *> parseEqualityExpr();
   FailureOr<ast::Expr *> parseRelationExpr();
-  FailureOr<ast::Expr *> parseExp2Log2Expr();
+  FailureOr<ast::Expr *> parseExp2Log2AbsExpr();
   FailureOr<ast::Expr *> parseAddSubExpr();
   FailureOr<ast::Expr *> parseMulDivModExpr();
   FailureOr<ast::Expr *> parseLogicalNotExpr();
@@ -624,6 +624,7 @@ private:
     ast::UserRewriteDecl *subRewrite;
     ast::UserRewriteDecl *log2Rewrite;
     ast::UserRewriteDecl *exp2Rewrite;
+    ast::UserRewriteDecl *absRewrite;
     ast::UserConstraintDecl *mulConstraint;
     ast::UserConstraintDecl *divConstraint;
     ast::UserConstraintDecl *modConstraint;
@@ -631,6 +632,7 @@ private:
     ast::UserConstraintDecl *subConstraint;
     ast::UserConstraintDecl *log2Constraint;
     ast::UserConstraintDecl *exp2Constraint;
+    ast::UserConstraintDecl *absConstraint;
   } builtins{};
 };
 } // namespace
@@ -701,6 +703,8 @@ void Parser::declareBuiltins() {
       "__builtin_log2Rewrite", {"Attr"}, true);
   builtins.exp2Rewrite = declareBuiltin<ast::UserRewriteDecl>(
       "__builtin_exp2Rewrite", {"Attr"}, true);
+  builtins.absRewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_absRewrite", {"Attr"}, true);
   builtins.mulConstraint = declareBuiltin<ast::UserConstraintDecl>(
       "__builtin_mulConstraint", {"lhs", "rhs"}, true);
   builtins.divConstraint = declareBuiltin<ast::UserConstraintDecl>(
@@ -715,6 +719,8 @@ void Parser::declareBuiltins() {
       "__builtin_log2Constraint", {"Attr"}, true);
   builtins.exp2Constraint = declareBuiltin<ast::UserConstraintDecl>(
       "__builtin_exp2Constraint", {"Attr"}, true);
+  builtins.absConstraint = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_absConstraint", {"Attr"}, true);
 }
 
 FailureOr<ast::Module *> Parser::parseModule() {
@@ -2030,7 +2036,7 @@ FailureOr<ast::Expr *> Parser::parseAddSubExpr() {
 }
 
 FailureOr<ast::Expr *> Parser::parseMulDivModExpr() {
-  auto lhs = parseExp2Log2Expr();
+  auto lhs = parseExp2Log2AbsExpr();
   if (failed(lhs))
     return failure();
 
@@ -2038,7 +2044,7 @@ FailureOr<ast::Expr *> Parser::parseMulDivModExpr() {
     switch (curToken.getKind()) {
     case Token::mul: {
       consumeToken();
-      auto rhs = parseExp2Log2Expr();
+      auto rhs = parseExp2Log2AbsExpr();
       if (failed(rhs))
         return failure();
       SmallVector<ast::Expr *> args{*lhs, *rhs};
@@ -2058,7 +2064,7 @@ FailureOr<ast::Expr *> Parser::parseMulDivModExpr() {
     }
     case Token::div: {
       consumeToken();
-      auto rhs = parseExp2Log2Expr();
+      auto rhs = parseExp2Log2AbsExpr();
       if (failed(rhs))
         return failure();
       SmallVector<ast::Expr *> args{*lhs, *rhs};
@@ -2078,7 +2084,7 @@ FailureOr<ast::Expr *> Parser::parseMulDivModExpr() {
     }
     case Token::mod: {
       consumeToken();
-      auto rhs = parseExp2Log2Expr();
+      auto rhs = parseExp2Log2AbsExpr();
       if (failed(rhs))
         return failure();
       SmallVector<ast::Expr *> args{*lhs, *rhs};
@@ -2100,7 +2106,7 @@ FailureOr<ast::Expr *> Parser::parseMulDivModExpr() {
   }
 }
 
-FailureOr<ast::Expr *> Parser::parseExp2Log2Expr() {
+FailureOr<ast::Expr *> Parser::parseExp2Log2AbsExpr() {
   FailureOr<ast::Expr *> expr = nullptr;
 
   switch (curToken.getKind()) {
@@ -2142,6 +2148,26 @@ FailureOr<ast::Expr *> Parser::parseExp2Log2Expr() {
                ? createBuiltinCall(curToken.getLoc(), builtins.exp2Rewrite,
                                    {*expr})
                : createBuiltinCall(curToken.getLoc(), builtins.exp2Constraint,
+                                   {*expr});
+  }
+  case Token::abs: {
+    consumeToken();
+    consumeToken(Token::l_paren);
+    expr = parseAddSubExpr();
+    if (failed(expr))
+      return failure();
+
+    // Check if it is in rewrite section but not in the let statement
+    bool inRewriteSection = parserContext == ParserContext::Rewrite;
+    if (inRewriteSection && nativeOperatorContext != NativeOperatorContext::Let)
+      return emitError("cannot evaluate abs operator in rewrite section. "
+                       "Assign to a variable with `let`");
+
+    consumeToken(Token::r_paren);
+    return inRewriteSection
+               ? createBuiltinCall(curToken.getLoc(), builtins.absRewrite,
+                                   {*expr})
+               : createBuiltinCall(curToken.getLoc(), builtins.absConstraint,
                                    {*expr});
   }
   default:

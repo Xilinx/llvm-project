@@ -80,14 +80,18 @@ public:
     equal,
     equal_arrow,
     semicolon,
-    /// Paired punctuation.
-    mul,
-    div,
-    mod,
+
+    /// Arithmetic.
+    abs,
     add,
-    sub,
-    log2,
+    div,
     exp2,
+    log2,
+    mod,
+    mul,
+    sub,
+
+    /// Paired punctuation.
     less,
     greater,
     l_brace,
