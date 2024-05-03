@@ -81,11 +81,11 @@ public:
     equal_arrow,
     semicolon,
     /// Paired punctuation.
+    add,
+    sub,
     mul,
     div,
     mod,
-    add,
-    sub,
     log2,
     exp2,
     abs,

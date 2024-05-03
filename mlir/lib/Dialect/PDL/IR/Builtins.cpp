@@ -107,15 +107,17 @@ LogicalResult static unaryOp(PatternRewriter &rewriter, PDLResultList &results,
           return failure();
 
         results.push_back(rewriter.getIntegerAttr(
-            integerType, std::abs(operandIntAttr.getSInt())));
+            integerType, operandIntAttr.getValue().abs()));
         return success();
       }
       if (integerType.isSignless()) {
+        // Overflow should not be checked.
+        // Otherwise the purpose of signless integer is meaningless.
         results.push_back(rewriter.getIntegerAttr(
-            integerType, std::abs(operandIntAttr.getInt())));
+            integerType, operandIntAttr.getValue().abs()));
         return success();
       }
-      // If unsigned, don't do anything
+      // If unsigned, do nothing
       results.push_back(operandIntAttr);
       return success();
     } else {
@@ -163,9 +165,10 @@ LogicalResult static unaryOp(PatternRewriter &rewriter, PDLResultList &results,
           operandFloatAttr.getType(),
           (double)operandFloatAttr.getValue().getExactLog2()));
     } else if constexpr (T == UnaryOpKind::abs) {
-      results.push_back(rewriter.getFloatAttr(
-          operandFloatAttr.getType(),
-          std::abs(operandFloatAttr.getValue().convertToFloat())));
+      auto resultVal = operandFloatAttr.getValue();
+      resultVal.clearSign();
+      results.push_back(
+          rewriter.getFloatAttr(operandFloatAttr.getType(), resultVal));
     } else {
       llvm::llvm_unreachable_internal(
           "encountered an unsupported unary operator");

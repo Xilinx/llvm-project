@@ -752,6 +752,19 @@ TEST_F(BuiltinTest, abs) {
         7);
   }
 
+  // signless integer: edge case -128
+  // Overflow should not be checked
+  // otherwise the purpose of signless integer is meaningless
+  {
+    auto value = rewriter.getI8IntegerAttr(-128);
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::abs(rewriter, results, {value}).succeeded());
+    auto result = results.getResults()[0];
+    EXPECT_EQ(
+        cast<IntegerAttr>(result.cast<Attribute>()).getValue().getSExtValue(),
+        -128);
+  }
+
   // float
   {
     auto value = rewriter.getF32FloatAttr(-1.0);
