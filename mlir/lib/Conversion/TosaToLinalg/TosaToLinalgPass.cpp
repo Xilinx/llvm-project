@@ -46,31 +46,7 @@ public:
 
   void runOnOperation() override {
     TypeConverter converter;
-    converter.addConversion([&](Type type) -> std::optional<Type> {
-      if (type.isUnsignedInteger()) {
-        return IntegerType::get(&getContext(), type.getIntOrFloatBitWidth(),
-                                IntegerType::SignednessSemantics::Signless);
-      }
-      return type;
-    });
-    converter.addConversion([&](TensorType type) -> std::optional<Type> {
-      auto converted = converter.convertType(type.getElementType());
-      if (!converted)
-        return {};
-      return type.clone(converted);
-    });
-    converter.addConversion(
-        [&converter](FunctionType ty) -> std::optional<Type> {
-          SmallVector<Type> inputs;
-          if (failed(converter.convertTypes(ty.getInputs(), inputs)))
-            return std::nullopt;
-
-          SmallVector<Type> results;
-          if (failed(converter.convertTypes(ty.getResults(), results)))
-            return std::nullopt;
-
-          return FunctionType::get(ty.getContext(), inputs, results);
-        });
+    mlir::tosa::populateTosaToLinalgTypeConversion(converter);
 
     RewritePatternSet patterns(&getContext());
     ConversionTarget target(getContext());
