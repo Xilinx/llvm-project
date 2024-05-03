@@ -28,16 +28,16 @@ void registerBuiltins(PDLPatternModule &pdlPattern);
 namespace builtin {
 enum class BinaryOpKind {
   add,
-  sub,
-  mul,
   div,
   mod,
+  mul,
+  sub,
 };
 
 enum class UnaryOpKind {
-  log2,
-  exp2,
   abs,
+  exp2,
+  log2,
 };
 
 LogicalResult createDictionaryAttr(PatternRewriter &rewriter,
