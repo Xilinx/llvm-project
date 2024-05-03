@@ -794,7 +794,7 @@ public:
 
     else if (isUnsigned)
       initialAttr = rewriter.getIntegerAttr(
-          resultETy, APInt::getMinValue(resultETy.getIntOrFloatBitWidth()));
+          resultETy, APInt::getZero(resultETy.getIntOrFloatBitWidth()));
     else if (isa<IntegerType>(resultETy))
       initialAttr = rewriter.getIntegerAttr(
           resultETy,
@@ -1106,7 +1106,8 @@ public:
 } // namespace
 
 void mlir::tosa::populateTosaToLinalgNamedConversionPatterns(
-     TypeConverter &converter, RewritePatternSet *patterns, const TosaToLinalgNamedOptions &options) {
+    TypeConverter &converter, RewritePatternSet *patterns,
+    const TosaToLinalgNamedOptions &options) {
   if (options.preferConv2DKernelLayoutHWCF) {
     patterns->add<ConvConverter<tosa::Conv2DOp, linalg::Conv2DNhwcHwcfOp,
                                 linalg::Conv2DNhwcHwcfQOp>>(
@@ -1125,7 +1126,6 @@ void mlir::tosa::populateTosaToLinalgNamedConversionPatterns(
       TransposeConverter
   >(patterns->getContext());
   patterns->add<
-      // clang-format off
       MaxPool2dConverter
     >(converter, patterns->getContext());
   patterns->add<

@@ -71,7 +71,8 @@ public:
     TosaToLinalgNamedOptions options;
     options.preferConv2DKernelLayoutHWCF = preferConv2DKernelLayoutHWCF;
     options.useMatmulForSingleBatch = useMatmulForSingleBatch;
-    tosa::populateTosaToLinalgNamedConversionPatterns(converter, &patterns, options);
+    tosa::populateTosaToLinalgNamedConversionPatterns(converter, &patterns,
+                                                      options);
     if (failed(applyFullConversion(func, target, std::move(patterns))))
       signalPassFailure();
   }

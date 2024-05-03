@@ -2772,8 +2772,8 @@ void mlir::tosa::populateTosaToLinalgTypeConversion(TypeConverter &converter) {
     return type.clone(converted);
   });
   converter.addSourceMaterialization([&](OpBuilder &builder, Type resultType,
-                               ValueRange inputs,
-                               Location loc) -> std::optional<Value> {
+                                         ValueRange inputs,
+                                         Location loc) -> std::optional<Value> {
     if (inputs.size() != 1)
       return std::nullopt;
 
@@ -2781,8 +2781,8 @@ void mlir::tosa::populateTosaToLinalgTypeConversion(TypeConverter &converter) {
         .getResult(0);
   });
   converter.addTargetMaterialization([&](OpBuilder &builder, Type resultType,
-                               ValueRange inputs,
-                               Location loc) -> std::optional<Value> {
+                                         ValueRange inputs,
+                                         Location loc) -> std::optional<Value> {
     if (inputs.size() != 1)
       return std::nullopt;
 
