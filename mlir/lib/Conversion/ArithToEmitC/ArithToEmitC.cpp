@@ -367,7 +367,8 @@ public:
 template <typename CastOp>
 class FtoICastOpConversion : public OpConversionPattern<CastOp> {
 public:
-  using OpConversionPattern<CastOp>::OpConversionPattern;
+  FtoICastOpConversion(const TypeConverter &typeConverter, MLIRContext *context)
+      : OpConversionPattern<CastOp>(typeConverter, context) {}
 
   LogicalResult
   matchAndRewrite(CastOp castOp, typename CastOp::Adaptor adaptor,
@@ -382,7 +383,9 @@ public:
     if (!dstType)
       return rewriter.notifyMatchFailure(castOp, "type conversion failed");
 
-    if (!emitc::isSupportedIntegerType(dstType))
+    // Float-to-i1 casts are not supported: any value with 0 < value < 1 must be
+    // truncated to 0, whereas a boolean conversion would return true.
+    if (!emitc::isSupportedIntegerType(dstType) || dstType.isInteger(1))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
 
@@ -411,7 +414,8 @@ public:
 template <typename CastOp>
 class ItoFCastOpConversion : public OpConversionPattern<CastOp> {
 public:
-  using OpConversionPattern<CastOp>::OpConversionPattern;
+  ItoFCastOpConversion(const TypeConverter &typeConverter, MLIRContext *context)
+      : OpConversionPattern<CastOp>(typeConverter, context) {}
 
   LogicalResult
   matchAndRewrite(CastOp castOp, typename CastOp::Adaptor adaptor,
