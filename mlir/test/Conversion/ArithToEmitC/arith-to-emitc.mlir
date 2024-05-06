@@ -417,8 +417,10 @@ func.func @arith_cmpi_ult(%arg0: i32, %arg1: i32) -> i1 {
 
 func.func @trunci(%arg0: i32) -> i8 {
   // CHECK-LABEL: trunci
-  // CHECK-SAME: ([[Arg0:[^ ]*]]: i32)
-  // CHECK: emitc.cast [[Arg0]] : i32 to i8
+  // CHECK-SAME: (%[[Arg0:[^ ]*]]: i32)
+  // CHECK: %[[CastUI:.*]] = emitc.cast %[[Arg0]] : i32 to ui32
+  // CHECK: %[[Trunc:.*]] = emitc.cast %[[CastUI]] : ui32 to ui8
+  // CHECK: emitc.cast %[[Trunc]] : ui8 to i8
   %truncd = arith.trunci %arg0 : i32 to i8
 
   return %truncd : i8
