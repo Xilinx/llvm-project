@@ -299,22 +299,28 @@ public:
       return rewriter.notifyMatchFailure(op, "expected operand integer type");
     }
 
+    bool doUnsigned =
+        needsUnsigned ||
+        (isa<IntegerType>(operandType) && isa<IntegerType>(opReturnType) &&
+         operandType.getIntOrFloatBitWidth() >
+             opReturnType.getIntOrFloatBitWidth());
+
     Type castType = opReturnType;
     // For int conversions: if the op is a ui variant and the type wanted as
     // return type isn't unsigned, we need to issue an unsigned type to do
     // the conversion.
     if (isa<IntegerType>(opReturnType) &&
-        castType.isUnsignedInteger() != needsUnsigned)
+        castType.isUnsignedInteger() != doUnsigned)
       castType = rewriter.getIntegerType(opReturnType.getIntOrFloatBitWidth(),
-                                         /*isSigned=*/!needsUnsigned);
+                                         /*isSigned=*/!doUnsigned);
 
     Value actualOp = adaptor.getIn();
     // Fix the signedness of the operand if necessary
     if (isa<IntegerType>(operandType) &&
-        operandType.isUnsignedInteger() != needsUnsigned) {
+        operandType.isUnsignedInteger() != doUnsigned) {
       Type correctSignednessType =
           rewriter.getIntegerType(operandType.getIntOrFloatBitWidth(),
-                                  /*isSigned=*/!needsUnsigned);
+                                  /*isSigned=*/!doUnsigned);
       actualOp = rewriter.template create<emitc::CastOp>(
           op.getLoc(), correctSignednessType, actualOp);
     }
@@ -332,6 +338,16 @@ public:
     rewriter.replaceOp(op, result);
     return success();
   }
+};
+
+template <typename ArithOp>
+class UnsignedCastConversion : public CastConversion<ArithOp, true> {
+  using CastConversion<ArithOp, true>::CastConversion;
+};
+
+template <typename ArithOp>
+class SignedCastConversion : public CastConversion<ArithOp, false> {
+  using CastConversion<ArithOp, false>::CastConversion;
 };
 
 template <typename ArithOp, typename EmitCOp>
@@ -539,11 +555,11 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
     CmpIOpConversion,
     SelectOpConversion,
     // Truncation is guaranteed for unsigned types.
-    CastConversion<arith::TruncIOp, true>,
-    CastConversion<arith::ExtSIOp, false>,
-    CastConversion<arith::ExtUIOp, true>,
-    CastConversion<arith::IndexCastOp, false>,
-    CastConversion<arith::IndexCastUIOp, true>,
+    UnsignedCastConversion<arith::TruncIOp>,
+    SignedCastConversion<arith::ExtSIOp>,
+    UnsignedCastConversion<arith::ExtUIOp>,
+    SignedCastConversion<arith::IndexCastOp>,
+    UnsignedCastConversion<arith::IndexCastUIOp>,
     ItoFCastOpConversion<arith::SIToFPOp>,
     ItoFCastOpConversion<arith::UIToFPOp>,
     FtoICastOpConversion<arith::FPToSIOp>,
