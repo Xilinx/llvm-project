@@ -39,7 +39,7 @@ void addTosaToLinalgPasses(
     const TosaToLinalgNamedOptions &tosaToLinalgNamedOptions =
         TosaToLinalgNamedOptions(),
     // Note: Default to 'none' level unless otherwise specified.
-    tosa::TosaValidationOptions const &validationOptions = {
+    std::optional<tosa::TosaValidationOptions> validationOptions = tosa::TosaValidationOptions{
         tosa::TosaProfileEnum::Undefined, false, tosa::TosaLevelEnum::None});
 
 /// Populates TOSA to linalg pipelines
