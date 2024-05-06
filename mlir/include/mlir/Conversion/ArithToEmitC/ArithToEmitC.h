@@ -14,8 +14,7 @@ class RewritePatternSet;
 class TypeConverter;
 
 void populateArithToEmitCPatterns(TypeConverter &typeConverter,
-                                  RewritePatternSet &patterns,
-                                  bool optionFloatToIntTruncates);
+                                  RewritePatternSet &patterns);
 } // namespace mlir
 
 #endif // MLIR_CONVERSION_ARITHTOEMITC_ARITHTOEMITC_H

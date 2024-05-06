@@ -366,14 +366,9 @@ public:
 // Floating-point to integer conversions.
 template <typename CastOp>
 class FtoICastOpConversion : public OpConversionPattern<CastOp> {
-private:
-  bool floatToIntTruncates;
-
 public:
-  FtoICastOpConversion(const TypeConverter &typeConverter, MLIRContext *context,
-                       bool optionFloatToIntTruncates)
-      : OpConversionPattern<CastOp>(typeConverter, context),
-        floatToIntTruncates(optionFloatToIntTruncates) {}
+  FtoICastOpConversion(const TypeConverter &typeConverter, MLIRContext *context)
+      : OpConversionPattern<CastOp>(typeConverter, context) {}
 
   LogicalResult
   matchAndRewrite(CastOp castOp, typename CastOp::Adaptor adaptor,
@@ -384,16 +379,13 @@ public:
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast source type");
 
-    if (!floatToIntTruncates)
-      return rewriter.notifyMatchFailure(
-          castOp, "conversion currently requires EmitC casts to use truncation "
-                  "as rounding mode");
-
     Type dstType = this->getTypeConverter()->convertType(castOp.getType());
     if (!dstType)
       return rewriter.notifyMatchFailure(castOp, "type conversion failed");
 
-    if (!emitc::isSupportedIntegerType(dstType))
+    // Float-to-i1 casts are not supported: any value with 0 < value < 1 must be
+    // truncated to 0, whereas a boolean conversion would return true.
+    if (!emitc::isSupportedIntegerType(dstType) || dstType.isInteger(1))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
 
@@ -468,8 +460,7 @@ public:
 //===----------------------------------------------------------------------===//
 
 void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
-                                        RewritePatternSet &patterns,
-                                        bool optionFloatToIntTruncates) {
+                                        RewritePatternSet &patterns) {
   MLIRContext *ctx = patterns.getContext();
 
   // clang-format off
@@ -488,11 +479,9 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
     CmpIOpConversion,
     SelectOpConversion,
     ItoFCastOpConversion<arith::SIToFPOp>,
-    ItoFCastOpConversion<arith::UIToFPOp>
-  >(typeConverter, ctx)
-  .add<
+    ItoFCastOpConversion<arith::UIToFPOp>,
     FtoICastOpConversion<arith::FPToSIOp>,
     FtoICastOpConversion<arith::FPToUIOp>
-  >(typeConverter, ctx, optionFloatToIntTruncates);
+  >(typeConverter, ctx);
   // clang-format on
 }
