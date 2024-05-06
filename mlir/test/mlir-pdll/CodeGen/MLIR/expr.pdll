@@ -321,7 +321,7 @@ Pattern TestOperatorsNotInRewriteSection {
   let modConstraint : Attr = a % b;
   let log2Constraint : Attr = log2(a);
   let exp2Constraint : Attr = exp2(a);
-  let absConstraint : Attr = abs(a);
+  let absConstraint : Attr = math_abs(a);
   replace op<test.simple> with op<test.success>;
 }
 
@@ -351,7 +351,7 @@ Pattern TestOperatorsInRewriteSection {
     let modRewrite : Attr = a % b;
     let log2Rewrite : Attr = log2(a);
     let exp2Rewrite : Attr = exp2(a);
-    let absRewrite : Attr = abs(a);
+    let absRewrite : Attr = math_abs(a);
     erase root;
   };
 }
