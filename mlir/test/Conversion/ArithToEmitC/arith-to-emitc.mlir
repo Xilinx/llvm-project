@@ -440,12 +440,42 @@ func.func @index_cast(%arg0: i32) -> i32 {
 
 // -----
 
+func.func @index_castui(%arg0: i32) -> i32 {
+  // CHECK-LABEL: index_castui
+  // CHECK-SAME: (%[[Arg0:[^ ]*]]: i32)
+  // CHECK: %[[IToUI:.*]] = emitc.cast %[[Arg0]] : i32 to ui32
+  // CHECK: %[[IdxCast:.*]] = emitc.cast %[[IToUI]] : ui32 to index
+  // CHECK: %[[UIntCast:.*]] = emitc.cast %[[IdxCast]] : index to ui32
+  // CHECK: emitc.cast %[[UIntCast]] : ui32 to i32
+
+  %idx = arith.index_castui %arg0 : i32 to index
+  %int = arith.index_castui %idx : index to i32
+
+  return %int : i32
+}
+
+// -----
+
 func.func @extsi(%arg0: i32) {
   // CHECK-LABEL: extsi
   // CHECK-SAME: ([[Arg0:[^ ]*]]: i32)
   // CHECK: emitc.cast [[Arg0]] : i32 to i64
 
   %extd = arith.extsi %arg0 : i32 to i64
+
+  return
+}
+
+// -----
+
+func.func @extui(%arg0: i32) {
+  // CHECK-LABEL: extui
+  // CHECK-SAME: (%[[Arg0:[^ ]*]]: i32)
+  // CHECK: %[[Conv0:.*]] = emitc.cast %[[Arg0]] : i32 to ui32
+  // CHECK: %[[Conv1:.*]] = emitc.cast %[[Conv0]] : ui32 to ui64
+  // CHECK: emitc.cast %[[Conv1]] : ui64 to i64
+
+  %extd = arith.extui %arg0 : i32 to i64
 
   return
 }

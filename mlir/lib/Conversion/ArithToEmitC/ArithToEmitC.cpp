@@ -274,7 +274,7 @@ public:
   }
 };
 
-template <typename ArithOp>
+template <typename ArithOp, bool needsUnsigned>
 class CastConversion : public OpConversionPattern<ArithOp> {
 public:
   using OpConversionPattern<ArithOp>::OpConversionPattern;
@@ -283,13 +283,52 @@ public:
   matchAndRewrite(ArithOp op, typename ArithOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    Type type = this->getTypeConverter()->convertType(op.getType());
-    if (!isa_and_nonnull<IntegerType, IndexType>(type)) {
-      return rewriter.notifyMatchFailure(op, "expected integer type");
+    Type opReturnType = this->getTypeConverter()->convertType(op.getType());
+    if (!isa_and_nonnull<IntegerType, IndexType>(opReturnType)) {
+      return rewriter.notifyMatchFailure(op, "expected result integer type");
     }
 
-    auto result = rewriter.template create<emitc::CastOp>(op.getLoc(), type,
-                                                          adaptor.getIn());
+    if (adaptor.getOperands().size() > 1) {
+      return rewriter.notifyMatchFailure(
+          op, "CastConversion only supports unary ops");
+    }
+
+    Type operandType =
+        this->getTypeConverter()->convertType(adaptor.getIn().getType());
+    if (!isa_and_nonnull<IntegerType, IndexType>(operandType)) {
+      return rewriter.notifyMatchFailure(op, "expected operand integer type");
+    }
+
+    Type castType = opReturnType;
+    // For int conversions: if the op is a ui variant and the type wanted as
+    // return type isn't unsigned, we need to issue an unsigned type to do
+    // the conversion.
+    if (isa<IntegerType>(opReturnType) &&
+        castType.isUnsignedInteger() != needsUnsigned)
+      castType = rewriter.getIntegerType(opReturnType.getIntOrFloatBitWidth(),
+                                         /*isSigned=*/!needsUnsigned);
+
+    Value actualOp = adaptor.getIn();
+    // Fix the signedness of the operand if necessary
+    if (isa<IntegerType>(operandType) &&
+        operandType.isUnsignedInteger() != needsUnsigned) {
+      Type correctSignednessType =
+          rewriter.getIntegerType(operandType.getIntOrFloatBitWidth(),
+                                  /*isSigned=*/!needsUnsigned);
+      actualOp = rewriter.template create<emitc::CastOp>(
+          op.getLoc(), correctSignednessType, actualOp);
+    }
+
+    auto result = rewriter.template create<emitc::CastOp>(op.getLoc(), castType,
+                                                          actualOp);
+
+    // Fix the signedness of what this operation returns (for integers,
+    // the arith ops want signless results)
+    if (castType != opReturnType) {
+      result = rewriter.template create<emitc::CastOp>(op.getLoc(),
+                                                       opReturnType, result);
+    }
+
     rewriter.replaceOp(op, result);
     return success();
   }
@@ -499,9 +538,11 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
     CmpFOpConversion,
     CmpIOpConversion,
     SelectOpConversion,
-    CastConversion<arith::TruncIOp>,
-    CastConversion<arith::ExtSIOp>,
-    CastConversion<arith::IndexCastOp>,
+    CastConversion<arith::TruncIOp, false>,
+    CastConversion<arith::ExtSIOp, false>,
+    CastConversion<arith::ExtUIOp, true>,
+    CastConversion<arith::IndexCastOp, false>,
+    CastConversion<arith::IndexCastUIOp, true>,
     ItoFCastOpConversion<arith::SIToFPOp>,
     ItoFCastOpConversion<arith::UIToFPOp>,
     FtoICastOpConversion<arith::FPToSIOp>,
