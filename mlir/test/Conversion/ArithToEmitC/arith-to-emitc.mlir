@@ -415,14 +415,37 @@ func.func @arith_cmpi_ult(%arg0: i32, %arg1: i32) -> i1 {
 
 // -----
 
-func.func @casts(%arg0: i32) {
-  // CHECK-LABEL: casts
+func.func @trunci(%arg0: i32) -> i8 {
+  // CHECK-LABEL: trunci
   // CHECK-SAME: ([[Arg0:[^ ]*]]: i32)
   // CHECK: emitc.cast [[Arg0]] : i32 to i8
-  arith.trunci %arg0 : i32 to i8
+  %truncd = arith.trunci %arg0 : i32 to i8
+
+  return %truncd : i8
+}
+
+// -----
+
+func.func @index_cast(%arg0: i32) -> i32 {
+  // CHECK-LABEL: index_cast
+  // CHECK-SAME: ([[Arg0:[^ ]*]]: i32)
+  // CHECK: %[[ICast:.*]] = emitc.cast [[Arg0]] : i32 to index
+  // CHECK: emitc.cast %[[ICast]] : index to i32
 
   %idx = arith.index_cast %arg0 : i32 to index
-  arith.index_cast %idx : index to i32
+  %int = arith.index_cast %idx : index to i32
+
+  return %int : i32
+}
+
+// -----
+
+func.func @extsi(%arg0: i32) {
+  // CHECK-LABEL: extsi
+  // CHECK-SAME: ([[Arg0:[^ ]*]]: i32)
+  // CHECK: emitc.cast [[Arg0]] : i32 to i64
+
+  %extd = arith.extsi %arg0 : i32 to i64
 
   return
 }
