@@ -244,6 +244,7 @@ public:
     }
     llvm_unreachable("unknown cmpi predicate kind");
   }
+
   LogicalResult
   matchAndRewrite(arith::CmpIOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
