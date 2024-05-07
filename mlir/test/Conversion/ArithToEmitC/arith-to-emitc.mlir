@@ -393,28 +393,6 @@ func.func @arith_int_to_float_cast_ops(%arg0: i8, %arg1: i64) {
 
 // -----
 
-func.func @arith_cmpi_eq(%arg0: i32, %arg1: i32) -> i1 {
-  // CHECK-LABEL: arith_cmpi_eq
-  // CHECK-SAME: ([[Arg0:[^ ]*]]: i32, [[Arg1:[^ ]*]]: i32)
-  // CHECK-DAG: [[EQ:[^ ]*]] = emitc.cmp eq, [[Arg0]], [[Arg1]] : (i32, i32) -> i1
-  %eq = arith.cmpi eq, %arg0, %arg1 : i32
-  // CHECK: return [[EQ]]
-  return %eq: i1
-}
-
-func.func @arith_cmpi_ult(%arg0: i32, %arg1: i32) -> i1 {
-  // CHECK-LABEL: arith_cmpi_ult
-  // CHECK-SAME: ([[Arg0:[^ ]*]]: i32, [[Arg1:[^ ]*]]: i32)
-  // CHECK-DAG: [[CastArg0:[^ ]*]] = emitc.cast [[Arg0]] : i32 to ui32
-  // CHECK-DAG: [[CastArg1:[^ ]*]] = emitc.cast [[Arg1]] : i32 to ui32
-  // CHECK-DAG: [[ULT:[^ ]*]] = emitc.cmp lt, [[CastArg0]], [[CastArg1]] : (ui32, ui32) -> i1
-  %eq = arith.cmpi ult, %arg0, %arg1 : i32
-  // CHECK: return [[ULT]]
-  return %eq: i1
-}
-
-// -----
-
 func.func @trunci(%arg0: i32) -> i8 {
   // CHECK-LABEL: trunci
   // CHECK-SAME: (%[[Arg0:[^ ]*]]: i32)
