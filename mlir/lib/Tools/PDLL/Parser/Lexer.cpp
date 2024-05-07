@@ -377,7 +377,7 @@ Token Lexer::lexIdentifier(const char *tokStart) {
                          .Case("_", Token::underscore)
                          .Case("log2", Token::log2)
                          .Case("exp2", Token::exp2)
-                         .Case("abs", Token::abs)
+                         .Case("math_abs", Token::abs)
                          .Default(Token::identifier);
   return Token(kind, str);
 }

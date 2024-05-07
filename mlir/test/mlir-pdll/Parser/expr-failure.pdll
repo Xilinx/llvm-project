@@ -585,7 +585,7 @@ Pattern {
   // CHECK: cannot evaluate abs operator in rewrite section. Assign to a variable with `let`
   let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
   rewrite root with {
-    abs(attr<"-4 : si32">);
+    math_abs(attr<"-4 : si32">);
     erase root;
   };
 }
@@ -624,7 +624,7 @@ Pattern {
   let root = op<>(operand: Value, operands: ValueRange) -> (type: Type, types: TypeRange);
   rewrite root with {
     let a : Attr = attr<"4 : i32"> + attr<"5 : i32">;
-    abs(attr<"4 : i32">);
+    math_abs(attr<"4 : i32">);
     erase root;
   };
 }
