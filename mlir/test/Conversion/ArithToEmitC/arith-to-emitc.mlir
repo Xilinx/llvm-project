@@ -406,36 +406,6 @@ func.func @trunci(%arg0: i32) -> i8 {
 
 // -----
 
-func.func @index_cast(%arg0: i32) -> i32 {
-  // CHECK-LABEL: index_cast
-  // CHECK-SAME: ([[Arg0:[^ ]*]]: i32)
-  // CHECK: %[[ICast:.*]] = emitc.cast [[Arg0]] : i32 to index
-  // CHECK: emitc.cast %[[ICast]] : index to i32
-
-  %idx = arith.index_cast %arg0 : i32 to index
-  %int = arith.index_cast %idx : index to i32
-
-  return %int : i32
-}
-
-// -----
-
-func.func @index_castui(%arg0: i32) -> i32 {
-  // CHECK-LABEL: index_castui
-  // CHECK-SAME: (%[[Arg0:[^ ]*]]: i32)
-  // CHECK: %[[IToUI:.*]] = emitc.cast %[[Arg0]] : i32 to ui32
-  // CHECK: %[[IdxCast:.*]] = emitc.cast %[[IToUI]] : ui32 to index
-  // CHECK: %[[UIntCast:.*]] = emitc.cast %[[IdxCast]] : index to ui32
-  // CHECK: emitc.cast %[[UIntCast]] : ui32 to i32
-
-  %idx = arith.index_castui %arg0 : i32 to index
-  %int = arith.index_castui %idx : index to i32
-
-  return %int : i32
-}
-
-// -----
-
 func.func @extsi(%arg0: i32) {
   // CHECK-LABEL: extsi
   // CHECK-SAME: ([[Arg0:[^ ]*]]: i32)

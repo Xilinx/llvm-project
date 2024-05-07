@@ -284,7 +284,7 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type opReturnType = this->getTypeConverter()->convertType(op.getType());
-    if (!isa_and_nonnull<IntegerType, IndexType>(opReturnType)) {
+    if (!isa_and_nonnull<IntegerType>(opReturnType)) {
       return rewriter.notifyMatchFailure(op, "expected result integer type");
     }
 
@@ -293,31 +293,26 @@ public:
           op, "CastConversion only supports unary ops");
     }
 
-    Type operandType =
-        this->getTypeConverter()->convertType(adaptor.getIn().getType());
-    if (!isa_and_nonnull<IntegerType, IndexType>(operandType)) {
+    Type operandType = adaptor.getIn().getType();
+    if (!isa_and_nonnull<IntegerType>(operandType)) {
       return rewriter.notifyMatchFailure(op, "expected operand integer type");
     }
 
-    bool doUnsigned =
-        needsUnsigned ||
-        (isa<IntegerType>(operandType) && isa<IntegerType>(opReturnType) &&
-         operandType.getIntOrFloatBitWidth() >
-             opReturnType.getIntOrFloatBitWidth());
+    bool isTruncation = operandType.getIntOrFloatBitWidth() >
+                        opReturnType.getIntOrFloatBitWidth();
+    bool doUnsigned = needsUnsigned || isTruncation;
 
     Type castType = opReturnType;
     // For int conversions: if the op is a ui variant and the type wanted as
     // return type isn't unsigned, we need to issue an unsigned type to do
     // the conversion.
-    if (isa<IntegerType>(opReturnType) &&
-        castType.isUnsignedInteger() != doUnsigned)
+    if (castType.isUnsignedInteger() != doUnsigned)
       castType = rewriter.getIntegerType(opReturnType.getIntOrFloatBitWidth(),
                                          /*isSigned=*/!doUnsigned);
 
     Value actualOp = adaptor.getIn();
     // Fix the signedness of the operand if necessary
-    if (isa<IntegerType>(operandType) &&
-        operandType.isUnsignedInteger() != doUnsigned) {
+    if (operandType.isUnsignedInteger() != doUnsigned) {
       Type correctSignednessType =
           rewriter.getIntegerType(operandType.getIntOrFloatBitWidth(),
                                   /*isSigned=*/!doUnsigned);
@@ -558,8 +553,6 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
     UnsignedCastConversion<arith::TruncIOp>,
     SignedCastConversion<arith::ExtSIOp>,
     UnsignedCastConversion<arith::ExtUIOp>,
-    SignedCastConversion<arith::IndexCastOp>,
-    UnsignedCastConversion<arith::IndexCastUIOp>,
     ItoFCastOpConversion<arith::SIToFPOp>,
     ItoFCastOpConversion<arith::UIToFPOp>,
     FtoICastOpConversion<arith::FPToSIOp>,
