@@ -51,7 +51,8 @@ class EmitC_BinaryOp<string mnemonic, list<Trait> traits = []> :
 def CExpression : NativeOpTrait<"emitc::CExpression">;
 
 // Types only used in binary arithmetic operations.
-def IntegerIndexOrOpaqueType : AnyTypeOf<[EmitCIntegerType, Index, EmitC_OpaqueType]>;
+def IntegerIndexOrOpaqueType : AnyTypeOf<[EmitCIntegerType, Index,
+  EmitC_SignedSizeType, EmitC_UnsignedSizeType, EmitC_OpaqueType]>;
 def FloatIntegerIndexOrOpaqueType : AnyTypeOf<[EmitCFloatType, IntegerIndexOrOpaqueType]>;
 
 def EmitC_AddOp : EmitC_BinaryOp<"add", [CExpression]> {
@@ -470,7 +471,7 @@ def EmitC_ForOp : EmitC_Op<"for",
     upper bound and step respectively, and defines an SSA value for its
     induction variable. It has one region capturing the loop body. The induction
     variable is represented as an argument of this region. This SSA value is a
-    signless integer or index. The step is a value of same type.
+    signless integer, or an index. The step is a value of same type.
 
     This operation has no result. The body region must contain exactly one block
     that terminates with `emitc.yield`. Calling ForOp::build will create such a
@@ -1242,7 +1243,7 @@ def EmitC_SubscriptOp : EmitC_Op<"subscript", []> {
       EmitC_OpaqueType,
       EmitC_PointerType]>,
     "the value to subscript">:$value,
-    Variadic<EmitCType>:$indices);
+    Variadic<AnyTypeOf<[EmitCType, EmitC_SignedSizeType, EmitC_UnsignedSizeType]>>:$indices);
   let results = (outs EmitCType:$result);
 
   let builders = [

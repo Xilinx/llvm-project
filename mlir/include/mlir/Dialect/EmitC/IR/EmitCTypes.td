@@ -130,4 +130,16 @@ def EmitC_PointerType : EmitC_Type<"Pointer", "ptr"> {
   let assemblyFormat = "`<` qualified($pointee) `>`";
 }
 
+class EmitC_SizeType<string name, string typeMnemonic, list<Trait> traits = []> 
+  : EmitC_Type<name, typeMnemonic, traits> {
+}
+
+def EmitC_SignedSizeType : EmitC_SizeType<"SignedSize", "ssize_t"> {
+  let summary = "EmitC signed size type";
+}
+
+def EmitC_UnsignedSizeType : EmitC_SizeType<"UnsignedSize", "usize_t"> {
+  let summary = "EmitC unsigned size type";
+}
+
 #endif // MLIR_DIALECT_EMITC_IR_EMITCTYPES
