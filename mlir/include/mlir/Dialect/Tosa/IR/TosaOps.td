@@ -1420,6 +1420,10 @@ def Tosa_ReduceMaxOp : Tosa_InferTensorTypeOp<"reduce_max"> {
    /// Return the max of the two operands
     template<typename T>
     static std::optional<T> calcOneElement(T leftOperand, T rightOperand) {
+      if constexpr (std::is_same_v<T, APFloat>) {
+        if (leftOperand.isNaN() || rightOperand.isNaN())
+          return APFloat::getNaN(leftOperand.getSemantics());
+      }
       const T subtractRes = leftOperand - rightOperand;
       return (!subtractRes.isNegative()) ? leftOperand : rightOperand;
     }
@@ -1456,6 +1460,10 @@ def Tosa_ReduceMinOp : Tosa_InferTensorTypeOp<"reduce_min"> {
     /// Return the min of the two operands
     template<typename T>
     static std::optional<T> calcOneElement(T leftOperand, T rightOperand) {
+      if constexpr (std::is_same_v<T, APFloat>) {
+        if (leftOperand.isNaN() || rightOperand.isNaN())
+          return APFloat::getNaN(leftOperand.getSemantics());
+      }
       const T subtractRes = leftOperand - rightOperand;
       return (!subtractRes.isNegative()) ? rightOperand : leftOperand;
     }
