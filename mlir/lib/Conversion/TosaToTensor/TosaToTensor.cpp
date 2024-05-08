@@ -207,7 +207,11 @@ public:
   matchAndRewrite(tosa::ReshapeOp reshape, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const final {
     ShapedType operandTy = cast<ShapedType>(adaptor.getInput1().getType());
-    ShapedType resultTy = cast<ShapedType>(reshape.getType());
+    ShapedType resultTy = cast_if_present<ShapedType>(getTypeConverter()->convertType(reshape.getType()));
+    if (!resultTy) {
+      return rewriter.notifyMatchFailure(
+        reshape.getLoc(), "could not convert result type");
+    }
     bool isDynamic = !operandTy.hasStaticShape();
 
     SmallVector<int64_t> intermediateShape;
@@ -218,7 +222,7 @@ public:
                    "the given two shapes");
     }
     auto intermediateTy = RankedTensorType::get(
-        intermediateShape, reshape.getType().getElementType());
+        intermediateShape, resultTy.getElementType());
 
     Value collapse = createCollapse(rewriter, reshape.getLoc(), intermediateTy,
                                     adaptor.getInput1());
@@ -415,9 +419,9 @@ struct ConcatConverter : public OpConversionPattern<tosa::ConcatOp> {
 } // namespace
 
 void mlir::tosa::populateTosaToTensorConversionPatterns(
-    RewritePatternSet *patterns) {
+    TypeConverter &converter, RewritePatternSet *patterns) {
   patterns->add<SliceConverter, PadConverter, ConcatConverter>(
       patterns->getContext());
 
-  patterns->add<ReshapeConverterCollapseExpand>(patterns->getContext());
+  patterns->add<ReshapeConverterCollapseExpand>(converter, patterns->getContext());
 }
