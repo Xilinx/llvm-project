@@ -1247,6 +1247,46 @@ struct TosaFoldConstantLog
   }
 };
 
+struct TosaFoldConstantSin
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantSin, SinOp> {
+  using TosaFoldConstantUnaryElementwise<
+      TosaFoldConstantSin, SinOp>::TosaFoldConstantUnaryElementwise;
+
+  DenseElementsAttr computeFloat(DenseElementsAttr values,
+                                 PatternRewriter &rewriter, TosaOp op) const {
+    return applyElementWise<APFloat, APFloat, FloatType>(
+        values,
+        [](const APFloat &val, FloatType) {
+          auto res = APFloat(std::sin(val.convertToFloat()));
+          bool lostPrecision;
+          res.convert(val.getSemantics(), APFloat::rmNearestTiesToEven,
+                      &lostPrecision);
+          return res;
+        },
+        cast<FloatType>(values.getElementType()));
+  }
+};
+
+struct TosaFoldConstantCos
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantCos, CosOp> {
+  using TosaFoldConstantUnaryElementwise<
+      TosaFoldConstantCos, CosOp>::TosaFoldConstantUnaryElementwise;
+
+  DenseElementsAttr computeFloat(DenseElementsAttr values,
+                                 PatternRewriter &rewriter, TosaOp op) const {
+    return applyElementWise<APFloat, APFloat, FloatType>(
+        values,
+        [](const APFloat &val, FloatType) {
+          auto res = APFloat(std::cos(val.convertToFloat()));
+          bool lostPrecision;
+          res.convert(val.getSemantics(), APFloat::rmNearestTiesToEven,
+                      &lostPrecision);
+          return res;
+        },
+        cast<FloatType>(values.getElementType()));
+  }
+};
+
 struct TosaFoldConstantBitwiseAnd
     : public TosaFoldConstantBinary<TosaFoldConstantBitwiseAnd, BitwiseAndOp> {
   using TosaFoldConstantBinary<TosaFoldConstantBitwiseAnd,
@@ -1772,6 +1812,8 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
   patterns.add<TosaFoldConstantErf>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantExp>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantLog>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantCos>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantSin>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantBitwiseAnd>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantBitwiseOr>(ctx, foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantGreaterEqual>(ctx, foldSplatOrSingleUseOnly);
