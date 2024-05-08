@@ -285,17 +285,17 @@ public:
 
     Type opReturnType = this->getTypeConverter()->convertType(op.getType());
     if (!isa_and_nonnull<IntegerType>(opReturnType)) {
-      return rewriter.notifyMatchFailure(op, "expected result integer type");
+      return rewriter.notifyMatchFailure(op, "expected integer result type");
     }
 
-    if (adaptor.getOperands().size() > 1) {
+    if (adaptor.getOperands().size() != 1) {
       return rewriter.notifyMatchFailure(
           op, "CastConversion only supports unary ops");
     }
 
     Type operandType = adaptor.getIn().getType();
     if (!isa_and_nonnull<IntegerType>(operandType)) {
-      return rewriter.notifyMatchFailure(op, "expected operand integer type");
+      return rewriter.notifyMatchFailure(op, "expected integer operand type");
     }
 
     bool isTruncation = operandType.getIntOrFloatBitWidth() >
@@ -306,9 +306,10 @@ public:
     // For int conversions: if the op is a ui variant and the type wanted as
     // return type isn't unsigned, we need to issue an unsigned type to do
     // the conversion.
-    if (castType.isUnsignedInteger() != doUnsigned)
+    if (castType.isUnsignedInteger() != doUnsigned) {
       castType = rewriter.getIntegerType(opReturnType.getIntOrFloatBitWidth(),
                                          /*isSigned=*/!doUnsigned);
+    }
 
     Value actualOp = adaptor.getIn();
     // Fix the signedness of the operand if necessary
