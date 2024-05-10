@@ -15,6 +15,7 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
+#include "mlir/Dialect/EmitC/Transforms/TypeConversions.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/LogicalResult.h"
@@ -284,7 +285,8 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type opReturnType = this->getTypeConverter()->convertType(op.getType());
-    if (!isa_and_nonnull<IntegerType>(opReturnType)) {
+    if (!isa_and_nonnull<IntegerType, emitc::SignedSizeType,
+                         emitc::UnsignedSizeType>(opReturnType)) {
       return rewriter.notifyMatchFailure(op, "expected integer result type");
     }
 
@@ -294,7 +296,8 @@ public:
     }
 
     Type operandType = adaptor.getIn().getType();
-    if (!isa_and_nonnull<IntegerType>(operandType)) {
+    if (!isa_and_nonnull<IntegerType, emitc::SignedSizeType,
+                         emitc::UnsignedSizeType>(operandType)) {
       return rewriter.notifyMatchFailure(op, "expected integer operand type");
     }
 
@@ -306,7 +309,8 @@ public:
     // For int conversions: if the op is a ui variant and the type wanted as
     // return type isn't unsigned, we need to issue an unsigned type to do
     // the conversion.
-    if (castType.isUnsignedInteger() != doUnsigned) {
+    if ((isa<emitc::UnsignedSizeType>(castType) ||
+         castType.isUnsignedInteger()) != doUnsigned) {
       castType = rewriter.getIntegerType(opReturnType.getIntOrFloatBitWidth(),
                                          /*isSigned=*/!doUnsigned);
     }
@@ -534,6 +538,8 @@ public:
 void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
                                         RewritePatternSet &patterns) {
   MLIRContext *ctx = patterns.getContext();
+
+  // populateEmitCSizeTypeConversionPatterns(typeConverter);
 
   // clang-format off
   patterns.add<

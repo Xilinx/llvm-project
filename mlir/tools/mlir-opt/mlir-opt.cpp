@@ -88,6 +88,7 @@ void registerTestDecomposeCallGraphTypes();
 void registerTestDiagnosticsPass();
 void registerTestDominancePass();
 void registerTestDynamicPipelinePass();
+void registerTestEmitCTypeConversions();
 void registerTestEmulateNarrowTypePass();
 void registerTestExpandMathPass();
 void registerTestFooAnalysisPass();
@@ -213,6 +214,7 @@ void registerTestPasses() {
   mlir::test::registerTestDeadCodeAnalysisPass();
   mlir::test::registerTestDominancePass();
   mlir::test::registerTestDynamicPipelinePass();
+  mlir::test::registerTestEmitCTypeConversions();
   mlir::test::registerTestEmulateNarrowTypePass();
   mlir::test::registerTestExpandMathPass();
   mlir::test::registerTestFooAnalysisPass();

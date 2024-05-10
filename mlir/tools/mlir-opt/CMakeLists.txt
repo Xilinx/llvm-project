@@ -46,6 +46,7 @@ if(MLIR_INCLUDE_TESTS)
     MLIRVectorTestPasses
     MLIRTestVectorToSPIRV
     MLIRLLVMTestPasses
+    MLIREmitCTransformsTest
     )
   set(test_libs ${test_libs}
     MLIRTestPDLL
