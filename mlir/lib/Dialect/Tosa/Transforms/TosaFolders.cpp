@@ -1677,14 +1677,13 @@ ElementType calculateReducedValue(const mlir::ElementsAttr &oldTensorAttr,
     int64_t stride = std::accumulate(oldShape.begin() + reductionAxis + 1,
                                      oldShape.end(), 1, std::multiplies<int>());
     int64_t index = indexAtOldTensor + stride * reductionAxisVal;
-    if (auto result = OperationType::template calcOneElement<ElementType>(
-            reducedValue, oldTensor[index]))
-      reducedValue = *result;
+    reducedValue = OperationType::template calcOneElement<ElementType>(
+            reducedValue, oldTensor[index]);
   }
   return reducedValue;
 }
 
-template <typename OperationType>
+template <typename OperationType, bool FPSupport = true>
 struct ReduceConstantOptimization : public OpRewritePattern<OperationType> {
 
   ReduceConstantOptimization(MLIRContext *context,
@@ -1756,11 +1755,18 @@ struct ReduceConstantOptimization : public OpRewritePattern<OperationType> {
           this->compute<APInt>(newReducedTensor, denseElementsAttr, oldShape,
                                reductionAxis, rankedTensorType);
     } else if (llvm::isa<FloatType>(shapedOldElementsValues.getElementType())) {
-      llvm::SmallVector<APFloat> newReducedTensor(newNumOfElements,
-                                                  APFloat(0.0));
-      resultDenseAttr =
-          this->compute<APFloat>(newReducedTensor, denseElementsAttr, oldShape,
-                                 reductionAxis, rankedTensorType);
+      if constexpr(FPSupport == true) {
+        llvm::SmallVector<APFloat> newReducedTensor(newNumOfElements,
+                                                    APFloat(0.0));
+        resultDenseAttr =
+            this->compute<APFloat>(newReducedTensor, denseElementsAttr, oldShape,
+                                  reductionAxis, rankedTensorType);  
+      } else if constexpr (FPSupport == false) {
+        return rewriter.notifyMatchFailure(
+            op, "FPSupport is false but element type is floating point");
+      }
+    } else {
+      return rewriter.notifyMatchFailure(op, "unsupported element type");
     }
     rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, rankedTensorType,
                                                resultDenseAttr);
@@ -1810,9 +1816,9 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
 void mlir::tosa::populateTosaConstantReduction(MLIRContext *ctx,
                                                RewritePatternSet &patterns,
                                                bool aggressiveReduceConstant) {
-  patterns.add<ReduceConstantOptimization<ReduceAllOp>>(
+  patterns.add<ReduceConstantOptimization<ReduceAllOp, /*FPSupport*/ false>>(
       ctx, aggressiveReduceConstant);
-  patterns.add<ReduceConstantOptimization<ReduceAnyOp>>(
+  patterns.add<ReduceConstantOptimization<ReduceAnyOp, /*FPSupport*/ false>>(
       ctx, aggressiveReduceConstant);
   patterns.add<ReduceConstantOptimization<ReduceMaxOp>>(
       ctx, aggressiveReduceConstant);

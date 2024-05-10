@@ -1343,11 +1343,8 @@ def Tosa_ReduceAllOp : Tosa_InferTensorTypeOp<"reduce_all"> {
 
     /// Return the AND result between two operands
     template<typename T>
-    static std::optional<T> calcOneElement(T leftOperand, T rightOperand) {
-      if constexpr (std::is_same_v<T, APInt>) {
-        return leftOperand & rightOperand;
-      }
-      return std::nullopt;
+    static T calcOneElement(T leftOperand, T rightOperand) {
+      return leftOperand & rightOperand;
     }
   }];
 }
@@ -1381,11 +1378,8 @@ def Tosa_ReduceAnyOp : Tosa_InferTensorTypeOp<"reduce_any"> {
 
     /// Return the OR result between two operands
     template<typename T>
-    static std::optional<T> calcOneElement(T leftOperand, T rightOperand) {
-      if constexpr (std::is_same_v<T, APInt>) {
-        return leftOperand | rightOperand;
-      }
-      return std::nullopt;
+    static T calcOneElement(T leftOperand, T rightOperand) {
+      return leftOperand | rightOperand;
     }
   }];
 }
@@ -1419,7 +1413,7 @@ def Tosa_ReduceMaxOp : Tosa_InferTensorTypeOp<"reduce_max"> {
 
    /// Return the max of the two operands
     template<typename T>
-    static std::optional<T> calcOneElement(T leftOperand, T rightOperand) {
+    static T calcOneElement(T leftOperand, T rightOperand) {
       if constexpr (std::is_same_v<T, APFloat>) {
         if (leftOperand.isNaN() || rightOperand.isNaN())
           return APFloat::getNaN(leftOperand.getSemantics());
@@ -1459,7 +1453,7 @@ def Tosa_ReduceMinOp : Tosa_InferTensorTypeOp<"reduce_min"> {
 
     /// Return the min of the two operands
     template<typename T>
-    static std::optional<T> calcOneElement(T leftOperand, T rightOperand) {
+    static T calcOneElement(T leftOperand, T rightOperand) {
       if constexpr (std::is_same_v<T, APFloat>) {
         if (leftOperand.isNaN() || rightOperand.isNaN())
           return APFloat::getNaN(leftOperand.getSemantics());
@@ -1499,7 +1493,7 @@ def Tosa_ReduceProdOp : Tosa_InferTensorTypeOp<"reduce_prod"> {
 
     /// Return the prod of the two operands
     template<typename T>
-    static std::optional<T> calcOneElement(T leftOperand, T rightOperand) {
+    static T calcOneElement(T leftOperand, T rightOperand) {
       return leftOperand * rightOperand;
     }
   }];
@@ -1534,7 +1528,7 @@ def Tosa_ReduceSumOp : Tosa_InferTensorTypeOp<"reduce_sum"> {
 
     /// Return the sum of the two operands
     template<typename T>
-    static std::optional<T> calcOneElement(T leftOperand, T rightOperand) {
+    static T calcOneElement(T leftOperand, T rightOperand) {
       return leftOperand + rightOperand;
     }
   }];
