@@ -1737,8 +1737,9 @@ struct ReduceConstantOptimization : public OpRewritePattern<OperationType> {
     if constexpr (FPSupport == false &&
                   (std::is_same_v<OperationType, ReduceAllOp> ||
                    std::is_same_v<OperationType, ReduceAnyOp>)) {
-      return rewriter.notifyMatchFailure(
-          op, "reduce input currently supported with integer type");
+      if (!llvm::isa<IntegerType>(shapedOldElementsValues.getElementType()))
+        return rewriter.notifyMatchFailure(
+            op, "reduce input currently supported with integer type");
     }
 
     auto oldShape = shapedOldElementsValues.getShape();
