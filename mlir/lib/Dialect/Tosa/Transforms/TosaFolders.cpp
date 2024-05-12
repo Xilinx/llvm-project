@@ -1683,7 +1683,7 @@ ElementType calculateReducedValue(const mlir::ElementsAttr &oldTensorAttr,
   return reducedValue;
 }
 
-template <typename OperationType, bool FPSupport = true>
+template <typename OperationType, bool hasFPSupport = true>
 struct ReduceConstantOptimization : public OpRewritePattern<OperationType> {
 
   ReduceConstantOptimization(MLIRContext *context,
@@ -1734,9 +1734,7 @@ struct ReduceConstantOptimization : public OpRewritePattern<OperationType> {
     const auto shapedOldElementsValues =
         denseElementsAttr.getType().cast<ShapedType>();
 
-    if constexpr (FPSupport == false &&
-                  (std::is_same_v<OperationType, ReduceAllOp> ||
-                   std::is_same_v<OperationType, ReduceAnyOp>)) {
+    if constexpr (hasFPSupport == false) {
       if (!llvm::isa<IntegerType>(shapedOldElementsValues.getElementType()))
         return rewriter.notifyMatchFailure(
             op, "reduce input currently supported with integer type");
@@ -1756,15 +1754,15 @@ struct ReduceConstantOptimization : public OpRewritePattern<OperationType> {
           this->compute<APInt>(newReducedTensor, denseElementsAttr, oldShape,
                                reductionAxis, rankedTensorType);
     } else if (llvm::isa<FloatType>(shapedOldElementsValues.getElementType())) {
-      if constexpr(FPSupport == true) {
+      if constexpr(hasFPSupport) {
         llvm::SmallVector<APFloat> newReducedTensor(newNumOfElements,
                                                     APFloat(0.0));
         resultDenseAttr =
             this->compute<APFloat>(newReducedTensor, denseElementsAttr, oldShape,
                                   reductionAxis, rankedTensorType);  
-      } else if constexpr (FPSupport == false) {
+      } else {
         return rewriter.notifyMatchFailure(
-            op, "FPSupport is false but element type is floating point");
+            op, "no support for floating point type");
       }
     } else {
       return rewriter.notifyMatchFailure(op, "unsupported element type");
@@ -1817,9 +1815,9 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
 void mlir::tosa::populateTosaConstantReduction(MLIRContext *ctx,
                                                RewritePatternSet &patterns,
                                                bool aggressiveReduceConstant) {
-  patterns.add<ReduceConstantOptimization<ReduceAllOp, /*FPSupport*/ false>>(
+  patterns.add<ReduceConstantOptimization<ReduceAllOp, /*hasFPSupport=*/ false>>(
       ctx, aggressiveReduceConstant);
-  patterns.add<ReduceConstantOptimization<ReduceAnyOp, /*FPSupport*/ false>>(
+  patterns.add<ReduceConstantOptimization<ReduceAnyOp, /*hasFPSupport*/ false>>(
       ctx, aggressiveReduceConstant);
   patterns.add<ReduceConstantOptimization<ReduceMaxOp>>(
       ctx, aggressiveReduceConstant);
