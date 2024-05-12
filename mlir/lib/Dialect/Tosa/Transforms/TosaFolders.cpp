@@ -1817,7 +1817,7 @@ void mlir::tosa::populateTosaConstantReduction(MLIRContext *ctx,
                                                bool aggressiveReduceConstant) {
   patterns.add<ReduceConstantOptimization<ReduceAllOp, /*hasFPSupport=*/ false>>(
       ctx, aggressiveReduceConstant);
-  patterns.add<ReduceConstantOptimization<ReduceAnyOp, /*hasFPSupport*/ false>>(
+  patterns.add<ReduceConstantOptimization<ReduceAnyOp, /*hasFPSupport=*/ false>>(
       ctx, aggressiveReduceConstant);
   patterns.add<ReduceConstantOptimization<ReduceMaxOp>>(
       ctx, aggressiveReduceConstant);
