@@ -13,6 +13,8 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/EmitC/Transforms/TypeConversions.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
@@ -43,19 +45,28 @@ public:
   LogicalResult
   matchAndRewrite(emitc::ConstantOp constantOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-
     // Get value attribute
-    auto valueAttr = ::cast<TypedAttr>(constantOp.getValue());
-    valueAttr.dump();
+    auto valueAttr = adaptor.getValueAttr();
+    auto typedValueAttr = ::cast<TypedAttr>(valueAttr);
 
-    Type dstType = getTypeConverter()->convertType(valueAttr.getType());
+    Type dstType = getTypeConverter()->convertType(typedValueAttr.getType());
 
     if (!dstType)
       return rewriter.notifyMatchFailure(constantOp, "type conversion failed");
 
-    // Invalid op since value should be an attribute but we'll get here at least
-    rewriter.replaceOpWithNewOp<emitc::ConstantOp>(constantOp, dstType,
-                                                   adaptor.getOperands());
+    Attribute convertedAttr = valueAttr;
+
+    if (auto iType = dyn_cast<IndexType>(typedValueAttr.getType())) {
+      auto intValAttr = dyn_cast<IntegerAttr>(valueAttr);
+      auto val = intValAttr.getValue();
+      convertedAttr = IntegerAttr::get(dstType, val);
+    }
+
+    auto newConst = rewriter.create<emitc::ConstantOp>(
+        constantOp->getLoc(), dstType, adaptor.getOperands());
+
+    newConst->setAttr("value", convertedAttr);
+    rewriter.replaceOp(constantOp, newConst);
 
     return success();
   }
@@ -67,9 +78,12 @@ void TestEmitCTypeConversions::runOnOperation() {
   MLIRContext *context = &getContext();
   RewritePatternSet patterns(context);
   TypeConverter typeConverter;
-  populateEmitCSizeTypeConversionPatterns(typeConverter);
   // Add a default converter
-  // typeConverter.addConversion([](Type t) { t.dump(); return t; });
+  typeConverter.addConversion([](Type t) {
+    t.dump();
+    return t;
+  });
+  populateEmitCSizeTypeConversionPatterns(typeConverter);
   ConversionTarget target(getContext());
   target.addLegalDialect<emitc::EmitCDialect>();
   target.addDynamicallyLegalOp<emitc::ConstantOp>([](emitc::ConstantOp op) {
