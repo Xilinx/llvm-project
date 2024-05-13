@@ -1341,8 +1341,9 @@ def Tosa_ReduceAllOp : Tosa_InferTensorTypeOp<"reduce_all"> {
     /// Method used by InferTypeOpInterface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
 
-    /// Return the AND result between two integer operands
-    static inline APInt calcOneElement(APInt leftOperand, APInt rightOperand) {
+    /// Return the AND result between two operands
+    template<typename T>
+    static T calcOneElement(T leftOperand, T rightOperand) {
       return leftOperand & rightOperand;
     }
   }];
@@ -1375,8 +1376,9 @@ def Tosa_ReduceAnyOp : Tosa_InferTensorTypeOp<"reduce_any"> {
     /// Method used by InferTypeOpInterface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
 
-    /// Return the OR result between two integer operands
-    static inline APInt calcOneElement(APInt leftOperand, APInt rightOperand) {
+    /// Return the OR result between two operands
+    template<typename T>
+    static T calcOneElement(T leftOperand, T rightOperand) {
       return leftOperand | rightOperand;
     }
   }];
@@ -1409,9 +1411,14 @@ def Tosa_ReduceMaxOp : Tosa_InferTensorTypeOp<"reduce_max"> {
     /// Method used by InferTypeOpInterface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
 
-    /// Return the max of the two integer operands
-    static inline APInt calcOneElement(APInt leftOperand, APInt rightOperand) {
-      const llvm::APInt subtractRes = leftOperand - rightOperand;
+   /// Return the max of the two operands
+    template<typename T>
+    static T calcOneElement(T leftOperand, T rightOperand) {
+      if constexpr (std::is_same_v<T, APFloat>) {
+        if (leftOperand.isNaN() || rightOperand.isNaN())
+          return APFloat::getNaN(leftOperand.getSemantics());
+      }
+      const T subtractRes = leftOperand - rightOperand;
       return (!subtractRes.isNegative()) ? leftOperand : rightOperand;
     }
   }];
@@ -1444,9 +1451,14 @@ def Tosa_ReduceMinOp : Tosa_InferTensorTypeOp<"reduce_min"> {
     /// Method used by InferTypeOpInterface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
 
-    /// Return the min of the two integer operands
-    static inline APInt calcOneElement(APInt leftOperand, APInt rightOperand) {
-      const llvm::APInt subtractRes = leftOperand - rightOperand;
+    /// Return the min of the two operands
+    template<typename T>
+    static T calcOneElement(T leftOperand, T rightOperand) {
+      if constexpr (std::is_same_v<T, APFloat>) {
+        if (leftOperand.isNaN() || rightOperand.isNaN())
+          return APFloat::getNaN(leftOperand.getSemantics());
+      }
+      const T subtractRes = leftOperand - rightOperand;
       return (!subtractRes.isNegative()) ? rightOperand : leftOperand;
     }
   }];
@@ -1479,8 +1491,9 @@ def Tosa_ReduceProdOp : Tosa_InferTensorTypeOp<"reduce_prod"> {
     /// Method used by InferTypeOpInterface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
 
-    /// Return the prod of the two integer operands
-    static inline APInt calcOneElement(APInt leftOperand, APInt rightOperand) {
+    /// Return the prod of the two operands
+    template<typename T>
+    static T calcOneElement(T leftOperand, T rightOperand) {
       return leftOperand * rightOperand;
     }
   }];
@@ -1513,8 +1526,9 @@ def Tosa_ReduceSumOp : Tosa_InferTensorTypeOp<"reduce_sum"> {
     /// Method used by InferTypeOpInterface.
     static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
 
-    /// Return the sum of the two integer operands
-    static inline APInt calcOneElement(APInt leftOperand, APInt rightOperand) {
+    /// Return the sum of the two operands
+    template<typename T>
+    static T calcOneElement(T leftOperand, T rightOperand) {
       return leftOperand + rightOperand;
     }
   }];

@@ -1694,8 +1694,8 @@ int64_t getIndexFromPosition(llvm::ArrayRef<int64_t> position,
   return index;
 }
 
-template <typename OperationType>
-llvm::APInt calculateReducedValue(const mlir::ElementsAttr &oldTensorAttr,
+template <typename OperationType, typename ElementType>
+ElementType calculateReducedValue(const mlir::ElementsAttr &oldTensorAttr,
                                   llvm::ArrayRef<int64_t> oldShape,
                                   int64_t reductionAxis,
                                   int64_t reductionIndex) {
@@ -1705,11 +1705,11 @@ llvm::APInt calculateReducedValue(const mlir::ElementsAttr &oldTensorAttr,
   /// Let's calculate the position of the index
   llvm::SmallVector<int64_t> position =
       getPositionFromIndex(reductionIndex, newShape);
-  auto oldTensor = oldTensorAttr.getValues<llvm::APInt>();
+  auto oldTensor = oldTensorAttr.getValues<ElementType>();
   /// Starting from the first positon along the reduction axis
   position[reductionAxis] = 0;
   int64_t indexAtOldTensor = getIndexFromPosition(position, oldShape);
-  llvm::APInt reducedValue = oldTensor[indexAtOldTensor];
+  ElementType reducedValue = oldTensor[indexAtOldTensor];
 
   for (int64_t reductionAxisVal = 1; reductionAxisVal < oldShape[reductionAxis];
        ++reductionAxisVal) {
@@ -1717,13 +1717,13 @@ llvm::APInt calculateReducedValue(const mlir::ElementsAttr &oldTensorAttr,
     int64_t stride = std::accumulate(oldShape.begin() + reductionAxis + 1,
                                      oldShape.end(), 1, std::multiplies<int>());
     int64_t index = indexAtOldTensor + stride * reductionAxisVal;
-    reducedValue =
-        OperationType::calcOneElement(reducedValue, oldTensor[index]);
+    reducedValue = OperationType::template calcOneElement<ElementType>(
+            reducedValue, oldTensor[index]);
   }
   return reducedValue;
 }
 
-template <typename OperationType>
+template <typename OperationType, bool hasFPSupport = true>
 struct ReduceConstantOptimization : public OpRewritePattern<OperationType> {
 
   ReduceConstantOptimization(MLIRContext *context,
@@ -1732,6 +1732,24 @@ struct ReduceConstantOptimization : public OpRewritePattern<OperationType> {
         aggressiveReduceConstant(aggressiveReduceConstant) {}
 
   using OpRewritePattern<OperationType>::OpRewritePattern;
+
+  template <typename ElementType>
+  DenseElementsAttr compute(llvm::SmallVector<ElementType> &newReducedTensor,
+                            const mlir::ElementsAttr &denseElementsAttr,
+                            llvm::ArrayRef<int64_t> oldShape,
+                            int64_t reductionAxis,
+                            RankedTensorType resultType) const {
+    for (size_t reductionIndex = 0; reductionIndex < newReducedTensor.size();
+         ++reductionIndex) {
+
+      /// Let's reduce all the elements along this reduction axis
+      newReducedTensor[reductionIndex] =
+          calculateReducedValue<OperationType, ElementType>(
+              denseElementsAttr, oldShape, reductionAxis, reductionIndex);
+    }
+
+    return mlir::DenseElementsAttr::get(resultType, newReducedTensor);
+  }
 
   LogicalResult matchAndRewrite(OperationType op,
                                 PatternRewriter &rewriter) const override {
@@ -1756,29 +1774,41 @@ struct ReduceConstantOptimization : public OpRewritePattern<OperationType> {
     const auto shapedOldElementsValues =
         denseElementsAttr.getType().cast<ShapedType>();
 
-    if (!llvm::isa<IntegerType>(shapedOldElementsValues.getElementType()))
-      return rewriter.notifyMatchFailure(
-          op, "reduce input currently supported with integer type");
+    if constexpr (hasFPSupport == false) {
+      if (!llvm::isa<IntegerType>(shapedOldElementsValues.getElementType()))
+        return rewriter.notifyMatchFailure(
+            op, "reduce input currently supported with integer type");
+    }
 
     auto oldShape = shapedOldElementsValues.getShape();
     auto newShape = resultType.getShape();
 
     auto newNumOfElements = std::accumulate(newShape.begin(), newShape.end(), 1,
                                             std::multiplies<int>());
-    llvm::SmallVector<APInt> newReducedTensor(newNumOfElements);
-
-    for (int64_t reductionIndex = 0; reductionIndex < newNumOfElements;
-         ++reductionIndex) {
-
-      /// Let's reduce all the elements along this reduction axis
-      newReducedTensor[reductionIndex] = calculateReducedValue<OperationType>(
-          denseElementsAttr, oldShape, reductionAxis, reductionIndex);
-    }
-
     auto rankedTensorType = cast<RankedTensorType>(resultType);
-    auto denseAttr =
-        mlir::DenseElementsAttr::get(rankedTensorType, newReducedTensor);
-    rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, rankedTensorType, denseAttr);
+
+    DenseElementsAttr resultDenseAttr;
+    if (llvm::isa<IntegerType>(shapedOldElementsValues.getElementType())) {
+      llvm::SmallVector<APInt> newReducedTensor(newNumOfElements);
+      resultDenseAttr =
+          this->compute<APInt>(newReducedTensor, denseElementsAttr, oldShape,
+                               reductionAxis, rankedTensorType);
+    } else if (llvm::isa<FloatType>(shapedOldElementsValues.getElementType())) {
+      if constexpr(hasFPSupport) {
+        llvm::SmallVector<APFloat> newReducedTensor(newNumOfElements,
+                                                    APFloat(0.0));
+        resultDenseAttr =
+            this->compute<APFloat>(newReducedTensor, denseElementsAttr, oldShape,
+                                  reductionAxis, rankedTensorType);  
+      } else {
+        return rewriter.notifyMatchFailure(
+            op, "no support for floating point type");
+      }
+    } else {
+      return rewriter.notifyMatchFailure(op, "unsupported element type");
+    }
+    rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, rankedTensorType,
+                                               resultDenseAttr);
     return success();
   }
   const bool aggressiveReduceConstant;
@@ -1827,9 +1857,9 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
 void mlir::tosa::populateTosaConstantReduction(MLIRContext *ctx,
                                                RewritePatternSet &patterns,
                                                bool aggressiveReduceConstant) {
-  patterns.add<ReduceConstantOptimization<ReduceAllOp>>(
+  patterns.add<ReduceConstantOptimization<ReduceAllOp, /*hasFPSupport=*/ false>>(
       ctx, aggressiveReduceConstant);
-  patterns.add<ReduceConstantOptimization<ReduceAnyOp>>(
+  patterns.add<ReduceConstantOptimization<ReduceAnyOp, /*hasFPSupport=*/ false>>(
       ctx, aggressiveReduceConstant);
   patterns.add<ReduceConstantOptimization<ReduceMaxOp>>(
       ctx, aggressiveReduceConstant);
