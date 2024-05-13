@@ -6,4 +6,5 @@ add_mlir_library(MLIREmitCTransformsTest
 
   LINK_LIBS PUBLIC
   MLIRPass
+  MLIREmitCTransforms
   )
