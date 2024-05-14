@@ -68,7 +68,8 @@ bool mlir::emitc::isSupportedEmitCType(Type type) {
     return !llvm::isa<emitc::ArrayType>(elemType) &&
            isSupportedEmitCType(elemType);
   }
-  if (type.isIndex())
+  if (type.isIndex() ||
+      llvm::isa<emitc::SignedSizeType, emitc::UnsignedSizeType>(type))
     return true;
   if (llvm::isa<IntegerType>(type))
     return isSupportedIntegerType(type);
@@ -142,6 +143,11 @@ static LogicalResult verifyInitializationAttribute(Operation *op,
 
   Type resultType = op->getResult(0).getType();
   Type attrType = cast<TypedAttr>(value).getType();
+
+  // HACK to accomodate indices
+  if (isa<emitc::SignedSizeType, emitc::UnsignedSizeType>(resultType) &&
+      attrType.isIndex())
+    return success();
 
   if (resultType != attrType)
     return op->emitOpError()

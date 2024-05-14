@@ -47,26 +47,13 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     // Get value attribute
     auto valueAttr = adaptor.getValueAttr();
-    auto typedValueAttr = ::cast<TypedAttr>(valueAttr);
-
-    Type dstType = getTypeConverter()->convertType(typedValueAttr.getType());
+    Type dstType = getTypeConverter()->convertType(constantOp.getType());
 
     if (!dstType)
       return rewriter.notifyMatchFailure(constantOp, "type conversion failed");
 
-    Attribute convertedAttr = valueAttr;
-
-    if (auto iType = dyn_cast<IndexType>(typedValueAttr.getType())) {
-      auto intValAttr = dyn_cast<IntegerAttr>(valueAttr);
-      auto val = intValAttr.getValue();
-      convertedAttr = IntegerAttr::get(dstType, val);
-    }
-
-    auto newConst = rewriter.create<emitc::ConstantOp>(
-        constantOp->getLoc(), dstType, adaptor.getOperands());
-
-    newConst->setAttr("value", convertedAttr);
-    rewriter.replaceOp(constantOp, newConst);
+    rewriter.replaceOpWithNewOp<emitc::ConstantOp>(constantOp, dstType,
+                                                   valueAttr);
 
     return success();
   }
