@@ -275,7 +275,7 @@ public:
   }
 };
 
-template <typename ArithOp, bool needsUnsigned>
+template <typename ArithOp, bool castToUnsigned>
 class CastConversion : public OpConversionPattern<ArithOp> {
 public:
   using OpConversionPattern<ArithOp>::OpConversionPattern;
@@ -286,9 +286,8 @@ public:
 
     Type opReturnType = this->getTypeConverter()->convertType(op.getType());
     if (!isa_and_nonnull<IntegerType, emitc::SignedSizeTType, emitc::SizeTType>(
-            opReturnType)) {
+            opReturnType))
       return rewriter.notifyMatchFailure(op, "expected integer result type");
-    }
 
     if (adaptor.getOperands().size() != 1) {
       return rewriter.notifyMatchFailure(
@@ -297,16 +296,15 @@ public:
 
     Type operandType = adaptor.getIn().getType();
     if (!isa_and_nonnull<IntegerType, emitc::SignedSizeTType, emitc::SizeTType>(
-            operandType)) {
+            operandType))
       return rewriter.notifyMatchFailure(op, "expected integer operand type");
-    }
 
     bool isTruncation = operandType.getIntOrFloatBitWidth() >
                         opReturnType.getIntOrFloatBitWidth();
-    bool doUnsigned = needsUnsigned || isTruncation;
+    bool doUnsigned = castToUnsigned || isTruncation;
 
     Type castType = opReturnType;
-    // For int conversions: if the op is a ui variant and the type wanted as
+    // If the op is a ui variant and the type wanted as
     // return type isn't unsigned, we need to issue an unsigned type to do
     // the conversion.
     if ((isa<emitc::SizeTType>(castType) || castType.isUnsignedInteger()) !=
@@ -316,7 +314,7 @@ public:
     }
 
     Value actualOp = adaptor.getIn();
-    // Fix the signedness of the operand if necessary
+    // Adapt the signedness of the operand if necessary
     if (operandType.isUnsignedInteger() != doUnsigned) {
       Type correctSignednessType =
           rewriter.getIntegerType(operandType.getIntOrFloatBitWidth(),
@@ -328,8 +326,7 @@ public:
     auto result = rewriter.template create<emitc::CastOp>(op.getLoc(), castType,
                                                           actualOp);
 
-    // Fix the signedness of what this operation returns (for integers,
-    // the arith ops want signless results)
+    // Cast to the expected output type
     if (castType != opReturnType) {
       result = rewriter.template create<emitc::CastOp>(op.getLoc(),
                                                        opReturnType, result);
