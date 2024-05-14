@@ -12,7 +12,7 @@
 
 using namespace mlir;
 
-void populateEmitCSizeTypeConversionPatterns(TypeConverter &converter) {
+void mlir::populateEmitCSizeTypeConversionPatterns(TypeConverter &converter) {
   converter.addConversion(
       [](IndexType type) { return emitc::SizeTType::get(type.getContext()); });
 }

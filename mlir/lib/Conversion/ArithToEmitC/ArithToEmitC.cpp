@@ -38,6 +38,8 @@ public:
                   arith::ConstantOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Type newTy = this->getTypeConverter()->convertType(arithConst.getType());
+    if (!newTy)
+      return rewriter.notifyMatchFailure(arithConst, "type conversion failed");
     rewriter.replaceOpWithNewOp<emitc::ConstantOp>(arithConst, newTy,
                                                    adaptor.getValue());
     return success();
@@ -387,6 +389,9 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type newTy = this->getTypeConverter()->convertType(arithOp.getType());
+    if (!newTy)
+      return rewriter.notifyMatchFailure(arithOp,
+                                         "converting result type failed");
     rewriter.template replaceOpWithNewOp<EmitCOp>(arithOp, newTy,
                                                   adaptor.getOperands());
 
@@ -569,7 +574,7 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
                                         RewritePatternSet &patterns) {
   MLIRContext *ctx = patterns.getContext();
 
-  populateEmitCSizeTypeConversionPatterns(typeConverter);
+  mlir::populateEmitCSizeTypeConversionPatterns(typeConverter);
 
   // clang-format off
   patterns.add<
