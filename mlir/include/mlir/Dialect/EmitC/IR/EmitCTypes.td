@@ -130,15 +130,11 @@ def EmitC_PointerType : EmitC_Type<"Pointer", "ptr"> {
   let assemblyFormat = "`<` qualified($pointee) `>`";
 }
 
-class EmitC_SizeType<string name, string typeMnemonic, list<Trait> traits = []> 
-  : EmitC_Type<name, typeMnemonic, traits> {
-}
-
-def EmitC_SignedSizeT : EmitC_SizeType<"SignedSizeT", "ssize_t"> {
+def EmitC_SignedSizeT : EmitC_Type<"SignedSizeT", "ssize_t"> {
   let summary = "EmitC signed size type";
 }
 
-def EmitC_SizeT : EmitC_SizeType<"SizeT", "size_t"> {
+def EmitC_SizeT : EmitC_Type<"SizeT", "size_t"> {
   let summary = "EmitC unsigned size type";
 }
 

@@ -266,8 +266,8 @@ public:
     if (isa<IntegerType>(type) && type.isUnsignedInteger() != needsUnsigned) {
       arithmeticType = rewriter.getIntegerType(type.getIntOrFloatBitWidth(),
                                                /*isSigned=*/!needsUnsigned);
-    } else if (isa<emitc::SignedSizeTType, emitc::SizeTType>(type) &&
-               isa<emitc::SizeTType>(type) != needsUnsigned) {
+    } else if (emitc::isSizeTType(type) &&
+               emitc::isUnsignedSizeTType(type) != needsUnsigned) {
       if (needsUnsigned)
         arithmeticType = emitc::SizeTType::get(op->getContext());
       else
@@ -326,8 +326,8 @@ public:
         castType.isUnsignedInteger() != doUnsigned) {
       castType = rewriter.getIntegerType(opReturnType.getIntOrFloatBitWidth(),
                                          /*isSigned=*/!doUnsigned);
-    } else if (isa<emitc::SizeTType, emitc::SignedSizeTType>(castType) &&
-               isa<emitc::SizeTType>(castType) != doUnsigned) {
+    } else if (emitc::isSizeTType(castType) &&
+               emitc::isUnsignedSizeTType(castType) != doUnsigned) {
       if (doUnsigned)
         castType = emitc::SizeTType::get(op.getContext());
       else
@@ -343,8 +343,8 @@ public:
                                   /*isSigned=*/!doUnsigned);
       actualOp = rewriter.template create<emitc::CastOp>(
           op.getLoc(), correctSignednessType, actualOp);
-    } else if (isa<emitc::SizeTType, emitc::SignedSizeTType>(operandType) &&
-               isa<emitc::SizeTType>(operandType) != doUnsigned) {
+    } else if (emitc::isSizeTType(operandType) &&
+               emitc::isUnsignedSizeTType(operandType) != doUnsigned) {
       Type correctSignednessType;
       if (doUnsigned)
         correctSignednessType = emitc::SizeTType::get(op.getContext());

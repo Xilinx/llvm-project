@@ -128,6 +128,18 @@ bool mlir::emitc::isSupportedFloatType(Type type) {
   return false;
 }
 
+bool mlir::emitc::isSizeTType(Type type) {
+  return isa<emitc::SignedSizeTType, emitc::SizeTType>(type);
+}
+
+bool mlir::emitc::isSignedSizeTType(Type type) {
+  return isa<emitc::SignedSizeTType>(type);
+}
+
+bool mlir::emitc::isUnsignedSizeTType(Type type) {
+  return isa<emitc::SizeTType>(type);
+}
+
 /// Check that the type of the initial value is compatible with the operations
 /// result type.
 static LogicalResult verifyInitializationAttribute(Operation *op,
