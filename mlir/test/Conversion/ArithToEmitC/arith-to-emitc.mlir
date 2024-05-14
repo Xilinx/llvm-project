@@ -427,3 +427,33 @@ func.func @arith_extui(%arg0: i32) {
 
   return
 }
+
+// -----
+
+func.func @arith_index_cast(%arg0: i32) -> i32 {
+  // CHECK-LABEL: arith_index_cast
+  // CHECK-SAME: (%[[Arg0:[^ ]*]]: i32)
+  // CHECK: %[[Conv0:.*]] = emitc.cast %[[Arg0]] : i32 to !emitc.ssize_t
+  // CHECK: %[[Conv1:.*]] = emitc.cast %[[Conv0]] : !emitc.ssize_t to !emitc.size_t
+  %idx = arith.index_cast %arg0 : i32 to index
+  // CHECK: %[[Conv2:.*]] = emitc.cast %[[Conv1]] : !emitc.size_t to !emitc.ssize_t
+  // CHECK: %[[Conv3:.*]] = emitc.cast %[[Conv2]] : !emitc.ssize_t to i32
+  %int = arith.index_cast %idx : index to i32
+
+  return %int : i32
+}
+
+// -----
+
+func.func @arith_index_castui(%arg0: i32) -> i32 {
+  // CHECK-LABEL: arith_index_castui
+  // CHECK-SAME: (%[[Arg0:[^ ]*]]: i32)
+  // CHECK: %[[Conv0:.*]] = emitc.cast %[[Arg0]] : i32 to ui32
+  // CHECK: %[[Conv1:.*]] = emitc.cast %[[Conv0]] : ui32 to !emitc.size_t
+  %idx = arith.index_castui %arg0 : i32 to index
+  // CHECK: %[[Conv2:.*]] = emitc.cast %[[Conv1]] : !emitc.size_t to ui32
+  // CHECK: %[[Conv3:.*]] = emitc.cast %[[Conv2]] : ui32 to i32
+  %int = arith.index_castui %idx : index to i32
+
+  return %int : i32
+}
