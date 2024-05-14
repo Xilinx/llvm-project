@@ -252,16 +252,23 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = adaptor.getLhs().getType();
-    if (!isa_and_nonnull<IntegerType, IndexType>(type)) {
+    if (!isa_and_nonnull<IntegerType, IndexType, emitc::SignedSizeTType,
+                         emitc::SizeTType>(type)) {
       return rewriter.notifyMatchFailure(op, "expected integer or index type");
     }
 
     bool needsUnsigned = needsUnsignedCmp(op.getPredicate());
     emitc::CmpPredicate pred = toEmitCPred(op.getPredicate());
     Type arithmeticType = type;
-    if (type.isUnsignedInteger() != needsUnsigned) {
+    if (isa<IntegerType>(type) && type.isUnsignedInteger() != needsUnsigned) {
       arithmeticType = rewriter.getIntegerType(type.getIntOrFloatBitWidth(),
                                                /*isSigned=*/!needsUnsigned);
+    } else if (isa<emitc::SignedSizeTType, emitc::SizeTType>(type) &&
+               isa<emitc::SizeTType>(type) != needsUnsigned) {
+      if (needsUnsigned)
+        arithmeticType = emitc::SizeTType::get(op->getContext());
+      else
+        arithmeticType = emitc::SignedSizeTType::get(op->getContext());
     }
     Value lhs = adaptor.getLhs();
     Value rhs = adaptor.getRhs();

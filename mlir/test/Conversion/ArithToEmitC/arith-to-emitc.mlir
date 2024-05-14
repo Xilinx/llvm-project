@@ -360,6 +360,27 @@ func.func @arith_cmpi_predicates(%arg0: i32, %arg1: i32) {
   return
 }
 
+func.func @arith_cmpi_index(%arg0: i32, %arg1: i32) -> i1 {
+  // CHECK-LABEL: arith_cmpi_index
+
+  // CHECK: %[[Cst0:.*]] = emitc.cast %{{.*}} : {{.*}} to !emitc.size_t
+  %idx0 = arith.index_cast %arg0 : i32 to index
+  // CHECK: %[[Cst1:.*]] = emitc.cast %{{.*}} : {{.*}} to !emitc.size_t
+  %idx1 = arith.index_cast %arg0 : i32 to index
+
+  // CHECK-DAG: [[ULT:[^ ]*]] = emitc.cmp lt, %[[Cst0]], %[[Cst1]] : (!emitc.size_t, !emitc.size_t) -> i1
+  %ult = arith.cmpi ult, %idx0, %idx1 : index
+
+  // CHECK-DAG: %[[CastArg0:[^ ]*]] = emitc.cast %[[Cst0]] : !emitc.size_t to !emitc.ssize_t
+  // CHECK-DAG: %[[CastArg1:[^ ]*]] = emitc.cast %[[Cst1]] : !emitc.size_t to !emitc.ssize_t
+  // CHECK-DAG: %[[SLT:[^ ]*]] = emitc.cmp lt, %[[CastArg0]], %[[CastArg1]] : (!emitc.ssize_t, !emitc.ssize_t) -> i1
+  %slt = arith.cmpi slt, %idx0, %idx1 : index
+
+  // CHECK: return %[[SLT]]
+  return %slt: i1
+}
+
+
 // -----
 
 func.func @arith_float_to_int_cast_ops(%arg0: f32, %arg1: f64) {
