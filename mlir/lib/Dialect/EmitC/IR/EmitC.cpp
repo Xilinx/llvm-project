@@ -144,7 +144,6 @@ static LogicalResult verifyInitializationAttribute(Operation *op,
   Type resultType = op->getResult(0).getType();
   Type attrType = cast<TypedAttr>(value).getType();
 
-  // HACK to accomodate indices
   if (isa<emitc::SignedSizeTType, emitc::SizeTType>(resultType) &&
       attrType.isIndex())
     return success();
