@@ -134,11 +134,11 @@ class EmitC_SizeType<string name, string typeMnemonic, list<Trait> traits = []>
   : EmitC_Type<name, typeMnemonic, traits> {
 }
 
-def EmitC_SignedSizeType : EmitC_SizeType<"SignedSize", "ssize_t"> {
+def EmitC_SignedSizeT : EmitC_SizeType<"SignedSizeT", "ssize_t"> {
   let summary = "EmitC signed size type";
 }
 
-def EmitC_UnsignedSizeType : EmitC_SizeType<"UnsignedSize", "usize_t"> {
+def EmitC_SizeT : EmitC_SizeType<"SizeT", "size_t"> {
   let summary = "EmitC unsigned size type";
 }
 

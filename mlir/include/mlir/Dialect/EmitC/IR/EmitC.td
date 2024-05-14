@@ -52,7 +52,7 @@ def CExpression : NativeOpTrait<"emitc::CExpression">;
 
 // Types only used in binary arithmetic operations.
 def IntegerIndexOrOpaqueType : AnyTypeOf<[EmitCIntegerType, Index,
-  EmitC_SignedSizeType, EmitC_UnsignedSizeType, EmitC_OpaqueType]>;
+  EmitC_SignedSizeT, EmitC_SizeT, EmitC_OpaqueType]>;
 def FloatIntegerIndexOrOpaqueType : AnyTypeOf<[EmitCFloatType, IntegerIndexOrOpaqueType]>;
 
 def EmitC_AddOp : EmitC_BinaryOp<"add", [CExpression]> {
@@ -1243,7 +1243,7 @@ def EmitC_SubscriptOp : EmitC_Op<"subscript", []> {
       EmitC_OpaqueType,
       EmitC_PointerType]>,
     "the value to subscript">:$value,
-    Variadic<AnyTypeOf<[EmitCType, EmitC_SignedSizeType, EmitC_UnsignedSizeType]>>:$indices);
+    Variadic<AnyTypeOf<[EmitCType, EmitC_SignedSizeT, EmitC_SizeT]>>:$indices);
   let results = (outs EmitCType:$result);
 
   let builders = [

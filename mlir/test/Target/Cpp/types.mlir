@@ -41,7 +41,7 @@ func.func @size_types() {
   // CHECK-NEXT: f<ssize_t>();
   emitc.call_opaque "f"() {template_args = [!emitc.ssize_t]} : () -> ()
   // CHECK-NEXT: f<size_t>();
-  emitc.call_opaque "f"() {template_args = [!emitc.usize_t]} : () -> ()
+  emitc.call_opaque "f"() {template_args = [!emitc.size_t]} : () -> ()
 
   return
 }

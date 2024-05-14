@@ -74,7 +74,7 @@ void TestEmitCTypeConversions::runOnOperation() {
   ConversionTarget target(getContext());
   target.addLegalDialect<emitc::EmitCDialect>();
   target.addDynamicallyLegalOp<emitc::ConstantOp>([](emitc::ConstantOp op) {
-    return isa<emitc::SignedSizeType, emitc::UnsignedSizeType>(op.getType());
+    return isa<emitc::SignedSizeTType, emitc::SizeTType>(op.getType());
   });
   patterns.insert<ConstantConverter>(typeConverter, context);
   (void)applyPartialConversion(getOperation(), target, std::move(patterns));

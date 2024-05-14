@@ -1563,9 +1563,9 @@ LogicalResult CppEmitter::emitType(Location loc, Type type) {
   }
   if (auto iType = dyn_cast<IndexType>(type))
     return (os << "size_t"), success();
-  if (auto iType = dyn_cast<emitc::UnsignedSizeType>(type))
+  if (auto iType = dyn_cast<emitc::SizeTType>(type))
     return (os << "size_t"), success();
-  if (auto iType = dyn_cast<emitc::SignedSizeType>(type))
+  if (auto iType = dyn_cast<emitc::SignedSizeTType>(type))
     return (os << "ssize_t"), success();
   if (auto tType = dyn_cast<TensorType>(type)) {
     if (!tType.hasRank())

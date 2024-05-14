@@ -69,7 +69,7 @@ bool mlir::emitc::isSupportedEmitCType(Type type) {
            isSupportedEmitCType(elemType);
   }
   if (type.isIndex() ||
-      llvm::isa<emitc::SignedSizeType, emitc::UnsignedSizeType>(type))
+      llvm::isa<emitc::SignedSizeTType, emitc::SizeTType>(type))
     return true;
   if (llvm::isa<IntegerType>(type))
     return isSupportedIntegerType(type);
@@ -110,7 +110,7 @@ bool mlir::emitc::isSupportedIntegerType(Type type) {
 }
 
 bool mlir::emitc::isIntegerIndexOrOpaqueType(Type type) {
-  return llvm::isa<IndexType, emitc::SignedSizeType, emitc::UnsignedSizeType,
+  return llvm::isa<IndexType, emitc::SignedSizeTType, emitc::SizeTType,
                    emitc::OpaqueType>(type) ||
          isSupportedIntegerType(type);
 }
@@ -145,7 +145,7 @@ static LogicalResult verifyInitializationAttribute(Operation *op,
   Type attrType = cast<TypedAttr>(value).getType();
 
   // HACK to accomodate indices
-  if (isa<emitc::SignedSizeType, emitc::UnsignedSizeType>(resultType) &&
+  if (isa<emitc::SignedSizeTType, emitc::SizeTType>(resultType) &&
       attrType.isIndex())
     return success();
 
