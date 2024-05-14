@@ -252,9 +252,10 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = adaptor.getLhs().getType();
-    if (!isa_and_nonnull<IntegerType, IndexType, emitc::SignedSizeTType,
-                         emitc::SizeTType>(type)) {
-      return rewriter.notifyMatchFailure(op, "expected integer or index type");
+    if (!isa_and_nonnull<IntegerType, emitc::SignedSizeTType, emitc::SizeTType>(
+            type)) {
+      return rewriter.notifyMatchFailure(
+          op, "expected integer or size_t/ssize_t type");
     }
 
     bool needsUnsigned = needsUnsignedCmp(op.getPredicate());
@@ -295,7 +296,8 @@ public:
     Type opReturnType = this->getTypeConverter()->convertType(op.getType());
     if (!isa_and_nonnull<IntegerType, emitc::SignedSizeTType, emitc::SizeTType>(
             opReturnType))
-      return rewriter.notifyMatchFailure(op, "expected integer result type");
+      return rewriter.notifyMatchFailure(
+          op, "expected integer or size_t/ssize_t result type");
 
     if (adaptor.getOperands().size() != 1) {
       return rewriter.notifyMatchFailure(
@@ -305,7 +307,8 @@ public:
     Type operandType = adaptor.getIn().getType();
     if (!isa_and_nonnull<IntegerType, emitc::SignedSizeTType, emitc::SizeTType>(
             operandType))
-      return rewriter.notifyMatchFailure(op, "expected integer operand type");
+      return rewriter.notifyMatchFailure(
+          op, "expected integer or size_t/ssize_t operand type");
 
     bool isTruncation =
         (isa<IntegerType>(operandType) && isa<IntegerType>(opReturnType) &&
@@ -401,9 +404,10 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = this->getTypeConverter()->convertType(op.getType());
-    if (!isa_and_nonnull<IntegerType, IndexType, emitc::SignedSizeTType,
-                         emitc::SizeTType>(type)) {
-      return rewriter.notifyMatchFailure(op, "expected integer type");
+    if (!isa_and_nonnull<IntegerType, emitc::SignedSizeTType, emitc::SizeTType>(
+            type)) {
+      return rewriter.notifyMatchFailure(
+          op, "expected integer or size_t/ssize_t type");
     }
 
     if (type.isInteger(1)) {
