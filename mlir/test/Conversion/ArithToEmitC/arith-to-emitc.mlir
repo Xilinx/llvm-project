@@ -75,13 +75,18 @@ func.func @arith_integer_ops_signed_nsw(%arg0: i32, %arg1: i32) {
 // -----
 
 // CHECK-LABEL: arith_index
-func.func @arith_index(%arg0: index, %arg1: index) {
-  // CHECK: emitc.add %arg0, %arg1 : (index, index) -> index
-  %0 = arith.addi %arg0, %arg1 : index
-  // CHECK: emitc.sub %arg0, %arg1 : (index, index) -> index
-  %1 = arith.subi %arg0, %arg1 : index
-  // CHECK: emitc.mul %arg0, %arg1 : (index, index) -> index
-  %2 = arith.muli %arg0, %arg1 : index
+func.func @arith_index(%arg0: i32, %arg1: i32) {
+  // CHECK: %[[CST0:.*]] = emitc.cast %{{.*}} : {{.*}} to !emitc.size_t
+  %cst0 = arith.index_cast %arg0 : i32 to index
+  // CHECK: %[[CST1:.*]] = emitc.cast %{{.*}} : {{.*}} to !emitc.size_t
+  %cst1 = arith.index_cast %arg1 : i32 to index
+
+  // CHECK: emitc.add %[[CST0]], %[[CST1]] : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
+  %0 = arith.addi %cst0, %cst1 : index
+  // CHECK: emitc.sub %[[CST0]], %[[CST1]] : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
+  %1 = arith.subi %cst0, %cst1 : index
+  // CHECK: emitc.mul %[[CST0]], %[[CST1]] : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
+  %2 = arith.muli %cst0, %cst1 : index
 
   return
 }

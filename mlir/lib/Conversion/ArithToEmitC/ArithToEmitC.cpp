@@ -37,8 +37,9 @@ public:
   matchAndRewrite(arith::ConstantOp arithConst,
                   arith::ConstantOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<emitc::ConstantOp>(
-        arithConst, arithConst.getType(), adaptor.getValue());
+    Type newTy = this->getTypeConverter()->convertType(arithConst.getType());
+    rewriter.replaceOpWithNewOp<emitc::ConstantOp>(arithConst, newTy,
+                                                   adaptor.getValue());
     return success();
   }
 };
