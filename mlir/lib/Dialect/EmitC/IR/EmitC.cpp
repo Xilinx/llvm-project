@@ -245,6 +245,12 @@ bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
           output)));
 }
 
+OpFoldResult emitc::CastOp::fold(FoldAdaptor adaptor) {
+  if (getOperand().getType() == getResult().getType())
+    return getOperand();
+  return nullptr;
+}
+
 //===----------------------------------------------------------------------===//
 // CallOp
 //===----------------------------------------------------------------------===//

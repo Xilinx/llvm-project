@@ -231,9 +231,7 @@ Type adaptIntegralTypeSignedness(Type ty, bool needsUnsigned) {
 /// Insert a cast operation to type \p ty if \p val
 /// does not have this type.
 Value adaptValueType(Value val, ConversionPatternRewriter &rewriter, Type ty) {
-  if (val.getType() != ty)
-    return rewriter.create<emitc::CastOp>(val.getLoc(), ty, val);
-  return val;
+  return rewriter.createOrFold<emitc::CastOp>(val.getLoc(), ty, val);
 }
 
 class CmpIOpConversion : public OpConversionPattern<arith::CmpIOp> {
