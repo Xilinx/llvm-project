@@ -3,7 +3,8 @@
 // CHECK-LABEL: arith_constants
 func.func @arith_constants() {
   // CHECK: emitc.constant
-  // CHECK-SAME: value = 0 : index
+  // CHECK-SAME: value = 0
+  // CHECK-SAME: () -> !emitc.size_t
   %c_index = arith.constant 0 : index
   // CHECK: emitc.constant
   // CHECK-SAME: value = 0 : i32
