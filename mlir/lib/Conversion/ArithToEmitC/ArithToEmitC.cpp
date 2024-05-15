@@ -205,6 +205,37 @@ public:
   }
 };
 
+/// Check if the signedness of type \pre ty matches the expected
+/// signedness, and issue a type with the correct signedness if
+/// necessary.
+Type adaptIntegralTypeSignedness(Type ty, bool needsUnsigned) {
+  if (isa<IntegerType>(ty)) {
+    // Turns signless integers into signed integers.
+    if (ty.isUnsignedInteger() != needsUnsigned) {
+      auto signedness = needsUnsigned
+                            ? IntegerType::SignednessSemantics::Unsigned
+                            : IntegerType::SignednessSemantics::Signed;
+      return IntegerType::get(ty.getContext(), ty.getIntOrFloatBitWidth(),
+                              signedness);
+    }
+  } else if (emitc::isSizeTType(ty)) {
+    if (emitc::isUnsignedSizeTType(ty) != needsUnsigned) {
+      if (needsUnsigned)
+        return emitc::SizeTType::get(ty.getContext());
+      return emitc::SignedSizeTType::get(ty.getContext());
+    }
+  }
+  return ty;
+}
+
+/// Insert a cast operation to type \pre ty if the result of \pre op
+/// does not have this type.
+Value adaptValueType(Value val, ConversionPatternRewriter &rewriter, Type ty) {
+  if (val.getType() != ty)
+    return rewriter.create<emitc::CastOp>(val.getLoc(), ty, val);
+  return val;
+}
+
 class CmpIOpConversion : public OpConversionPattern<arith::CmpIOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -262,25 +293,11 @@ public:
 
     bool needsUnsigned = needsUnsignedCmp(op.getPredicate());
     emitc::CmpPredicate pred = toEmitCPred(op.getPredicate());
-    Type arithmeticType = type;
-    if (isa<IntegerType>(type) && type.isUnsignedInteger() != needsUnsigned) {
-      arithmeticType = rewriter.getIntegerType(type.getIntOrFloatBitWidth(),
-                                               /*isSigned=*/!needsUnsigned);
-    } else if (emitc::isSizeTType(type) &&
-               emitc::isUnsignedSizeTType(type) != needsUnsigned) {
-      if (needsUnsigned)
-        arithmeticType = emitc::SizeTType::get(op->getContext());
-      else
-        arithmeticType = emitc::SignedSizeTType::get(op->getContext());
-    }
-    Value lhs = adaptor.getLhs();
-    Value rhs = adaptor.getRhs();
-    if (arithmeticType != type) {
-      lhs = rewriter.template create<emitc::CastOp>(op.getLoc(), arithmeticType,
-                                                    lhs);
-      rhs = rewriter.template create<emitc::CastOp>(op.getLoc(), arithmeticType,
-                                                    rhs);
-    }
+
+    Type arithmeticType = adaptIntegralTypeSignedness(type, needsUnsigned);
+    Value lhs = adaptValueType(adaptor.getLhs(), rewriter, arithmeticType);
+    Value rhs = adaptValueType(adaptor.getRhs(), rewriter, arithmeticType);
+
     rewriter.replaceOpWithNewOp<emitc::CmpOp>(op, op.getType(), pred, lhs, rhs);
     return success();
   }
@@ -318,51 +335,20 @@ public:
              opReturnType.getIntOrFloatBitWidth());
     bool doUnsigned = castToUnsigned || isTruncation;
 
-    Type castType = opReturnType;
-    // If the op is a ui variant and the type wanted as
-    // return type isn't unsigned, we need to issue an unsigned type to do
-    // the conversion.
-    if (isa<IntegerType>(castType) &&
-        castType.isUnsignedInteger() != doUnsigned) {
-      castType = rewriter.getIntegerType(opReturnType.getIntOrFloatBitWidth(),
-                                         /*isSigned=*/!doUnsigned);
-    } else if (emitc::isSizeTType(castType) &&
-               emitc::isUnsignedSizeTType(castType) != doUnsigned) {
-      if (doUnsigned)
-        castType = emitc::SizeTType::get(op.getContext());
-      else
-        castType = emitc::SignedSizeTType::get(op.getContext());
-    }
+    // Adapt the signedness of the result (bitwidth-preserving cast)
+    // This is needed e.g., if the return type is signless.
+    Type castDestType = adaptIntegralTypeSignedness(opReturnType, doUnsigned);
 
-    Value actualOp = adaptor.getIn();
-    // Adapt the signedness of the operand if necessary
-    if (isa<IntegerType>(operandType) &&
-        operandType.isUnsignedInteger() != doUnsigned) {
-      Type correctSignednessType =
-          rewriter.getIntegerType(operandType.getIntOrFloatBitWidth(),
-                                  /*isSigned=*/!doUnsigned);
-      actualOp = rewriter.template create<emitc::CastOp>(
-          op.getLoc(), correctSignednessType, actualOp);
-    } else if (emitc::isSizeTType(operandType) &&
-               emitc::isUnsignedSizeTType(operandType) != doUnsigned) {
-      Type correctSignednessType;
-      if (doUnsigned)
-        correctSignednessType = emitc::SizeTType::get(op.getContext());
-      else
-        correctSignednessType = emitc::SignedSizeTType::get(op.getContext());
+    // Adapt the signedness of the operand (bitwidth-preserving cast)
+    Type castSrcType = adaptIntegralTypeSignedness(operandType, doUnsigned);
+    Value actualOp = adaptValueType(adaptor.getIn(), rewriter, castSrcType);
 
-      actualOp = rewriter.template create<emitc::CastOp>(
-          op.getLoc(), correctSignednessType, actualOp);
-    }
-
-    auto result = rewriter.template create<emitc::CastOp>(op.getLoc(), castType,
-                                                          actualOp);
+    // Actual cast (may change bitwidth)
+    auto cast = rewriter.template create<emitc::CastOp>(op.getLoc(),
+                                                        castDestType, actualOp);
 
     // Cast to the expected output type
-    if (castType != opReturnType) {
-      result = rewriter.template create<emitc::CastOp>(op.getLoc(),
-                                                       opReturnType, result);
-    }
+    auto result = adaptValueType(cast, rewriter, opReturnType);
 
     rewriter.replaceOp(op, result);
     return success();
@@ -420,8 +406,6 @@ public:
       return rewriter.notifyMatchFailure(op, "i1 type is not implemented");
     }
 
-    Value lhs = adaptor.getLhs();
-    Value rhs = adaptor.getRhs();
     Type arithmeticType = type;
     if ((type.isSignlessInteger() || type.isSignedInteger()) &&
         !bitEnumContainsAll(op.getOverflowFlags(),
@@ -431,20 +415,15 @@ public:
       arithmeticType = rewriter.getIntegerType(type.getIntOrFloatBitWidth(),
                                                /*isSigned=*/false);
     }
-    if (arithmeticType != type) {
-      lhs = rewriter.template create<emitc::CastOp>(op.getLoc(), arithmeticType,
-                                                    lhs);
-      rhs = rewriter.template create<emitc::CastOp>(op.getLoc(), arithmeticType,
-                                                    rhs);
-    }
 
-    Value result = rewriter.template create<EmitCOp>(op.getLoc(),
-                                                     arithmeticType, lhs, rhs);
+    Value lhs = adaptValueType(adaptor.getLhs(), rewriter, arithmeticType);
+    Value rhs = adaptValueType(adaptor.getRhs(), rewriter, arithmeticType);
 
-    if (arithmeticType != type) {
-      result =
-          rewriter.template create<emitc::CastOp>(op.getLoc(), type, result);
-    }
+    Value arithmeticResult = rewriter.template create<EmitCOp>(
+        op.getLoc(), arithmeticType, lhs, rhs);
+
+    Value result = adaptValueType(arithmeticResult, rewriter, type);
+
     rewriter.replaceOp(op, result);
     return success();
   }
