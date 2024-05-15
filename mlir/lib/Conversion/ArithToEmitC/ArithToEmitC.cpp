@@ -205,7 +205,7 @@ public:
   }
 };
 
-/// Check if the signedness of type \pre ty matches the expected
+/// Check if the signedness of type \p ty matches the expected
 /// signedness, and issue a type with the correct signedness if
 /// necessary.
 Type adaptIntegralTypeSignedness(Type ty, bool needsUnsigned) {
@@ -228,7 +228,7 @@ Type adaptIntegralTypeSignedness(Type ty, bool needsUnsigned) {
   return ty;
 }
 
-/// Insert a cast operation to type \pre ty if the result of \pre op
+/// Insert a cast operation to type \p ty if \p val
 /// does not have this type.
 Value adaptValueType(Value val, ConversionPatternRewriter &rewriter, Type ty) {
   if (val.getType() != ty)
