@@ -12,7 +12,7 @@ func.func @floor_fold_single_valued() -> tensor<f32> {
 
 // CHECK-LABEL: @floor_int
 func.func @floor_int() -> tensor<i32> {
-  // CHECK: tosa.const{{.*}}12{{.*}}tensor<i32>
+  // CHECK: tosa.const{{.*}}-12{{.*}}tensor<i32>
   // CHECK: [[RES:]] ={{.*}}tosa.floor
   // CHECK: return [[RES]]
   %0 = "tosa.const"() {value = dense<-12> : tensor<i32>} : () -> tensor<i32>
