@@ -1736,6 +1736,14 @@ DenseElementsAttr tile(DenseElementsAttr inputValues, ShapedType outputType) {
   auto inputType = inputValues.getType();
   auto baseType = inputType.getElementType();
 
+  if (inputValues.isSplat()) {
+    if (isa<IntegerType>(baseType))
+      return DenseElementsAttr::get(outputType,
+                                    inputValues.getSplatValue<APInt>());
+    return DenseElementsAttr::get(outputType,
+                                  inputValues.getSplatValue<APFloat>());
+  }
+
   // Handle possible integer types
   if (auto intType = dyn_cast<IntegerType>(baseType)) {
     switch (intType.getWidth()) {

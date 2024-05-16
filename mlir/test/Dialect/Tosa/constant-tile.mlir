@@ -107,3 +107,39 @@ func.func @tile_f16_many_dimensions() -> (tensor<6x2x2xf16>) {
   // NO-FOLDING-CHECK: tosa.tile
   return %1 : tensor<6x2x2xf16>
 }
+
+// CHECK-LABEL: @tile_i1_splat
+func.func @tile_i1_splat() -> (tensor<1x2x2x2xi1>) {
+  // CHECK: "tosa.const"() <{value = dense<false> : tensor<1x2x2x2xi1>}>
+  %0 = "tosa.const"() <{value = dense<false> : tensor<1x1x1x1xi1>}> : () -> tensor<1x1x1x1xi1>
+  %1 = tosa.tile %0 {multiples = array<i64: 1, 2, 2, 2>} : (tensor<1x1x1x1xi1>) -> tensor<1x2x2x2xi1>
+  // NO-FOLDING-CHECK: tosa.tile
+  return %1 : tensor<1x2x2x2xi1>
+}
+
+// CHECK-LABEL: @tile_i32_splat
+func.func @tile_i32_splat() -> (tensor<1x2x2x2xi32>) {
+  // CHECK: "tosa.const"() <{value = dense<2> : tensor<1x2x2x2xi32>}>
+  %0 = "tosa.const"() <{value = dense<2> : tensor<1x1x1x1xi32>}> : () -> tensor<1x1x1x1xi32>
+  %1 = tosa.tile %0 {multiples = array<i64: 1, 2, 2, 2>} : (tensor<1x1x1x1xi32>) -> tensor<1x2x2x2xi32>
+  // NO-FOLDING-CHECK: tosa.tile
+  return %1 : tensor<1x2x2x2xi32>
+}
+
+// CHECK-LABEL: @tile_f16_splat
+func.func @tile_f16_splat() -> (tensor<1x2x2x2xf16>) {
+  // CHECK: "tosa.const"() <{value = dense<1.000000e+00> : tensor<1x2x2x2xf16>}>
+  %0 = "tosa.const"() <{value = dense<1.000000e+00> : tensor<1x1x1x1xf16>}> : () -> tensor<1x1x1x1xf16>
+  %1 = tosa.tile %0 {multiples = array<i64: 1, 2, 2, 2>} : (tensor<1x1x1x1xf16>) -> tensor<1x2x2x2xf16>
+  // NO-FOLDING-CHECK: tosa.tile
+  return %1 : tensor<1x2x2x2xf16>
+}
+
+// CHECK-LABEL: @tile_bf16_splat
+func.func @tile_bf16_splat() -> (tensor<1x2x2x2xbf16>) {
+  // CHECK: "tosa.const"() <{value = dense<1.000000e+00> : tensor<1x2x2x2xbf16>}>
+  %0 = "tosa.const"() <{value = dense<1.000000e+00> : tensor<1x1x1x1xbf16>}> : () -> tensor<1x1x1x1xbf16>
+  %1 = tosa.tile %0 {multiples = array<i64: 1, 2, 2, 2>} : (tensor<1x1x1x1xbf16>) -> tensor<1x2x2x2xbf16>
+  // NO-FOLDING-CHECK: tosa.tile
+  return %1 : tensor<1x2x2x2xbf16>
+}
