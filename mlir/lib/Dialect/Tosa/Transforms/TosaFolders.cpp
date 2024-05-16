@@ -1641,7 +1641,7 @@ struct TosaFoldConstantPad : public TosaFoldConstantBase<tosa::PadOp> {
     if (!matchPattern(input, m_Constant(&inputValues)))
       return failure();
 
-    // Only fold op with multiple users if foldSplatOrSingleUseOnly == true.
+    // Only fold op with multiple users if foldSplatOrSingleUseOnly is false.
     if (!llvm::hasSingleElement(input.getDefiningOp()->getUsers()) &&
         foldSplatOrSingleUseOnly)
       return failure();
@@ -1662,6 +1662,116 @@ struct TosaFoldConstantPad : public TosaFoldConstantBase<tosa::PadOp> {
         pad(input.getType(), inputValues, paddings, padConstValue, outputType);
     rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, outputType, resultAttr);
 
+    return success();
+  }
+};
+
+template <typename BaseType, typename RangeT>
+void tileArray(ShapedType inputType, RangeT inputValues, ShapedType outputType,
+               SmallVector<BaseType> &outputValues) {
+
+  auto inputShape = inputType.getShape();
+  auto outputShape = outputType.getShape();
+
+  SmallVector<int64_t> indexInTarget(outputType.getRank());
+
+  for (size_t outIndex = 0, e = outputValues.size(); outIndex < e; ++outIndex) {
+    auto index = offsetToIndex(outputShape, outIndex);
+    for (auto i = 0; i < outputType.getRank(); ++i) {
+      indexInTarget[i] = index[i] % inputShape[i];
+    }
+    auto inputIndexOffset = indexToOffset(inputShape, indexInTarget);
+    BaseType value = inputValues[inputIndexOffset];
+    outputValues[outIndex] = value;
+  }
+}
+
+template <typename BaseType>
+DenseElementsAttr tileTypeRaw(DenseElementsAttr attr, ShapedType inputType,
+                              ShapedType outputType) {
+  ArrayRef<BaseType> inputValues =
+      cast<DenseIntOrFPElementsAttr>(attr).getNonSplatRawData<BaseType>();
+
+  SmallVector<BaseType> outputValues;
+  outputValues.resize_for_overwrite(outputType.getNumElements());
+  tileArray<BaseType>(inputType, inputValues, /*out*/ outputType, outputValues);
+
+  ArrayRef rawOutputValues(reinterpret_cast<const char *>(outputValues.data()),
+                           outputValues.size() * sizeof(BaseType));
+  return DenseElementsAttr::getFromRawBuffer(outputType, rawOutputValues);
+}
+
+template <typename BaseType>
+DenseElementsAttr tileType(DenseElementsAttr attr, ShapedType inputType,
+                           ShapedType outputType) {
+
+  auto inputValues = attr.getValues<BaseType>();
+  SmallVector<BaseType> outputValues(outputType.getNumElements(),
+                                     *std::begin(inputValues));
+  tileArray<BaseType>(inputType, inputValues, outputType, /*out*/ outputValues);
+  return DenseElementsAttr::get(outputType,
+                                llvm::ArrayRef<BaseType>(outputValues));
+}
+
+DenseElementsAttr tile(DenseElementsAttr inputValues, ShapedType outputType) {
+
+  auto inputType = inputValues.getType();
+  auto baseType = inputType.getElementType();
+
+  // Handle possible integer types
+  if (auto intType = dyn_cast<IntegerType>(baseType)) {
+    switch (intType.getWidth()) {
+    case 1:
+      // i1 has special alignment which is not handled by transposeTypeRaw.
+      return tileType<bool>(inputValues, inputType, outputType);
+    case 8:
+      return tileTypeRaw<uint8_t>(inputValues, inputType, outputType);
+    case 16:
+      return tileTypeRaw<uint16_t>(inputValues, inputType, outputType);
+    case 32:
+      return tileTypeRaw<uint32_t>(inputValues, inputType, outputType);
+    case 64:
+      return tileTypeRaw<uint64_t>(inputValues, inputType, outputType);
+    default:
+      return tileType<APInt>(inputValues, inputType, outputType);
+    }
+  }
+
+  // Handle possible float types
+  if (baseType.isF32()) {
+    return tileTypeRaw<uint32_t>(inputValues, inputType, outputType);
+  }
+  if (baseType.isF64()) {
+    return tileTypeRaw<uint64_t>(inputValues, inputType, outputType);
+  }
+  if (baseType.isBF16()) {
+    return tileTypeRaw<uint16_t>(inputValues, inputType, outputType);
+  }
+  return tileType<APFloat>(inputValues, inputType, outputType);
+}
+
+struct TosaFoldConstantTile : public TosaFoldConstantBase<tosa::TileOp> {
+  using TosaFoldConstantBase::TosaFoldConstantBase;
+
+  LogicalResult matchAndRewrite(tosa::TileOp op,
+                                PatternRewriter &rewriter) const override {
+    auto outputType = cast<ShapedType>(op.getType());
+    // TOSA doesn't support quantized types.
+    if (!outputType.getElementType().isIntOrIndexOrFloat())
+      return failure();
+
+    auto input = op.getInput1();
+    DenseElementsAttr inputValues;
+    if (!matchPattern(input, m_Constant(&inputValues)))
+      return failure();
+
+    // Only fold op with multiple users if foldSplatOrSingleUseOnly is false.
+    if (!llvm::hasSingleElement(input.getDefiningOp()->getUsers()) &&
+        foldSplatOrSingleUseOnly)
+      return failure();
+
+    rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, outputType,
+                                               tile(inputValues, outputType));
     return success();
   }
 };
@@ -1818,40 +1928,41 @@ struct ReduceConstantOptimization : public OpRewritePattern<OperationType> {
 
 void mlir::tosa::populateTosaFoldConstantPatterns(
     MLIRContext *ctx, RewritePatternSet &patterns,
-    bool foldSplatOrSingleUseOnly,
-    bool enableIntCastFolding) {
+    const TosaLayerwiseConstantFoldPassOptions &options) {
 
-  patterns.add<TosaFoldConstantTranspose>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantReciprocal>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantReshape>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantRSQRT>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantLogicalNot>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantPow>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantMul>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantClamp>(ctx, foldSplatOrSingleUseOnly);
-  if (enableIntCastFolding) {
-    patterns.add<TosaFoldConstantCast>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantTranspose>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantReciprocal>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantReshape>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantRSQRT>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantLogicalNot>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantPow>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantMul>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantClamp>(ctx, options.foldSplatOrSingleUseOnly);
+  if (options.enableIntCastFolding) {
+    patterns.add<TosaFoldConstantCast>(ctx, options.foldSplatOrSingleUseOnly);
   } else {
-    patterns.add<TosaFoldConstantFloatCasts>(ctx, foldSplatOrSingleUseOnly);
+    patterns.add<TosaFoldConstantFloatCasts>(ctx, options.foldSplatOrSingleUseOnly);
   }
-  patterns.add<TosaFoldConstantAdd>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantSub>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantGreater>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantBitwiseNot>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantCeil>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantErf>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantExp>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantLog>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantCos>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantSin>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantBitwiseAnd>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantBitwiseOr>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantGreaterEqual>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantEqual>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantMinimum>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantMaximum>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantPad>(ctx, foldSplatOrSingleUseOnly);
-  patterns.add<TosaFoldConstantMatMul>(ctx, foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantAdd>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantSub>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantGreater>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantBitwiseNot>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantCeil>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantErf>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantExp>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantLog>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantCos>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantSin>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantBitwiseAnd>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantBitwiseOr>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantGreaterEqual>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantEqual>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantMinimum>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantMaximum>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantPad>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantMatMul>(ctx, options.foldSplatOrSingleUseOnly);
+  if (options.enableTileFolding)
+    patterns.add<TosaFoldConstantTile>(ctx, options.foldSplatOrSingleUseOnly);
 }
 
 void mlir::tosa::populateTosaConstantReduction(MLIRContext *ctx,

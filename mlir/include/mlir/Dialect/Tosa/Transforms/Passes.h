@@ -30,10 +30,9 @@ void populateTosaDecomposeTransposeConv(MLIRContext *ctx,
                                         RewritePatternSet &patterns);
 void populateTosaDecomposeDepthwise(MLIRContext *ctx,
                                     RewritePatternSet &patterns);
-void populateTosaFoldConstantPatterns(MLIRContext *ctx,
-                                      RewritePatternSet &patterns,
-                                      bool foldSplatOrSingleUseOnly,
-                                      bool enableIntCastFolding);
+void populateTosaFoldConstantPatterns(
+    MLIRContext *ctx, RewritePatternSet &patterns,
+    const TosaLayerwiseConstantFoldPassOptions &options);
 void populateTosaConstantReduction(MLIRContext *ctx,
                                    RewritePatternSet &patterns,
                                    bool aggressiveReduceConstant);

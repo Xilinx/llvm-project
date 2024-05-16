@@ -32,6 +32,9 @@ def TosaLayerwiseConstantFoldPass : Pass<"tosa-layerwise-constant-fold", "func::
             /*default=*/"false",
             "Always perform the reduce constant optimization"
             "May add more tosa.const but would reduce runtime calculations">,
+    Option<"enableTileFolding", "enable-tile-folding", "bool",
+            /*default=*/"false",
+            "Enables folding of tosa.tile operation. May generate bigger constant values.">,
   ];
 }
 
