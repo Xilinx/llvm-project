@@ -327,6 +327,22 @@ public:
       return rewriter.notifyMatchFailure(
           op, "expected integer or size_t/ssize_t operand type");
 
+    // to-i1 conversions: arith semantics want truncation, whereas (bool)(v) is
+    // equivalent to (v != 0). Implementing as (bool)(v & 0x01) gives
+    // truncation.
+    if (opReturnType.isInteger(1)) {
+      Type attrType = (emitc::isAnySizeTType(operandType))
+                          ? rewriter.getIndexType()
+                          : operandType;
+      auto constOne = rewriter.create<emitc::ConstantOp>(
+          op.getLoc(), operandType, rewriter.getIntegerAttr(attrType, 1));
+      auto oneAndOperand = rewriter.create<emitc::BitwiseAndOp>(
+          op.getLoc(), operandType, adaptor.getIn(), constOne);
+      rewriter.replaceOpWithNewOp<emitc::CastOp>(op, opReturnType,
+                                                 oneAndOperand);
+      return success();
+    }
+
     bool isTruncation =
         (isa<IntegerType>(operandType) && isa<IntegerType>(opReturnType) &&
          operandType.getIntOrFloatBitWidth() >

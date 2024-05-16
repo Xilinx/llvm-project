@@ -428,6 +428,13 @@ func.func @arith_trunci(%arg0: i32) -> i8 {
   // CHECK: emitc.cast %[[Trunc]] : ui8 to i8
   %truncd = arith.trunci %arg0 : i32 to i8
 
+  // CHECK: %[[Const:.*]] = "emitc.constant"
+  // CHECK-SAME: value = 1
+  // CHECK-SAME: () -> i32
+  // CHECK: %[[AndOne:.*]] = emitc.bitwise_and %[[Arg0]], %[[Const]] : (i32, i32) -> i32
+  // CHECK: %[[Conv:.*]] = emitc.cast %[[AndOne]] : i32 to i1
+  %bool = arith.trunci %arg0 : i32 to i1
+
   return %truncd : i8
 }
 
@@ -467,6 +474,13 @@ func.func @arith_index_cast(%arg0: i32) -> i32 {
   // CHECK: %[[Conv3:.*]] = emitc.cast %[[Conv2]] : !emitc.ssize_t to i32
   %int = arith.index_cast %idx : index to i32
 
+  // CHECK: %[[Const:.*]] = "emitc.constant"
+  // CHECK-SAME: value = 1
+  // CHECK-SAME: () -> !emitc.size_t
+  // CHECK: %[[AndOne:.*]] = emitc.bitwise_and %[[Conv1]], %[[Const]] : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
+  // CHECK: %[[Conv4:.*]] = emitc.cast %[[AndOne]] : !emitc.size_t to i1
+  %bool = arith.index_cast %idx : index to i1
+
   return %int : i32
 }
 
@@ -481,6 +495,13 @@ func.func @arith_index_castui(%arg0: i32) -> i32 {
   // CHECK: %[[Conv2:.*]] = emitc.cast %[[Conv1]] : !emitc.size_t to ui32
   // CHECK: %[[Conv3:.*]] = emitc.cast %[[Conv2]] : ui32 to i32
   %int = arith.index_castui %idx : index to i32
+
+  // CHECK: %[[Const:.*]] = "emitc.constant"
+  // CHECK-SAME: value = 1
+  // CHECK-SAME: () -> !emitc.size_t
+  // CHECK: %[[AndOne:.*]] = emitc.bitwise_and %[[Conv1]], %[[Const]] : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
+  // CHECK: %[[Conv4:.*]] = emitc.cast %[[AndOne]] : !emitc.size_t to i1
+  %bool = arith.index_castui %idx : index to i1
 
   return %int : i32
 }
