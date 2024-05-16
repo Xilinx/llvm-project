@@ -1153,6 +1153,24 @@ struct TosaFoldConstantBitwiseNot
   }
 };
 
+struct TosaFoldConstantFloor
+    : public TosaFoldConstantUnaryElementwise<TosaFoldConstantFloor, FloorOp> {
+  using TosaFoldConstantUnaryElementwise<
+      TosaFoldConstantFloor, FloorOp>::TosaFoldConstantUnaryElementwise;
+
+  DenseElementsAttr computeFloat(DenseElementsAttr values,
+                                 PatternRewriter &rewriter, TosaOp op) const {
+    return applyElementWise<APFloat, APFloat, FloatType>(
+        values,
+        [](const APFloat &val, FloatType) {
+          auto res = val;
+          res.roundToIntegral(llvm::RoundingMode::TowardNegative);
+          return res;
+        },
+        cast<FloatType>(values.getElementType()));
+  }
+};
+
 struct TosaFoldConstantCeil
     : public TosaFoldConstantUnaryElementwise<TosaFoldConstantCeil, CeilOp> {
   using TosaFoldConstantUnaryElementwise<
@@ -1947,6 +1965,7 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
   patterns.add<TosaFoldConstantSub>(ctx, options.foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantGreater>(ctx, options.foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantBitwiseNot>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantFloor>(ctx, options.foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantCeil>(ctx, options.foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantErf>(ctx, options.foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantExp>(ctx, options.foldSplatOrSingleUseOnly);
