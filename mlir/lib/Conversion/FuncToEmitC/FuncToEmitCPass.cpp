@@ -55,6 +55,10 @@ void ConvertFuncToEmitC::runOnOperation() {
         if (std::any_of(operandTypes.begin(), operandTypes.end(),
                         [](Type t) { return isa<IndexType>(t); }))
           return false;
+        auto argumentTypes = op.getArgumentTypes();
+        if (std::any_of(argumentTypes.begin(), argumentTypes.end(),
+                        [](Type t) { return isa<IndexType>(t); }))
+          return false;
         auto resultTypes = op.getResultTypes();
         return !(std::any_of(resultTypes.begin(), resultTypes.end(),
                              [](Type t) { return isa<IndexType>(t); }));

@@ -80,3 +80,11 @@ func.func @call(%arg0: index) -> index {
   %0 = call @prototype_index(%arg0) : (index) -> (index)
   return %0 : index
 }
+
+// -----
+
+// CHECK-LABEL: emitc.func @index_args_only(%arg0: !emitc.size_t) -> f32
+func.func @index_args_only(%i: index) -> f32 {
+  %0 = arith.constant 0.0 : f32
+  return %0 : f32
+}
