@@ -72,8 +72,8 @@ void ConvertFuncToEmitC::runOnOperation() {
 
   RewritePatternSet interfaceRewritePatterns(&getContext());
   TypeConverter typeConverter;
-  typeConverter.addConversion([](Type type) { return type; });
-  populateEmitCSizeTypeConversionPatterns(typeConverter);
+  populateEmitCSizeTypeConversions(typeConverter);
+  populateEmitCDefaultTypeConversions(typeConverter);
   populateReturnOpTypeConversionPattern(interfaceRewritePatterns,
                                         typeConverter);
   populateCallOpTypeConversionPattern(interfaceRewritePatterns, typeConverter);

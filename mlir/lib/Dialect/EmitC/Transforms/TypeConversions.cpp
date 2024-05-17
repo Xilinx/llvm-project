@@ -9,6 +9,7 @@
 #include "mlir/Dialect/EmitC/Transforms/TypeConversions.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include <optional>
 
 using namespace mlir;
 
@@ -27,11 +28,19 @@ std::optional<Value> materializeAsUnrealizedCast(OpBuilder &builder,
 
 } // namespace
 
-void mlir::populateEmitCSizeTypeConversionPatterns(TypeConverter &converter) {
+void mlir::populateEmitCSizeTypeConversions(TypeConverter &converter) {
   converter.addConversion(
       [](IndexType type) { return emitc::SizeTType::get(type.getContext()); });
 
   converter.addSourceMaterialization(materializeAsUnrealizedCast);
   converter.addTargetMaterialization(materializeAsUnrealizedCast);
   converter.addArgumentMaterialization(materializeAsUnrealizedCast);
+}
+
+void mlir::populateEmitCDefaultTypeConversions(TypeConverter &converter) {
+  converter.addConversion([](Type type) -> std::optional<Type> {
+    if (!isa<IndexType>(type))
+      return type;
+    return std::nullopt;
+  });
 }

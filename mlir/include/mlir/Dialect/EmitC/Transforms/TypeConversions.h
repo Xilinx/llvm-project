@@ -9,5 +9,6 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-void populateEmitCSizeTypeConversionPatterns(mlir::TypeConverter &converter);
+void populateEmitCSizeTypeConversions(mlir::TypeConverter &converter);
+void populateEmitCDefaultTypeConversions(TypeConverter &converter);
 } // namespace mlir

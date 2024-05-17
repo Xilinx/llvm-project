@@ -34,13 +34,13 @@ struct ConvertMemRefToEmitCPass
 
     // Fallback for other types.
     converter.addConversion([](Type type) -> std::optional<Type> {
-      if (isa<MemRefType>(type))
+      if (isa<MemRefType, IndexType>(type))
         return {};
       return type;
     });
 
     populateMemRefToEmitCTypeConversion(converter);
-    populateEmitCSizeTypeConversionPatterns(converter);
+    populateEmitCSizeTypeConversions(converter);
 
     RewritePatternSet patterns(&getContext());
     populateMemRefToEmitCConversionPatterns(patterns, converter);

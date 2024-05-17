@@ -567,7 +567,7 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
                                         RewritePatternSet &patterns) {
   MLIRContext *ctx = patterns.getContext();
 
-  mlir::populateEmitCSizeTypeConversionPatterns(typeConverter);
+  mlir::populateEmitCSizeTypeConversions(typeConverter);
 
   // clang-format off
   patterns.add<
