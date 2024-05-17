@@ -68,8 +68,7 @@ bool mlir::emitc::isSupportedEmitCType(Type type) {
     return !llvm::isa<emitc::ArrayType>(elemType) &&
            isSupportedEmitCType(elemType);
   }
-  if (type.isIndex() ||
-      llvm::isa<emitc::SignedSizeTType, emitc::SizeTType>(type))
+  if (type.isIndex())
     return true;
   if (llvm::isa<IntegerType>(type))
     return isSupportedIntegerType(type);
@@ -110,8 +109,7 @@ bool mlir::emitc::isSupportedIntegerType(Type type) {
 }
 
 bool mlir::emitc::isIntegerIndexOrOpaqueType(Type type) {
-  return llvm::isa<IndexType, emitc::SignedSizeTType, emitc::SizeTType,
-                   emitc::OpaqueType>(type) ||
+  return llvm::isa<IndexType, emitc::OpaqueType>(type) ||
          isSupportedIntegerType(type);
 }
 
@@ -126,10 +124,6 @@ bool mlir::emitc::isSupportedFloatType(Type type) {
     }
   }
   return false;
-}
-
-bool mlir::emitc::isAnySizeTType(Type type) {
-  return isa<emitc::SignedSizeTType, emitc::SizeTType>(type);
 }
 
 /// Check that the type of the initial value is compatible with the operations
@@ -147,10 +141,6 @@ static LogicalResult verifyInitializationAttribute(Operation *op,
 
   Type resultType = op->getResult(0).getType();
   Type attrType = cast<TypedAttr>(value).getType();
-
-  if (isa<emitc::SignedSizeTType, emitc::SizeTType>(resultType) &&
-      attrType.isIndex())
-    return success();
 
   if (resultType != attrType)
     return op->emitOpError()
@@ -236,19 +226,10 @@ LogicalResult emitc::AssignOp::verify() {
 bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
   Type input = inputs.front(), output = outputs.front();
 
-  return (
-      (llvm::isa<IntegerType, FloatType, IndexType, emitc::OpaqueType,
-                 emitc::PointerType, emitc::SignedSizeTType, emitc::SizeTType>(
-          input)) &&
-      (llvm::isa<IntegerType, FloatType, IndexType, emitc::OpaqueType,
-                 emitc::PointerType, emitc::SignedSizeTType, emitc::SizeTType>(
-          output)));
-}
-
-OpFoldResult emitc::CastOp::fold(FoldAdaptor adaptor) {
-  if (getOperand().getType() == getResult().getType())
-    return getOperand();
-  return nullptr;
+  return ((llvm::isa<IntegerType, FloatType, IndexType, emitc::OpaqueType,
+                     emitc::PointerType>(input)) &&
+          (llvm::isa<IntegerType, FloatType, IndexType, emitc::OpaqueType,
+                     emitc::PointerType>(output)));
 }
 
 //===----------------------------------------------------------------------===//

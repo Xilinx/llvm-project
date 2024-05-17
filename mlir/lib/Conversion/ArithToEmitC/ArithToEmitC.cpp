@@ -15,7 +15,6 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
-#include "mlir/Dialect/EmitC/Transforms/TypeConversions.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Support/LogicalResult.h"
@@ -37,11 +36,8 @@ public:
   matchAndRewrite(arith::ConstantOp arithConst,
                   arith::ConstantOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Type newTy = this->getTypeConverter()->convertType(arithConst.getType());
-    if (!newTy)
-      return rewriter.notifyMatchFailure(arithConst, "type conversion failed");
-    rewriter.replaceOpWithNewOp<emitc::ConstantOp>(arithConst, newTy,
-                                                   adaptor.getValue());
+    rewriter.replaceOpWithNewOp<emitc::ConstantOp>(
+        arithConst, arithConst.getType(), adaptor.getValue());
     return success();
   }
 };
@@ -205,35 +201,6 @@ public:
   }
 };
 
-/// Check if the signedness of type \p ty matches the expected
-/// signedness, and issue a type with the correct signedness if
-/// necessary.
-Type adaptIntegralTypeSignedness(Type ty, bool needsUnsigned) {
-  if (isa<IntegerType>(ty)) {
-    // Turns signless integers into signed integers.
-    if (ty.isUnsignedInteger() != needsUnsigned) {
-      auto signedness = needsUnsigned
-                            ? IntegerType::SignednessSemantics::Unsigned
-                            : IntegerType::SignednessSemantics::Signed;
-      return IntegerType::get(ty.getContext(), ty.getIntOrFloatBitWidth(),
-                              signedness);
-    }
-  } else if (emitc::isAnySizeTType(ty)) {
-    if (isa<emitc::SizeTType>(ty) != needsUnsigned) {
-      if (needsUnsigned)
-        return emitc::SizeTType::get(ty.getContext());
-      return emitc::SignedSizeTType::get(ty.getContext());
-    }
-  }
-  return ty;
-}
-
-/// Insert a cast operation to type \p ty if \p val
-/// does not have this type.
-Value adaptValueType(Value val, ConversionPatternRewriter &rewriter, Type ty) {
-  return rewriter.createOrFold<emitc::CastOp>(val.getLoc(), ty, val);
-}
-
 class CmpIOpConversion : public OpConversionPattern<arith::CmpIOp> {
 public:
   using OpConversionPattern::OpConversionPattern;
@@ -283,25 +250,31 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = adaptor.getLhs().getType();
-    if (!isa_and_nonnull<IntegerType, emitc::SignedSizeTType, emitc::SizeTType>(
-            type)) {
-      return rewriter.notifyMatchFailure(
-          op, "expected integer or size_t/ssize_t type");
+    if (!isa_and_nonnull<IntegerType, IndexType>(type)) {
+      return rewriter.notifyMatchFailure(op, "expected integer or index type");
     }
 
     bool needsUnsigned = needsUnsignedCmp(op.getPredicate());
     emitc::CmpPredicate pred = toEmitCPred(op.getPredicate());
-
-    Type arithmeticType = adaptIntegralTypeSignedness(type, needsUnsigned);
-    Value lhs = adaptValueType(adaptor.getLhs(), rewriter, arithmeticType);
-    Value rhs = adaptValueType(adaptor.getRhs(), rewriter, arithmeticType);
-
+    Type arithmeticType = type;
+    if (type.isUnsignedInteger() != needsUnsigned) {
+      arithmeticType = rewriter.getIntegerType(type.getIntOrFloatBitWidth(),
+                                               /*isSigned=*/!needsUnsigned);
+    }
+    Value lhs = adaptor.getLhs();
+    Value rhs = adaptor.getRhs();
+    if (arithmeticType != type) {
+      lhs = rewriter.template create<emitc::CastOp>(op.getLoc(), arithmeticType,
+                                                    lhs);
+      rhs = rewriter.template create<emitc::CastOp>(op.getLoc(), arithmeticType,
+                                                    rhs);
+    }
     rewriter.replaceOpWithNewOp<emitc::CmpOp>(op, op.getType(), pred, lhs, rhs);
     return success();
   }
 };
 
-template <typename ArithOp, bool castToUnsigned>
+template <typename ArithOp, bool needsUnsigned>
 class CastConversion : public OpConversionPattern<ArithOp> {
 public:
   using OpConversionPattern<ArithOp>::OpConversionPattern;
@@ -311,10 +284,9 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type opReturnType = this->getTypeConverter()->convertType(op.getType());
-    if (!isa_and_nonnull<IntegerType, emitc::SignedSizeTType, emitc::SizeTType>(
-            opReturnType))
-      return rewriter.notifyMatchFailure(
-          op, "expected integer or size_t/ssize_t result type");
+    if (!isa_and_nonnull<IntegerType>(opReturnType)) {
+      return rewriter.notifyMatchFailure(op, "expected integer result type");
+    }
 
     if (adaptor.getOperands().size() != 1) {
       return rewriter.notifyMatchFailure(
@@ -322,47 +294,42 @@ public:
     }
 
     Type operandType = adaptor.getIn().getType();
-    if (!isa_and_nonnull<IntegerType, emitc::SignedSizeTType, emitc::SizeTType>(
-            operandType))
-      return rewriter.notifyMatchFailure(
-          op, "expected integer or size_t/ssize_t operand type");
-
-    // to-i1 conversions: arith semantics want truncation, whereas (bool)(v) is
-    // equivalent to (v != 0). Implementing as (bool)(v & 0x01) gives
-    // truncation.
-    if (opReturnType.isInteger(1)) {
-      Type attrType = (emitc::isAnySizeTType(operandType))
-                          ? rewriter.getIndexType()
-                          : operandType;
-      auto constOne = rewriter.create<emitc::ConstantOp>(
-          op.getLoc(), operandType, rewriter.getIntegerAttr(attrType, 1));
-      auto oneAndOperand = rewriter.create<emitc::BitwiseAndOp>(
-          op.getLoc(), operandType, adaptor.getIn(), constOne);
-      rewriter.replaceOpWithNewOp<emitc::CastOp>(op, opReturnType,
-                                                 oneAndOperand);
-      return success();
+    if (!isa_and_nonnull<IntegerType>(operandType)) {
+      return rewriter.notifyMatchFailure(op, "expected integer operand type");
     }
 
-    bool isTruncation =
-        (isa<IntegerType>(operandType) && isa<IntegerType>(opReturnType) &&
-         operandType.getIntOrFloatBitWidth() >
-             opReturnType.getIntOrFloatBitWidth());
-    bool doUnsigned = castToUnsigned || isTruncation;
+    bool isTruncation = operandType.getIntOrFloatBitWidth() >
+                        opReturnType.getIntOrFloatBitWidth();
+    bool doUnsigned = needsUnsigned || isTruncation;
 
-    // Adapt the signedness of the result (bitwidth-preserving cast)
-    // This is needed e.g., if the return type is signless.
-    Type castDestType = adaptIntegralTypeSignedness(opReturnType, doUnsigned);
+    Type castType = opReturnType;
+    // For int conversions: if the op is a ui variant and the type wanted as
+    // return type isn't unsigned, we need to issue an unsigned type to do
+    // the conversion.
+    if (castType.isUnsignedInteger() != doUnsigned) {
+      castType = rewriter.getIntegerType(opReturnType.getIntOrFloatBitWidth(),
+                                         /*isSigned=*/!doUnsigned);
+    }
 
-    // Adapt the signedness of the operand (bitwidth-preserving cast)
-    Type castSrcType = adaptIntegralTypeSignedness(operandType, doUnsigned);
-    Value actualOp = adaptValueType(adaptor.getIn(), rewriter, castSrcType);
+    Value actualOp = adaptor.getIn();
+    // Fix the signedness of the operand if necessary
+    if (operandType.isUnsignedInteger() != doUnsigned) {
+      Type correctSignednessType =
+          rewriter.getIntegerType(operandType.getIntOrFloatBitWidth(),
+                                  /*isSigned=*/!doUnsigned);
+      actualOp = rewriter.template create<emitc::CastOp>(
+          op.getLoc(), correctSignednessType, actualOp);
+    }
 
-    // Actual cast (may change bitwidth)
-    auto cast = rewriter.template create<emitc::CastOp>(op.getLoc(),
-                                                        castDestType, actualOp);
+    auto result = rewriter.template create<emitc::CastOp>(op.getLoc(), castType,
+                                                          actualOp);
 
-    // Cast to the expected output type
-    auto result = adaptValueType(cast, rewriter, opReturnType);
+    // Fix the signedness of what this operation returns (for integers,
+    // the arith ops want signless results)
+    if (castType != opReturnType) {
+      result = rewriter.template create<emitc::CastOp>(op.getLoc(),
+                                                       opReturnType, result);
+    }
 
     rewriter.replaceOp(op, result);
     return success();
@@ -388,11 +355,7 @@ public:
   matchAndRewrite(ArithOp arithOp, typename ArithOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    Type newTy = this->getTypeConverter()->convertType(arithOp.getType());
-    if (!newTy)
-      return rewriter.notifyMatchFailure(arithOp,
-                                         "converting result type failed");
-    rewriter.template replaceOpWithNewOp<EmitCOp>(arithOp, newTy,
+    rewriter.template replaceOpWithNewOp<EmitCOp>(arithOp, arithOp.getType(),
                                                   adaptor.getOperands());
 
     return success();
@@ -409,10 +372,8 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = this->getTypeConverter()->convertType(op.getType());
-    if (!isa_and_nonnull<IntegerType, emitc::SignedSizeTType, emitc::SizeTType>(
-            type)) {
-      return rewriter.notifyMatchFailure(
-          op, "expected integer or size_t/ssize_t type");
+    if (!isa_and_nonnull<IntegerType, IndexType>(type)) {
+      return rewriter.notifyMatchFailure(op, "expected integer type");
     }
 
     if (type.isInteger(1)) {
@@ -420,6 +381,8 @@ public:
       return rewriter.notifyMatchFailure(op, "i1 type is not implemented");
     }
 
+    Value lhs = adaptor.getLhs();
+    Value rhs = adaptor.getRhs();
     Type arithmeticType = type;
     if ((type.isSignlessInteger() || type.isSignedInteger()) &&
         !bitEnumContainsAll(op.getOverflowFlags(),
@@ -429,15 +392,20 @@ public:
       arithmeticType = rewriter.getIntegerType(type.getIntOrFloatBitWidth(),
                                                /*isSigned=*/false);
     }
+    if (arithmeticType != type) {
+      lhs = rewriter.template create<emitc::CastOp>(op.getLoc(), arithmeticType,
+                                                    lhs);
+      rhs = rewriter.template create<emitc::CastOp>(op.getLoc(), arithmeticType,
+                                                    rhs);
+    }
 
-    Value lhs = adaptValueType(adaptor.getLhs(), rewriter, arithmeticType);
-    Value rhs = adaptValueType(adaptor.getRhs(), rewriter, arithmeticType);
+    Value result = rewriter.template create<EmitCOp>(op.getLoc(),
+                                                     arithmeticType, lhs, rhs);
 
-    Value arithmeticResult = rewriter.template create<EmitCOp>(
-        op.getLoc(), arithmeticType, lhs, rhs);
-
-    Value result = adaptValueType(arithmeticResult, rewriter, type);
-
+    if (arithmeticType != type) {
+      result =
+          rewriter.template create<emitc::CastOp>(op.getLoc(), type, result);
+    }
     rewriter.replaceOp(op, result);
     return success();
   }
@@ -567,8 +535,6 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
                                         RewritePatternSet &patterns) {
   MLIRContext *ctx = patterns.getContext();
 
-  mlir::populateEmitCSizeTypeConversionPatterns(typeConverter);
-
   // clang-format off
   patterns.add<
     ArithConstantOpConversionPattern,
@@ -588,8 +554,6 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
     UnsignedCastConversion<arith::TruncIOp>,
     SignedCastConversion<arith::ExtSIOp>,
     UnsignedCastConversion<arith::ExtUIOp>,
-    SignedCastConversion<arith::IndexCastOp>,
-    UnsignedCastConversion<arith::IndexCastUIOp>,
     ItoFCastOpConversion<arith::SIToFPOp>,
     ItoFCastOpConversion<arith::UIToFPOp>,
     FtoICastOpConversion<arith::FPToSIOp>,
