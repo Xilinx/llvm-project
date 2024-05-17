@@ -44,8 +44,11 @@ void ConvertArithToEmitC::runOnOperation() {
   RewritePatternSet patterns(&getContext());
 
   TypeConverter typeConverter;
+  // Fallback converter
+  // See note https://mlir.llvm.org/docs/DialectConversion/#type-converter
+  // Type converters are called most to least recently inserted
+  typeConverter.addConversion([](Type t) { return t; });
   populateArithToEmitCPatterns(typeConverter, patterns);
-  populateEmitCDefaultTypeConversions(typeConverter);
 
   if (failed(
           applyPartialConversion(getOperation(), target, std::move(patterns))))

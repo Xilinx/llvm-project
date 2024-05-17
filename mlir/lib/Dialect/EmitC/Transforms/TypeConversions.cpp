@@ -36,11 +36,3 @@ void mlir::populateEmitCSizeTypeConversions(TypeConverter &converter) {
   converter.addTargetMaterialization(materializeAsUnrealizedCast);
   converter.addArgumentMaterialization(materializeAsUnrealizedCast);
 }
-
-void mlir::populateEmitCDefaultTypeConversions(TypeConverter &converter) {
-  converter.addConversion([](Type type) -> std::optional<Type> {
-    if (!isa<IndexType>(type))
-      return type;
-    return std::nullopt;
-  });
-}

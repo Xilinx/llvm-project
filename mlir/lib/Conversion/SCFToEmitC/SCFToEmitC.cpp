@@ -211,8 +211,11 @@ void mlir::populateSCFToEmitCConversionPatterns(RewritePatternSet &patterns,
 void SCFToEmitCPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   TypeConverter typeConverter;
+  // Fallback converter
+  // See note https://mlir.llvm.org/docs/DialectConversion/#type-converter
+  // Type converters are called most to least recently inserted
+  typeConverter.addConversion([](Type t) { return t; });
   populateEmitCSizeTypeConversions(typeConverter);
-  populateEmitCDefaultTypeConversions(typeConverter);
   populateSCFToEmitCConversionPatterns(patterns, typeConverter);
 
   // Configure conversion to lower out SCF operations.
