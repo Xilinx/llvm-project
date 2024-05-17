@@ -431,7 +431,8 @@ void ForOp::print(OpAsmPrinter &p) {
     << getUpperBound() << " step " << getStep();
 
   p << ' ';
-  if (Type t = getInductionVar().getType(); !t.isIndex())
+  if (Type t = getInductionVar().getType();
+      !(t.isIndex() || emitc::isAnySizeTType(t)))
     p << " : " << t << ' ';
   p.printRegion(getRegion(),
                 /*printEntryBlockArgs=*/false,
