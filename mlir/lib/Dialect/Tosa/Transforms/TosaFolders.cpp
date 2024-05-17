@@ -1736,11 +1736,19 @@ DenseElementsAttr tile(DenseElementsAttr inputValues, ShapedType outputType) {
   auto inputType = inputValues.getType();
   auto baseType = inputType.getElementType();
 
+  if (inputValues.isSplat()) {
+    if (isa<IntegerType>(baseType))
+      return DenseElementsAttr::get(outputType,
+                                    inputValues.getSplatValue<APInt>());
+    return DenseElementsAttr::get(outputType,
+                                  inputValues.getSplatValue<APFloat>());
+  }
+
   // Handle possible integer types
   if (auto intType = dyn_cast<IntegerType>(baseType)) {
     switch (intType.getWidth()) {
     case 1:
-      // i1 has special alignment which is not handled by transposeTypeRaw.
+      // i1 has special alignment which is not handled by tileTypeRaw.
       return tileType<bool>(inputValues, inputType, outputType);
     case 8:
       return tileTypeRaw<uint8_t>(inputValues, inputType, outputType);
