@@ -1,12 +1,15 @@
 // RUN: mlir-opt -convert-memref-to-emitc %s -split-input-file | FileCheck %s
 
 // CHECK-LABEL: memref_store
-// CHECK-SAME:  %[[v:.*]]: f32, %[[i:.*]]: index, %[[j:.*]]: index
+// CHECK-SAME:  %[[v:.*]]: f32, %[[argi:.*]]: index, %[[argj:.*]]: index
 func.func @memref_store(%v : f32, %i: index, %j: index) {
+  // CHECK: %[[i:.*]] = builtin.unrealized_conversion_cast %[[argi]] : index to !emitc.size_t 
+  // CHECK: %[[j:.*]] = builtin.unrealized_conversion_cast %[[argj]] : index to !emitc.size_t 
+
   // CHECK: %[[ALLOCA:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.array<4x8xf32>
   %0 = memref.alloca() : memref<4x8xf32>
 
-  // CHECK: %[[SUBSCRIPT:.*]] = emitc.subscript %[[ALLOCA]][%[[i]], %[[j]]] : (!emitc.array<4x8xf32>, index, index) -> f32
+  // CHECK: %[[SUBSCRIPT:.*]] = emitc.subscript %[[ALLOCA]][%[[i]], %[[j]]] : (!emitc.array<4x8xf32>, !emitc.size_t, !emitc.size_t) -> f32
   // CHECK: emitc.assign %[[v]] : f32 to %[[SUBSCRIPT:.*]] : f32
   memref.store %v, %0[%i, %j] : memref<4x8xf32>
   return
@@ -15,12 +18,15 @@ func.func @memref_store(%v : f32, %i: index, %j: index) {
 // -----
 
 // CHECK-LABEL: memref_load
-// CHECK-SAME:  %[[i:.*]]: index, %[[j:.*]]: index
+// CHECK-SAME:  %[[argi:.*]]: index, %[[argj:.*]]: index
 func.func @memref_load(%i: index, %j: index) -> f32 {
+  // CHECK: %[[i:.*]] = builtin.unrealized_conversion_cast %[[argi]] : index to !emitc.size_t 
+  // CHECK: %[[j:.*]] = builtin.unrealized_conversion_cast %[[argj]] : index to !emitc.size_t 
+
   // CHECK: %[[ALLOCA:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.array<4x8xf32>
   %0 = memref.alloca() : memref<4x8xf32>
 
-  // CHECK: %[[LOAD:.*]] = emitc.subscript %[[ALLOCA]][%[[i]], %[[j]]] : (!emitc.array<4x8xf32>, index, index) -> f32
+  // CHECK: %[[LOAD:.*]] = emitc.subscript %[[ALLOCA]][%[[i]], %[[j]]] : (!emitc.array<4x8xf32>, !emitc.size_t, !emitc.size_t) -> f32
   // CHECK: %[[VAR:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> f32
   // CHECK: emitc.assign %[[LOAD]] : f32 to %[[VAR]] : f32
   %1 = memref.load %0[%i, %j] : memref<4x8xf32>
