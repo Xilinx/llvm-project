@@ -404,9 +404,9 @@ struct ClampClampOptimization : public OpRewritePattern<tosa::ClampOp> {
       auto minInt = std::max(op.getMinInt(), clampOp.getMinInt());
       auto maxInt = std::min(op.getMaxInt(), clampOp.getMaxInt());
 
-      rewriter.replaceOpWithNewOp<tosa::ClampOp>(
-          op, op.getType(), clampOp.getInput(),
-          rewriter.getI64IntegerAttr(minInt),
+      rewriter.replaceOpWithNewOp<ClampOp>(
+          op, {op->getLoc(), clampOp->getLoc()}, op.getType(),
+          clampOp.getInput(), rewriter.getI64IntegerAttr(minInt),
           rewriter.getI64IntegerAttr(maxInt), rewriter.getF32FloatAttr(minFp),
           rewriter.getF32FloatAttr(maxFp));
       return success();
