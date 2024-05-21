@@ -36,65 +36,20 @@ struct ConvertFuncToEmitC
 } // namespace
 
 void ConvertFuncToEmitC::runOnOperation() {
-  // Convert function interface types within the func dialect first to supported
-  // EmitC types
-  ConversionTarget interfaceConversionTarget(getContext());
-  interfaceConversionTarget.addDynamicallyLegalOp<func::CallOp>(
-      [](func::CallOp op) {
-        auto operandTypes = op->getOperandTypes();
-        if (std::any_of(operandTypes.begin(), operandTypes.end(),
-                        [](Type t) { return isa<IndexType>(t); }))
-          return false;
-        auto resultTypes = op.getResultTypes();
-        return !(std::any_of(resultTypes.begin(), resultTypes.end(),
-                             [](Type t) { return isa<IndexType>(t); }));
-      });
-  interfaceConversionTarget.addDynamicallyLegalOp<func::FuncOp>(
-      [](func::FuncOp op) {
-        auto operandTypes = op->getOperandTypes();
-        if (std::any_of(operandTypes.begin(), operandTypes.end(),
-                        [](Type t) { return isa<IndexType>(t); }))
-          return false;
-        auto argumentTypes = op.getArgumentTypes();
-        if (std::any_of(argumentTypes.begin(), argumentTypes.end(),
-                        [](Type t) { return isa<IndexType>(t); }))
-          return false;
-        auto resultTypes = op.getResultTypes();
-        return !(std::any_of(resultTypes.begin(), resultTypes.end(),
-                             [](Type t) { return isa<IndexType>(t); }));
-      });
-  interfaceConversionTarget.addDynamicallyLegalOp<func::ReturnOp>(
-      [](func::ReturnOp op) {
-        auto operandTypes = op->getOperandTypes();
-        return !(std::any_of(operandTypes.begin(), operandTypes.end(),
-                             [](Type t) { return isa<IndexType>(t); }));
-      });
-
-  RewritePatternSet interfaceRewritePatterns(&getContext());
   TypeConverter typeConverter;
   // Fallback converter
   // See note https://mlir.llvm.org/docs/DialectConversion/#type-converter
   // Type converters are called most to least recently inserted
   typeConverter.addConversion([](Type t) { return t; });
   populateEmitCSizeTypeConversions(typeConverter);
-  populateReturnOpTypeConversionPattern(interfaceRewritePatterns,
-                                        typeConverter);
-  populateCallOpTypeConversionPattern(interfaceRewritePatterns, typeConverter);
-  populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(
-      interfaceRewritePatterns, typeConverter);
 
-  if (failed(applyPartialConversion(getOperation(), interfaceConversionTarget,
-                                    std::move(interfaceRewritePatterns))))
-    signalPassFailure();
-
-  // Then convert the func ops themselves to EmitC
   ConversionTarget target(getContext());
 
   target.addLegalDialect<emitc::EmitCDialect>();
   target.addIllegalOp<func::CallOp, func::FuncOp, func::ReturnOp>();
 
   RewritePatternSet patterns(&getContext());
-  populateFuncToEmitCPatterns(patterns);
+  populateFuncToEmitCPatterns(patterns, typeConverter);
 
   if (failed(
           applyPartialConversion(getOperation(), target, std::move(patterns))))
