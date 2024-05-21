@@ -7,7 +7,10 @@ func.func @simple_std_for_loop(%arg0 : index, %arg1 : index, %arg2 : index) {
   return
 }
 // CHECK-LABEL: func.func @simple_std_for_loop(
-// CHECK-SAME:      %[[VAL_0:.*]]: index, %[[VAL_1:.*]]: index, %[[VAL_2:.*]]: index) {
+// CHECK-SAME:      %[[ARG_0:.*]]: index, %[[ARG_1:.*]]: index, %[[ARG_2:.*]]: index) {
+// CHECK-NEXT:    %[[VAL_0:.*]] = builtin.unrealized_conversion_cast %[[ARG_0]] : index to !emitc.size_t
+// CHECK-NEXT:    %[[VAL_1:.*]] = builtin.unrealized_conversion_cast %[[ARG_1]] : index to !emitc.size_t
+// CHECK-NEXT:    %[[VAL_2:.*]] = builtin.unrealized_conversion_cast %[[ARG_2]] : index to !emitc.size_t
 // CHECK-NEXT:    emitc.for %[[VAL_3:.*]] = %[[VAL_0]] to %[[VAL_1]] step %[[VAL_2]] {
 // CHECK-NEXT:      %[[VAL_4:.*]] = arith.constant 1 : index
 // CHECK-NEXT:    }
@@ -24,7 +27,10 @@ func.func @simple_std_2_for_loops(%arg0 : index, %arg1 : index, %arg2 : index) {
   return
 }
 // CHECK-LABEL: func.func @simple_std_2_for_loops(
-// CHECK-SAME:      %[[VAL_0:.*]]: index, %[[VAL_1:.*]]: index, %[[VAL_2:.*]]: index) {
+// CHECK-SAME:      %[[ARG_0:.*]]: index, %[[ARG_1:.*]]: index, %[[ARG_2:.*]]: index) {
+// CHECK-NEXT:    %[[VAL_0:.*]] = builtin.unrealized_conversion_cast %[[ARG_0]] : index to !emitc.size_t
+// CHECK-NEXT:    %[[VAL_1:.*]] = builtin.unrealized_conversion_cast %[[ARG_1]] : index to !emitc.size_t
+// CHECK-NEXT:    %[[VAL_2:.*]] = builtin.unrealized_conversion_cast %[[ARG_2]] : index to !emitc.size_t
 // CHECK-NEXT:    emitc.for %[[VAL_3:.*]] = %[[VAL_0]] to %[[VAL_1]] step %[[VAL_2]] {
 // CHECK-NEXT:      %[[VAL_4:.*]] = arith.constant 1 : index
 // CHECK-NEXT:      emitc.for %[[VAL_5:.*]] = %[[VAL_0]] to %[[VAL_1]] step %[[VAL_2]] {
@@ -44,7 +50,10 @@ func.func @for_yield(%arg0 : index, %arg1 : index, %arg2 : index) -> (f32, f32) 
   return %result#0, %result#1 : f32, f32
 }
 // CHECK-LABEL: func.func @for_yield(
-// CHECK-SAME:      %[[VAL_0:.*]]: index, %[[VAL_1:.*]]: index, %[[VAL_2:.*]]: index) -> (f32, f32) {
+// CHECK-SAME:      %[[ARG_0:.*]]: index, %[[ARG_1:.*]]: index, %[[ARG_2:.*]]: index) -> (f32, f32) {
+// CHECK-NEXT:    %[[VAL_0:.*]] = builtin.unrealized_conversion_cast %[[ARG_0]] : index to !emitc.size_t
+// CHECK-NEXT:    %[[VAL_1:.*]] = builtin.unrealized_conversion_cast %[[ARG_1]] : index to !emitc.size_t
+// CHECK-NEXT:    %[[VAL_2:.*]] = builtin.unrealized_conversion_cast %[[ARG_2]] : index to !emitc.size_t
 // CHECK-NEXT:    %[[VAL_3:.*]] = arith.constant 0.000000e+00 : f32
 // CHECK-NEXT:    %[[VAL_4:.*]] = arith.constant 1.000000e+00 : f32
 // CHECK-NEXT:    %[[VAL_5:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> f32
@@ -75,7 +84,10 @@ func.func @nested_for_yield(%arg0 : index, %arg1 : index, %arg2 : index) -> f32 
   return %r : f32
 }
 // CHECK-LABEL: func.func @nested_for_yield(
-// CHECK-SAME:      %[[VAL_0:.*]]: index, %[[VAL_1:.*]]: index, %[[VAL_2:.*]]: index) -> f32 {
+// CHECK-SAME:      %[[ARG_0:.*]]: index, %[[ARG_1:.*]]: index, %[[ARG_2:.*]]: index) -> f32 {
+// CHECK-NEXT:    %[[VAL_0:.*]] = builtin.unrealized_conversion_cast %[[ARG_0]] : index to !emitc.size_t
+// CHECK-NEXT:    %[[VAL_1:.*]] = builtin.unrealized_conversion_cast %[[ARG_1]] : index to !emitc.size_t
+// CHECK-NEXT:    %[[VAL_2:.*]] = builtin.unrealized_conversion_cast %[[ARG_2]] : index to !emitc.size_t
 // CHECK-NEXT:    %[[VAL_3:.*]] = arith.constant 1.000000e+00 : f32
 // CHECK-NEXT:    %[[VAL_4:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> f32
 // CHECK-NEXT:    %[[VAL_5:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> f32

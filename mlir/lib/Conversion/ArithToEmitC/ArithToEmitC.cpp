@@ -563,11 +563,11 @@ public:
 // Pattern population
 //===----------------------------------------------------------------------===//
 
-void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
-                                        RewritePatternSet &patterns) {
+void mlir::populateArithToEmitCPatterns(RewritePatternSet &patterns,
+                                        TypeConverter &typeConverter) {
   MLIRContext *ctx = patterns.getContext();
 
-  mlir::populateEmitCSizeTypeConversionPatterns(typeConverter);
+  mlir::populateEmitCSizeTypeConversions(typeConverter);
 
   // clang-format off
   patterns.add<

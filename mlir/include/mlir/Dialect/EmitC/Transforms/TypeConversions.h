@@ -6,8 +6,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Transforms/DialectConversion.h"
+#ifndef MLIR_DIALECT_EMITC_TRANSFORMS_TYPECONVERSIONS_H
+#define MLIR_DIALECT_EMITC_TRANSFORMS_TYPECONVERSIONS_H
 
 namespace mlir {
-void populateEmitCSizeTypeConversionPatterns(mlir::TypeConverter &converter);
+class TypeConverter;
+void populateEmitCSizeTypeConversions(TypeConverter &converter);
 } // namespace mlir
+
+#endif // MLIR_DIALECT_EMITC_TRANSFORMS_TYPECONVERSIONS_H
