@@ -443,8 +443,9 @@ public:
   }
 };
 
-template <typename ArithOp, typename EmitCOp, bool booleansLegal>
-class BitwiseOpConversion final : public OpConversionPattern<ArithOp> {
+template <typename ArithOp, typename EmitCOp, bool booleansLegal,
+          bool isUnsignedOp>
+class BitwiseOpConversion : public OpConversionPattern<ArithOp> {
 public:
   using OpConversionPattern<ArithOp>::OpConversionPattern;
 
@@ -468,7 +469,7 @@ public:
       return success();
     }
 
-    Type arithmeticType = adaptIntegralTypeSignedness(type, true);
+    Type arithmeticType = adaptIntegralTypeSignedness(type, isUnsignedOp);
 
     Value lhs = adaptValueType(adaptor.getLhs(), rewriter, arithmeticType);
     Value rhs = adaptValueType(adaptor.getRhs(), rewriter, arithmeticType);
@@ -481,6 +482,20 @@ public:
     rewriter.replaceOp(op, result);
     return success();
   }
+};
+
+template <typename ArithOp, typename EmitCOp, bool booleansLegal>
+class SignedBitwiseOpConversion final
+    : public BitwiseOpConversion<ArithOp, EmitCOp, booleansLegal, false> {
+  using BitwiseOpConversion<ArithOp, EmitCOp, booleansLegal,
+                            false>::BitwiseOpConversion;
+};
+
+template <typename ArithOp, typename EmitCOp, bool booleansLegal>
+class UnsignedBitwiseOpConversion final
+    : public BitwiseOpConversion<ArithOp, EmitCOp, booleansLegal, true> {
+  using BitwiseOpConversion<ArithOp, EmitCOp, booleansLegal,
+                            true>::BitwiseOpConversion;
 };
 
 class SelectOpConversion : public OpConversionPattern<arith::SelectOp> {
@@ -621,11 +636,12 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
     IntegerOpConversion<arith::AddIOp, emitc::AddOp>,
     IntegerOpConversion<arith::MulIOp, emitc::MulOp>,
     IntegerOpConversion<arith::SubIOp, emitc::SubOp>,
-    BitwiseOpConversion<arith::AndIOp, emitc::BitwiseAndOp, true>,
-    BitwiseOpConversion<arith::OrIOp, emitc::BitwiseOrOp, true>,
-    BitwiseOpConversion<arith::XOrIOp, emitc::BitwiseXorOp, true>,
-    BitwiseOpConversion<arith::ShLIOp, emitc::BitwiseLeftShiftOp, false>,
-    BitwiseOpConversion<arith::ShRSIOp, emitc::BitwiseRightShiftOp, false>,
+    UnsignedBitwiseOpConversion<arith::AndIOp, emitc::BitwiseAndOp, true>,
+    UnsignedBitwiseOpConversion<arith::OrIOp, emitc::BitwiseOrOp, true>,
+    UnsignedBitwiseOpConversion<arith::XOrIOp, emitc::BitwiseXorOp, true>,
+    UnsignedBitwiseOpConversion<arith::ShLIOp, emitc::BitwiseLeftShiftOp, false>,
+    SignedBitwiseOpConversion<arith::ShRSIOp, emitc::BitwiseRightShiftOp, false>,
+    UnsignedBitwiseOpConversion<arith::ShRUIOp, emitc::BitwiseRightShiftOp, false>,
     CmpFOpConversion,
     CmpIOpConversion,
     SelectOpConversion,

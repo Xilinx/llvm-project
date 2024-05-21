@@ -95,32 +95,35 @@ func.func @arith_index(%arg0: i32, %arg1: i32) {
 // -----
 
 // CHECK-LABEL: arith_bitwise
+// CHECK-SAME: %[[ARG0:.*]]: i32, %[[ARG1:.*]]: i32
 func.func @arith_bitwise(%arg0: i32, %arg1: i32) {
-  // CHECK: %[[C1:[^ ]*]] = emitc.cast %arg0 : i32 to ui32
-  // CHECK: %[[C2:[^ ]*]] = emitc.cast %arg1 : i32 to ui32
+  // CHECK: %[[C1:[^ ]*]] = emitc.cast %[[ARG0]] : i32 to ui32
+  // CHECK: %[[C2:[^ ]*]] = emitc.cast %[[ARG1]] : i32 to ui32
   // CHECK: %[[AND:[^ ]*]] = emitc.bitwise_and %[[C1]], %[[C2]] : (ui32, ui32) -> ui32
   // CHECK: %[[C3:[^ ]*]] = emitc.cast %[[AND]] : ui32 to i32
   %5 = arith.andi %arg0, %arg1 : i32
-  // CHECK: %[[C1:[^ ]*]] = emitc.cast %arg0 : i32 to ui32
-  // CHECK: %[[C2:[^ ]*]] = emitc.cast %arg1 : i32 to ui32
+  // CHECK: %[[C1:[^ ]*]] = emitc.cast %[[ARG0]] : i32 to ui32
+  // CHECK: %[[C2:[^ ]*]] = emitc.cast %[[ARG1]] : i32 to ui32
   // CHECK: %[[OR:[^ ]*]] = emitc.bitwise_or %[[C1]], %[[C2]] : (ui32, ui32) -> ui32
   // CHECK: %[[C3:[^ ]*]] = emitc.cast %[[OR]] : ui32 to i32
   %6 = arith.ori %arg0, %arg1 : i32
-  // CHECK: %[[C1:[^ ]*]] = emitc.cast %arg0 : i32 to ui32
-  // CHECK: %[[C2:[^ ]*]] = emitc.cast %arg1 : i32 to ui32
+  // CHECK: %[[C1:[^ ]*]] = emitc.cast %[[ARG0]] : i32 to ui32
+  // CHECK: %[[C2:[^ ]*]] = emitc.cast %[[ARG1]] : i32 to ui32
   // CHECK: %[[XOR:[^ ]*]] = emitc.bitwise_xor %[[C1]], %[[C2]] : (ui32, ui32) -> ui32
   // CHECK: %[[C3:[^ ]*]] = emitc.cast %[[XOR]] : ui32 to i32
   %7 = arith.xori %arg0, %arg1 : i32
-  // CHECK: %[[C1:[^ ]*]] = emitc.cast %arg0 : i32 to ui32
-  // CHECK: %[[C2:[^ ]*]] = emitc.cast %arg1 : i32 to ui32
+  // CHECK: %[[C1:[^ ]*]] = emitc.cast %[[ARG0]] : i32 to ui32
+  // CHECK: %[[C2:[^ ]*]] = emitc.cast %[[ARG1]] : i32 to ui32
   // CHECK: %[[SHL:[^ ]*]] = emitc.bitwise_left_shift %[[C1]], %[[C2]] : (ui32, ui32) -> ui32
   // CHECK: %[[C3:[^ ]*]] = emitc.cast %[[SHL]] : ui32 to i32
   %8 = arith.shli %arg0, %arg1 : i32
-  // CHECK: %[[C1:[^ ]*]] = emitc.cast %arg0 : i32 to ui32
-  // CHECK: %[[C2:[^ ]*]] = emitc.cast %arg1 : i32 to ui32
+  // CHECK: %[[C1:[^ ]*]] = emitc.cast %[[ARG0]] : i32 to ui32
+  // CHECK: %[[C2:[^ ]*]] = emitc.cast %[[ARG1]] : i32 to ui32
   // CHECK: %[[SHR:[^ ]*]] = emitc.bitwise_right_shift %[[C1]], %[[C2]] : (ui32, ui32) -> ui32
   // CHECK: %[[C3:[^ ]*]] = emitc.cast %[[SHR]] : ui32 to i32
-  %9 = arith.shrsi %arg0, %arg1 : i32
+  %9 = arith.shrui %arg0, %arg1 : i32
+  // CHECK: %[[SHRS:[^ ]*]] = emitc.bitwise_right_shift %[[ARG0]], %[[ARG1]] : (i32, i32) -> i32
+  %10 = arith.shrsi %arg0, %arg1 : i32
 
   return
 }
