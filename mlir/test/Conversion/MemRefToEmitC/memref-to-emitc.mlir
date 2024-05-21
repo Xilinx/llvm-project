@@ -56,7 +56,7 @@ module @globals {
 
 // CHECK-LABEL: memref_index_values
 // CHECK-SAME:  %[[argi:.*]]: index, %[[argj:.*]]: index
-// CHECK-SAME -> index
+// CHECK-SAME: -> index
 func.func @memref_index_values(%i: index, %j: index) -> index {
   // CHECK: %[[i:.*]] = builtin.unrealized_conversion_cast %[[argi]] : index to !emitc.size_t
   // CHECK: %[[j:.*]] = builtin.unrealized_conversion_cast %[[argj]] : index to !emitc.size_t
