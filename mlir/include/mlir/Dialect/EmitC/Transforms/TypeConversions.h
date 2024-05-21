@@ -9,9 +9,8 @@
 #ifndef MLIR_DIALECT_EMITC_TRANSFORMS_TYPECONVERSIONS_H
 #define MLIR_DIALECT_EMITC_TRANSFORMS_TYPECONVERSIONS_H
 
-#include "mlir/Transforms/DialectConversion.h"
-
 namespace mlir {
+class TypeConverter;
 void populateEmitCSizeTypeConversions(TypeConverter &converter);
 } // namespace mlir
 

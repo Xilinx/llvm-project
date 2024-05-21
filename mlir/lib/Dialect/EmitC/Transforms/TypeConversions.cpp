@@ -9,6 +9,7 @@
 #include "mlir/Dialect/EmitC/Transforms/TypeConversions.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/Transforms/DialectConversion.h"
 #include <optional>
 
 using namespace mlir;

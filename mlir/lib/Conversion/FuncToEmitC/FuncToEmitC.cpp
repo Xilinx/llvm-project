@@ -60,7 +60,7 @@ public:
   matchAndRewrite(func::FuncOp funcOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    FunctionType type = dyn_cast<FunctionType>(funcOp.getFunctionType());
+    FunctionType type = funcOp.getFunctionType();
     if (!type)
       return failure();
 

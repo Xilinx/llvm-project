@@ -24,7 +24,6 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/OneToNTypeConversion.h"
 #include "mlir/Transforms/Passes.h"
-#include <optional>
 
 namespace mlir {
 #define GEN_PASS_DEF_SCFTOEMITC
