@@ -401,7 +401,7 @@ ParseResult ForOp::parse(OpAsmParser &parser, OperationState &result) {
 
   // Parse optional type, else assume Index.
   if (parser.parseOptionalColon())
-    type = builder.getIndexType();
+    type = emitc::SizeTType::get(builder.getContext());
   else if (parser.parseType(type))
     return failure();
 
@@ -431,8 +431,7 @@ void ForOp::print(OpAsmPrinter &p) {
     << getUpperBound() << " step " << getStep();
 
   p << ' ';
-  if (Type t = getInductionVar().getType();
-      !(t.isIndex() || emitc::isAnySizeTType(t)))
+  if (Type t = getInductionVar().getType(); !(isa<emitc::SizeTType>(t)))
     p << " : " << t << ' ';
   p.printRegion(getRegion(),
                 /*printEntryBlockArgs=*/false,
