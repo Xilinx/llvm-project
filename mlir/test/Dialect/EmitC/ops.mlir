@@ -192,16 +192,16 @@ func.func @test_expression(%arg0: i32, %arg1: i32, %arg2: i32, %arg3: f32, %arg4
   return %r : i32
 }
 
-func.func @test_for(%arg0 : index, %arg1 : index, %arg2 : index) {
+func.func @test_for(%arg0 : !emitc.size_t, %arg1 : !emitc.size_t, %arg2 : !emitc.size_t) {
   emitc.for %i0 = %arg0 to %arg1 step %arg2 {
-    %0 = emitc.call_opaque "func_const"(%i0) : (index) -> i32
+    %0 = emitc.call_opaque "func_const"(%i0) : (!emitc.size_t) -> i32
   }
   return
 }
 
-func.func @test_for_explicit_yield(%arg0 : index, %arg1 : index, %arg2 : index) {
+func.func @test_for_explicit_yield(%arg0 : !emitc.size_t, %arg1 : !emitc.size_t, %arg2 : !emitc.size_t) {
   emitc.for %i0 = %arg0 to %arg1 step %arg2 {
-    %0 = emitc.call_opaque "func_const"(%i0) : (index) -> i32
+    %0 = emitc.call_opaque "func_const"(%i0) : (!emitc.size_t) -> i32
     emitc.yield
   }
   return
