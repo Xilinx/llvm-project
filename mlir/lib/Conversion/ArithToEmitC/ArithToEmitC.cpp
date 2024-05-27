@@ -460,15 +460,16 @@ public:
           op, "expected integer or size_t/ssize_t type");
     }
 
-    // There is no unsigned i1 type, bitwise ops can be performed directly
-    // on booleans.
+    // Bitwise ops can be performed directly on booleans (avoid converting to
+    // ui1)
     if (type.isInteger(1)) {
       rewriter.replaceOpWithNewOp<EmitCOp>(op, type, adaptor.getLhs(),
                                            adaptor.getRhs());
       return success();
     }
 
-    Type arithmeticType = adaptIntegralTypeSignedness(type, true);
+    Type arithmeticType =
+        adaptIntegralTypeSignedness(type, /*needsUnsigned=*/true);
 
     Value lhs = adaptValueType(adaptor.getLhs(), rewriter, arithmeticType);
     Value rhs = adaptValueType(adaptor.getRhs(), rewriter, arithmeticType);
@@ -506,45 +507,31 @@ public:
     Type arithmeticType = adaptIntegralTypeSignedness(type, isUnsignedOp);
 
     Value lhs = adaptValueType(adaptor.getLhs(), rewriter, arithmeticType);
-    Value rhs = adaptValueType(adaptor.getRhs(), rewriter, arithmeticType);
+    // Shift amount interpreted as unsigned per Arith dialect spec.
+    Type rhsType = adaptIntegralTypeSignedness(adaptor.getRhs().getType(),
+                                               /*needsUnsigned=*/true);
+    Value rhs = adaptValueType(adaptor.getRhs(), rewriter, rhsType);
 
     // Add a runtime check for overflow
-    // This is an abuse of the size_t type since we're potentially using values
-    // below -1.
     Value width;
-    Type sizeTType = (isa<IntegerType>(type)) ? arithmeticType
-                     : (isUnsignedOp)
-                         ? (Type)(emitc::SizeTType::get(op.getContext()))
-                         : (Type)(emitc::SignedSizeTType::get(op.getContext()));
+
     if (isa<emitc::SignedSizeTType, emitc::SizeTType>(type)) {
       Value eight = rewriter.create<emitc::ConstantOp>(
-          op.getLoc(), sizeTType, rewriter.getIndexAttr(8));
+          op.getLoc(), rhsType, rewriter.getIndexAttr(8));
       emitc::CallOpaqueOp sizeOfCall = rewriter.create<emitc::CallOpaqueOp>(
-          op.getLoc(), sizeTType, "sizeof", SmallVector<Value, 1>({eight}));
-      width = rewriter.create<emitc::MulOp>(op.getLoc(), sizeTType, eight,
+          op.getLoc(), rhsType, "sizeof", SmallVector<Value, 1>({eight}));
+      width = rewriter.create<emitc::MulOp>(op.getLoc(), rhsType, eight,
                                             sizeOfCall.getResult(0));
     } else {
       width = rewriter.create<emitc::ConstantOp>(
-          op.getLoc(), sizeTType,
-          rewriter.getIntegerAttr(sizeTType, type.getIntOrFloatBitWidth()));
+          op.getLoc(), rhsType,
+          rewriter.getIntegerAttr(rhsType, type.getIntOrFloatBitWidth()));
     }
 
-    Value oobTest;
     Value excessCheck = rewriter.create<emitc::CmpOp>(
         op.getLoc(), rewriter.getI1Type(), emitc::CmpPredicate::lt, rhs, width);
-    oobTest = excessCheck;
-    if (!isUnsignedOp) {
-      Value zero = rewriter.create<emitc::ConstantOp>(
-          op.getLoc(), sizeTType,
-          (isa<IntegerType>(sizeTType) ? rewriter.getIntegerAttr(sizeTType, 0)
-                                       : rewriter.getIndexAttr(0)));
-      Value defaultCheck =
-          rewriter.create<emitc::CmpOp>(op.getLoc(), rewriter.getI1Type(),
-                                        emitc::CmpPredicate::ge, rhs, zero);
-      oobTest = rewriter.create<emitc::LogicalAndOp>(
-          op.getLoc(), rewriter.getI1Type(), excessCheck, defaultCheck);
-    }
 
+    // Any concrete value is a valid refinement of poison.
     Value poison = rewriter.create<emitc::ConstantOp>(
         op.getLoc(), arithmeticType,
         (isa<IntegerType>(arithmeticType)
@@ -559,7 +546,7 @@ public:
     Value arithmeticResult =
         rewriter.create<EmitCOp>(op.getLoc(), arithmeticType, lhs, rhs);
     Value resultOrPoison = rewriter.create<emitc::ConditionalOp>(
-        op.getLoc(), arithmeticType, oobTest, arithmeticResult, poison);
+        op.getLoc(), arithmeticType, excessCheck, arithmeticResult, poison);
     rewriter.create<emitc::YieldOp>(op.getLoc(), resultOrPoison);
     rewriter.setInsertionPoint(op->getBlock(), currentPoint);
 
