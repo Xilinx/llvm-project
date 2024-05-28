@@ -453,6 +453,7 @@ public:
   matchAndRewrite(ArithOp op, typename ArithOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
+    // Vectors and tensors are not lowered currently.
     Type type = this->getTypeConverter()->convertType(op.getType());
     if (!isa_and_nonnull<IntegerType, emitc::SignedSizeTType, emitc::SizeTType>(
             type)) {
@@ -460,8 +461,7 @@ public:
           op, "expected integer or size_t/ssize_t type");
     }
 
-    // Bitwise ops can be performed directly on booleans (avoid converting to
-    // ui1)
+    // Bitwise ops can be performed directly on booleans
     if (type.isInteger(1)) {
       rewriter.replaceOpWithNewOp<EmitCOp>(op, type, adaptor.getLhs(),
                                            adaptor.getRhs());
@@ -514,7 +514,6 @@ public:
 
     // Add a runtime check for overflow
     Value width;
-
     if (isa<emitc::SignedSizeTType, emitc::SizeTType>(type)) {
       Value eight = rewriter.create<emitc::ConstantOp>(
           op.getLoc(), rhsType, rewriter.getIndexAttr(8));
