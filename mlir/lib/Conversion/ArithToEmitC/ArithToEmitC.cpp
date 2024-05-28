@@ -468,6 +468,7 @@ public:
       return success();
     }
 
+    // Bitwise ops are defined by the C standard on unsigned operands.
     Type arithmeticType =
         adaptIntegralTypeSignedness(type, /*needsUnsigned=*/true);
 
