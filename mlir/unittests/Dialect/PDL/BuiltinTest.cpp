@@ -613,8 +613,13 @@ TEST_F(BuiltinTest, log2) {
   auto zeroI32 = rewriter.getI32IntegerAttr(0);
   {
     TestPDLResultList results(1);
-    EXPECT_DEATH(static_cast<void>(builtin::log2(rewriter, results, {zeroI32})),
-                 "log2 of an integer is expected to return an exact integer.");
+    EXPECT_FALSE(builtin::log2(rewriter, results, {zeroI32}).succeeded());
+  }
+
+  auto minusOneI32 = rewriter.getI32IntegerAttr(-1);
+  {
+    TestPDLResultList results(1);
+    EXPECT_FALSE(builtin::log2(rewriter, results, {minusOneI32}).succeeded());
   }
 
   auto fourF16 = rewriter.getF16FloatAttr(4.0);

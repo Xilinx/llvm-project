@@ -85,20 +85,26 @@ LogicalResult static unaryOp(PatternRewriter &rewriter, PDLResultList &results,
 
       results.push_back(rewriter.getIntegerAttr(integerType, resultInt));
     } else if constexpr (T == UnaryOpKind::log2) {
-      auto getIntegerAsAttr = [&](const APSInt &value) {
+      auto getIntegerAsAttr = [&](const APSInt &value) -> Attribute {
+        // Only calculate values for exact log2.
         int32_t log2Value = value.exactLogBase2();
-        assert(log2Value >= 0 &&
-               "log2 of an integer is expected to return an exact integer.");
+        if (log2Value < 0)
+          return Attribute();
         return rewriter.getIntegerAttr(
             integerType,
             APSInt(APInt(bitWidth, log2Value), integerType.isUnsigned()));
       };
       // for log2 we treat signless integer as signed
+      Attribute log2IntegerAttr;
       if (integerType.isSignless())
-        results.push_back(
-            getIntegerAsAttr(APSInt(operandIntAttr.getValue(), false)));
+        log2IntegerAttr =
+            getIntegerAsAttr(APSInt(operandIntAttr.getValue(), false));
       else
-        results.push_back(getIntegerAsAttr(operandIntAttr.getAPSInt()));
+        log2IntegerAttr = getIntegerAsAttr(operandIntAttr.getAPSInt());
+      // Return failure if log2 value isn't exact.
+      if (!log2IntegerAttr)
+        return failure();
+      results.push_back(log2IntegerAttr);
     } else if constexpr (T == UnaryOpKind::abs) {
       if (integerType.isSigned()) {
         // check overflow
