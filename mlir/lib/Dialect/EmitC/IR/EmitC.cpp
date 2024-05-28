@@ -399,9 +399,9 @@ ParseResult ForOp::parse(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::UnresolvedOperand, 4> operands;
   regionArgs.push_back(inductionVariable);
 
-  // Parse optional type, else assume Index.
+  // Parse optional type, else assume size_t.
   if (parser.parseOptionalColon())
-    type = builder.getIndexType();
+    type = emitc::SizeTType::get(builder.getContext());
   else if (parser.parseType(type))
     return failure();
 
@@ -431,7 +431,7 @@ void ForOp::print(OpAsmPrinter &p) {
     << getUpperBound() << " step " << getStep();
 
   p << ' ';
-  if (Type t = getInductionVar().getType(); !t.isIndex())
+  if (Type t = getInductionVar().getType(); !(isa<emitc::SizeTType>(t)))
     p << " : " << t << ' ';
   p.printRegion(getRegion(),
                 /*printEntryBlockArgs=*/false,

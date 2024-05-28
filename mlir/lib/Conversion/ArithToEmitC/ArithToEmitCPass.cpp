@@ -16,6 +16,7 @@
 #include "mlir/Conversion/ArithToEmitC/ArithToEmitC.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
+#include "mlir/Dialect/EmitC/Transforms/TypeConversions.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -43,9 +44,11 @@ void ConvertArithToEmitC::runOnOperation() {
   RewritePatternSet patterns(&getContext());
 
   TypeConverter typeConverter;
-  typeConverter.addConversion([](Type type) { return type; });
-
-  populateArithToEmitCPatterns(typeConverter, patterns);
+  // Fallback converter
+  // See note https://mlir.llvm.org/docs/DialectConversion/#type-converter
+  // Type converters are called most to least recently inserted
+  typeConverter.addConversion([](Type t) { return t; });
+  populateArithToEmitCPatterns(patterns, typeConverter);
 
   if (failed(
           applyPartialConversion(getOperation(), target, std::move(patterns))))
