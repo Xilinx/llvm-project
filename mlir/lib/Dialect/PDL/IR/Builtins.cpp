@@ -87,8 +87,8 @@ LogicalResult static unaryOp(PatternRewriter &rewriter, PDLResultList &results,
     } else if constexpr (T == UnaryOpKind::log2) {
       auto getIntegerAsAttr = [&](const APSInt &value) {
         int32_t log2Value = value.exactLogBase2();
-        assert(log2Value >= 0 &&
-               "log2 of an integer is expected to return an exact integer.");
+        if (log2Value < 0)
+          return failure();
         return rewriter.getIntegerAttr(
             integerType,
             APSInt(APInt(bitWidth, log2Value), integerType.isUnsigned()));
