@@ -125,6 +125,10 @@ public:
       unordered = false;
       predicate = emitc::CmpPredicate::lt;
       break;
+    case arith::CmpFPredicate::OLE:
+      unordered = false;
+      predicate = emitc::CmpPredicate::le;
+      break;
     case arith::CmpFPredicate::ONE:
       unordered = false;
       predicate = emitc::CmpPredicate::ne;
@@ -179,9 +183,6 @@ public:
       rewriter.replaceOp(op, constant);
       return success();
     }
-    default:
-      return rewriter.notifyMatchFailure(op.getLoc(),
-                                         "cannot match predicate ");
     }
 
     // Compare the values naively
