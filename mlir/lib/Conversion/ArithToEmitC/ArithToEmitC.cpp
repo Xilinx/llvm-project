@@ -453,12 +453,12 @@ public:
   matchAndRewrite(ArithOp op, typename ArithOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    // Vectors and tensors are not lowered currently.
     Type type = this->getTypeConverter()->convertType(op.getType());
     if (!isa_and_nonnull<IntegerType, emitc::SignedSizeTType, emitc::SizeTType>(
             type)) {
       return rewriter.notifyMatchFailure(
-          op, "expected integer or size_t/ssize_t type");
+          op, "expected integer or size_t/ssize_t type, vector/tensor support "
+              "not yet implemented");
     }
 
     // Bitwise ops can be performed directly on booleans
