@@ -189,25 +189,6 @@ struct AttributeLiteralPosition
 };
 
 //===----------------------------------------------------------------------===//
-// ConstraintPosition
-
-struct ConstraintQuestion;
-
-/// A position describing the result of a native constraint. It saves the
-/// corresponding ConstraintQuestion and result index to enable referring
-/// back to them
-struct ConstraintPosition
-    : public PredicateBase<ConstraintPosition, Position,
-                           std::pair<ConstraintQuestion *, unsigned>,
-                           Predicates::ConstraintResultPos> {
-  using PredicateBase::PredicateBase;
-
-  ConstraintQuestion *getQuestion() const { return key.first; }
-
-  unsigned getIndex() const { return key.second; }
-};
-
-//===----------------------------------------------------------------------===//
 // ForEachPosition
 
 /// A position describing an iterative choice of an operation.
@@ -523,7 +504,6 @@ struct ConstraintQuestion
   static llvm::hash_code hashKey(const KeyTy &key) {
     return llvm::hash_value(key);
   }
-
 };
 
 /// Compare the equality of two values.
