@@ -303,6 +303,29 @@ public:
   }
 };
 
+class NegFOpConversion : public OpConversionPattern<arith::NegFOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::NegFOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    auto adaptedOp = adaptor.getOperand();
+    auto adaptedOpType = adaptedOp.getType();
+
+    if (!isa<FloatType>(adaptedOpType)) {
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "negf currently only supported on "
+                                         "floats, not tensors/vectors thereof");
+    }
+
+    rewriter.replaceOpWithNewOp<emitc::UnaryMinusOp>(op, adaptedOpType,
+                                                     adaptedOp);
+    return success();
+  }
+};
+
 template <typename ArithOp, bool castToUnsigned>
 class CastConversion : public OpConversionPattern<ArithOp> {
 public:
@@ -716,6 +739,7 @@ void mlir::populateArithToEmitCPatterns(RewritePatternSet &patterns,
     UnsignedShiftOpConversion<arith::ShRUIOp, emitc::BitwiseRightShiftOp>,
     CmpFOpConversion,
     CmpIOpConversion,
+    NegFOpConversion,
     SelectOpConversion,
     // Truncation is guaranteed for unsigned types.
     UnsignedCastConversion<arith::TruncIOp>,
