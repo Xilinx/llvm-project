@@ -81,6 +81,22 @@ func.func @arith_cast_fptoui_i1(%arg0: f32) -> i1 {
 
 // -----
 
+func.func @arith_negf_tensor(%arg0: tensor<5xf32>) -> tensor<5xf32> {
+  // expected-error @+1 {{failed to legalize operation 'arith.negf'}}
+  %n = arith.negf %arg0 : tensor<5xf32>
+  return %n: tensor<5xf32>
+}
+
+// -----
+
+func.func @arith_negf_vector(%arg0: vector<5xf32>) -> vector<5xf32> {
+  // expected-error @+1 {{failed to legalize operation 'arith.negf'}}
+  %n = arith.negf %arg0 : vector<5xf32>
+  return %n: vector<5xf32>
+}
+
+// -----
+
 func.func @arith_shli_i1(%arg0: i1, %arg1: i1) {
   // expected-error @+1 {{failed to legalize operation 'arith.shli'}}
   %shli = arith.shli %arg0, %arg1 : i1
