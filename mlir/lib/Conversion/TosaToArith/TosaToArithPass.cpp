@@ -19,7 +19,7 @@
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include <mlir/Conversion/TosaToLinalg/TosaToLinalg.h>
+#include "mlir/Conversion/TosaToLinalg/TosaToLinalg.h"
 
 namespace mlir {
 #define GEN_PASS_DEF_TOSATOARITH
