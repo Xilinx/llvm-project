@@ -560,6 +560,16 @@ func.func @arith_cmpi_index(%arg0: i32, %arg1: i32) -> i1 {
   return %slt: i1
 }
 
+// -----
+
+func.func @arith_negf(%arg0: f32) -> f32 {
+  // CHECK-LABEL: arith_negf
+  // CHECK-SAME: %[[Arg0:[^ ]*]]: f32
+  // CHECK: %[[N:[^ ]*]] = emitc.unary_minus %[[Arg0]] : (f32) -> f32
+  %n = arith.negf %arg0 : f32
+  // CHECK: return %[[N]]
+  return %n: f32
+}
 
 // -----
 
