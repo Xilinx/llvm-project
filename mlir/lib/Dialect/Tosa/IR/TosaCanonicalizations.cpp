@@ -888,7 +888,7 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
           llvm::cast<IntegerType>(outETy).getIntOrFloatBitWidth(), unsign);
       auto floatVal = operand.getSplatValue<APFloat>();
       bool exact;
-      floatVal.convertToInteger(intVal, llvm::RoundingMode::TowardZero, &exact);
+      floatVal.convertToInteger(intVal, llvm::RoundingMode::NearestTiesToEven, &exact);
       return SplatElementsAttr::get(outTy, intVal);
     }
 
