@@ -99,9 +99,12 @@ struct SqrtReciprocalOptimization : public OpRewritePattern<tosa::PowOp> {
     // An improvement for the future would be to generate a tile operator here instead
     if (inputType != outputType)
       return rewriter.notifyMatchFailure(op, "input type and output type are different, tiling is not supported for this canonicalization");
-      
-    rewriter.replaceOpWithNewOp<tosa::RsqrtOp>(user, outputType, op.getInput1());
 
+    auto rsqrtOp = rewriter.create<tosa::RsqrtOp>(
+        rewriter.getFusedLoc({op.getLoc(), user->getLoc()}), outputType,
+        op.getInput1());
+    rewriter.replaceOp(user, rsqrtOp);
+      
     return success();
   }
 };
