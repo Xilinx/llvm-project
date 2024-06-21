@@ -562,24 +562,24 @@ func.func @test_simple_f32(%arg0: tensor<1xf32>) -> () {
   // CHECK: [[CONV:%.+]] = arith.fptosi [[MAX]] : f32 to i64
   // CHECK: [[CMP:%.+]] = arith.cmpf uge, [[ROUND]], [[CSTMAXP1]] : f32
   // CHECK: arith.select [[CMP]], [[CSTMAX]], [[CONV]] : i64
-  %21 = tosa.cast %0 : (tensor<1xf32>) -> tensor<1xi64>
+  %cast_f32_i64 = tosa.cast %0 : (tensor<1xf32>) -> tensor<1xi64>
 
   // CHECK: linalg.generic
   // CHECK: arith.constant 0
   // CHECK: arith.cmpf
-  %22 = tosa.cast %0 : (tensor<1xf32>) -> tensor<1xi1>
+  %21 = tosa.cast %0 : (tensor<1xf32>) -> tensor<1xi1>
 
   // CHECK: linalg.generic
   // CHECK: arith.truncf
-  %23 = tosa.cast %0 : (tensor<1xf32>) -> tensor<1xf16>
+  %22 = tosa.cast %0 : (tensor<1xf32>) -> tensor<1xf16>
 
   // CHECK: linalg.generic
   // CHECK: arith.divf
-  %24 = tosa.reciprocal %0 : (tensor<1xf32>) -> tensor<1xf32>
+  %23 = tosa.reciprocal %0 : (tensor<1xf32>) -> tensor<1xf32>
 
   // CHECK: linalg.generic
   // CHECK: math.erf
-  %25 = tosa.erf %0 : (tensor<1xf32>) -> tensor<1xf32>
+  %24 = tosa.erf %0 : (tensor<1xf32>) -> tensor<1xf32>
 
   return
 }
