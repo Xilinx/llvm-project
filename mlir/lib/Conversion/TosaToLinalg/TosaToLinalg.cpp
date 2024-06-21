@@ -671,9 +671,8 @@ static Value createLinalgBodyCalculationForElementwiseOp(
                    getElementTypeOrSelf(srcTy),
                    static_cast<double>(
                        APInt::getSignedMaxValue(dstTy.getIntOrFloatBitWidth())
-                           .getSExtValue()) +
+                           .getZExtValue()) +
                        1.0f));
-
       auto intMax = rewriter.create<arith::ConstantOp>(
           loc, rewriter.getIntegerAttr(
                    getElementTypeOrSelf(dstTy),

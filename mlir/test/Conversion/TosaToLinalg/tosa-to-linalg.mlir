@@ -577,6 +577,17 @@ func.func @test_simple_f32(%arg0: tensor<1xf32>) -> () {
   // CHECK: math.cos
   %26 = tosa.cos %arg0 : (tensor<1xf32>) -> tensor<1xf32>
 
+  // CHECK: linalg.generic
+  // CHECK: [[ROUND:%.+]] = math.roundeven {{%.+}} : f32
+  // CHECK: [[CSTMIN:%.+]] = arith.constant -9.22337203E+18 : f32
+  // CHECK: [[CSTMAXP1:%.+]] = arith.constant 9.22337203E+18 : f32
+  // CHECK: [[CSTMAX:%.+]] = arith.constant 9223372036854775807 : i64
+  // CHECK: [[MAX:%.+]] = arith.maximumf [[ROUND]], [[CSTMIN]] : f32
+  // CHECK: [[CONV:%.+]] = arith.fptosi [[MAX]] : f32 to i64
+  // CHECK: [[CMP:%.+]] = arith.cmpf uge, [[ROUND]], [[CSTMAXP1]] : f32
+  // CHECK: arith.select [[CMP]], [[CSTMAX]], [[CONV]] : i64
+  %27 = tosa.cast %0 : (tensor<1xf32>) -> tensor<1xi64>
+
   return
 }
 
