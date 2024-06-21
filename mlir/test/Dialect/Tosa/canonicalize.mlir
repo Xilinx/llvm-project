@@ -546,7 +546,7 @@ func.func @single_bit_reshape() -> tensor<1xi1> {
 // CHECK-LABEL: @fold_resize_nearest
 func.func @fold_resize_nearest(%arg0 : tensor<1x15x13x1xi8>) -> tensor<1x15x13x1xi8> {
   // CHECK: return %arg0
-  %resize = tosa.resize %arg0 {mode = "NEAREST_NEIGHBOR" , scale = array<i64: 2, 2, 1, 1>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x15x13x1xi8>) -> tensor<1x15x13x1xi8>
+  %resize = tosa.resize %arg0 {mode = "NEAREST_NEIGHBOR", nearest_rounding_mode = "ROUND_PREFER_CEIL", scale = array<i64: 2, 2, 1, 1>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x15x13x1xi8>) -> tensor<1x15x13x1xi8>
   return %resize : tensor<1x15x13x1xi8>
 }
 
@@ -555,7 +555,7 @@ func.func @fold_resize_nearest(%arg0 : tensor<1x15x13x1xi8>) -> tensor<1x15x13x1
 // CHECK-LABEL: @fold_resize_bilinear
 func.func @fold_resize_bilinear(%arg0 : tensor<1x15x13x1xi8>) -> tensor<1x15x13x1xi8> {
   // CHECK: return %arg0
-  %resize = tosa.resize %arg0 {mode = "BILINEAR" , scale = array<i64: 2, 2, 1, 1>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x15x13x1xi8>) -> tensor<1x15x13x1xi8>
+  %resize = tosa.resize %arg0 {mode = "BILINEAR", nearest_rounding_mode = "ROUND_PREFER_CEIL", scale = array<i64: 2, 2, 1, 1>, offset = array<i64: 0, 0>, border = array<i64: 0, 0>} : (tensor<1x15x13x1xi8>) -> tensor<1x15x13x1xi8>
   return %resize : tensor<1x15x13x1xi8>
 }
 
