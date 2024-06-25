@@ -407,10 +407,17 @@ struct FuncOpInterface
     if (funcOp.isExternal()) {
       SmallVector<Type> retTypes;
       for (Type resultType : funcType.getResults()) {
-        if (isa<TensorType>(resultType))
-          return funcOp->emitError() << "cannot bufferize bodiless function "
-                                     << "that returns a tensor";
-        retTypes.push_back(resultType);
+        if (auto tensorType = dyn_cast<TensorType>(resultType)) {
+          if (!options.bufferizeBodilessFunctionResults) {
+            return funcOp->emitError() << "cannot bufferize bodiless function "
+                                       << "that returns a tensor";
+          }
+          retTypes.push_back(options.functionArgTypeConverterFn(
+              tensorType, *options.defaultMemorySpaceFn(tensorType), funcOp,
+              options));
+        } else {
+          retTypes.push_back(resultType);
+        }
       }
       funcOp.setType(FunctionType::get(op->getContext(), argTypes, retTypes));
       return success();
