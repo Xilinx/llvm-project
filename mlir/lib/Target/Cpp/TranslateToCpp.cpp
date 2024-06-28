@@ -136,11 +136,11 @@ struct CppEmitter {
   LogicalResult emitTupleType(Location loc, ArrayRef<Type> types);
 
   /// Emits an assignment for a variable which has been declared previously.
-  LogicalResult emitVariableAssignment(OpResult result);
+  LogicalResult emitVariableAssignment(OpResult result, StringRef prefix = "v");
 
   /// Emits a variable declaration for a result of an operation.
-  LogicalResult emitVariableDeclaration(OpResult result,
-                                        bool trailingSemicolon);
+  LogicalResult emitVariableDeclaration(OpResult result, bool trailingSemicolon,
+                                        StringRef prefix = "v");
 
   /// Emits a declaration of a variable with the given type and name.
   LogicalResult emitVariableDeclaration(Location loc, Type type,
@@ -152,7 +152,7 @@ struct CppEmitter {
   /// - emits nothing if no value produced by op;
   /// Emits final '=' operator where a type is produced. Returns failure if
   /// any result type could not be converted.
-  LogicalResult emitAssignPrefix(Operation &op);
+  LogicalResult emitAssignPrefix(Operation &op, StringRef prefix = "v");
 
   /// Emits a global variable declaration or definition.
   LogicalResult emitGlobalVariable(GlobalOp op);
@@ -175,7 +175,7 @@ struct CppEmitter {
   LogicalResult emitExpression(ExpressionOp expressionOp);
 
   /// Return the existing or a new name for a Value.
-  StringRef getOrCreateName(Value val);
+  StringRef getOrCreateName(Value val, StringRef prefix = "v");
 
   // Returns the textual representation of a subscript operation.
   std::string getSubscriptName(emitc::SubscriptOp op);
@@ -303,6 +303,17 @@ static LogicalResult printConstantOp(CppEmitter &emitter, Operation *operation,
                                      Attribute value) {
   OpResult result = operation->getResult(0);
 
+  std::string prefix = "v";
+  if (auto c = dyn_cast<emitc::ConstantOp>(operation)) {
+    Attribute val = c.getValue();
+    if (auto ia = dyn_cast<IntegerAttr>(val)) {
+      if (ia.getInt() > 0)
+        prefix = "c_" + std::to_string(ia.getInt()) + "_";
+      else
+        prefix = "c_n" + std::to_string(-ia.getInt()) + "_";
+    }
+  }
+
   // Only emit an assignment as the variable was already declared when printing
   // the FuncOp.
   if (emitter.shouldDeclareVariablesAtTop()) {
@@ -312,7 +323,7 @@ static LogicalResult printConstantOp(CppEmitter &emitter, Operation *operation,
         return success();
     }
 
-    if (failed(emitter.emitVariableAssignment(result)))
+    if (failed(emitter.emitVariableAssignment(result, prefix)))
       return failure();
     return emitter.emitAttribute(operation->getLoc(), value);
   }
@@ -326,7 +337,7 @@ static LogicalResult printConstantOp(CppEmitter &emitter, Operation *operation,
   }
 
   // Emit a variable declaration.
-  if (failed(emitter.emitAssignPrefix(*operation)))
+  if (failed(emitter.emitAssignPrefix(*operation, prefix)))
     return failure();
   return emitter.emitAttribute(operation->getLoc(), value);
 }
@@ -1128,7 +1139,7 @@ std::string CppEmitter::getSubscriptName(emitc::SubscriptOp op) {
 }
 
 /// Return the existing or a new name for a Value.
-StringRef CppEmitter::getOrCreateName(Value val) {
+StringRef CppEmitter::getOrCreateName(Value val, StringRef prefix) {
   if (auto literal = dyn_cast_if_present<emitc::LiteralOp>(val.getDefiningOp()))
     return literal.getValue();
   if (!valueMapper.count(val)) {
@@ -1139,7 +1150,8 @@ StringRef CppEmitter::getOrCreateName(Value val) {
                    val.getDefiningOp())) {
       valueMapper.insert(val, getGlobal.getName().str());
     } else {
-      valueMapper.insert(val, formatv("v{0}", ++valueInScopeCount.top()));
+      valueMapper.insert(val,
+                         formatv("{0}{1}", prefix, ++valueInScopeCount.top()));
     }
   }
   return *valueMapper.begin(val);
@@ -1377,17 +1389,19 @@ CppEmitter::emitOperandsAndAttributes(Operation &op,
   return interleaveCommaWithError(op.getAttrs(), os, emitNamedAttribute);
 }
 
-LogicalResult CppEmitter::emitVariableAssignment(OpResult result) {
+LogicalResult CppEmitter::emitVariableAssignment(OpResult result,
+                                                 StringRef prefix) {
   if (!hasValueInScope(result)) {
     return result.getDefiningOp()->emitOpError(
         "result variable for the operation has not been declared");
   }
-  os << getOrCreateName(result) << " = ";
+  os << getOrCreateName(result, prefix) << " = ";
   return success();
 }
 
 LogicalResult CppEmitter::emitVariableDeclaration(OpResult result,
-                                                  bool trailingSemicolon) {
+                                                  bool trailingSemicolon,
+                                                  StringRef prefix) {
   if (isa<emitc::SubscriptOp>(result.getDefiningOp()))
     return success();
   if (hasValueInScope(result)) {
@@ -1396,7 +1410,7 @@ LogicalResult CppEmitter::emitVariableDeclaration(OpResult result,
   }
   if (failed(emitVariableDeclaration(result.getOwner()->getLoc(),
                                      result.getType(),
-                                     getOrCreateName(result))))
+                                     getOrCreateName(result, prefix))))
     return failure();
   if (trailingSemicolon)
     os << ";\n";
@@ -1427,7 +1441,7 @@ LogicalResult CppEmitter::emitGlobalVariable(GlobalOp op) {
   return success();
 }
 
-LogicalResult CppEmitter::emitAssignPrefix(Operation &op) {
+LogicalResult CppEmitter::emitAssignPrefix(Operation &op, StringRef prefix) {
   // If op is being emitted as part of an expression, bail out.
   if (getEmittedExpression())
     return success();
@@ -1438,10 +1452,11 @@ LogicalResult CppEmitter::emitAssignPrefix(Operation &op) {
   case 1: {
     OpResult result = op.getResult(0);
     if (shouldDeclareVariablesAtTop()) {
-      if (failed(emitVariableAssignment(result)))
+      if (failed(emitVariableAssignment(result, prefix)))
         return failure();
     } else {
-      if (failed(emitVariableDeclaration(result, /*trailingSemicolon=*/false)))
+      if (failed(emitVariableDeclaration(result, /*trailingSemicolon=*/false,
+                                         prefix)))
         return failure();
       os << " = ";
     }
@@ -1450,7 +1465,8 @@ LogicalResult CppEmitter::emitAssignPrefix(Operation &op) {
   default:
     if (!shouldDeclareVariablesAtTop()) {
       for (OpResult result : op.getResults()) {
-        if (failed(emitVariableDeclaration(result, /*trailingSemicolon=*/true)))
+        if (failed(emitVariableDeclaration(result, /*trailingSemicolon=*/true,
+                                           prefix)))
           return failure();
       }
     }
