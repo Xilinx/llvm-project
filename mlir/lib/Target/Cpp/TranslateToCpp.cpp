@@ -1528,7 +1528,13 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
        shouldBeInlined(cast<emitc::ExpressionOp>(op))))
     return success();
 
-  os << (trailingSemicolon ? ";\n" : "\n");
+  os << (trailingSemicolon ? ";" : "");
+
+  if (!isa<UnknownLoc>(op.getLoc())) {
+    os << " // ";
+    op.getLoc().print(os);
+  }
+  os << "\n";
 
   return success();
 }
