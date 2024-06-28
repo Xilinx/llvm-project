@@ -727,6 +727,26 @@ static LogicalResult printOperation(CppEmitter &emitter, emitc::CastOp castOp) {
   raw_ostream &os = emitter.ostream();
   Operation &op = *castOp.getOperation();
 
+  if (auto arrType = dyn_cast<emitc::ArrayType>(castOp.getType())) {
+    /*if (failed(emitter.emitType(castOp.getLoc(), arrType.getElementType())))
+      return failure();
+    os << " " << emitter.getOrCreateName(castOp.getResult());
+    for (auto dim : arrType.getShape()) {
+      os << "[" << dim << "]";
+    }*/
+    // float (&arr)[2][2] = *reinterpret_cast<float
+    // (*)[2][2]>(matrixReturnAsArray);
+    assert(arrType.getShape().size() == 2);
+    assert(arrType.getShape()[0] == 845);
+    assert(arrType.getShape()[1] == 4);
+    os << "float (&" << emitter.getOrCreateName(castOp.getResult())
+       << ")[845][4] = *reinterpret_cast<float (*)[845][4]>(";
+    if (failed(emitter.emitOperand(castOp.getOperand())))
+      return failure();
+    os << ")";
+    return success();
+  }
+
   if (failed(emitter.emitAssignPrefix(op)))
     return failure();
   os << "(";
