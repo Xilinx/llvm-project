@@ -2327,11 +2327,16 @@ foldIdentityOffsetSizeAndStrideOpInterface(OffsetSizeAndStrideOpInterface op,
 static Value foldExtractAfterInsertSlice(ExtractSliceOp extractOp) {
   auto insertOp = extractOp.getSource().getDefiningOp<InsertSliceOp>();
 
-  auto isSame = [](OpFoldResult a, OpFoldResult b) { return a == b; };
-  if (insertOp && insertOp.getSource().getType() == extractOp.getType() &&
-      insertOp.isSameAs(extractOp, isSame))
-    return insertOp.getSource();
-
+  while (insertOp) {
+    auto isSame = [](OpFoldResult a, OpFoldResult b) { return a == b; };
+    if (insertOp.getSource().getType() == extractOp.getType() &&
+        insertOp.isSameAs(extractOp, isSame))
+      return insertOp.getSource();
+    // TODO: Need to stop at the first insert_slice that has some overlap with
+    // the extracted range to avoid returning an early insert_slice that was
+    // (partially) overwritten by later ones.
+    insertOp = insertOp.getDest().getDefiningOp<InsertSliceOp>();
+  }
   return {};
 }
 
