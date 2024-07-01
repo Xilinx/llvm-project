@@ -166,12 +166,35 @@ struct ConvertStore final : public OpConversionPattern<memref::StoreOp> {
     return success();
   }
 };
+
 struct ConvertCollapseShape final
     : public OpConversionPattern<memref::CollapseShapeOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult
   matchAndRewrite(memref::CollapseShapeOp op, OpAdaptor operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto arrayValue = dyn_cast<TypedValue<emitc::ArrayType>>(operands.getSrc());
+    if (!arrayValue) {
+      return rewriter.notifyMatchFailure(op.getLoc(), "expected array type");
+    }
+
+    auto resultTy = getTypeConverter()->convertType(op.getType());
+    if (!resultTy) {
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "cannot convert result type");
+    }
+    rewriter.replaceOpWithNewOp<emitc::CastOp>(op, resultTy, operands.getSrc());
+    return success();
+  }
+};
+
+struct ConvertExpandShape final
+    : public OpConversionPattern<memref::ExpandShapeOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::ExpandShapeOp op, OpAdaptor operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto arrayValue = dyn_cast<TypedValue<emitc::ArrayType>>(operands.getSrc());
     if (!arrayValue) {
@@ -208,7 +231,7 @@ void mlir::populateMemRefToEmitCTypeConversion(TypeConverter &typeConverter) {
 
 void mlir::populateMemRefToEmitCConversionPatterns(RewritePatternSet &patterns,
                                                    TypeConverter &converter) {
-  patterns.add<ConvertAlloca, ConvertCollapseShape, ConvertGlobal,
-               ConvertGetGlobal, ConvertLoad, ConvertStore>(
+  patterns.add<ConvertAlloca, ConvertCollapseShape, ConvertExpandShape,
+               ConvertGlobal, ConvertGetGlobal, ConvertLoad, ConvertStore>(
       converter, patterns.getContext());
 }
