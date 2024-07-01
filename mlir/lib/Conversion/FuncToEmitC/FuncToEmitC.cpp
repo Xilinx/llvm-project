@@ -37,16 +37,17 @@ public:
           callOp, "only functions with zero or one result can be converted");
 
     // Convert the original function results.
-    Type resultTy = nullptr;
+    SmallVector<Type> types;
     if (callOp.getNumResults()) {
-      resultTy = typeConverter->convertType(callOp.getResult(0).getType());
+      auto resultTy = typeConverter->convertType(callOp.getResult(0).getType());
       if (!resultTy)
         return rewriter.notifyMatchFailure(
             callOp, "function return type conversion failed");
+      types.push_back(resultTy);
     }
 
     rewriter.replaceOpWithNewOp<emitc::CallOp>(
-        callOp, resultTy, adaptor.getOperands(), callOp->getAttrs());
+        callOp, types, adaptor.getOperands(), callOp->getAttrs());
 
     return success();
   }
