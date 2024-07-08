@@ -112,12 +112,16 @@ LogicalResult Lexer::pushInclude(StringRef filename, SMRange includeLoc) {
   if (!bufferID)
     return failure();
 
+  includeFileStack.push_back(includedFile);
   curBufferID = bufferID;
   curBuffer = srcMgr.getMemoryBuffer(curBufferID)->getBuffer();
   curPtr = curBuffer.begin();
   return success();
 }
 
+void Lexer::emitWarning(SMRange loc, const Twine &msg) {
+  diagEngine.emitWarning(loc, msg);
+}
 Token Lexer::emitError(SMRange loc, const Twine &msg) {
   diagEngine.emitError(loc, msg);
   return formToken(Token::error, loc.Start.getPointer());
@@ -158,6 +162,12 @@ int Lexer::getNextChar() {
   }
 }
 
+StringRef Lexer::getCurrentInclude() const { return includeFileStack.back(); }
+
+bool Lexer::isLexingMainFile() const {
+  return static_cast<int>(srcMgr.getMainFileID()) == curBufferID;
+}
+
 Token Lexer::lexToken() {
   while (true) {
     const char *tokStart = curPtr;
@@ -183,6 +193,7 @@ Token Lexer::lexToken() {
       // Check to see if we are in an included file.
       SMLoc parentIncludeLoc = srcMgr.getParentIncludeLoc(curBufferID);
       if (parentIncludeLoc.isValid()) {
+        includeFileStack.pop_back();
         curBufferID = srcMgr.FindBufferContainingLoc(parentIncludeLoc);
         curBuffer = srcMgr.getMemoryBuffer(curBufferID)->getBuffer();
         curPtr = parentIncludeLoc.getPointer();

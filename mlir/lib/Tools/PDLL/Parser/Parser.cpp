@@ -24,6 +24,7 @@
 #include "mlir/Tools/PDLL/ODS/Operation.h"
 #include "mlir/Tools/PDLL/Parser/CodeComplete.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ManagedStatic.h"
@@ -178,6 +179,7 @@ private:
   // Directives
 
   LogicalResult parseDirective(SmallVectorImpl<ast::Decl *> &decls);
+  LogicalResult parseOnce(SmallVectorImpl<ast::Decl *> &decls);
   LogicalResult parseInclude(SmallVectorImpl<ast::Decl *> &decls);
   LogicalResult parseTdInclude(StringRef filename, SMRange fileLoc,
                                SmallVectorImpl<ast::Decl *> &decls);
@@ -559,6 +561,9 @@ private:
     consumeToken();
     return success();
   }
+  void emitWarning(SMRange loc, const Twine &msg) {
+    lexer.emitWarning(loc, msg);
+  }
   LogicalResult emitError(SMRange loc, const Twine &msg) {
     lexer.emitError(loc, msg);
     return failure();
@@ -634,6 +639,9 @@ private:
     ast::UserConstraintDecl *exp2Constraint;
     ast::UserConstraintDecl *absConstraint;
   } builtins{};
+
+  // Allows to keep track of included files that were already processed
+  llvm::StringSet<> alreadyIncludedFiles;
 };
 } // namespace
 
@@ -932,8 +940,25 @@ LogicalResult Parser::parseDirective(SmallVectorImpl<ast::Decl *> &decls) {
   StringRef directive = curToken.getSpelling();
   if (directive == "#include")
     return parseInclude(decls);
+  if (directive == "#once")
+    return parseOnce(decls);
 
   return emitError("unknown directive `" + directive + "`");
+}
+
+LogicalResult Parser::parseOnce(SmallVectorImpl<ast::Decl *> &decls) {
+  consumeToken(Token::directive);
+
+  // #once directive is meant for included files and the main file is not added
+  // into the include stack, just return
+  if (lexer.isLexingMainFile()) {
+    return success();
+  }
+
+  // Mark this file as already included
+  alreadyIncludedFiles.insert(lexer.getCurrentInclude().str());
+
+  return success();
 }
 
 LogicalResult Parser::parseInclude(SmallVectorImpl<ast::Decl *> &decls) {
@@ -956,9 +981,26 @@ LogicalResult Parser::parseInclude(SmallVectorImpl<ast::Decl *> &decls) {
   // Check the type of include. If ending with `.pdll`, this is another pdl file
   // to be parsed along with the current module.
   if (filename.ends_with(".pdll")) {
-    if (failed(lexer.pushInclude(filename, fileLoc)))
+    std::string includedFile;
+    if (!lexer.getSourceMgr().OpenIncludeFile(filename.str(), includedFile))
       return emitError(fileLoc,
                        "unable to open include file `" + filename + "`");
+
+    // Check if included has been already processed
+    if (alreadyIncludedFiles.count(includedFile)) {
+      if (lexer.isLexingMainFile()) {
+        emitWarning(
+            fileLoc,
+            "included file is already included, and therefore has no effect");
+      }
+      return success();
+    }
+
+    LogicalResult couldPush = lexer.pushInclude(filename, fileLoc);
+    if (failed(couldPush)) {
+      return emitError(fileLoc,
+                       "unable to open include file `" + filename + "`");
+    }
 
     // If we added the include successfully, parse it into the current module.
     // Make sure to update to the next token after we finish parsing the nested
