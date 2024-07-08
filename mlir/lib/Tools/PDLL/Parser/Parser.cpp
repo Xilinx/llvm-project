@@ -46,9 +46,12 @@ namespace {
 class Parser {
 public:
   Parser(ast::Context &ctx, llvm::SourceMgr &sourceMgr,
-         bool enableDocumentation, CodeCompleteContext *codeCompleteContext)
+         bool enableDocumentation, bool emitWarningOnRepeatedIncludeAtMainFile,
+         CodeCompleteContext *codeCompleteContext)
       : ctx(ctx), lexer(sourceMgr, ctx.getDiagEngine(), codeCompleteContext),
         curToken(lexer.lexToken()), enableDocumentation(enableDocumentation),
+        emitWarningOnRepeatedIncludeAtMainFile(
+            emitWarningOnRepeatedIncludeAtMainFile),
         typeTy(ast::TypeType::get(ctx)), valueTy(ast::ValueType::get(ctx)),
         typeRangeTy(ast::TypeRangeType::get(ctx)),
         valueRangeTy(ast::ValueRangeType::get(ctx)),
@@ -594,6 +597,10 @@ private:
   /// viable.
   bool enableDocumentation;
 
+  /// A flag indicating if the parser will emit a warning when same header is
+  /// found parsing the main file
+  bool emitWarningOnRepeatedIncludeAtMainFile;
+
   /// The most recently defined decl scope.
   ast::DeclScope *curDeclScope = nullptr;
   llvm::SpecificBumpPtrAllocator<ast::DeclScope> scopeAllocator;
@@ -988,7 +995,7 @@ LogicalResult Parser::parseInclude(SmallVectorImpl<ast::Decl *> &decls) {
 
     // Check if included has been already processed
     if (alreadyIncludedFiles.count(includedFile)) {
-      if (lexer.isLexingMainFile()) {
+      if (emitWarningOnRepeatedIncludeAtMainFile && lexer.isLexingMainFile()) {
         emitWarning(
             fileLoc,
             "included file is already included, and therefore has no effect");
@@ -3811,7 +3818,9 @@ void Parser::codeCompleteOperationResultsSignature(
 FailureOr<ast::Module *>
 mlir::pdll::parsePDLLAST(ast::Context &ctx, llvm::SourceMgr &sourceMgr,
                          bool enableDocumentation,
+                         bool emitWarningOnRepeatedIncludeAtMainFile,
                          CodeCompleteContext *codeCompleteContext) {
-  Parser parser(ctx, sourceMgr, enableDocumentation, codeCompleteContext);
+  Parser parser(ctx, sourceMgr, enableDocumentation,
+                emitWarningOnRepeatedIncludeAtMainFile, codeCompleteContext);
   return parser.parseModule();
 }

@@ -14,6 +14,9 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/SourceMgr.h"
 
+#include <filesystem>
+#include <system_error>
+
 using namespace mlir;
 using namespace mlir::pdll;
 
