@@ -246,8 +246,9 @@ private:
   /// The optional code completion point within the input file.
   const char *codeCompletionLocation;
 
-  // Allows to keep track of the stack of included files
-  llvm::SmallVector<std::string> includeFileStack;
+  // Allows to keep track of the stack of included files. These paths are stored
+  // in its canonicalized form
+  llvm::SmallVector<std::string> canonicalIncludeFileStack;
 };
 } // namespace pdll
 } // namespace mlir

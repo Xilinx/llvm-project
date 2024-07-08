@@ -32,6 +32,8 @@
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Parser.h"
+
+#include <filesystem>
 #include <optional>
 #include <string>
 
@@ -647,8 +649,8 @@ private:
     ast::UserConstraintDecl *absConstraint;
   } builtins{};
 
-  // Allows to keep track of included files that were already processed
-  llvm::StringSet<> alreadyIncludedFiles;
+  // Allows to keep track of those files that has been marked with #once
+  llvm::StringSet<> canonicalPathOfFilesMarkedWithOnceDirective;
 };
 } // namespace
 
@@ -963,7 +965,8 @@ LogicalResult Parser::parseOnce(SmallVectorImpl<ast::Decl *> &decls) {
   }
 
   // Mark this file as already included
-  alreadyIncludedFiles.insert(lexer.getCurrentInclude().str());
+  canonicalPathOfFilesMarkedWithOnceDirective.insert(
+      lexer.getCurrentInclude().str());
 
   return success();
 }
@@ -993,8 +996,18 @@ LogicalResult Parser::parseInclude(SmallVectorImpl<ast::Decl *> &decls) {
       return emitError(fileLoc,
                        "unable to open include file `" + filename + "`");
 
+    std::error_code ec;
+    std::filesystem::path canonicalPath =
+        std::filesystem::canonical(includedFile, ec);
+    if (ec) {
+      return emitError(fileLoc,
+                       "unable to canonicalize path for include file `" +
+                           filename + "`");
+    }
+
     // Check if included has been already processed
-    if (alreadyIncludedFiles.count(includedFile)) {
+    if (canonicalPathOfFilesMarkedWithOnceDirective.count(
+            canonicalPath.string())) {
       if (emitWarningOnRepeatedIncludeAtMainFile && lexer.isLexingMainFile()) {
         emitWarning(
             fileLoc,
