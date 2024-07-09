@@ -424,6 +424,37 @@ public:
   }
 };
 
+class DivUIOpConversion final : public OpConversionPattern<arith::DivUIOp> {
+public:
+  using OpConversionPattern<arith::DivUIOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(arith::DivUIOp divUiOp,
+                  typename arith::DivUIOp::Adaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type newRetTy = this->getTypeConverter()->convertType(divUiOp.getType());
+    if (!newRetTy)
+      return rewriter.notifyMatchFailure(divUiOp,
+                                         "converting result type failed");
+    if (!isa_and_nonnull<IntegerType>(newRetTy)) {
+      return rewriter.notifyMatchFailure(divUiOp, "expected integer type");
+    }
+    Type unsignedType = adaptIntegralTypeSignedness(newRetTy, true);
+    if (!unsignedType)
+      return rewriter.notifyMatchFailure(divUiOp,
+                                         "converting result type failed");
+    Value lhsAdapted = adaptValueType(divUiOp.getLhs(), rewriter, unsignedType);
+    Value rhsAdapted = adaptValueType(divUiOp.getRhs(), rewriter, unsignedType);
+
+    auto newDivOp =
+        rewriter.create<emitc::DivOp>(divUiOp.getLoc(), unsignedType,
+                                      ArrayRef<Value>{lhsAdapted, rhsAdapted});
+    Value resultAdapted = adaptValueType(newDivOp, rewriter, newRetTy);
+    rewriter.replaceOp(divUiOp, resultAdapted);
+    return success();
+  }
+};
+
 template <typename ArithOp, typename EmitCOp>
 class IntegerOpConversion final : public OpConversionPattern<ArithOp> {
 public:
@@ -739,6 +770,7 @@ void mlir::populateArithToEmitCPatterns(RewritePatternSet &patterns,
     UnsignedShiftOpConversion<arith::ShRUIOp, emitc::BitwiseRightShiftOp>,
     CmpFOpConversion,
     CmpIOpConversion,
+    DivUIOpConversion,
     NegFOpConversion,
     SelectOpConversion,
     // Truncation is guaranteed for unsigned types.
