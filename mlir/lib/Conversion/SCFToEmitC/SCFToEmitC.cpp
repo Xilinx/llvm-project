@@ -80,21 +80,32 @@ createVariablesForResults(T op, const TypeConverter *typeConverter,
 // Create a series of assign ops assigning given values to given variables at
 // the current insertion point of given rewriter.
 static void assignValues(ValueRange values, SmallVector<Value> &variables,
-                         ConversionPatternRewriter &rewriter, Location loc) {
-  for (auto [value, var] : llvm::zip(values, variables))
+                         ConversionPatternRewriter &rewriter, Location loc,
+                         const TypeConverter *typeConverter = nullptr) {
+  for (auto [value, var] : llvm::zip(values, variables)) {
+    if (isa<emitc::PointerType>(var.getType())) {
+      if (typeConverter) {
+        auto newType = typeConverter->convertType(value.getType());
+        auto newValue = rewriter.create<emitc::CastOp>(loc, newType, value);
+        rewriter.create<emitc::AssignOp>(loc, var, newValue);
+        continue;
+      }
+    }
+
     rewriter.create<emitc::AssignOp>(loc, var, value);
+  }
 }
 
 static void lowerYield(SmallVector<Value> &resultVariables,
-                       ConversionPatternRewriter &rewriter,
-                       scf::YieldOp yield) {
+                       ConversionPatternRewriter &rewriter, scf::YieldOp yield,
+                       const TypeConverter *typeConverter = nullptr) {
   Location loc = yield.getLoc();
   ValueRange operands = yield.getOperands();
 
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(yield);
 
-  assignValues(operands, resultVariables, rewriter, loc);
+  assignValues(operands, resultVariables, rewriter, loc, typeConverter);
 
   rewriter.create<emitc::YieldOp>(loc);
   rewriter.eraseOp(yield);
@@ -174,11 +185,11 @@ IfLowering::matchAndRewrite(IfOp ifOp, OpAdaptor adaptor,
   // emitc::if regions, but the scf::yield is replaced not only with an
   // emitc::yield, but also with a sequence of emitc::assign ops that set the
   // yielded values into the result variables.
-  auto lowerRegion = [&resultVariables, &rewriter](Region &region,
-                                                   Region &loweredRegion) {
+  auto lowerRegion = [&](Region &region, Region &loweredRegion) {
     rewriter.inlineRegionBefore(region, loweredRegion, loweredRegion.end());
     Operation *terminator = loweredRegion.back().getTerminator();
-    lowerYield(resultVariables, rewriter, cast<scf::YieldOp>(terminator));
+    lowerYield(resultVariables, rewriter, cast<scf::YieldOp>(terminator),
+               this->getTypeConverter());
   };
 
   Region &thenRegion = adaptor.getThenRegion();

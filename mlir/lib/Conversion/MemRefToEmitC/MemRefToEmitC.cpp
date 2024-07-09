@@ -15,6 +15,7 @@
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -130,18 +131,28 @@ struct ConvertLoad final : public OpConversionPattern<memref::LoadOp> {
 
     auto arrayValue =
         dyn_cast<TypedValue<emitc::ArrayType>>(operands.getMemref());
-    if (!arrayValue) {
+    auto pointerValue =
+        dyn_cast<TypedValue<emitc::PointerType>>(operands.getMemref());
+    if (!arrayValue && !pointerValue) {
       return rewriter.notifyMatchFailure(op.getLoc(), "expected array type");
     }
 
-    auto subscript = rewriter.create<emitc::SubscriptOp>(
-        op.getLoc(), arrayValue, operands.getIndices());
+    Value subscript;
+    if (arrayValue) {
+      subscript = rewriter.create<emitc::SubscriptOp>(op.getLoc(), arrayValue,
+                                                      operands.getIndices());
+    } else {
+      // !! This is completely broken !! Just to see if it generates.
+      // The indices need to be properly calculated
+      subscript = rewriter.create<emitc::SubscriptOp>(op.getLoc(), pointerValue,
+                                                      operands.getIndices()[0]);
+    }
 
     auto noInit = emitc::OpaqueAttr::get(getContext(), "");
     auto var =
         rewriter.create<emitc::VariableOp>(op.getLoc(), resultTy, noInit);
 
-    rewriter.create<emitc::AssignOp>(op.getLoc(), var, subscript);
+    auto assign = rewriter.create<emitc::AssignOp>(op.getLoc(), var, subscript);
     rewriter.replaceOp(op, var);
     return success();
   }
@@ -155,14 +166,28 @@ struct ConvertStore final : public OpConversionPattern<memref::StoreOp> {
                   ConversionPatternRewriter &rewriter) const override {
     auto arrayValue =
         dyn_cast<TypedValue<emitc::ArrayType>>(operands.getMemref());
-    if (!arrayValue) {
+    auto pointerValue =
+        dyn_cast<TypedValue<emitc::PointerType>>(operands.getMemref());
+    if (!arrayValue && !pointerValue) {
       return rewriter.notifyMatchFailure(op.getLoc(), "expected array type");
     }
 
-    auto subscript = rewriter.create<emitc::SubscriptOp>(
-        op.getLoc(), arrayValue, operands.getIndices());
-    rewriter.replaceOpWithNewOp<emitc::AssignOp>(op, subscript,
-                                                 operands.getValue());
+    Value subscript;
+    if (arrayValue) {
+      subscript = rewriter.create<emitc::SubscriptOp>(op.getLoc(), arrayValue,
+                                                      operands.getIndices());
+    } else {
+      // !! This is completely broken !! Just to see if it generates.
+      // The indices need to be properly calculated
+      subscript = rewriter.create<emitc::SubscriptOp>(op.getLoc(), pointerValue,
+                                                      operands.getIndices()[0]);
+    }
+    auto store = rewriter.replaceOpWithNewOp<emitc::AssignOp>(
+        op, subscript, operands.getValue());
+    if (isa<emitc::PointerType>(store.getVar().getType())) {
+      llvm::errs() << "Store: ";
+      store.dump();
+    }
     return success();
   }
 };
@@ -197,8 +222,11 @@ struct ConvertExpandShape final
   matchAndRewrite(memref::ExpandShapeOp op, OpAdaptor operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto arrayValue = dyn_cast<TypedValue<emitc::ArrayType>>(operands.getSrc());
-    if (!arrayValue) {
-      return rewriter.notifyMatchFailure(op.getLoc(), "expected array type");
+    auto pointerValue =
+        dyn_cast<TypedValue<emitc::PointerType>>(operands.getSrc());
+    if (!arrayValue && !pointerValue) {
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "expected array or pointer type");
     }
 
     auto resultTy = getTypeConverter()->convertType(op.getType());
@@ -211,27 +239,125 @@ struct ConvertExpandShape final
   }
 };
 
+struct ConvertCast final : public OpConversionPattern<memref::CastOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::CastOp op, OpAdaptor operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto arrayValue =
+        dyn_cast<TypedValue<emitc::ArrayType>>(operands.getSource());
+    auto pointerValue =
+        dyn_cast<TypedValue<emitc::PointerType>>(operands.getSource());
+    if (!arrayValue && !pointerValue) {
+      return rewriter.notifyMatchFailure(op.getLoc(), "expected array type");
+    }
+
+    auto resultTy = getTypeConverter()->convertType(op.getType());
+    if (!resultTy) {
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "cannot convert result type");
+    }
+    rewriter.replaceOpWithNewOp<emitc::CastOp>(op, resultTy,
+                                               operands.getSource());
+    return success();
+  }
+};
+
+struct ConvertSubView final : public OpConversionPattern<memref::SubViewOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::SubViewOp op, OpAdaptor operands,
+                  ConversionPatternRewriter &rewriter) const override {
+
+    // Check that the memory is sequential (incomplete)
+    auto arrayValue =
+        dyn_cast<TypedValue<emitc::ArrayType>>(operands.getSource());
+    if (!arrayValue) {
+      return rewriter.notifyMatchFailure(op.getLoc(), "expected array type");
+    }
+
+    if (!operands.getOffsets().empty()) {
+      return op->emitOpError("Expected the offset to be a integer constant!");
+    }
+
+    for (auto offset : operands.getStaticOffsets()) {
+      if (offset != 0) {
+        return op->emitOpError("Expected the offset to be zero!");
+      }
+    }
+
+    if (!operands.getStrides().empty()) {
+      return op->emitOpError("Expected the offset to be a integer constant!");
+    }
+
+    for (auto stride : operands.getStaticStrides()) {
+      if (stride != 1) {
+        return op->emitOpError("Expected the offset to be zero!");
+      }
+    }
+
+    // If memory is sequential, blindly convert it to a pointer
+    auto resultTy = emitc::PointerType::get(op.getType().getElementType());
+    auto sub = rewriter.replaceOpWithNewOp<emitc::CastOp>(op, resultTy,
+                                                          operands.getSource());
+    llvm::errs() << "SubView: ";
+    sub.dump();
+
+    return success();
+  }
+};
+
+struct ConvertDim final : public OpConversionPattern<memref::DimOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::DimOp op, OpAdaptor operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    // !! Also broken !!
+    rewriter.replaceOpWithNewOp<emitc::ConstantOp>(
+        op, op.getType(), rewriter.getI64IntegerAttr(845));
+    return success();
+  }
+};
+
 } // namespace
 
 void mlir::populateMemRefToEmitCTypeConversion(TypeConverter &typeConverter) {
   typeConverter.addConversion(
       [&](MemRefType memRefType) -> std::optional<Type> {
-        if (!memRefType.hasStaticShape() ||
-            !memRefType.getLayout().isIdentity() || memRefType.getRank() == 0) {
+        if (/*!memRefType.hasStaticShape() ||
+            memref<3x?xi64, strided<[845, 1]>> -> isIdentity() is false
+            !memRefType.getLayout().isIdentity() ||*/
+            memRefType.getRank() == 0) {
           return {};
         }
         Type convertedElementType =
             typeConverter.convertType(memRefType.getElementType());
         if (!convertedElementType)
           return {};
-        return emitc::ArrayType::get(memRefType.getShape(),
-                                     convertedElementType);
+
+        // C does not support arrays with arbitrary dynamic sizes. Model them
+        // with a pointer for now. This makes it such that all downstream ops
+        // need to implement the strides to walk over the outer dimensions.
+        //
+        // One simplication that can be made - in some cases - is to move the
+        // dynamic dimension to the right-most dimension of the array. This way
+        // we can iterate over the array using array subscription.
+        if (memRefType.hasStaticShape()) {
+          return emitc::ArrayType::get(memRefType.getShape(),
+                                       convertedElementType);
+        }
+
+        return emitc::PointerType::get(convertedElementType);
       });
 }
 
 void mlir::populateMemRefToEmitCConversionPatterns(RewritePatternSet &patterns,
                                                    TypeConverter &converter) {
   patterns.add<ConvertAlloca, ConvertCollapseShape, ConvertExpandShape,
-               ConvertGlobal, ConvertGetGlobal, ConvertLoad, ConvertStore>(
-      converter, patterns.getContext());
+               ConvertGlobal, ConvertGetGlobal, ConvertLoad, ConvertStore,
+               ConvertCast, ConvertSubView, ConvertDim>(converter,
+                                                        patterns.getContext());
 }

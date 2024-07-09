@@ -1856,8 +1856,10 @@ void ExpandShapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
               ComposeExpandOfCollapseOp<ExpandShapeOp, CollapseShapeOp>,
               FoldReshapeWithConstant<ExpandShapeOp>,
               FoldReshapeWithSplat<ExpandShapeOp>,
-              FoldReshapeWithFromElements<ExpandShapeOp>, FoldDimOfExpandShape,
-              FoldDimOfCollapseShape>(context);
+              FoldReshapeWithFromElements<ExpandShapeOp>, FoldDimOfExpandShape
+              // We don't know how to deal with the affine.apply, although
+              // it is affine and it is possible to calculate an upper bound
+              /*FoldDimOfCollapseShape*/>(context);
 }
 
 void CollapseShapeOp::getCanonicalizationPatterns(RewritePatternSet &results,
