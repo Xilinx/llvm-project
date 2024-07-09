@@ -436,10 +436,11 @@ public:
     if (!newRetTy)
       return rewriter.notifyMatchFailure(uiBinOp,
                                          "converting result type failed");
-    if (!isa_and_nonnull<IntegerType>(newRetTy)) {
+    if (!isa<IntegerType>(newRetTy)) {
       return rewriter.notifyMatchFailure(uiBinOp, "expected integer type");
     }
-    Type unsignedType = adaptIntegralTypeSignedness(newRetTy, true);
+    Type unsignedType =
+        adaptIntegralTypeSignedness(newRetTy, /*needsUnsigned=*/true);
     if (!unsignedType)
       return rewriter.notifyMatchFailure(uiBinOp,
                                          "converting result type failed");
