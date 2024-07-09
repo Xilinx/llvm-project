@@ -14,6 +14,9 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/SourceMgr.h"
 
+#include <filesystem>
+#include <system_error>
+
 using namespace mlir;
 using namespace mlir::pdll;
 
@@ -112,12 +115,23 @@ LogicalResult Lexer::pushInclude(StringRef filename, SMRange includeLoc) {
   if (!bufferID)
     return failure();
 
+  std::error_code ec;
+  std::filesystem::path canonicalPath =
+      std::filesystem::canonical(includedFile, ec);
+  if (ec) {
+    return failure();
+  }
+
+  canonicalIncludeFileStack.push_back(canonicalPath);
   curBufferID = bufferID;
   curBuffer = srcMgr.getMemoryBuffer(curBufferID)->getBuffer();
   curPtr = curBuffer.begin();
   return success();
 }
 
+void Lexer::emitWarning(SMRange loc, const Twine &msg) {
+  diagEngine.emitWarning(loc, msg);
+}
 Token Lexer::emitError(SMRange loc, const Twine &msg) {
   diagEngine.emitError(loc, msg);
   return formToken(Token::error, loc.Start.getPointer());
@@ -158,6 +172,12 @@ int Lexer::getNextChar() {
   }
 }
 
+StringRef Lexer::getCurrentInclude() const { return canonicalIncludeFileStack.back(); }
+
+bool Lexer::isLexingMainFile() const {
+  return static_cast<int>(srcMgr.getMainFileID()) == curBufferID;
+}
+
 Token Lexer::lexToken() {
   while (true) {
     const char *tokStart = curPtr;
@@ -183,6 +203,7 @@ Token Lexer::lexToken() {
       // Check to see if we are in an included file.
       SMLoc parentIncludeLoc = srcMgr.getParentIncludeLoc(curBufferID);
       if (parentIncludeLoc.isValid()) {
+        canonicalIncludeFileStack.pop_back();
         curBufferID = srcMgr.FindBufferContainingLoc(parentIncludeLoc);
         curBuffer = srcMgr.getMemoryBuffer(curBufferID)->getBuffer();
         curPtr = parentIncludeLoc.getPointer();
