@@ -126,3 +126,11 @@ func.func @arith_divui_vector(%arg0: vector<5xi32>, %arg1: vector<5xi32>) -> vec
   %divui = arith.divui %arg0, %arg1 : vector<5xi32>
   return %divui: vector<5xi32>
 }
+
+// -----
+
+func.func @arith_remui_vector(%arg0: vector<5xi32>, %arg1: vector<5xi32>) -> vector<5xi32> {
+  // expected-error @+1 {{failed to legalize operation 'arith.remui'}}
+  %divui = arith.remui %arg0, %arg1 : vector<5xi32>
+  return %divui: vector<5xi32>
+}
