@@ -634,6 +634,18 @@ TEST_F(BuiltinTest, log2) {
         cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat(),
         2.0);
   }
+  
+  auto threeF16 = rewriter.getF16FloatAttr(3.0);
+
+  // check correctness
+  {
+    TestPDLResultList results(1);
+    EXPECT_TRUE(builtin::log2(rewriter, results, {threeF16}).succeeded());
+
+    PDLValue result = results.getResults()[0];
+    float resultVal = cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat();
+    EXPECT_TRUE(resultVal > 1.58 && resultVal < 1.59);
+  }
 }
 
 TEST_F(BuiltinTest, exp2) {
