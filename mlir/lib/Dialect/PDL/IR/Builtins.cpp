@@ -169,7 +169,7 @@ LogicalResult static unaryOp(PatternRewriter &rewriter, PDLResultList &results,
     } else if constexpr (T == UnaryOpKind::log2) {
       results.push_back(rewriter.getFloatAttr(
           operandFloatAttr.getType(),
-          (double)operandFloatAttr.getValue().getExactLog2()));
+          std::log2(operandFloatAttr.getValueAsDouble())));
     } else if constexpr (T == UnaryOpKind::abs) {
       auto resultVal = operandFloatAttr.getValue();
       resultVal.clearSign();

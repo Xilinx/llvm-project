@@ -108,6 +108,7 @@ Args:
     and report failures in a more robust fashion. Set this to True if doing this
     in order to avoid running a redundant verification. If the IR is actually
     invalid, behavior is undefined.
+  skip_regions: Whether to skip printing regions. Defaults to False.
 )";
 
 static const char kOperationPrintStateDocstring[] =
@@ -1192,7 +1193,7 @@ void PyOperationBase::print(std::optional<int64_t> largeElementsLimit,
                             bool enableDebugInfo, bool prettyDebugInfo,
                             bool printGenericOpForm, bool useLocalScope,
                             bool assumeVerified, py::object fileObject,
-                            bool binary) {
+                            bool binary, bool skipRegions) {
   PyOperation &operation = getOperation();
   operation.checkValid();
   if (fileObject.is_none())
@@ -1210,6 +1211,8 @@ void PyOperationBase::print(std::optional<int64_t> largeElementsLimit,
     mlirOpPrintingFlagsUseLocalScope(flags);
   if (assumeVerified)
     mlirOpPrintingFlagsAssumeVerified(flags);
+  if (skipRegions)
+    mlirOpPrintingFlagsSkipRegions(flags);
 
   PyFileAccumulator accum(fileObject, binary);
   mlirOperationPrintWithFlags(operation, flags, accum.getCallback(),
@@ -1253,7 +1256,7 @@ py::object PyOperationBase::getAsm(bool binary,
                                    std::optional<int64_t> largeElementsLimit,
                                    bool enableDebugInfo, bool prettyDebugInfo,
                                    bool printGenericOpForm, bool useLocalScope,
-                                   bool assumeVerified) {
+                                   bool assumeVerified, bool skipRegions) {
   py::object fileObject;
   if (binary) {
     fileObject = py::module::import("io").attr("BytesIO")();
@@ -1267,7 +1270,8 @@ py::object PyOperationBase::getAsm(bool binary,
         /*useLocalScope=*/useLocalScope,
         /*assumeVerified=*/assumeVerified,
         /*fileObject=*/fileObject,
-        /*binary=*/binary);
+        /*binary=*/binary,
+        /*skipRegions=*/skipRegions);
 
   return fileObject.attr("getvalue")();
 }
@@ -2979,7 +2983,8 @@ void mlir::python::populateIRCore(py::module &m) {
                                /*prettyDebugInfo=*/false,
                                /*printGenericOpForm=*/false,
                                /*useLocalScope=*/false,
-                               /*assumeVerified=*/false);
+                               /*assumeVerified=*/false,
+                               /*skipRegions=*/false);
           },
           "Returns the assembly form of the operation.")
       .def("print",
@@ -2989,7 +2994,7 @@ void mlir::python::populateIRCore(py::module &m) {
            py::arg("binary") = false, kOperationPrintStateDocstring)
       .def("print",
            py::overload_cast<std::optional<int64_t>, bool, bool, bool, bool,
-                             bool, py::object, bool>(
+                             bool, py::object, bool, bool>(
                &PyOperationBase::print),
            // Careful: Lots of arguments must match up with print method.
            py::arg("large_elements_limit") = py::none(),
@@ -2998,7 +3003,8 @@ void mlir::python::populateIRCore(py::module &m) {
            py::arg("print_generic_op_form") = false,
            py::arg("use_local_scope") = false,
            py::arg("assume_verified") = false, py::arg("file") = py::none(),
-           py::arg("binary") = false, kOperationPrintDocstring)
+           py::arg("binary") = false, py::arg("skip_regions") = false,
+           kOperationPrintDocstring)
       .def("write_bytecode", &PyOperationBase::writeBytecode, py::arg("file"),
            py::arg("desired_version") = py::none(),
            kOperationPrintBytecodeDocstring)
@@ -3010,7 +3016,8 @@ void mlir::python::populateIRCore(py::module &m) {
            py::arg("pretty_debug_info") = false,
            py::arg("print_generic_op_form") = false,
            py::arg("use_local_scope") = false,
-           py::arg("assume_verified") = false, kOperationGetAsmDocstring)
+           py::arg("assume_verified") = false, py::arg("skip_regions") = false,
+           kOperationGetAsmDocstring)
       .def("verify", &PyOperationBase::verify,
            "Verify the operation. Raises MLIRError if verification fails, and "
            "returns true otherwise.")

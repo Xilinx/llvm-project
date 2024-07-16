@@ -393,7 +393,8 @@ PDLDocument::PDLDocument(const lsp::URIForFile &uri, StringRef contents,
     if (auto lspDiag = getLspDiagnoticFromDiag(sourceMgr, diag, uri))
       diagnostics.push_back(std::move(*lspDiag));
   });
-  astModule = parsePDLLAST(astContext, sourceMgr, /*enableDocumentation=*/true);
+  astModule = parsePDLLAST(astContext, sourceMgr, /*enableDocumentation=*/true,
+                           /*emitWarningOnRepeatedIncludeAtMainFile=*/true);
 
   // Initialize the set of parsed includes.
   lsp::gatherIncludeFiles(sourceMgr, parsedIncludes);
@@ -989,6 +990,7 @@ PDLDocument::getCodeCompletion(const lsp::URIForFile &uri,
 
   ast::Context tmpContext(tmpODSContext);
   (void)parsePDLLAST(tmpContext, sourceMgr, /*enableDocumentation=*/true,
+                     /*emitWarningOnRepeatedIncludeAtMainFile=*/true,
                      &lspCompleteContext);
 
   return completionList;
@@ -1144,6 +1146,7 @@ lsp::SignatureHelp PDLDocument::getSignatureHelp(const lsp::URIForFile &uri,
 
   ast::Context tmpContext(tmpODSContext);
   (void)parsePDLLAST(tmpContext, sourceMgr, /*enableDocumentation=*/true,
+                     /*emitWarningOnRepeatedIncludeAtMainFile=*/true,
                      &completeContext);
 
   return signatureHelp;
