@@ -40,7 +40,7 @@ struct ConvertMemRefToEmitCPass
     });
 
     populateMemRefToEmitCTypeConversion(converter);
-    populateEmitCSizeTypeConversions(converter);
+    populateEmitCSizeTTypeConversions(converter);
 
     RewritePatternSet patterns(&getContext());
     populateMemRefToEmitCConversionPatterns(patterns, converter);
