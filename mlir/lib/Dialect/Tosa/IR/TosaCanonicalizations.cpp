@@ -718,7 +718,7 @@ OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
   auto lhsTy = llvm::dyn_cast<RankedTensorType>(lhs.getType());
   auto rhsTy = llvm::dyn_cast<RankedTensorType>(rhs.getType());
   auto resultTy = llvm::dyn_cast<RankedTensorType>(getType());
-  if (!lhsTy || !rhsTy || !resultTy)
+  if (!lhsTy || !rhsTy || !resultTy || !resultTy.hasStaticShape())
     return {};
 
   auto resultETy = resultTy.getElementType();
