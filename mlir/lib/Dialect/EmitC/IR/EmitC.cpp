@@ -119,6 +119,7 @@ bool mlir::emitc::isSupportedFloatType(Type type) {
   if (auto floatType = llvm::dyn_cast<FloatType>(type)) {
     switch (floatType.getWidth()) {
     case 32:
+      return !isa<FloatTF32Type>(floatType);
     case 64:
       return true;
     default:
