@@ -122,7 +122,7 @@ LogicalResult Lexer::pushInclude(StringRef filename, SMRange includeLoc) {
     return failure();
   }
 
-  canonicalIncludeFileStack.push_back(canonicalPath);
+  canonicalIncludeFileStack.push_back(canonicalPath.string());
   curBufferID = bufferID;
   curBuffer = srcMgr.getMemoryBuffer(curBufferID)->getBuffer();
   curPtr = curBuffer.begin();
