@@ -39,7 +39,7 @@ void ConvertFuncToEmitC::runOnOperation() {
   // See note https://mlir.llvm.org/docs/DialectConversion/#type-converter
   // Type converters are called most to least recently inserted
   typeConverter.addConversion([](Type t) { return t; });
-  populateEmitCSizeTypeConversions(typeConverter);
+  populateEmitCSizeTTypeConversions(typeConverter);
 
   ConversionTarget target(getContext());
 
