@@ -741,8 +741,7 @@ public:
 
 class TruncFConversion : public OpConversionPattern<arith::TruncFOp> {
 public:
-  TruncFConversion(const TypeConverter &typeConverter, MLIRContext *context)
-      : OpConversionPattern<arith::TruncFOp>(typeConverter, context) {}
+  using OpConversionPattern<arith::TruncFOp>::OpConversionPattern;
 
   LogicalResult
   matchAndRewrite(arith::TruncFOp castOp,
@@ -760,12 +759,12 @@ public:
     if (!dstType)
       return rewriter.notifyMatchFailure(castOp, "type conversion failed");
 
+    if (!emitc::isSupportedFloatType(dstType))
+      return rewriter.notifyMatchFailure(castOp,
+                                         "unsupported cast destination type");
+
     if (!castOp.areCastCompatible(operandType, dstType))
       return rewriter.notifyMatchFailure(castOp, "cast-incompatible types");
-
-    if (!emitc::isSupportedFloatType(dstType) ||
-        (operandType.getIntOrFloatBitWidth() < dstType.getIntOrFloatBitWidth()))
-      return rewriter.notifyMatchFailure(castOp, "unsupported types");
 
     rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType,
                                                adaptor.getIn());
@@ -776,8 +775,7 @@ public:
 
 class ExtFConversion : public OpConversionPattern<arith::ExtFOp> {
 public:
-  ExtFConversion(const TypeConverter &typeConverter, MLIRContext *context)
-      : OpConversionPattern<arith::ExtFOp>(typeConverter, context) {}
+  using OpConversionPattern<arith::ExtFOp>::OpConversionPattern;
 
   LogicalResult
   matchAndRewrite(arith::ExtFOp castOp, typename arith::ExtFOp::Adaptor adaptor,
@@ -791,12 +789,12 @@ public:
     if (!dstType)
       return rewriter.notifyMatchFailure(castOp, "type conversion failed");
 
+    if (!emitc::isSupportedFloatType(dstType))
+      return rewriter.notifyMatchFailure(castOp,
+                                         "unsupported cast destination type");
+
     if (!castOp.areCastCompatible(operandType, dstType))
       return rewriter.notifyMatchFailure(castOp, "cast-incompatible types");
-
-    if (!emitc::isSupportedFloatType(dstType) ||
-        (operandType.getIntOrFloatBitWidth() > dstType.getIntOrFloatBitWidth()))
-      return rewriter.notifyMatchFailure(castOp, "unsupported types");
 
     rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType,
                                                adaptor.getIn());
