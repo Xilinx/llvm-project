@@ -810,6 +810,8 @@ public:
     while (scope) {
       for (const ast::Decl *decl : scope->getDecls()) {
         if (const auto *cst = dyn_cast<ast::UserConstraintDecl>(decl)) {
+          if (cst->getName().getName().starts_with("__builtin"))
+            continue;
           lsp::CompletionItem item;
           item.label = cst->getName().getName().str();
           item.kind = lsp::CompletionItemKind::Interface;
