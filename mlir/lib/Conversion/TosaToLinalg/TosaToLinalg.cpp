@@ -614,9 +614,13 @@ static Value createLinalgBodyCalculationForElementwiseOp(
                                             args.front(), zero);
     }
 
-    if (isa<IntegerType>(srcTy) && isa<IntegerType>(dstTy) && bitExtend)
+    if (isa<IntegerType>(srcTy) && isa<IntegerType>(dstTy) && bitExtend) {
+      if (cast<IntegerType>(srcTy).isUnsigned())
+        return rewriter.create<arith::ExtUIOp>(loc, resultTypes, args,
+                                               std::nullopt);
       return rewriter.create<arith::ExtSIOp>(loc, resultTypes, args,
                                              std::nullopt);
+    }
 
     if (isa<IntegerType>(srcTy) && isa<IntegerType>(dstTy) && !bitExtend) {
       return rewriter.create<arith::TruncIOp>(loc, dstTy, args[0]);
