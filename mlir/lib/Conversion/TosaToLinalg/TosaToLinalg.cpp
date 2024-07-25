@@ -615,8 +615,7 @@ static Value createLinalgBodyCalculationForElementwiseOp(
     }
 
     if (isa<IntegerType>(srcTy) && isa<IntegerType>(dstTy) && bitExtend) {
-      auto srcIntTy = dyn_cast<IntegerType>(srcTy);
-      if (srcIntTy.isUnsigned())
+      if (cast<IntegerType>(srcTy).isUnsigned())
         return rewriter.create<arith::ExtUIOp>(loc, resultTypes, args,
                                                std::nullopt);
       return rewriter.create<arith::ExtSIOp>(loc, resultTypes, args,
