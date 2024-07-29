@@ -114,15 +114,148 @@ void PowOp::getCanonicalizationPatterns(RewritePatternSet &results,
   results.add<SqrtReciprocalOptimization>(context);
 }
 
-LogicalResult SelectOp::canonicalize(SelectOp op, PatternRewriter &rewriter) {
-  auto notOp = op.getPred().getDefiningOp<tosa::LogicalNotOp>();
-  if (!notOp)
-    return failure();
-  rewriter.modifyOpInPlace(op, [&]() {
-    op.getOperation()->setOperands(
-        {notOp.getInput1(), op.getOnFalse(), op.getOnTrue()});
-  });
-  return success();
+struct SelectLogicalNotOptimization : public OpRewritePattern<tosa::SelectOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(tosa::SelectOp op,
+                                PatternRewriter &rewriter) const override {
+    auto notOp = op.getPred().getDefiningOp<tosa::LogicalNotOp>();
+    if (!notOp)
+      return failure();
+    rewriter.modifyOpInPlace(op, [&]() {
+      op.getOperation()->setOperands(
+          {notOp.getInput1(), op.getOnFalse(), op.getOnTrue()});
+    });
+    return success();
+  }
+};
+
+// This canonicalizaties the following patterns:
+// %0 = tosa.greater_equal(input, x)
+// %1 = tosa.select(%0, input, x)
+// to tosa.clamp{min = x, max = max}(input)
+// and
+// %0 = tosa.greater_equal(input, x)
+// %1 = tosa.select(%0, x, input)
+// to tosa.clamp{min = min, max = x}(input)
+// The first pattern occurs in decompositions of LeakyReLU/PReLU with an alpha
+// of zero
+struct SelectToClampOptimization : public OpRewritePattern<tosa::SelectOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(tosa::SelectOp op,
+                                PatternRewriter &rewriter) const override {
+
+    auto geq = op.getPred().getDefiningOp<tosa::GreaterEqualOp>();
+    if (!geq) {
+      return rewriter.notifyMatchFailure(op,
+                                         "Predicate is not a GreaterEqualOp");
+    }
+
+    DenseElementsAttr geqIn2Attr;
+    if (!matchPattern(geq.getInput2(), m_Constant(&geqIn2Attr)) ||
+        !geqIn2Attr.isSplat()) {
+      return rewriter.notifyMatchFailure(
+          op, "RHS of predicate GreaterEqualOp is not a SplatValue");
+    }
+    auto isCompatibleSplat = [](DenseElementsAttr a,
+                                DenseElementsAttr b) -> bool {
+      if (!a.isSplat() || !b.isSplat()) {
+        return false;
+      }
+      if (a.getElementType() != b.getElementType()) {
+        return false;
+      }
+      auto aType = llvm::dyn_cast<RankedTensorType>(a.getType());
+      auto bType = llvm::dyn_cast<RankedTensorType>(a.getType());
+      if (!(aType == bType ||
+            (aType.getRank() == 1 && aType.getDimSize(0) == 1) ||
+            (bType.getRank() == 1 && bType.getDimSize(0) == 1))) {
+        return false;
+      }
+      if (llvm::isa<IntegerType>(a.getElementType())) {
+        return a.getSplatValue<APInt>() == b.getSplatValue<APInt>();
+      }
+      if (llvm::isa<FloatType>(a.getElementType())) {
+        return a.getSplatValue<APFloat>() == b.getSplatValue<APFloat>();
+      }
+      return false; // Only int and float types are supported
+    };
+
+    auto onFalse = op.getOnFalse();
+    auto onTrue = op.getOnTrue();
+    DenseElementsAttr onFalseAttr;
+    DenseElementsAttr onTrueAttr;
+
+    // Case one:
+    // %0 = tosa.greater_equal(input, cmp)
+    // %1 = tosa.select(%0, input, cmp)
+    // to tosa.clamp{min = cmp, max = max}(input)
+    // Predicate: geq.input2 == select.onFalse AND geq.input1 == select.onTrue
+    const bool isCaseOne =
+        matchPattern(onFalse, m_Constant(&onFalseAttr)) &&
+        isCompatibleSplat(onFalseAttr, geqIn2Attr) &&
+        onTrue.getDefiningOp() == geq.getInput1().getDefiningOp();
+
+    // Case two:
+    // %0 = tosa.greater_equal(input, cmp)
+    // %1 = tosa.select(%0, cmp, input)
+    // to tosa.clamp{min = input, max = cmp}(input)
+    // Predicate: geq.input2 == select.onTrue AND geq.input1 == select.onFalse
+    const bool isCaseTwo =
+        !isCaseOne && matchPattern(onTrue, m_Constant(&onTrueAttr)) &&
+        isCompatibleSplat(onTrueAttr, geqIn2Attr) &&
+        onFalse.getDefiningOp() == geq.getInput1().getDefiningOp();
+
+    if (isCaseOne || isCaseTwo) {
+      const auto inputElementType = geqIn2Attr.getElementType();
+      int64_t clampIntMin = std::numeric_limits<int64_t>::min();
+      int64_t clampIntMax = std::numeric_limits<int64_t>::max();
+      FloatAttr clampFloatMin;
+      FloatAttr clampFloatMax;
+      if (isa<IntegerType>(inputElementType)) {
+        auto splatValue = geqIn2Attr.getSplatValue<APInt>().trySExtValue();
+        if (!splatValue) {
+          return rewriter.notifyMatchFailure(
+              op, "Can not rewrite as values do not fit into 64 bits");
+        }
+        clampFloatMin =
+            rewriter.getF32FloatAttr(-std::numeric_limits<float>::infinity());
+        clampFloatMax =
+            rewriter.getF32FloatAttr(std::numeric_limits<float>::infinity());
+        if (isCaseOne) {
+          clampIntMin = *splatValue;
+        } else {
+          clampIntMax = *splatValue;
+        }
+      } else if (isa<FloatType>(inputElementType)) {
+        auto splatValue = geqIn2Attr.getSplatValue<APFloat>();
+        if (isCaseOne) {
+          clampFloatMin = rewriter.getFloatAttr(inputElementType, splatValue);
+          clampFloatMax = rewriter.getFloatAttr(
+              inputElementType,
+              APFloat::getInf(splatValue.getSemantics(), false));
+        } else {
+          clampFloatMin = rewriter.getFloatAttr(
+              inputElementType,
+              APFloat::getInf(splatValue.getSemantics(), true));
+          clampFloatMax = rewriter.getFloatAttr(inputElementType, splatValue);
+        }
+      }
+      rewriter.replaceOpWithNewOp<tosa::ClampOp>(
+          op, op.getType(), geq.getInput1(),
+          rewriter.getI64IntegerAttr(clampIntMin),
+          rewriter.getI64IntegerAttr(clampIntMax), clampFloatMin,
+          clampFloatMax);
+      return success();
+    }
+    return rewriter.notifyMatchFailure(
+        op, "select does not match GEQ + select -> clamp pattern");
+  }
+};
+
+void tosa::SelectOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                 MLIRContext *context) {
+  results.add<SelectLogicalNotOptimization>(context);
+  results.add<SelectToClampOptimization>(context);
 }
 
 struct ConsolidateTransposeOptimization

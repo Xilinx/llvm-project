@@ -1219,7 +1219,7 @@ def Tosa_SelectOp : Tosa_ElementwiseOp<"select"> {
   let results = (outs
     Tosa_Tensor:$output
   );
-  let hasCanonicalizeMethod = 1;
+  let hasCanonicalizer = 1;
   let hasFolder = 1;
 
   let assemblyFormat = [{
