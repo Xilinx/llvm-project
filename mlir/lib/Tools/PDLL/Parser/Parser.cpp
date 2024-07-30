@@ -647,6 +647,7 @@ private:
     ast::UserConstraintDecl *log2Constraint;
     ast::UserConstraintDecl *exp2Constraint;
     ast::UserConstraintDecl *absConstraint;
+    ast::UserConstraintDecl *equals;
   } builtins{};
 
   // Allows to keep track of those files that has been marked with #once
@@ -738,6 +739,9 @@ void Parser::declareBuiltins() {
       "__builtin_exp2Constraint", {"Attr"}, true);
   builtins.absConstraint = declareBuiltin<ast::UserConstraintDecl>(
       "__builtin_absConstraint", {"Attr"}, true);
+  builtins.equals = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_equals", {"lhs", "rhs"},
+      /*returnsAttr=*/false);
 }
 
 FailureOr<ast::Module *> Parser::parseModule() {
@@ -2039,7 +2043,22 @@ FailureOr<ast::Expr *> Parser::parseLogicalAndExpr() {
 }
 
 FailureOr<ast::Expr *> Parser::parseEqualityExpr() {
-  return parseRelationExpr();
+  auto lhs = parseRelationExpr();
+  if (failed(lhs))
+    return failure();
+
+  switch (curToken.getKind()) {
+  case Token::equal_equal: {
+    consumeToken();
+    auto rhs = parseRelationExpr();
+    if (failed(rhs))
+      return failure();
+    SmallVector<ast::Expr *> args{*lhs, *rhs};
+    return createBuiltinCall(curToken.getLoc(), builtins.equals, args);
+  }
+  default:
+    return lhs;
+  }
 }
 
 FailureOr<ast::Expr *> Parser::parseRelationExpr() { return parseAddSubExpr(); }

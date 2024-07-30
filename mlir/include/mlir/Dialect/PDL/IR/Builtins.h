@@ -65,6 +65,7 @@ LogicalResult exp2(PatternRewriter &rewriter, PDLResultList &results,
                    llvm::ArrayRef<PDLValue> args);
 LogicalResult abs(PatternRewriter &rewriter, PDLResultList &results,
                   llvm::ArrayRef<PDLValue> args);
+LogicalResult equals(PatternRewriter &rewriter, Attribute lhs, Attribute rhs);
 } // namespace builtin
 } // namespace pdl
 } // namespace mlir
