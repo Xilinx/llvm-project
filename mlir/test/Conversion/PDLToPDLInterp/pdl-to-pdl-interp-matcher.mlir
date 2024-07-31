@@ -130,20 +130,6 @@ module @constraint_with_result_multiple {
 
 // -----
 
-// CHECK-LABEL: module @constraint_with_no_inputs
-module @constraint_with_no_inputs {
-  pdl.pattern : benefit(0) {
-    %attr = apply_native_constraint "constraint_no_inputs" : !pdl.attribute
-    %root = operation
-    rewrite %root with "rewriter"
-  }
-}
-
-// CHECK:  func @matcher(%arg0: !pdl.operation) {
-// CHECK:    pdl_interp.apply_constraint "constraint_no_inputs" : !pdl.attribute -> ^{{.*}}, ^{{.*}}
-
-// -----
-
 // CHECK-LABEL: module @negated_constraint
 module @negated_constraint {
   // CHECK: func @matcher(%[[ROOT:.*]]: !pdl.operation)

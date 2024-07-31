@@ -50,7 +50,8 @@ private:
 
   /// Generate interpreter operations for the tree rooted at the given matcher
   /// node, in the specified region.
-  Block *generateMatcher(MatcherNode &node, Region &region);
+  Block *generateMatcher(MatcherNode &node, Region &region,
+                         Block *block = nullptr);
 
   /// Get or create an access to the provided positional value in the current
   /// block. This operation may mutate the provided block pointer if nested
@@ -149,9 +150,9 @@ private:
   /// set.
   DenseMap<Operation *, PDLPatternConfigSet *> *configMap;
 
-  /// A mapping between constraint questions that refer to values created by
-  /// constraints and the temporary placeholder values created for them.
-  std::multimap<std::pair<ConstraintQuestion *, unsigned>, Value> substitutions;
+  /// A mapping from a constraint question to the ApplyConstraintOp
+  /// that implements it.
+  DenseMap<ConstraintQuestion *, pdl_interp::ApplyConstraintOp> constraintOpMap;
 };
 } // namespace
 
@@ -186,9 +187,11 @@ void PatternLowering::lower(ModuleOp module) {
   firstMatcherBlock->erase();
 }
 
-Block *PatternLowering::generateMatcher(MatcherNode &node, Region &region) {
+Block *PatternLowering::generateMatcher(MatcherNode &node, Region &region,
+                                        Block *block) {
   // Push a new scope for the values used by this matcher.
-  Block *block = &region.emplaceBlock();
+  if (!block)
+    block = &region.emplaceBlock();
   ValueMapScope scope(values);
 
   // If this is the return node, simply insert the corresponding interpreter
@@ -369,18 +372,12 @@ Value PatternLowering::getValueAt(Block *&currentBlock, Position *pos) {
     break;
   }
   case Predicates::ConstraintResultPos: {
-    // At this point in time the corresponding pdl.ApplyNativeConstraint op has
-    // been deleted and the new pdl_interp.ApplyConstraint has not been created
-    // yet. To enable use of results created by these operations we build a
-    // placeholder value that will be replaced when the actual
-    // pdl_interp.ApplyConstraint operation is created.
+    // Due to the order of traversal, the ApplyConstraintOp has already been
+    // created and we can find it in constraintOpMap.
     auto *constrResPos = cast<ConstraintPosition>(pos);
-    Value placeholderValue = builder.create<pdl_interp::CreateAttributeOp>(
-        loc, StringAttr::get(builder.getContext(), "placeholder"));
-    substitutions.insert(
-        {{constrResPos->getQuestion(), constrResPos->getIndex()},
-         placeholderValue});
-    value = placeholderValue;
+    auto i = constraintOpMap.find(constrResPos->getQuestion());
+    assert(i != constraintOpMap.end());
+    value = i->second->getResult(constrResPos->getIndex());
     break;
   }
   default:
@@ -409,12 +406,11 @@ void PatternLowering::generate(BoolNode *boolNode, Block *&currentBlock,
       args.push_back(getValueAt(currentBlock, position));
   }
 
-  // Generate the matcher in the current (potentially nested) region
-  // and get the failure successor.
-  Block *success = generateMatcher(*boolNode->getSuccessNode(), *region);
+  // Generate a new block as success successor and get the failure successor.
+  Block *success = &region->emplaceBlock();
   Block *failure = failureBlockStack.back();
 
-  // Finally, create the predicate.
+  // Create the predicate.
   builder.setInsertionPointToEnd(currentBlock);
   Predicates::Kind kind = question->getKind();
   switch (kind) {
@@ -469,27 +465,17 @@ void PatternLowering::generate(BoolNode *boolNode, Block *&currentBlock,
     auto applyConstraintOp = builder.create<pdl_interp::ApplyConstraintOp>(
         loc, cstQuestion->getResultTypes(), cstQuestion->getName(), args,
         cstQuestion->getIsNegated(), success, failure);
-    // Replace the generated placeholders with the results of the constraint and
-    // erase them
-    for (auto result : llvm::enumerate(applyConstraintOp.getResults())) {
-      std::pair<ConstraintQuestion *, unsigned> substitutionKey = {
-          cstQuestion, result.index()};
-      // Check if there are substitutions to perform. If the result is never
-      // used or multiple calls to the same constraint have been merged,
-      // no substitutions will have been generated for this specific op.
-      auto range = substitutions.equal_range(substitutionKey);
-      std::for_each(range.first, range.second, [&](const auto &elem) {
-        Value placeholder = elem.second;
-        placeholder.replaceAllUsesWith(result.value());
-        placeholder.getDefiningOp()->erase();
-      });
-      substitutions.erase(substitutionKey);
-    }
+
+    constraintOpMap.insert({cstQuestion, applyConstraintOp});
     break;
   }
   default:
     llvm_unreachable("Generating unknown Predicate operation");
   }
+
+  // Generate the matcher in the current (potentially nested) region.
+  // This might use the results of the current predicate.
+  generateMatcher(*boolNode->getSuccessNode(), *region, success);
 }
 
 template <typename OpT, typename PredT, typename ValT = typename PredT::KeyTy>
