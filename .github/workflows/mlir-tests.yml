@@ -17,7 +17,9 @@ on:
 concurrency:
   # Skip intermediate builds: always.
   # Cancel intermediate builds: only if it is a pull request build.
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Create an unique group to avoid conflicts with other workflows.
+  # It has happened before that this worflow never finishes.
+  group: ${{ github.workflow }}-${{ github.ref }}-mlir-tests
   cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 
 jobs:
