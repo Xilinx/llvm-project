@@ -51,8 +51,8 @@ class EmitC_BinaryOp<string mnemonic, list<Trait> traits = []> :
 def CExpression : NativeOpTrait<"emitc::CExpression">;
 
 // Types only used in binary arithmetic operations.
-def IntegerIndexOrOpaqueType : AnyTypeOf<[EmitCIntegerType, Index,
-  EmitC_SignedSizeT, EmitC_SizeT, EmitC_OpaqueType]>;
+def IntegerIndexOrOpaqueType : Type<CPred<"emitc::isIntegerIndexOrOpaqueType($_self)">,
+"integer, index or opaque type supported by EmitC">;
 def FloatIntegerIndexOrOpaqueType : AnyTypeOf<[EmitCFloatType, IntegerIndexOrOpaqueType]>;
 
 def EmitC_AddOp : EmitC_BinaryOp<"add", [CExpression]> {
@@ -288,7 +288,6 @@ def EmitC_CastOp : EmitC_Op<"cast",
   let arguments = (ins EmitCType:$source);
   let results = (outs EmitCType:$dest);
   let assemblyFormat = "$source attr-dict `:` type($source) `to` type($dest)";
-  let hasFolder = 1;
 }
 
 def EmitC_CmpOp : EmitC_BinaryOp<"cmp", [CExpression]> {
