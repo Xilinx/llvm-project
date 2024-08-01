@@ -129,7 +129,7 @@ struct SelectLogicalNotOptimization : public OpRewritePattern<tosa::SelectOp> {
   }
 };
 
-// This canonicalizaties the following patterns:
+// This canonicalizes the following patterns:
 // %0 = tosa.greater_equal(input, x)
 // %1 = tosa.select(%0, input, x)
 // to tosa.clamp{min = x, max = max}(input)
