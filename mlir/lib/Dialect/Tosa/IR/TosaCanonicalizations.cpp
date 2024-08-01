@@ -151,24 +151,13 @@ struct SelectToClampOptimization : public OpRewritePattern<tosa::SelectOp> {
     }
 
     DenseElementsAttr geqIn2Attr;
-    if (!matchPattern(geq.getInput2(), m_Constant(&geqIn2Attr)) ||
-        !geqIn2Attr.isSplat()) {
+    if (!matchPattern(geq.getInput2(), m_Constant(&geqIn2Attr))) {
       return rewriter.notifyMatchFailure(
-          op, "RHS of predicate GreaterEqualOp is not a SplatValue");
+          op, "RHS of predicate GreaterEqualOp is not a constant");
     }
     auto isCompatibleSplat = [](DenseElementsAttr a,
                                 DenseElementsAttr b) -> bool {
       if (!a.isSplat() || !b.isSplat()) {
-        return false;
-      }
-      if (a.getElementType() != b.getElementType()) {
-        return false;
-      }
-      auto aType = llvm::dyn_cast<RankedTensorType>(a.getType());
-      auto bType = llvm::dyn_cast<RankedTensorType>(a.getType());
-      if (!(aType == bType ||
-            (aType.getRank() == 1 && aType.getDimSize(0) == 1) ||
-            (bType.getRank() == 1 && bType.getDimSize(0) == 1))) {
         return false;
       }
       if (llvm::isa<IntegerType>(a.getElementType())) {
