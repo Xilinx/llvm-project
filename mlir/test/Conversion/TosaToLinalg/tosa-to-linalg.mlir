@@ -636,6 +636,11 @@ func.func @test_simple_i16(%arg0: tensor<1xi16>) -> () {
 func.func @test_simple_ui8(%arg0: tensor<1xui8>) -> () {
   // CHECK: arith.uitofp
   %0 = tosa.cast %arg0 : (tensor<1xui8>) -> tensor<1xf32>
+
+  // CHECK: linalg.generic
+  // CHECK: arith.extui {{%.+}} : i8 to i32
+  %1 = tosa.cast %arg0 : (tensor<1xui8>) -> tensor<1xi32>
+
   return
 }
 
@@ -797,8 +802,8 @@ func.func @test_simple_i32(%arg0: tensor<1xi32>, %arg1: tensor<1xui32>) -> () {
 
 // -----
 
-// CHECK-LABEL: @test_simple_ui8
-func.func @test_simple_ui8(%arg0: tensor<1xi8>) -> () {
+// CHECK-LABEL: @test_simple_i8
+func.func @test_simple_i8(%arg0: tensor<1xi8>) -> () {
 
   // CHECK: linalg.generic
   // CHECK: sitofp

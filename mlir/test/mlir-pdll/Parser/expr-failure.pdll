@@ -628,3 +628,19 @@ Pattern {
     erase root;
   };
 }
+
+// -----
+
+Pattern {
+  // CHECK: expected expression
+  ==
+  erase _: Op;
+}
+
+// -----
+
+Pattern {
+  // CHECK: expected expression
+  attr<"4 : i32"> ==
+  erase _: Op;
+}
