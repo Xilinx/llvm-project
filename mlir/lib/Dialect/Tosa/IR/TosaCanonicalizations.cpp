@@ -204,20 +204,25 @@ struct SelectToClampOptimization : public OpRewritePattern<tosa::SelectOp> {
     int64_t clampIntMax = std::numeric_limits<int64_t>::max();
     FloatAttr clampFloatMin;
     FloatAttr clampFloatMax;
-    if (isa<IntegerType>(inputElementType)) {
-      auto splatValue = geqIn2Attr.getSplatValue<APInt>().trySExtValue();
-      if (!splatValue) {
-        return rewriter.notifyMatchFailure(
-            op, "Can not rewrite as values do not fit into 64 bits");
+    if (auto integerType = dyn_cast<IntegerType>(inputElementType)) {
+      int64_t splatValue;
+      if (integerType.isUnsigned()) {
+        if (integerType.getWidth() >= 63) {
+          return rewriter.notifyMatchFailure(
+              op, "Can not represent all values of input type as int64");
+        }
+        splatValue = geqIn2Attr.getSplatValue<APInt>().getZExtValue();
+      } else {
+        splatValue = geqIn2Attr.getSplatValue<APInt>().getSExtValue();
       }
       clampFloatMin =
           rewriter.getF32FloatAttr(-std::numeric_limits<float>::infinity());
       clampFloatMax =
           rewriter.getF32FloatAttr(std::numeric_limits<float>::infinity());
       if (isCaseOne) {
-        clampIntMin = *splatValue;
+        clampIntMin = splatValue;
       } else {
-        clampIntMax = *splatValue;
+        clampIntMax = splatValue;
       }
     } else if (isa<FloatType>(inputElementType)) {
       auto splatValue = geqIn2Attr.getSplatValue<APFloat>();

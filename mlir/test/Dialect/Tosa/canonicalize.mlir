@@ -793,6 +793,18 @@ func.func @canonicalize_select_to_clamp_ui64(%arg0: tensor<13x21x3xui64>) -> ten
 
 // -----
 
+// CHECK-LABEL: @canonicalize_select_to_clamp_ui4
+func.func @canonicalize_select_to_clamp_ui4(%arg0: tensor<13x21x3xui4>) -> tensor<13x21x3xui4> {
+// CHECK:           %[[VAL_1:.*]] = tosa.clamp %arg{{.*}} {max_fp = 0x7F800000 : f32, max_int = 9223372036854775807 : i64, min_fp = 0xFF800000 : f32, min_int = 8 : i64} : (tensor<13x21x3xui4>) -> tensor<13x21x3xui4>
+// CHECK:           return %[[VAL_1]] : tensor<13x21x3xui4>
+  %0 =  "tosa.const"() <{value = dense<8> : tensor<13x21x3xui4>}>: () -> tensor<13x21x3xui4>
+  %1 = tosa.greater_equal %arg0, %0: (tensor<13x21x3xui4>, tensor<13x21x3xui4>) -> tensor<13x21x3xi1>
+  %2 = tosa.select %1, %arg0, %0: ( tensor<13x21x3xi1>, tensor<13x21x3xui4>, tensor<13x21x3xui4>) -> tensor<13x21x3xui4>
+  return %2  :  tensor<13x21x3xui4>
+}
+
+// -----
+
 // CHECK-LABEL: @canonicalize_select_to_clamp_i16_pat2
 func.func @canonicalize_select_to_clamp_i16_pat2(%arg0: tensor<13x21x3xi16>) -> tensor<13x21x3xi16> {
 // CHECK:           %[[VAL_1:.*]] = tosa.clamp %arg{{.*}} {max_fp = 0x7F800000 : f32, max_int = 3 : i64, min_fp = 0xFF800000 : f32, min_int = -9223372036854775808 : i64} : (tensor<13x21x3xi16>) -> tensor<13x21x3xi16>
