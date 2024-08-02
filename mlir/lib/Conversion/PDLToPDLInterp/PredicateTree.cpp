@@ -289,11 +289,21 @@ static void getConstraintPredicates(pdl::ApplyNativeConstraintOp op,
       op.getName(), allPositions, SmallVector<Type>(results.getTypes()),
       op.getIsNegated());
 
-  // for each result register a position so it can be used later
-  for (auto result : llvm::enumerate(results)) {
+  // For each result register a position so it can be used later
+  for (auto [i, result] : llvm::enumerate(results)) {
     ConstraintQuestion *q = cast<ConstraintQuestion>(pred.first);
-    ConstraintPosition *pos = builder.getConstraintPosition(q, result.index());
-    inputs[result.value()] = pos;
+    ConstraintPosition *pos = builder.getConstraintPosition(q, i);
+    auto [it, inserted] = inputs.try_emplace(result, pos);
+    // If this is an input value that has been visited in the tree, add a
+    // constraint to ensure that both instances refer to the same value.
+    if (!inserted) {
+      Position *first = pos;
+      Position *second = it->second;
+      if (comparePosDepth(second, first))
+        std::tie(second, first) = std::make_pair(first, second);
+
+      predList.emplace_back(second, builder.getEqualTo(first));
+    }
   }
   predList.emplace_back(pos, pred);
 }
