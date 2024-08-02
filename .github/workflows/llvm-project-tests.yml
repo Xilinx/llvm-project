@@ -76,10 +76,10 @@ jobs:
       # python3.10.6 libraries instead of the 64-bit libraries when building
       # lldb.  Using this setup-python action to make 3.10 the default
       # python fixes this.
-      #- name: Setup Python
-      #  uses: actions/setup-python@v4
-      #  with:
-      #    python-version: ${{ inputs.python_version }}
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
       - name: Install Ninja
         if: runner.os != 'Linux'
         uses: llvm/actions/install-ninja@main
@@ -123,6 +123,11 @@ jobs:
             extra_cmake_args="-DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang"
           else
             builddir="$(pwd)"/build
+          fi
+          if [ "${{ runner.os }}" == "macOS" ]; then
+            # Workaround test failure on some lld tests on MacOS
+            # https://github.com/llvm/llvm-project/issues/81967
+            extra_cmake_args="-DLLVM_DISABLE_ASSEMBLY_FILES=ON"
           fi
           echo "llvm-builddir=$builddir" >> "$GITHUB_OUTPUT"
           cmake -G Ninja \

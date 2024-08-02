@@ -14,6 +14,7 @@ add_libc_test(
     libc.src.stdio.feof
     libc.src.stdio.ferror
     libc.src.stdio.fflush
+    libc.src.stdio.fileno
     libc.src.stdio.fopen
     libc.src.stdio.fputs
     libc.src.stdio.fread
@@ -260,6 +261,13 @@ add_libc_test(
     ${use_system_file}
 )
 
+if(LIBC_CONF_SCANF_DISABLE_FLOAT)
+  list(APPEND sscanf_test_copts "-DLIBC_COPT_SCANF_DISABLE_FLOAT")
+endif()
+if(LIBC_CONF_SCANF_DISABLE_INDEX_MODE)
+  list(APPEND sscanf_test_copts "-DLIBC_COPT_SCANF_DISABLE_INDEX_MODE")
+endif()
+
 add_libc_test(
   sscanf_test
   SUITE
@@ -270,6 +278,8 @@ add_libc_test(
     libc.src.stdio.sscanf
   LINK_LIBRARIES
     LibcFPTestHelpers
+  COMPILE_OPTIONS
+    ${sscanf_test_copts}
 )
 
 add_libc_test(
@@ -353,6 +363,37 @@ if(${LIBC_TARGET_OS} STREQUAL "linux")
       libc.src.unistd.access
       libc.src.unistd.close
   )
+
+  add_libc_test(
+    rename_test
+    SUITE
+      libc_stdio_unittests
+    SRCS
+      rename_test.cpp
+    DEPENDS
+      libc.src.errno.errno
+      libc.src.fcntl.open
+      libc.src.stdio.rename
+      libc.src.unistd.access
+      libc.src.unistd.close
+      libc.test.UnitTest.ErrnoSetterMatcher
+  )
+
+  add_libc_test(
+    fdopen_test
+    SUITE
+      libc_stdio_unittests
+    SRCS
+      fdopen_test.cpp
+    DEPENDS
+      libc.src.fcntl.open
+      libc.src.stdio.fclose
+      libc.src.stdio.fdopen
+      libc.src.stdio.fgets
+      libc.src.stdio.fputs
+      libc.src.unistd.close
+      libc.test.UnitTest.ErrnoSetterMatcher
+  )
 endif()
 
 add_libc_test(
@@ -426,6 +467,8 @@ add_libc_test(
     libc.src.stdio.fread
     libc.src.stdio.fseek
     libc.src.stdio.ftell
+    libc.src.stdio.fseeko
+    libc.src.stdio.ftello
     libc.src.stdio.fwrite
     libc.src.stdio.setvbuf
 )

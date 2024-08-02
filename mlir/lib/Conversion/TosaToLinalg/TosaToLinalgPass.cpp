@@ -14,6 +14,7 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -41,7 +42,7 @@ public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry
         .insert<arith::ArithDialect, linalg::LinalgDialect, math::MathDialect,
-                tensor::TensorDialect, scf::SCFDialect>();
+                index::IndexDialect, tensor::TensorDialect, scf::SCFDialect>();
   }
 
   void runOnOperation() override {
@@ -70,13 +71,11 @@ public:
         [&](Operation *op) { return converter.isLegal(op); });
     target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
 
+    TypeConverter converter;
+    tosa::populateTosaTypeConversion(converter);
+
     FunctionOpInterface func = getOperation();
     mlir::tosa::populateTosaToLinalgConversionPatterns(converter, &patterns);
-    populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
-                                                                   converter);
-    populateCallOpTypeConversionPattern(patterns, converter);
-    populateReturnOpTypeConversionPattern(patterns, converter);
-
     if (failed(applyFullConversion(func, target, std::move(patterns))))
       signalPassFailure();
   }

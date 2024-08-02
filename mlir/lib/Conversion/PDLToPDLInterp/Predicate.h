@@ -300,6 +300,28 @@ struct OperationPosition : public PredicateBase<OperationPosition, Position,
 };
 
 //===----------------------------------------------------------------------===//
+// ConstraintPosition
+
+struct ConstraintQuestion;
+
+/// A position describing the result of a native constraint. It saves the
+/// corresponding ConstraintQuestion and result index to enable referring
+/// back to them
+struct ConstraintPosition
+    : public PredicateBase<ConstraintPosition, Position,
+                           std::pair<ConstraintQuestion *, unsigned>,
+                           Predicates::ConstraintResultPos> {
+  using PredicateBase::PredicateBase;
+
+  /// Returns the ConstraintQuestion to enable keeping track of the native
+  /// constraint this position stems from.
+  ConstraintQuestion *getQuestion() const { return key.first; }
+
+  // Returns the result index of this position
+  unsigned getIndex() const { return key.second; }
+};
+
+//===----------------------------------------------------------------------===//
 // ResultPosition
 
 /// A position describing a result of an operation.

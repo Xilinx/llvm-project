@@ -36,14 +36,9 @@ public:
       return rewriter.notifyMatchFailure(
           callOp, "only functions with zero or one result can be converted");
 
-    // Convert the original function results.
-    SmallVector<Type> types;
-    if (failed(typeConverter->convertTypes(callOp.getResultTypes(), types))) {
-      return rewriter.notifyMatchFailure(
-          callOp, "function return type conversion failed");
-    }
-    rewriter.replaceOpWithNewOp<emitc::CallOp>(
-        callOp, types, adaptor.getOperands(), callOp->getAttrs());
+    rewriter.replaceOpWithNewOp<emitc::CallOp>(callOp, callOp.getResultTypes(),
+                                               adaptor.getOperands(),
+                                               callOp->getAttrs());
 
     return success();
   }

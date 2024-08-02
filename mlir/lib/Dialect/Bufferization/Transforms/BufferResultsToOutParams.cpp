@@ -45,6 +45,8 @@ static bool hasStaticIdentityLayout(MemRefType type) {
 // Updates the func op and entry block.
 //
 // Any args appended to the entry block are added to `appendedEntryArgs`.
+// If `addResultAttribute` is true, adds the unit attribute `bufferize.result`
+// to each newly created function argument.
 static LogicalResult
 updateFuncOp(func::FuncOp func,
              SmallVectorImpl<BlockArgument> &appendedEntryArgs,
@@ -105,7 +107,8 @@ updateFuncOp(func::FuncOp func,
 // the given out-params.
 static LogicalResult updateReturnOps(func::FuncOp func,
                                      ArrayRef<BlockArgument> appendedEntryArgs,
-                                     MemCpyFn memCpyFn) {
+                                     MemCpyFn memCpyFn,
+                                     bool hoistStaticAllocs) {
   auto res = func.walk([&](func::ReturnOp op) {
     SmallVector<Value, 6> copyIntoOutParams;
     SmallVector<Value, 6> keepAsReturnOperands;
@@ -116,10 +119,15 @@ static LogicalResult updateReturnOps(func::FuncOp func,
         keepAsReturnOperands.push_back(operand);
     }
     OpBuilder builder(op);
-    for (auto t : llvm::zip(copyIntoOutParams, appendedEntryArgs)) {
-      if (failed(
-              memCpyFn(builder, op.getLoc(), std::get<0>(t), std::get<1>(t))))
-        return WalkResult::interrupt();
+    for (auto [orig, arg] : llvm::zip(copyIntoOutParams, appendedEntryArgs)) {
+      if (hoistStaticAllocs && isa<memref::AllocOp>(orig.getDefiningOp()) &&
+          mlir::cast<MemRefType>(orig.getType()).hasStaticShape()) {
+        orig.replaceAllUsesWith(arg);
+        orig.getDefiningOp()->erase();
+      } else {
+        if (failed(memCpyFn(builder, op.getLoc(), orig, arg)))
+          return WalkResult::interrupt();
+      }
     }
     builder.create<func::ReturnOp>(op.getLoc(), keepAsReturnOperands);
     op.erase();
@@ -210,7 +218,8 @@ LogicalResult mlir::bufferization::promoteBufferResultsToOutParams(
       return success();
     };
     if (failed(updateReturnOps(func, appendedEntryArgs,
-                               options.memCpyFn.value_or(defaultMemCpyFn)))) {
+                               options.memCpyFn.value_or(defaultMemCpyFn),
+                               options.hoistStaticAllocs))) {
       return failure();
     }
   }
@@ -231,6 +240,8 @@ struct BufferResultsToOutParamsPass
     // Convert from pass options in tablegen to BufferResultsToOutParamsOpts.
     if (addResultAttribute)
       options.addResultAttribute = true;
+    if (hoistStaticAllocs)
+      options.hoistStaticAllocs = true;
 
     if (failed(bufferization::promoteBufferResultsToOutParams(getOperation(),
                                                               options)))

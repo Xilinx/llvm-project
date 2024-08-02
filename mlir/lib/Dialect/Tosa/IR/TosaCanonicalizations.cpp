@@ -461,7 +461,7 @@ struct ClampIsNoOp : public OpRewritePattern<tosa::ClampOp> {
       return failure();
     }
 
-    if (inputElementType.isa<FloatType>()) {
+    if (isa<FloatType>(inputElementType)) {
       // Unlike integer types, floating point types can represent infinity.
       auto minClamp = op.getMinFp();
       auto maxClamp = op.getMaxFp();
@@ -753,6 +753,11 @@ OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
   if (!lhsTy || !rhsTy || !resultTy)
     return {};
 
+  // Cannot create an ElementsAttr from non-int/float/index types
+  if (!lhsTy.getElementType().isIntOrIndexOrFloat() ||
+      !rhsTy.getElementType().isIntOrIndexOrFloat())
+    return {};
+
   auto resultETy = resultTy.getElementType();
   auto lhsAttr = llvm::dyn_cast_if_present<DenseElementsAttr>(adaptor.getInput1());
   auto rhsAttr = llvm::dyn_cast_if_present<DenseElementsAttr>(adaptor.getInput2());
@@ -769,7 +774,20 @@ OpFoldResult AddOp::fold(FoldAdaptor adaptor) {
                                                             resultTy);
 }
 
-OpFoldResult DivOp::fold(FoldAdaptor adaptor) {
+OpFoldResult ArgMaxOp::fold(FoldAdaptor adaptor) {
+  auto inputTy = llvm::dyn_cast<RankedTensorType>(getInput().getType());
+  auto outputTy = llvm::dyn_cast<RankedTensorType>(getType());
+  if (!inputTy || !outputTy || !inputTy.hasStaticShape() ||
+      !outputTy.hasStaticShape())
+    return {};
+
+  if (inputTy.getDimSize(getAxis()) == 1)
+    return DenseElementsAttr::get(outputTy, 0);
+
+  return {};
+}
+
+OpFoldResult IntDivOp::fold(FoldAdaptor adaptor) {
   auto lhsTy = llvm::dyn_cast<RankedTensorType>(getInput1().getType());
   auto rhsTy = llvm::dyn_cast<RankedTensorType>(getInput2().getType());
   auto resultTy = llvm::dyn_cast<RankedTensorType>(getType());
@@ -778,6 +796,7 @@ OpFoldResult DivOp::fold(FoldAdaptor adaptor) {
   if (lhsTy != rhsTy)
     return {};
 
+  // IntDivOp inputs must be integer type, no need to check for quantized type
   auto resultETy = resultTy.getElementType();
   auto lhsAttr = llvm::dyn_cast_if_present<DenseElementsAttr>(adaptor.getInput1());
   auto rhsAttr = llvm::dyn_cast_if_present<DenseElementsAttr>(adaptor.getInput2());
@@ -873,6 +892,11 @@ OpFoldResult SubOp::fold(FoldAdaptor adaptor) {
   auto rhsTy = llvm::dyn_cast<RankedTensorType>(getInput2().getType());
   auto resultTy = llvm::dyn_cast<RankedTensorType>(getType());
   if (!lhsTy || !rhsTy || !resultTy)
+    return {};
+
+  // Cannot create an ElementsAttr from non-int/float/index types
+  if (!lhsTy.getElementType().isIntOrIndexOrFloat() ||
+      !rhsTy.getElementType().isIntOrIndexOrFloat())
     return {};
 
   auto resultETy = resultTy.getElementType();
@@ -1017,7 +1041,8 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
           llvm::cast<IntegerType>(outETy).getIntOrFloatBitWidth(), unsign);
       auto floatVal = operand.getSplatValue<APFloat>();
       bool exact;
-      floatVal.convertToInteger(intVal, llvm::RoundingMode::NearestTiesToEven, &exact);
+      floatVal.convertToInteger(intVal, llvm::RoundingMode::NearestTiesToEven,
+                                &exact);
       return SplatElementsAttr::get(outTy, intVal);
     }
 
@@ -1072,7 +1097,10 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
   if (!inputTy || !outputTy)
     return {};
 
-  if (inputTy == outputTy)
+  // Fold when the input and output types are the same. This is only safe when
+  // there is at most 1 dynamic dimension. For 2 or more dynamic dimensions,
+  // there may still be a productive reshape.
+  if (inputTy == outputTy && inputTy.getNumDynamicDims() < 2)
     return getInput1();
 
   // reshape(reshape(x)) -> reshape(x)
@@ -1081,6 +1109,10 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
     getInput1Mutable().assign(reshapeOp.getInput1());
     return getResult();
   }
+
+  // Cannot create an ElementsAttr from non-int/float/index types
+  if (!inputTy.getElementType().isIntOrIndexOrFloat())
+    return {};
 
   // reshape(const(x)) -> const(reshape-attr(x))
   if (auto operand = llvm::dyn_cast_if_present<DenseElementsAttr>(adaptor.getInput1())) {
@@ -1105,7 +1137,7 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
 
 OpFoldResult PadOp::fold(FoldAdaptor adaptor) {
   // If the pad is all zeros we can fold this operation away.
-  if (adaptor.getPadding()) {
+  if (adaptor.getPadding() && getInput1().getType() == getType()) {
     auto densePad = llvm::cast<DenseElementsAttr>(adaptor.getPadding());
     if (densePad.isSplat() && densePad.getSplatValue<APInt>().isZero()) {
       return getInput1();
@@ -1217,13 +1249,12 @@ OpFoldResult TileOp::fold(FoldAdaptor adaptor) {
 }
 
 OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
-  auto inputTy = llvm::cast<ShapedType>(getInput1().getType());
   auto resultTy = llvm::cast<ShapedType>(getType());
 
   // Transposing splat values just means reshaping.
   if (auto input = llvm::dyn_cast_if_present<DenseElementsAttr>(adaptor.getInput1())) {
     if (input.isSplat() && resultTy.hasStaticShape() &&
-        inputTy.getElementType() == resultTy.getElementType())
+        input.getType().getElementType() == resultTy.getElementType())
       return input.reshape(resultTy);
   }
 

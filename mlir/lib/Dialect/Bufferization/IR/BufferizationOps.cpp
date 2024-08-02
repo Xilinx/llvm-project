@@ -76,12 +76,10 @@ FailureOr<Value> mlir::bufferization::castOrReallocMemRefValue(
 
   FailureOr<Value> copy =
       options.createAlloc(b, loc, destType, dynamicOperands);
-  if (failed(copy)) {
+  if (failed(copy))
     return failure();
-  }
-  if (failed(options.createMemCpy(b, loc, value, *copy))) {
+  if (failed(options.createMemCpy(b, loc, value, *copy)))
     return failure();
-  }
   return copy;
 }
 
@@ -257,16 +255,6 @@ LogicalResult AllocTensorOp::verify() {
            << getType().getNumDynamicDims() << " dynamic sizes";
   if (getCopy() && getCopy().getType() != getType())
     return emitError("expected that `copy` and return type match");
-
-  // For sparse tensor allocation, we require that none of its
-  // uses escapes the function boundary directly.
-  if (sparse_tensor::getSparseTensorEncoding(getType())) {
-    for (auto &use : getOperation()->getUses())
-      if (isa<func::ReturnOp, func::CallOp, func::CallIndirectOp>(
-              use.getOwner()))
-        return emitError("sparse tensor allocation should not escape function");
-  }
-
   return success();
 }
 
@@ -347,6 +335,9 @@ struct FoldDimOfAllocTensorOp : public OpRewritePattern<tensor::DimOp> {
     std::optional<int64_t> maybeConstantIndex = dimOp.getConstantIndex();
     auto allocTensorOp = dimOp.getSource().getDefiningOp<AllocTensorOp>();
     if (!allocTensorOp || !maybeConstantIndex)
+      return failure();
+    if (*maybeConstantIndex < 0 ||
+        *maybeConstantIndex >= allocTensorOp.getType().getRank())
       return failure();
     if (!allocTensorOp.getType().isDynamicDim(*maybeConstantIndex))
       return failure();
@@ -695,6 +686,24 @@ LogicalResult MaterializeInDestinationOp::verify() {
   if (getWritable() != isa<BaseMemRefType>(getDest().getType()))
     return emitOpError("'writable' must be specified if and only if the "
                        "destination is of memref type");
+  TensorType srcType = getSource().getType();
+  ShapedType destType = cast<ShapedType>(getDest().getType());
+  if (srcType.hasRank() != destType.hasRank())
+    return emitOpError("source/destination shapes are incompatible");
+  if (srcType.hasRank()) {
+    if (srcType.getRank() != destType.getRank())
+      return emitOpError("rank mismatch between source and destination shape");
+    for (auto [src, dest] :
+         llvm::zip(srcType.getShape(), destType.getShape())) {
+      if (src == ShapedType::kDynamic || dest == ShapedType::kDynamic) {
+        // Cannot verify dynamic dimension size. Assume that that they match at
+        // runtime.
+        continue;
+      }
+      if (src != dest)
+        return emitOpError("source/destination shapes are incompatible");
+    }
+  }
   return success();
 }
 
@@ -719,7 +728,7 @@ void MaterializeInDestinationOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
   if (isa<BaseMemRefType>(getDest().getType()))
-    effects.emplace_back(MemoryEffects::Write::get(), getDest(),
+    effects.emplace_back(MemoryEffects::Write::get(), &getDestMutable(),
                          SideEffects::DefaultResource::get());
 }
 
@@ -807,7 +816,9 @@ struct ToMemrefToTensorFolding : public OpRewritePattern<ToMemrefOp> {
 
   LogicalResult matchAndRewrite(ToMemrefOp toMemref,
                                 PatternRewriter &rewriter) const final {
-    return foldToMemrefToTensorPair(rewriter, toMemref, {});
+    BufferizationOptions options;
+    options.bufferAlignment = 0;
+    return foldToMemrefToTensorPair(rewriter, toMemref, options);
   }
 };
 

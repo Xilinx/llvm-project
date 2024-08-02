@@ -114,7 +114,16 @@ bool mlir::emitc::isIntegerIndexOrOpaqueType(Type type) {
 }
 
 bool mlir::emitc::isSupportedFloatType(Type type) {
-  return isa<Float32Type, Float64Type>(type);
+  if (auto floatType = llvm::dyn_cast<FloatType>(type)) {
+    switch (floatType.getWidth()) {
+    case 32:
+    case 64:
+      return true;
+    default:
+      return false;
+    }
+  }
+  return false;
 }
 
 bool mlir::emitc::isPointerWideType(Type type) {
@@ -204,9 +213,11 @@ LogicalResult emitc::AssignOp::verify() {
   Value variable = getVar();
   Operation *variableDef = variable.getDefiningOp();
   if (!variableDef ||
-      !llvm::isa<emitc::VariableOp, emitc::SubscriptOp>(variableDef))
+      !llvm::isa<emitc::GetGlobalOp, emitc::MemberOp, emitc::MemberOfPtrOp,
+                 emitc::SubscriptOp, emitc::VariableOp>(variableDef))
     return emitOpError() << "requires first operand (" << variable
-                         << ") to be a Variable or subscript";
+                         << ") to be a get_global, member, member of pointer, "
+                            "subscript or variable";
 
   Value value = getValue();
   if (variable.getType() != value.getType())
@@ -233,7 +244,7 @@ bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
 }
 
 //===----------------------------------------------------------------------===//
-// CallOp
+// CallOpaqueOp
 //===----------------------------------------------------------------------===//
 
 LogicalResult emitc::CallOpaqueOp::verify() {

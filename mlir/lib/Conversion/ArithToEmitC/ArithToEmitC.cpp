@@ -733,70 +733,6 @@ public:
   }
 };
 
-class TruncFConversion : public OpConversionPattern<arith::TruncFOp> {
-public:
-  using OpConversionPattern<arith::TruncFOp>::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(arith::TruncFOp castOp,
-                  typename arith::TruncFOp::Adaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    // FIXME Upstream LLVM (commit 77cbc9bf60) brings in a rounding mode
-    // attribute that we need to check. For now, the behavior is the default,
-    // i.e. truncate.
-    Type operandType = adaptor.getIn().getType();
-    if (!emitc::isSupportedFloatType(operandType))
-      return rewriter.notifyMatchFailure(castOp,
-                                         "unsupported cast source type");
-
-    Type dstType = this->getTypeConverter()->convertType(castOp.getType());
-    if (!dstType)
-      return rewriter.notifyMatchFailure(castOp, "type conversion failed");
-
-    if (!emitc::isSupportedFloatType(dstType))
-      return rewriter.notifyMatchFailure(castOp,
-                                         "unsupported cast destination type");
-
-    if (!castOp.areCastCompatible(operandType, dstType))
-      return rewriter.notifyMatchFailure(castOp, "cast-incompatible types");
-
-    rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType,
-                                               adaptor.getIn());
-
-    return success();
-  }
-};
-
-class ExtFConversion : public OpConversionPattern<arith::ExtFOp> {
-public:
-  using OpConversionPattern<arith::ExtFOp>::OpConversionPattern;
-
-  LogicalResult
-  matchAndRewrite(arith::ExtFOp castOp, typename arith::ExtFOp::Adaptor adaptor,
-                  ConversionPatternRewriter &rewriter) const override {
-    Type operandType = adaptor.getIn().getType();
-    if (!emitc::isSupportedFloatType(operandType))
-      return rewriter.notifyMatchFailure(castOp,
-                                         "unsupported cast source type");
-
-    Type dstType = this->getTypeConverter()->convertType(castOp.getType());
-    if (!dstType)
-      return rewriter.notifyMatchFailure(castOp, "type conversion failed");
-
-    if (!emitc::isSupportedFloatType(dstType))
-      return rewriter.notifyMatchFailure(castOp,
-                                         "unsupported cast destination type");
-
-    if (!castOp.areCastCompatible(operandType, dstType))
-      return rewriter.notifyMatchFailure(castOp, "cast-incompatible types");
-
-    rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType,
-                                               adaptor.getIn());
-
-    return success();
-  }
-};
-
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -842,9 +778,7 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
     ItoFCastOpConversion<arith::SIToFPOp>,
     ItoFCastOpConversion<arith::UIToFPOp>,
     FtoICastOpConversion<arith::FPToSIOp>,
-    FtoICastOpConversion<arith::FPToUIOp>,
-    TruncFConversion,
-    ExtFConversion
+    FtoICastOpConversion<arith::FPToUIOp>
   >(typeConverter, ctx);
   // clang-format on
 }
