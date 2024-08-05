@@ -466,7 +466,7 @@ void PatternLowering::generate(BoolNode *boolNode, Block *&currentBlock,
         loc, cstQuestion->getResultTypes(), cstQuestion->getName(), args,
         cstQuestion->getIsNegated(), success, failure);
 
-    constraintOpMap.insert({cstQuestion, applyConstraintOp});
+    constraintOpMap[cstQuestion] = applyConstraintOp;
     break;
   }
   default:
