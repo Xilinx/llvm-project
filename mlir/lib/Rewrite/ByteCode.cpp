@@ -772,6 +772,7 @@ void Generator::generate(pdl_interp::ApplyConstraintOp op,
   // Constraints that should return a value have to be registered as rewrites.
   // If a constraint and a rewrite of similar name are registered the
   // constraint takes precedence
+  assert(constraintToMemIndex.contains(op.getName()) && "constraint not registered");
   writer.append(OpCode::ApplyConstraint, constraintToMemIndex[op.getName()]);
   writer.appendPDLValueList(op.getArgs());
   writer.append(ByteCodeField(op.getIsNegated()));
