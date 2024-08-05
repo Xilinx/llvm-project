@@ -41,16 +41,6 @@ public:
   TestPatternRewriter rewriter{&ctx};
 };
 
-TEST_F(BuiltinTest, createDictionaryAttr) {
-  TestPDLResultList results(1);
-  EXPECT_TRUE(succeeded(builtin::createDictionaryAttr(rewriter, results, {})));
-  ASSERT_TRUE(results.getResults().size() == 1);
-  auto dict = dyn_cast_or_null<DictionaryAttr>(
-      results.getResults().back().cast<Attribute>());
-  ASSERT_TRUE(dict);
-  EXPECT_TRUE(dict.empty());
-}
-
 TEST_F(BuiltinTest, addEntryToDictionaryAttr) {
   TestPDLResultList results(1);
 
@@ -75,19 +65,12 @@ TEST_F(BuiltinTest, addEntryToDictionaryAttr) {
   EXPECT_TRUE(cast<DictionaryAttr>(second).contains("testAttr2"));
 }
 
-TEST_F(BuiltinTest, createArrayAttr) {
-  auto attr = builtin::createArrayAttr(rewriter);
-  auto dict = dyn_cast<ArrayAttr>(attr);
-  EXPECT_TRUE(dict);
-  EXPECT_TRUE(dict.empty());
-}
-
 TEST_F(BuiltinTest, addElemToArrayAttr) {
   auto dict = rewriter.getDictionaryAttr(
       rewriter.getNamedAttr("key", rewriter.getStringAttr("value")));
   rewriter.getArrayAttr({});
 
-  auto arrAttr = builtin::createArrayAttr(rewriter);
+  auto arrAttr = rewriter.getArrayAttr({});
   mlir::Attribute updatedArrAttr =
       builtin::addElemToArrayAttr(rewriter, arrAttr, dict);
 
