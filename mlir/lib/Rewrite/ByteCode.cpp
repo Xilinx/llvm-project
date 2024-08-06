@@ -772,6 +772,9 @@ void Generator::generate(pdl_interp::ApplyConstraintOp op,
   // Constraints that should return a value have to be registered as rewrites.
   // If a constraint and a rewrite of similar name are registered the
   // constraint takes precedence
+  if (!constraintToMemIndex.contains(op.getName())) {
+    llvm::report_fatal_error(Twine("constraint not registered: ") + op.getName());
+  }
   writer.append(OpCode::ApplyConstraint, constraintToMemIndex[op.getName()]);
   writer.appendPDLValueList(op.getArgs());
   writer.append(ByteCodeField(op.getIsNegated()));
@@ -881,6 +884,14 @@ void Generator::generate(pdl_interp::CreateOperationOp op,
     writer.append(kInferTypesMarker);
   else
     writer.appendPDLValueList(op.getInputResultTypes());
+
+  // Add number of regions
+  if (IntegerAttr attr = op.getNumRegionsAttr()) {
+    writer.append(ByteCodeField(attr.getUInt()));
+  } else {
+    unsigned numRegions = 0;
+    writer.append(ByteCodeField(numRegions));
+  }
 }
 void Generator::generate(pdl_interp::CreateRangeOp op, ByteCodeWriter &writer) {
   // Append the correct opcode for the range type.
@@ -1687,6 +1698,12 @@ void ByteCodeExecutor::executeCreateOperation(PatternRewriter &rewriter,
         state.types.append(resultTypes->begin(), resultTypes->end());
       }
     }
+  }
+
+  // handle regions:
+  unsigned numRegions = read();
+  for (unsigned i = 0; i < numRegions; i++) {
+    state.addRegion();
   }
 
   Operation *resultOp = rewriter.create(state);
