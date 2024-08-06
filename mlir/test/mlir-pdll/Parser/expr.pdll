@@ -4,8 +4,8 @@
 // AttrExpr
 //===----------------------------------------------------------------------===//
 
-// CHECK: Module
-// CHECK: `-AttributeExpr {{.*}} Value<"10: i32">
+// CHECK-LABEL: Module
+// CHECK: AttributeExpr {{.*}} Value<"10: i32">
 Pattern {
   let attr = attr<"10: i32">;
 
@@ -14,7 +14,7 @@ Pattern {
 
 // -----
 
-// CHECK: Module
+// CHECK-LABEL: Module
 // CHECK: `-AttributeExpr {{.*}} Value<"10:i32">
 Pattern {
   let attr = 10 : i32;
@@ -23,7 +23,7 @@ Pattern {
 
 // -----
 
-// CHECK: Module
+// CHECK-LABEL: Module
 // CHECK: `-AttributeExpr {{.*}} Value<""value"">
 Pattern {
   let attr = "value";
