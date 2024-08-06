@@ -360,9 +360,9 @@ void registerBuiltins(PDLPatternModule &pdlPattern) {
                                      createArrayAttr);
   pdlPattern.registerRewriteFunction("__builtin_addElemToArrayAttr",
                                      addElemToArrayAttr);
-  pdlPattern.registerConstraintFunctionWithResults(
+  pdlPattern.registerConstraintFunction(
       "__builtin_createDictionaryAttr_constraint", createDictionaryAttr);
-  pdlPattern.registerConstraintFunctionWithResults(
+  pdlPattern.registerConstraintFunction(
       "__builtin_addEntryToDictionaryAttr_constraint",
       addEntryToDictionaryAttr);
   pdlPattern.registerRewriteFunction("__builtin_mulRewrite", mul);
@@ -373,21 +373,21 @@ void registerBuiltins(PDLPatternModule &pdlPattern) {
   pdlPattern.registerRewriteFunction("__builtin_log2Rewrite", log2);
   pdlPattern.registerRewriteFunction("__builtin_exp2Rewrite", exp2);
   pdlPattern.registerRewriteFunction("__builtin_absRewrite", abs);
-  pdlPattern.registerConstraintFunctionWithResults("__builtin_mulConstraint",
+  pdlPattern.registerConstraintFunction("__builtin_mulConstraint",
                                                    mul);
-  pdlPattern.registerConstraintFunctionWithResults("__builtin_divConstraint",
+  pdlPattern.registerConstraintFunction("__builtin_divConstraint",
                                                    div);
-  pdlPattern.registerConstraintFunctionWithResults("__builtin_modConstraint",
+  pdlPattern.registerConstraintFunction("__builtin_modConstraint",
                                                    mod);
-  pdlPattern.registerConstraintFunctionWithResults("__builtin_addConstraint",
+  pdlPattern.registerConstraintFunction("__builtin_addConstraint",
                                                    add);
-  pdlPattern.registerConstraintFunctionWithResults("__builtin_subConstraint",
+  pdlPattern.registerConstraintFunction("__builtin_subConstraint",
                                                    sub);
-  pdlPattern.registerConstraintFunctionWithResults("__builtin_log2Constraint",
+  pdlPattern.registerConstraintFunction("__builtin_log2Constraint",
                                                    log2);
-  pdlPattern.registerConstraintFunctionWithResults("__builtin_exp2Constraint",
+  pdlPattern.registerConstraintFunction("__builtin_exp2Constraint",
                                                    exp2);
-  pdlPattern.registerConstraintFunctionWithResults("__builtin_absConstraint",
+  pdlPattern.registerConstraintFunction("__builtin_absConstraint",
                                                    abs);
   pdlPattern.registerConstraintFunction("__builtin_equals", equals);
 }
