@@ -32,7 +32,6 @@ public:
 
   /// Construct a new PDL value.
   PDLValue(const PDLValue &other) = default;
-  PDLValue(std::nullptr_t = nullptr) {}
   PDLValue(Attribute value)
       : value(value.getAsOpaquePointer()), kind(Kind::Attribute) {}
   PDLValue(Operation *value) : value(value), kind(Kind::Operation) {}
@@ -45,7 +44,6 @@ public:
   /// Returns true if the type of the held value is `T`.
   template <typename T>
   bool isa() const {
-    assert(value && "isa<> used on a null value");
     return kind == getKindOf<T>();
   }
 
@@ -318,8 +316,9 @@ protected:
 /// A generic PDL pattern constraint function. This function applies a
 /// constraint to a given set of opaque PDLValue entities. Returns success if
 /// the constraint successfully held, failure otherwise.
-using PDLConstraintFunction =
-    std::function<LogicalResult(PatternRewriter &, ArrayRef<PDLValue>)>;
+using PDLConstraintFunction = std::function<LogicalResult(
+    PatternRewriter &, PDLResultList &, ArrayRef<PDLValue>)>;
+
 /// A native PDL rewrite function. This function performs a rewrite on the
 /// given set of values. Any results from this rewrite that should be passed
 /// back to PDL should be added to the provided result list. This method is only
@@ -726,7 +725,7 @@ std::enable_if_t<
     PDLConstraintFunction>
 buildConstraintFn(ConstraintFnT &&constraintFn) {
   return [constraintFn = std::forward<ConstraintFnT>(constraintFn)](
-             PatternRewriter &rewriter,
+             PatternRewriter &rewriter, PDLResultList &,
              ArrayRef<PDLValue> values) -> LogicalResult {
     auto argIndices = std::make_index_sequence<
         llvm::function_traits<ConstraintFnT>::num_args - 1>();
@@ -842,10 +841,13 @@ public:
   /// Register a constraint function with PDL. A constraint function may be
   /// specified in one of two ways:
   ///
-  ///   * `LogicalResult (PatternRewriter &, ArrayRef<PDLValue>)`
+  ///   * `LogicalResult (PatternRewriter &,
+  ///                     PDLResultList &,
+  ///                     ArrayRef<PDLValue>)`
   ///
   ///   In this overload the arguments of the constraint function are passed via
-  ///   the low-level PDLValue form.
+  ///   the low-level PDLValue form, and the results are manually appended to
+  ///   the given result list.
   ///
   ///   * `LogicalResult (PatternRewriter &, ValueTs... values)`
   ///
@@ -867,9 +869,6 @@ public:
                                detail::pdl_function_builder::buildConstraintFn(
                                    std::forward<ConstraintFnT>(constraintFn)));
   }
-
-  void registerConstraintFunctionWithResults(StringRef name,
-                                             PDLRewriteFunction constraintFn);
 
   /// Register a rewrite function with PDL. A rewrite function may be specified
   /// in one of two ways:
@@ -963,8 +962,8 @@ public:
   }
 };
 class PDLResultList {};
-using PDLConstraintFunction =
-    std::function<LogicalResult(PatternRewriter &, ArrayRef<PDLValue>)>;
+using PDLConstraintFunction = std::function<LogicalResult(
+    PatternRewriter &, PDLResultList &, ArrayRef<PDLValue>)>;
 using PDLRewriteFunction = std::function<LogicalResult(
     PatternRewriter &, PDLResultList &, ArrayRef<PDLValue>)>;
 
