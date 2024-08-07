@@ -148,7 +148,7 @@ std::unique_ptr<Pass> createBufferLoopHoistingPass();
 
 // Options struct for BufferResultsToOutParams pass.
 // Note: defined only here, not in tablegen.
-struct BufferResultsToOutParamsOptions {
+struct BufferResultsToOutParamsOpts {
   /// Memcpy function: Generate a memcpy between two memrefs.
   using MemCpyFn =
       std::function<LogicalResult(OpBuilder &, Location, Value, Value)>;
