@@ -19,13 +19,6 @@ using namespace mlir;
 namespace mlir::pdl {
 namespace builtin {
 
-LogicalResult createDictionaryAttr(PatternRewriter &rewriter,
-                                   PDLResultList &results,
-                                   ArrayRef<PDLValue> args) {
-  results.push_back(rewriter.getDictionaryAttr({}));
-  return success();
-}
-
 LogicalResult addEntryToDictionaryAttr(PatternRewriter &rewriter,
                                        PDLResultList &results,
                                        ArrayRef<PDLValue> args) {
@@ -43,10 +36,6 @@ LogicalResult addEntryToDictionaryAttr(PatternRewriter &rewriter,
   values.push_back(rewriter.getNamedAttr(name, attrEntry));
   results.push_back(rewriter.getDictionaryAttr(values));
   return success();
-}
-
-mlir::Attribute createArrayAttr(mlir::PatternRewriter &rewriter) {
-  return rewriter.getArrayAttr({});
 }
 
 mlir::Attribute addElemToArrayAttr(mlir::PatternRewriter &rewriter,
@@ -352,16 +341,10 @@ LogicalResult equals(mlir::PatternRewriter &, mlir::Attribute lhs,
 void registerBuiltins(PDLPatternModule &pdlPattern) {
   using namespace builtin;
   // See Parser::defineBuiltins()
-  pdlPattern.registerRewriteFunction("__builtin_createDictionaryAttr_rewrite",
-                                     createDictionaryAttr);
   pdlPattern.registerRewriteFunction(
       "__builtin_addEntryToDictionaryAttr_rewrite", addEntryToDictionaryAttr);
-  pdlPattern.registerRewriteFunction("__builtin_createArrayAttr",
-                                     createArrayAttr);
   pdlPattern.registerRewriteFunction("__builtin_addElemToArrayAttr",
                                      addElemToArrayAttr);
-  pdlPattern.registerConstraintFunction(
-      "__builtin_createDictionaryAttr_constraint", createDictionaryAttr);
   pdlPattern.registerConstraintFunction(
       "__builtin_addEntryToDictionaryAttr_constraint",
       addEntryToDictionaryAttr);

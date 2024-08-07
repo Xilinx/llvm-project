@@ -40,13 +40,9 @@ enum class UnaryOpKind {
   log2,
 };
 
-LogicalResult createDictionaryAttr(PatternRewriter &rewriter,
-                                   PDLResultList &results,
-                                   ArrayRef<PDLValue> args);
 LogicalResult addEntryToDictionaryAttr(PatternRewriter &rewriter,
                                        PDLResultList &results,
                                        ArrayRef<PDLValue> args);
-Attribute createArrayAttr(PatternRewriter &rewriter);
 Attribute addElemToArrayAttr(PatternRewriter &rewriter, Attribute attr,
                              Attribute element);
 LogicalResult mul(PatternRewriter &rewriter, PDLResultList &results,
