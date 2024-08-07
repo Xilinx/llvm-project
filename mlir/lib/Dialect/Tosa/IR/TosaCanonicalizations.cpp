@@ -216,9 +216,9 @@ struct SelectToClampOptimization : public OpRewritePattern<tosa::SelectOp> {
         splatValue = geqIn2Attr.getSplatValue<APInt>().getSExtValue();
       }
       clampFloatMin =
-          rewriter.getF32FloatAttr(-std::numeric_limits<float>::infinity());
+          rewriter.getF32FloatAttr(std::numeric_limits<float>::lowest());
       clampFloatMax =
-          rewriter.getF32FloatAttr(std::numeric_limits<float>::infinity());
+          rewriter.getF32FloatAttr(std::numeric_limits<float>::max());
       if (isCaseOne) {
         clampIntMin = splatValue;
       } else {
@@ -230,10 +230,11 @@ struct SelectToClampOptimization : public OpRewritePattern<tosa::SelectOp> {
         clampFloatMin = rewriter.getFloatAttr(inputElementType, splatValue);
         clampFloatMax = rewriter.getFloatAttr(
             inputElementType,
-            APFloat::getInf(splatValue.getSemantics(), false));
+            APFloat::getLargest(splatValue.getSemantics(), false));
       } else {
         clampFloatMin = rewriter.getFloatAttr(
-            inputElementType, APFloat::getInf(splatValue.getSemantics(), true));
+            inputElementType,
+            APFloat::getLargest(splatValue.getSemantics(), true));
         clampFloatMax = rewriter.getFloatAttr(inputElementType, splatValue);
       }
     }
