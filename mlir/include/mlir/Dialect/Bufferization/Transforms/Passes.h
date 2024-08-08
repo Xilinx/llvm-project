@@ -159,6 +159,8 @@ struct BufferResultsToOutParamsOpts {
     return true;
   };
 
+  /// Memcpy function; used to create a copy between two memrefs.
+  /// If this is empty, memref.copy is used.
   std::optional<MemCpyFn> memCpyFn;
 
   /// If true, the pass adds a "bufferize.result" attribute to each output
