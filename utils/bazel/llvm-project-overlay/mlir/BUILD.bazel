@@ -542,6 +542,7 @@ mlir_c_api_cc_library(
     includes = ["include"],
     deps = [
         ":LLVMDialect",
+        "//llvm:Support",
     ],
 )
 
@@ -10864,6 +10865,7 @@ cc_library(
         ":MemRefDialect",
         ":Parser",
         ":SCFDialect",
+        ":MeshShardingInterface",
         ":SideEffectInterfaces",
         ":SparseTensorDialect",
         ":Support",
@@ -11017,10 +11019,13 @@ cc_library(
         ":MathDialect",
         ":MemRefDialect",
         ":MemRefTransforms",
+        ":MeshDialect",
+        ":MeshTransforms",
         ":Pass",
         ":SCFDialect",
         ":SCFTransforms",
         ":SCFUtils",
+        ":MeshShardingInterface",
         ":SparseTensorDialect",
         ":SubsetOpInterface",
         ":Support",
