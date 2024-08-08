@@ -97,6 +97,8 @@ C++23 Feature Support
 - Implemented `P2718R0: Lifetime extension in range-based for loops <https://wg21.link/P2718R0>`_. Also
   materialize temporary object which is a prvalue in discarded-value expression.
 
+- Implemented `P2448R2: Relaxing some constexpr restrictions <https://wg21.link/P2448R2>`_.
+
 C++2c Feature Support
 ^^^^^^^^^^^^^^^^^^^^^
 
@@ -154,6 +156,11 @@ Non-comprehensive list of changes in this release
 
 - ``__builtin_addc``, ``__builtin_subc``, and the other sizes of those
   builtins are now constexpr and may be used in constant expressions.
+
+- Added ``__builtin_popcountg`` as a type-generic alternative to
+  ``__builtin_popcount{,l,ll}`` with support for any unsigned integer type. Like
+  the previous builtins, this new builtin is constexpr and may be used in
+  constant expressions.
 
 New Compiler Flags
 ------------------
@@ -388,6 +395,9 @@ RISC-V Support
 
 CUDA/HIP Language Changes
 ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- PTX is no longer included by default when compiling for CUDA. Using 
+  ``--cuda-include-ptx=all`` will return the old behavior.
 
 CUDA Support
 ^^^^^^^^^^^^
