@@ -12,6 +12,8 @@ The following convention is followed:
     operation, C++20 is required.
 *   If `ssize_t` is used, then the code requires the POSIX header `sys/types.h`
     or any of the C++ headers in which the type is defined.
+*   If `emitc.array` with a dimension of size zero, then the code
+    requires [a GCC extension](https://gcc.gnu.org/onlinedocs/gcc/Zero-Length.html).
 *   Else the generated code is compatible with C99.
 
 These restrictions are neither inherent to the EmitC dialect itself nor to the
