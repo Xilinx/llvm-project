@@ -128,14 +128,14 @@ struct ConvertLoad final : public OpConversionPattern<memref::LoadOp> {
       return rewriter.notifyMatchFailure(op.getLoc(), "cannot convert type");
     }
 
-    auto arrayValue =
+    /*auto arrayValue =
         dyn_cast<TypedValue<emitc::ArrayType>>(operands.getMemref());
     if (!arrayValue) {
       return rewriter.notifyMatchFailure(op.getLoc(), "expected array type");
-    }
+    }*/
 
     auto subscript = rewriter.create<emitc::SubscriptOp>(
-        op.getLoc(), arrayValue, operands.getIndices());
+        op.getLoc(), resultTy, operands.getMemref(), operands.getIndices());
 
     auto noInit = emitc::OpaqueAttr::get(getContext(), "");
     auto var =
@@ -153,14 +153,15 @@ struct ConvertStore final : public OpConversionPattern<memref::StoreOp> {
   LogicalResult
   matchAndRewrite(memref::StoreOp op, OpAdaptor operands,
                   ConversionPatternRewriter &rewriter) const override {
-    auto arrayValue =
+    /*auto arrayValue =
         dyn_cast<TypedValue<emitc::ArrayType>>(operands.getMemref());
     if (!arrayValue) {
       return rewriter.notifyMatchFailure(op.getLoc(), "expected array type");
-    }
+    }*/
 
     auto subscript = rewriter.create<emitc::SubscriptOp>(
-        op.getLoc(), arrayValue, operands.getIndices());
+        op.getLoc(), operands.getValue().getType(), operands.getMemref(),
+        operands.getIndices());
     rewriter.replaceOpWithNewOp<emitc::AssignOp>(op, subscript,
                                                  operands.getValue());
     return success();

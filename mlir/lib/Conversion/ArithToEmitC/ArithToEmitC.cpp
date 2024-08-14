@@ -16,6 +16,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/EmitC/Transforms/TypeConversions.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -27,6 +28,24 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 namespace {
+
+class IndexConstantOpConversionPattern
+    : public OpConversionPattern<index::ConstantOp> {
+public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(index::ConstantOp arithConst, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Type newTy = this->getTypeConverter()->convertType(arithConst.getType());
+    if (!newTy)
+      return rewriter.notifyMatchFailure(arithConst, "type conversion failed");
+    rewriter.replaceOpWithNewOp<emitc::ConstantOp>(arithConst, newTy,
+                                                   adaptor.getValueAttr());
+    return success();
+  }
+};
+
 class ArithConstantOpConversionPattern
     : public OpConversionPattern<arith::ConstantOp> {
 public:
@@ -811,6 +830,7 @@ void mlir::populateArithToEmitCPatterns(TypeConverter &typeConverter,
 
   // clang-format off
   patterns.add<
+    IndexConstantOpConversionPattern,
     ArithConstantOpConversionPattern,
     ArithOpConversion<arith::AddFOp, emitc::AddOp>,
     ArithOpConversion<arith::DivFOp, emitc::DivOp>,

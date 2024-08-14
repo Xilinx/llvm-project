@@ -1330,6 +1330,11 @@ LogicalResult CppEmitter::emitOperand(Value value) {
   if (expressionOp && shouldBeInlined(expressionOp))
     return emitExpression(expressionOp);
 
+  if (auto constant = dyn_cast_if_present<ConstantOp>(value.getDefiningOp())) {
+    // TODO: must emit cast (and possible parenthesis) to keep semantics
+    return emitAttribute(constant->getLoc(), constant.getValue());
+  }
+
   auto literalOp = dyn_cast_if_present<LiteralOp>(value.getDefiningOp());
   if (!literalOp && !hasValueInScope(value))
     return failure();

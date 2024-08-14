@@ -79,6 +79,8 @@ void populateSCFLoopPipeliningPatterns(RewritePatternSet &patterns,
 /// loop bounds and loop steps are canonicalized.
 void populateSCFForLoopCanonicalizationPatterns(RewritePatternSet &patterns);
 
+void populateSCFForAllExpandPatterns(RewritePatternSet &patterns);
+
 } // namespace scf
 } // namespace mlir
 

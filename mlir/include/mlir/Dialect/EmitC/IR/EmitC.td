@@ -1241,7 +1241,8 @@ def EmitC_SubscriptOp : EmitC_Op<"subscript", []> {
   let arguments = (ins Arg<AnyTypeOf<[
       EmitC_ArrayType,
       EmitC_OpaqueType,
-      EmitC_PointerType]>,
+      EmitC_PointerType,
+      EmitC_TemplatedType]>,
     "the value to subscript">:$value,
     Variadic<EmitCType>:$indices);
   let results = (outs EmitCType:$result);

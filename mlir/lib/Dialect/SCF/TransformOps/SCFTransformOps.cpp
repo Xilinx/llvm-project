@@ -49,6 +49,11 @@ void transform::ApplySCFStructuralConversionPatternsOp::
                                                  conversionTarget);
 }
 
+void transform::ApplySCFParallelLoweringPatternsOp::populatePatterns(
+    RewritePatternSet &patterns) {
+  scf::populateSCFForAllExpandPatterns(patterns);
+}
+
 //===----------------------------------------------------------------------===//
 // ForallToForOp
 //===----------------------------------------------------------------------===//

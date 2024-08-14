@@ -38,6 +38,16 @@ def ApplySCFStructuralConversionPatternsOp : Op<Transform_Dialect,
   let assemblyFormat = "attr-dict";
 }
 
+def ApplySCFParallelLoweringPatternsOp : Op<Transform_Dialect,
+    "apply_patterns.scf.parallel_lowering",
+    [DeclareOpInterfaceMethods<PatternDescriptorOpInterface>]> {
+  let description = [{
+  }];
+
+  let assemblyFormat = "attr-dict";
+}
+
+
 def Transform_ScfForOp : Transform_ConcreteOpType<"scf.for">;
 
 def ForallToForOp : Op<Transform_Dialect, "loop.forall_to_for",

@@ -158,4 +158,24 @@ def EmitC_SizeT : EmitC_Type<"SizeT", "size_t"> {
   }];
 }
 
+def EmitC_TemplatedType : EmitC_Type<"Templated", "templated"> {
+  let summary = "EmitC templated type";
+
+  let description = [{
+    A templated type.
+
+    Example:
+
+    ```mlir
+    !emitc.templated<"int">
+    !emitc.opaque<"mytype">
+    !emitc.opaque<"std::vector<std::string>">
+    ```
+  }];
+
+  let parameters = (ins ArrayRefParameter<"Attribute", "arguments">:$arguments);
+  let assemblyFormat = "`<` $arguments `>`";
+  //let genVerifyDecl = 1;
+}
+
 #endif // MLIR_DIALECT_EMITC_IR_EMITCTYPES
