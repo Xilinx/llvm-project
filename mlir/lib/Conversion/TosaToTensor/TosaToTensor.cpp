@@ -225,7 +225,7 @@ public:
   matchAndRewrite(tosa::ReshapeOp reshape, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const final {
     auto loc = reshape.getLoc();
-    auto resultType = reshape.getResult().getType();
+    auto resultType = cast_if_present<ShapedType>(getTypeConverter()->convertType(reshape.getType()));
     if (!resultType) {
       return rewriter.notifyMatchFailure(reshape.getLoc(),
                                          "could not convert result type");
@@ -437,11 +437,11 @@ struct ConcatConverter : public OpConversionPattern<tosa::ConcatOp> {
 } // namespace
 
 void mlir::tosa::populateTosaToTensorConversionPatterns(
-    RewritePatternSet *patterns) {
+    TypeConverter &converter, RewritePatternSet *patterns) {
   patterns->add<
     ConcatConverter,
     PadConverter,
-    ReshapeConverter,
     SliceConverter
   >(patterns->getContext());
+  patterns->add<ReshapeConverter>(converter, patterns->getContext());
 }
