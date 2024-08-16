@@ -253,21 +253,6 @@ Attribute Changes in Clang
   added a new extension query ``__has_extension(swiftcc)`` corresponding to the
   ``__attribute__((swiftcc))`` attribute.
 
-- The ``_Nullable`` and ``_Nonnull`` family of type attributes can now apply
-  to certain C++ class types, such as smart pointers:
-  ``void useObject(std::unique_ptr<Object> _Nonnull obj);``.
-
-  This works for standard library types including ``unique_ptr``, ``shared_ptr``,
-  and ``function``. See
-  `the attribute reference documentation <https://llvm.org/docs/AttributeReference.html#nullability-attributes>`_
-  for the full list.
-
-- The ``_Nullable`` attribute can be applied to C++ class declarations:
-  ``template <class T> class _Nullable MySmartPointer {};``.
-
-  This allows the ``_Nullable`` and ``_Nonnull`` family of type attributes to
-  apply to this class.
-
 Improvements to Clang's diagnostics
 -----------------------------------
 - Clang now applies syntax highlighting to the code snippets it
@@ -322,6 +307,12 @@ Improvements to Clang's diagnostics
 - ``-Wmicrosoft``, ``-Wgnu``, or ``-pedantic`` is now required to diagnose C99
   flexible array members in a union or alone in a struct. Fixes GH#84565.
 
+- Clang now no longer diagnoses type definitions in ``offsetof`` in C23 mode.
+  Fixes #GH83658.
+
+- New ``-Wformat-signedness`` diagnostic that warn if the format string requires an
+  unsigned argument and the argument is signed and vice versa.
+
 Improvements to Clang's time-trace
 ----------------------------------
 
@@ -371,6 +362,9 @@ Bug Fixes in This Version
 
 - Fixes an assertion failure on invalid code when trying to define member
   functions in lambdas.
+
+- Fixed a regression in CTAD that a friend declaration that befriends itself may cause
+  incorrect constraint substitution. (#GH86769).
 
 Bug Fixes to Compiler Builtins
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
