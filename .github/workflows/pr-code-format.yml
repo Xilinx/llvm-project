@@ -2,7 +2,7 @@ name: "Check code formatting"
 on:
   pull_request:
     branches:
-      - main
+      - feature/fused-ops
 
 jobs:
   code_formatter:
