@@ -33,7 +33,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository }}
-          ref: ${{ github.base_ref }}
+          ref: feature/fused-ops
           sparse-checkout: |
             llvm/utils/git/requirements_formatting.txt
             llvm/utils/git/code-format-helper.py
