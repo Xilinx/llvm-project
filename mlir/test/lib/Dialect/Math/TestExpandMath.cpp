@@ -46,6 +46,7 @@ void TestExpandMathPass::runOnOperation() {
   populateExpandFloorFPattern(patterns);
   populateExpandCeilFPattern(patterns);
   populateExpandPowFPattern(patterns);
+  populateExpandFPowIPattern(patterns);
   populateExpandRoundFPattern(patterns);
   populateExpandRoundEvenPattern(patterns);
   populateExpandRsqrtPattern(patterns);
