@@ -299,7 +299,7 @@ DenseElementsAttr transpose(DenseElementsAttr attr, ShapedType inputType,
     return transposeTypeRaw<uint16_t>(attr, inputType, outputType, permValues);
   }
 
-  return nullptr;
+  return transposeType<APFloat>(attr, inputType, outputType, permValues);
 }
 
 template<typename TosaOp>
