@@ -45,6 +45,8 @@ static bool hasStaticIdentityLayout(MemRefType type) {
 // Updates the func op and entry block.
 //
 // Any args appended to the entry block are added to `appendedEntryArgs`.
+// If `addResultAttribute` is true, adds the unit attribute `bufferize.result`
+// to each newly created function argument.
 static LogicalResult
 updateFuncOp(func::FuncOp func,
              SmallVectorImpl<BlockArgument> &appendedEntryArgs,
