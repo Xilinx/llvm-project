@@ -133,7 +133,6 @@ public:
   /// Reset the parser to the given lexer position.
   void resetToken(const char *tokPos) {
     state.lex.resetPointer(tokPos);
-    state.lastToken = state.curToken;
     state.curToken = state.lex.lexToken();
   }
 
