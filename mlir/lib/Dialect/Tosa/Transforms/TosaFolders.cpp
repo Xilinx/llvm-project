@@ -1913,7 +1913,7 @@ struct ReduceConstantOptimization : public OpRewritePattern<OperationType> {
     auto reductionAxis = op.getAxis();
     const auto denseElementsAttr = constOp.getValue();
     const auto shapedOldElementsValues =
-        denseElementsAttr.getType().cast<ShapedType>();
+        cast<ShapedType>(denseElementsAttr.getType());
 
     if constexpr (hasFPSupport == false) {
       if (!llvm::isa<IntegerType>(shapedOldElementsValues.getElementType()))

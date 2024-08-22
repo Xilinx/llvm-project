@@ -289,6 +289,14 @@ void CheckHelper::Check(const Symbol &symbol) {
     messages_.Say(
         "An entity may not have the ASYNCHRONOUS attribute unless it is a variable"_err_en_US);
   }
+  if (symbol.attrs().HasAny({Attr::INTENT_IN, Attr::INTENT_INOUT,
+          Attr::INTENT_OUT, Attr::OPTIONAL, Attr::VALUE}) &&
+      !IsDummy(symbol)) {
+    messages_.Say(
+        "Only a dummy argument may have an INTENT, VALUE, or OPTIONAL attribute"_err_en_US);
+  } else if (symbol.attrs().test(Attr::VALUE)) {
+    CheckValue(symbol, derived);
+  }
 
   if (isDone) {
     return; // following checks do not apply
@@ -411,9 +419,6 @@ void CheckHelper::Check(const Symbol &symbol) {
       // The non-dummy case is a hard error that's caught elsewhere.
     }
   }
-  if (symbol.attrs().test(Attr::VALUE)) {
-    CheckValue(symbol, derived);
-  }
   if (IsDummy(symbol)) {
     if (IsNamedConstant(symbol)) {
       messages_.Say(
@@ -527,13 +532,10 @@ void CheckHelper::CheckBindCFunctionResult(const Symbol &symbol) { // C1553
 
 void CheckHelper::CheckValue(
     const Symbol &symbol, const DerivedTypeSpec *derived) { // C863 - C865
-  if (!IsDummy(symbol)) {
-    messages_.Say(
-        "VALUE attribute may apply only to a dummy argument"_err_en_US);
-  }
   if (IsProcedure(symbol)) {
     messages_.Say(
         "VALUE attribute may apply only to a dummy data object"_err_en_US);
+    return; // don't pile on
   }
   if (IsAssumedSizeArray(symbol)) {
     messages_.Say(
@@ -786,14 +788,6 @@ void CheckHelper::CheckObjectEntity(
         }
       }
     }
-  } else if (symbol.attrs().test(Attr::INTENT_IN) ||
-      symbol.attrs().test(Attr::INTENT_OUT) ||
-      symbol.attrs().test(Attr::INTENT_INOUT)) {
-    messages_.Say(
-        "INTENT attributes may apply only to a dummy argument"_err_en_US); // C843
-  } else if (IsOptional(symbol)) {
-    messages_.Say(
-        "OPTIONAL attribute may apply only to a dummy argument"_err_en_US); // C849
   } else if (!details.ignoreTKR().empty()) {
     messages_.Say(
         "!DIR$ IGNORE_TKR directive may apply only to a dummy data argument"_err_en_US);
@@ -948,17 +942,12 @@ void CheckHelper::CheckObjectEntity(
             "Component '%s' with ATTRIBUTES(DEVICE) must also be allocatable"_err_en_US,
             symbol.name());
       }
-      if (IsAssumedSizeArray(symbol)) {
-        messages_.Say(
-            "Object '%s' with ATTRIBUTES(DEVICE) may not be assumed size"_err_en_US,
-            symbol.name());
-      }
       break;
     case common::CUDADataAttr::Managed:
       if (!IsAutomatic(symbol) && !IsAllocatable(symbol) &&
-          !details.isDummy()) {
+          !details.isDummy() && !evaluate::IsExplicitShape(symbol)) {
         messages_.Say(
-            "Object '%s' with ATTRIBUTES(MANAGED) must also be allocatable, automatic, or a dummy argument"_err_en_US,
+            "Object '%s' with ATTRIBUTES(MANAGED) must also be allocatable, automatic, explicit shape, or a dummy argument"_err_en_US,
             symbol.name());
       }
       break;
@@ -989,7 +978,10 @@ void CheckHelper::CheckObjectEntity(
       }
       break;
     case common::CUDADataAttr::Unified:
-      if ((!subpDetails || inDeviceSubprogram) && !isComponent) {
+      if (((!subpDetails &&
+               symbol.owner().kind() != Scope::Kind::MainProgram) ||
+              inDeviceSubprogram) &&
+          !isComponent) {
         messages_.Say(
             "Object '%s' with ATTRIBUTES(UNIFIED) must be declared in a host subprogram"_err_en_US,
             symbol.name());
@@ -1042,9 +1034,10 @@ void CheckHelper::CheckObjectEntity(
             parser::ToUpperCaseLetters(common::EnumToString(attr)));
       }
     } else if (!subpDetails && symbol.owner().kind() != Scope::Kind::Module &&
-        symbol.owner().kind() != Scope::Kind::MainProgram) {
+        symbol.owner().kind() != Scope::Kind::MainProgram &&
+        symbol.owner().kind() != Scope::Kind::BlockConstruct) {
       messages_.Say(
-          "ATTRIBUTES(%s) may apply only to module, host subprogram, or device subprogram data"_err_en_US,
+          "ATTRIBUTES(%s) may apply only to module, host subprogram, block, or device subprogram data"_err_en_US,
           parser::ToUpperCaseLetters(common::EnumToString(attr)));
     }
   }
@@ -1215,9 +1208,8 @@ void CheckHelper::CheckProcEntity(
   const Symbol *interface{details.procInterface()};
   if (details.isDummy()) {
     if (!symbol.attrs().test(Attr::POINTER) && // C843
-        (symbol.attrs().test(Attr::INTENT_IN) ||
-            symbol.attrs().test(Attr::INTENT_OUT) ||
-            symbol.attrs().test(Attr::INTENT_INOUT))) {
+        symbol.attrs().HasAny(
+            {Attr::INTENT_IN, Attr::INTENT_OUT, Attr::INTENT_INOUT})) {
       messages_.Say("A dummy procedure without the POINTER attribute"
                     " may not have an INTENT attribute"_err_en_US);
     }
@@ -1241,14 +1233,6 @@ void CheckHelper::CheckProcEntity(
         messages_.Say("A dummy procedure may not be ELEMENTAL"_err_en_US);
       }
     }
-  } else if (symbol.attrs().test(Attr::INTENT_IN) ||
-      symbol.attrs().test(Attr::INTENT_OUT) ||
-      symbol.attrs().test(Attr::INTENT_INOUT)) {
-    messages_.Say("INTENT attributes may apply only to a dummy "
-                  "argument"_err_en_US); // C843
-  } else if (IsOptional(symbol)) {
-    messages_.Say("OPTIONAL attribute may apply only to a dummy "
-                  "argument"_err_en_US); // C849
   } else if (IsPointer(symbol)) {
     CheckPointerInitialization(symbol);
     if (interface) {
@@ -1440,10 +1424,6 @@ void CheckHelper::CheckSubprogram(
   }
   if (cudaAttrs && *cudaAttrs != common::CUDASubprogramAttrs::Host) {
     // CUDA device subprogram checks
-    if (symbol.attrs().HasAny({Attr::RECURSIVE, Attr::PURE, Attr::ELEMENTAL})) {
-      messages_.Say(symbol.name(),
-          "A device subprogram may not be RECURSIVE, PURE, or ELEMENTAL"_err_en_US);
-    }
     if (ClassifyProcedure(symbol) == ProcedureDefinitionClass::Internal) {
       messages_.Say(symbol.name(),
           "A device subprogram may not be an internal subprogram"_err_en_US);
