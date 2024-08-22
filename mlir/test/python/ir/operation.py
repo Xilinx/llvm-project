@@ -1095,5 +1095,5 @@ def testOpWalk():
 
     try:
         module.operation.walk(callback)
-    except ValueError:
+    except RuntimeError:
         print("Exception raised")
