@@ -1185,7 +1185,7 @@ inline BinaryOp_match<LHS, RHS, Instruction::AShr> m_AShr(const LHS &L,
 }
 
 template <typename LHS_t, typename RHS_t, unsigned Opcode,
-          unsigned WrapFlags = 0>
+          unsigned WrapFlags = 0, bool Commutable = false>
 struct OverflowingBinaryOp_match {
   LHS_t L;
   RHS_t R;
@@ -1203,7 +1203,9 @@ struct OverflowingBinaryOp_match {
       if ((WrapFlags & OverflowingBinaryOperator::NoSignedWrap) &&
           !Op->hasNoSignedWrap())
         return false;
-      return L.match(Op->getOperand(0)) && R.match(Op->getOperand(1));
+      return (L.match(Op->getOperand(0)) && R.match(Op->getOperand(1))) ||
+             (Commutable && L.match(Op->getOperand(1)) &&
+              R.match(Op->getOperand(0)));
     }
     return false;
   }
@@ -1250,6 +1252,16 @@ m_NUWAdd(const LHS &L, const RHS &R) {
                                    OverflowingBinaryOperator::NoUnsignedWrap>(
       L, R);
 }
+
+template <typename LHS, typename RHS>
+inline OverflowingBinaryOp_match<
+    LHS, RHS, Instruction::Add, OverflowingBinaryOperator::NoUnsignedWrap, true>
+m_c_NUWAdd(const LHS &L, const RHS &R) {
+  return OverflowingBinaryOp_match<LHS, RHS, Instruction::Add,
+                                   OverflowingBinaryOperator::NoUnsignedWrap,
+                                   true>(L, R);
+}
+
 template <typename LHS, typename RHS>
 inline OverflowingBinaryOp_match<LHS, RHS, Instruction::Sub,
                                  OverflowingBinaryOperator::NoUnsignedWrap>
@@ -1357,7 +1369,8 @@ m_NUWAddLike(const LHS &L, const RHS &R) {
 //===----------------------------------------------------------------------===//
 // Class that matches a group of binary opcodes.
 //
-template <typename LHS_t, typename RHS_t, typename Predicate>
+template <typename LHS_t, typename RHS_t, typename Predicate,
+          bool Commutable = false>
 struct BinOpPred_match : Predicate {
   LHS_t L;
   RHS_t R;
@@ -1366,8 +1379,10 @@ struct BinOpPred_match : Predicate {
 
   template <typename OpTy> bool match(OpTy *V) {
     if (auto *I = dyn_cast<Instruction>(V))
-      return this->isOpType(I->getOpcode()) && L.match(I->getOperand(0)) &&
-             R.match(I->getOperand(1));
+      return this->isOpType(I->getOpcode()) &&
+             ((L.match(I->getOperand(0)) && R.match(I->getOperand(1))) ||
+              (Commutable && L.match(I->getOperand(1)) &&
+               R.match(I->getOperand(0))));
     return false;
   }
 };
@@ -1432,6 +1447,13 @@ template <typename LHS, typename RHS>
 inline BinOpPred_match<LHS, RHS, is_bitwiselogic_op>
 m_BitwiseLogic(const LHS &L, const RHS &R) {
   return BinOpPred_match<LHS, RHS, is_bitwiselogic_op>(L, R);
+}
+
+/// Matches bitwise logic operations in either order.
+template <typename LHS, typename RHS>
+inline BinOpPred_match<LHS, RHS, is_bitwiselogic_op, true>
+m_c_BitwiseLogic(const LHS &L, const RHS &R) {
+  return BinOpPred_match<LHS, RHS, is_bitwiselogic_op, true>(L, R);
 }
 
 /// Matches integer division operations.

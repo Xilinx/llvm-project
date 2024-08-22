@@ -81,6 +81,12 @@ void populateSCFForLoopCanonicalizationPatterns(RewritePatternSet &patterns);
 
 void populateSCFForAllExpandPatterns(RewritePatternSet &patterns);
 
+/// Populate patterns to uplift `scf.while` ops to `scf.for`.
+/// Uplifitng expects a specific ops pattern:
+///  * `before` block consisting of single arith.cmp op
+///  * `after` block containing arith.addi
+void populateUpliftWhileToForPatterns(RewritePatternSet &patterns);
+
 } // namespace scf
 } // namespace mlir
 
