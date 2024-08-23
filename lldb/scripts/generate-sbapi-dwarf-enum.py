@@ -2,6 +2,7 @@
 
 import argparse
 import re
+import os
 
 HEADER = """\
 //===-- SBLanguages.h -----------------------------------------*- C++ -*-===//
@@ -14,6 +15,8 @@ HEADER = """\
 
 #ifndef LLDB_API_SBLANGUAGE_H
 #define LLDB_API_SBLANGUAGE_H
+
+namespace lldb {
 /// Used by \\ref SBExpressionOptions.
 /// These enumerations use the same language enumerations as the DWARF
 /// specification for ease of use and consistency.
@@ -23,11 +26,13 @@ enum SBSourceLanguageName : uint16_t {
 FOOTER = """\
 };
 
+} // namespace lldb
+
 #endif
 """
 
 REGEX = re.compile(
-    r'^ *HANDLE_DW_LNAME *\( *(?P<value>[^,]+), (?P<comment>[^"]+), "(?P<name>.*)",.*\)'
+    r'^ *HANDLE_DW_LNAME *\( *(?P<value>[^,]+), (?P<name>.*), "(?P<comment>[^"]+)",.*\)'
 )
 
 
@@ -36,6 +41,9 @@ def emit_enum(input, output):
     lines = []
     with open(input, "r") as f:
         lines = f.readlines()
+
+    # Create output folder if it does not exist
+    os.makedirs(os.path.dirname(output), exist_ok=True)
 
     # Write the output.
     with open(output, "w") as f:
