@@ -76,12 +76,10 @@ FailureOr<Value> mlir::bufferization::castOrReallocMemRefValue(
 
   FailureOr<Value> copy =
       options.createAlloc(b, loc, destType, dynamicOperands);
-  if (failed(copy)) {
+  if (failed(copy))
     return failure();
-  }
-  if (failed(options.createMemCpy(b, loc, value, *copy))) {
+  if (failed(options.createMemCpy(b, loc, value, *copy)))
     return failure();
-  }
   return copy;
 }
 
@@ -800,7 +798,9 @@ struct ToMemrefToTensorFolding : public OpRewritePattern<ToMemrefOp> {
 
   LogicalResult matchAndRewrite(ToMemrefOp toMemref,
                                 PatternRewriter &rewriter) const final {
-    return foldToMemrefToTensorPair(rewriter, toMemref, {});
+    BufferizationOptions options;
+    options.bufferAlignment = 0;
+    return foldToMemrefToTensorPair(rewriter, toMemref, options);
   }
 };
 
