@@ -1517,6 +1517,9 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
        shouldBeInlined(cast<emitc::ExpressionOp>(op))))
     return success();
 
+  if (isa<emitc::VerbatimOp>(op))
+    trailingSemicolon = false;
+
   os << (trailingSemicolon ? ";\n" : "\n");
 
   return success();
