@@ -15,6 +15,7 @@
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -166,6 +167,59 @@ struct ConvertStore final : public OpConversionPattern<memref::StoreOp> {
     return success();
   }
 };
+
+struct ConvertCollapseShape final
+    : public OpConversionPattern<memref::CollapseShapeOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::CollapseShapeOp op, OpAdaptor operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto arrayValue = dyn_cast<TypedValue<emitc::ArrayType>>(operands.getSrc());
+    if (!arrayValue) {
+      return rewriter.notifyMatchFailure(op.getLoc(), "expected array type");
+    }
+
+    auto resultTy = getTypeConverter()->convertType(op.getType());
+    if (!resultTy) {
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "cannot convert result type");
+    }
+
+    // Exclude dynamic shapes. This op can generate them,
+    auto shape = arrayValue.getType().getShape();
+    for (auto d : shape) {
+      if (d == ShapedType::kDynamic)
+        return failure();
+    }
+
+    rewriter.replaceOpWithNewOp<emitc::CastOp>(op, resultTy, operands.getSrc());
+    return success();
+  }
+};
+
+struct ConvertExpandShape final
+    : public OpConversionPattern<memref::ExpandShapeOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(memref::ExpandShapeOp op, OpAdaptor operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto arrayValue = dyn_cast<TypedValue<emitc::ArrayType>>(operands.getSrc());
+    if (!arrayValue) {
+      return rewriter.notifyMatchFailure(op.getLoc(), "expected array type");
+    }
+
+    auto resultTy = getTypeConverter()->convertType(op.getType());
+    if (!resultTy) {
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "cannot convert result type");
+    }
+    rewriter.replaceOpWithNewOp<emitc::CastOp>(op, resultTy, operands.getSrc());
+    return success();
+  }
+};
+
 } // namespace
 
 void mlir::populateMemRefToEmitCTypeConversion(TypeConverter &typeConverter) {
@@ -187,5 +241,6 @@ void mlir::populateMemRefToEmitCTypeConversion(TypeConverter &typeConverter) {
 void mlir::populateMemRefToEmitCConversionPatterns(RewritePatternSet &patterns,
                                                    TypeConverter &converter) {
   patterns.add<ConvertAlloca, ConvertGlobal, ConvertGetGlobal, ConvertLoad,
-               ConvertStore>(converter, patterns.getContext());
+               ConvertStore, ConvertCollapseShape, ConvertExpandShape>(
+      converter, patterns.getContext());
 }

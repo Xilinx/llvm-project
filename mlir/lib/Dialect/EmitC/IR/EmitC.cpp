@@ -10,6 +10,7 @@
 #include "mlir/Dialect/EmitC/IR/EmitCTraits.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/IRMapping.h"
@@ -225,6 +226,17 @@ LogicalResult emitc::AssignOp::verify() {
 bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
   Type input = inputs.front(), output = outputs.front();
 
+  // Arrays & pointers don't cast to/from scalars
+  if (isa<emitc::ArrayType, emitc::PointerType>(input) !=
+      isa<emitc::ArrayType, emitc::PointerType>(output))
+    return false;
+
+  // Arrays & pointers can be casted to each other.
+  if (isa<emitc::ArrayType, emitc::PointerType>(input) &&
+      isa<emitc::ArrayType, emitc::PointerType>(output))
+    return true;
+
+  // Scalars
   return (
       (emitc::isIntegerIndexOrOpaqueType(input) ||
        emitc::isSupportedFloatType(input) || isa<emitc::PointerType>(input)) &&
@@ -945,6 +957,10 @@ LogicalResult emitc::ArrayType::verify(
   for (int64_t dim : shape) {
     if (dim < 0)
       return emitError() << "dimensions must have non-negative size";
+    // TODO support dynamic dimensions on the outermost dimension,
+    // like int (*a)[50][100]
+    if (dim == ShapedType::kDynamic)
+      return emitError() << "dimensions must have static size";
   }
 
   if (!elementType)
