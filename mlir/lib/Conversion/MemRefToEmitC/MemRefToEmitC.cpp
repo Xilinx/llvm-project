@@ -15,6 +15,7 @@
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -192,8 +193,10 @@ struct ConvertCollapseShape final
       if (d == ShapedType::kDynamic)
         return failure();
     }
-
-    rewriter.replaceOpWithNewOp<emitc::CastOp>(op, resultTy, operands.getSrc());
+    auto newCastOp = rewriter.create<emitc::CastOp>(op->getLoc(), resultTy,
+                                                    operands.getSrc());
+    newCastOp->setAttr("emitc.reference", UnitAttr::get(op->getContext()));
+    rewriter.replaceOp(op, newCastOp);
     return success();
   }
 };
@@ -215,7 +218,10 @@ struct ConvertExpandShape final
       return rewriter.notifyMatchFailure(op.getLoc(),
                                          "cannot convert result type");
     }
-    rewriter.replaceOpWithNewOp<emitc::CastOp>(op, resultTy, operands.getSrc());
+    auto newCastOp = rewriter.create<emitc::CastOp>(op->getLoc(), resultTy,
+                                                    operands.getSrc());
+    newCastOp->setAttr("emitc.reference", UnitAttr::get(op->getContext()));
+    rewriter.replaceOp(op, newCastOp);
     return success();
   }
 };
