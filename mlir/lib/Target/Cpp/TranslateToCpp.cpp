@@ -14,6 +14,7 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Support/IndentedOstream.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Target/Cpp/CppEmitter.h"
@@ -21,6 +22,7 @@
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -122,6 +124,9 @@ struct CppEmitter {
   /// Emits operation 'op' with/without training semicolon or returns failure.
   LogicalResult emitOperation(Operation &op, bool trailingSemicolon);
 
+  /// Emits a reference to type 'type' or returns failure.
+  LogicalResult emitReferenceToType(Location loc, Type type);
+
   /// Emits type 'type' or returns failure.
   LogicalResult emitType(Location loc, Type type);
 
@@ -143,8 +148,8 @@ struct CppEmitter {
                                         bool trailingSemicolon);
 
   /// Emits a declaration of a variable with the given type and name.
-  LogicalResult emitVariableDeclaration(Location loc, Type type,
-                                        StringRef name);
+  LogicalResult emitVariableDeclaration(Location loc, Type type, StringRef name,
+                                        bool isReference);
 
   /// Emits the variable declaration and assignment prefix for 'op'.
   /// - emits separate variable followed by std::tie for multi-valued operation;
@@ -719,8 +724,15 @@ static LogicalResult printOperation(CppEmitter &emitter, emitc::CastOp castOp) {
   if (failed(emitter.emitAssignPrefix(op)))
     return failure();
   os << "(";
-  if (failed(emitter.emitType(op.getLoc(), op.getResult(0).getType())))
-    return failure();
+  // Cast of lvalues return lvalues and therefore references.
+  if (castOp.isLValueCast()) {
+    if (failed(emitter.emitReferenceToType(op.getLoc(),
+                                           op.getResult(0).getType())))
+      return failure();
+  } else {
+    if (failed(emitter.emitType(op.getLoc(), op.getResult(0).getType())))
+      return failure();
+  }
   os << ") ";
   return emitter.emitOperand(castOp.getOperand());
 }
@@ -923,11 +935,24 @@ static LogicalResult printFunctionArgs(CppEmitter &emitter,
                                        Region::BlockArgListType arguments) {
   raw_indented_ostream &os = emitter.ostream();
 
-  return (interleaveCommaWithError(
-      arguments, os, [&](BlockArgument arg) -> LogicalResult {
-        return emitter.emitVariableDeclaration(
-            functionOp->getLoc(), arg.getType(), emitter.getOrCreateName(arg));
-      }));
+  if (auto emitCFunc = dyn_cast<emitc::FuncOp>(functionOp)) {
+    return (interleaveCommaWithError(
+        arguments, os, [&](BlockArgument arg) -> LogicalResult {
+          bool hasReference =
+              emitCFunc.getArgAttrOfType<UnitAttr>(
+                  arg.getArgNumber(), "emitc.reference") != nullptr;
+          return emitter.emitVariableDeclaration(
+              functionOp->getLoc(), arg.getType(), emitter.getOrCreateName(arg),
+              hasReference);
+        }));
+  }
+
+  return (interleaveCommaWithError(arguments, os,
+                                   [&](BlockArgument arg) -> LogicalResult {
+                                     return emitter.emitVariableDeclaration(
+                                         functionOp->getLoc(), arg.getType(),
+                                         emitter.getOrCreateName(arg), false);
+                                   }));
 }
 
 static LogicalResult printFunctionBody(CppEmitter &emitter,
@@ -1394,9 +1419,10 @@ LogicalResult CppEmitter::emitVariableDeclaration(OpResult result,
     return result.getDefiningOp()->emitError(
         "result variable for the operation already declared");
   }
-  if (failed(emitVariableDeclaration(result.getOwner()->getLoc(),
-                                     result.getType(),
-                                     getOrCreateName(result))))
+  if (failed(emitVariableDeclaration(
+          result.getOwner()->getLoc(), result.getType(),
+          getOrCreateName(result),
+          result.getDefiningOp()->hasAttrOfType<UnitAttr>("emitc.reference"))))
     return failure();
   if (trailingSemicolon)
     os << ";\n";
@@ -1412,7 +1438,7 @@ LogicalResult CppEmitter::emitGlobalVariable(GlobalOp op) {
     os << "const ";
 
   if (failed(emitVariableDeclaration(op->getLoc(), op.getType(),
-                                     op.getSymName()))) {
+                                     op.getSymName(), false))) {
     return failure();
   }
 
@@ -1518,11 +1544,17 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
 }
 
 LogicalResult CppEmitter::emitVariableDeclaration(Location loc, Type type,
-                                                  StringRef name) {
+                                                  StringRef name,
+                                                  bool isReference) {
   if (auto arrType = dyn_cast<emitc::ArrayType>(type)) {
     if (failed(emitType(loc, arrType.getElementType())))
       return failure();
-    os << " " << name;
+    os << " ";
+    if (isReference)
+      os << "(&";
+    os << name;
+    if (isReference)
+      os << ")";
     for (auto dim : arrType.getShape()) {
       os << "[" << dim << "]";
     }
@@ -1530,7 +1562,25 @@ LogicalResult CppEmitter::emitVariableDeclaration(Location loc, Type type,
   }
   if (failed(emitType(loc, type)))
     return failure();
-  os << " " << name;
+  os << " ";
+  if (isReference)
+    os << "&";
+  os << name;
+  return success();
+}
+
+LogicalResult CppEmitter::emitReferenceToType(Location loc, Type type) {
+  if (auto aType = dyn_cast<ArrayType>(type)) {
+    if (failed(emitType(loc, aType.getElementType())))
+      return failure();
+    os << " (&)";
+    for (auto dim : aType.getShape())
+      os << "[" << dim << "]";
+    return success();
+  }
+  if (failed(emitType(loc, type)))
+    return failure();
+  os << " &";
   return success();
 }
 
