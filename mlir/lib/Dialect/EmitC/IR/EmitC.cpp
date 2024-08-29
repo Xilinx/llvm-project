@@ -247,6 +247,12 @@ bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
 LogicalResult CastOp::verify() {
   bool isReference = (*this)->hasAttrOfType<UnitAttr>("emitc.reference");
 
+  if (isa<emitc::ArrayType>(getDest().getType())) {
+    if (!isReference)
+      return emitOpError("cast of array must bear a reference");
+    return success();
+  }
+
   if (isReference)
     return emitOpError("cast of value type must not bear a reference");
 
