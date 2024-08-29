@@ -724,8 +724,7 @@ static LogicalResult printOperation(CppEmitter &emitter, emitc::CastOp castOp) {
   if (failed(emitter.emitAssignPrefix(op)))
     return failure();
   os << "(";
-  // Cast of lvalues return lvalues and therefore references.
-  if (castOp->hasAttrOfType<UnitAttr>("emitc.reference")) {
+  if (castOp->hasAttrOfType<UnitAttr>(emitc::getReferenceAttributeName())) {
     if (failed(emitter.emitReferenceToType(op.getLoc(),
                                            op.getResult(0).getType())))
       return failure();
@@ -929,8 +928,9 @@ static LogicalResult printFunctionArgs(CppEmitter &emitter,
 
   return (
       interleaveCommaWithError(arguments, os, [&](Type arg) -> LogicalResult {
-        bool hasReference = functionOp.template getArgAttrOfType<UnitAttr>(
-                                index, "emitc.reference") != nullptr;
+        bool hasReference =
+            functionOp.template getArgAttrOfType<UnitAttr>(
+                index, emitc::getReferenceAttributeName()) != nullptr;
         index += 1;
         if (hasReference)
           return emitter.emitReferenceToType(functionOp->getLoc(), arg);
@@ -963,9 +963,9 @@ static LogicalResult printFunctionArgs(CppEmitter &emitter,
 
   return (interleaveCommaWithError(
       arguments, os, [&](BlockArgument arg) -> LogicalResult {
-        bool hasReference =
-            functionOp.template getArgAttrOfType<UnitAttr>(
-                arg.getArgNumber(), "emitc.reference") != nullptr;
+        bool hasReference = functionOp.template getArgAttrOfType<UnitAttr>(
+                                arg.getArgNumber(),
+                                emitc::getReferenceAttributeName()) != nullptr;
         return emitter.emitVariableDeclaration(
             functionOp->getLoc(), arg.getType(), emitter.getOrCreateName(arg),
             hasReference);
@@ -1458,7 +1458,8 @@ LogicalResult CppEmitter::emitVariableDeclaration(OpResult result,
   if (failed(emitVariableDeclaration(
           result.getOwner()->getLoc(), result.getType(),
           getOrCreateName(result),
-          result.getDefiningOp()->hasAttrOfType<UnitAttr>("emitc.reference"))))
+          result.getDefiningOp()->hasAttrOfType<UnitAttr>(
+              emitc::getReferenceAttributeName()))))
     return failure();
   if (trailingSemicolon)
     os << ";\n";
@@ -1475,7 +1476,7 @@ LogicalResult CppEmitter::emitGlobalVariable(GlobalOp op) {
 
   if (failed(emitVariableDeclaration(
           op->getLoc(), op.getType(), op.getSymName(),
-          op->hasAttrOfType<UnitAttr>("emitc.reference")))) {
+          op->hasAttrOfType<UnitAttr>(emitc::getReferenceAttributeName())))) {
     return failure();
   }
 

@@ -122,6 +122,8 @@ bool mlir::emitc::isPointerWideType(Type type) {
       type);
 }
 
+StringRef mlir::emitc::getReferenceAttributeName() { return "emitc.reference"; }
+
 /// Check that the type of the initial value is compatible with the operations
 /// result type.
 static LogicalResult verifyInitializationAttribute(Operation *op,
@@ -233,7 +235,8 @@ bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
 }
 
 LogicalResult CastOp::verify() {
-  bool isReference = (*this)->hasAttrOfType<UnitAttr>("emitc.reference");
+  bool isReference =
+      (*this)->hasAttrOfType<UnitAttr>(getReferenceAttributeName());
 
   if (isReference)
     return emitOpError("cast of value type must not bear a reference");
