@@ -725,7 +725,7 @@ static LogicalResult printOperation(CppEmitter &emitter, emitc::CastOp castOp) {
     return failure();
   os << "(";
   // Cast of lvalues return lvalues and therefore references.
-  if (castOp.isLValueCast()) {
+  if (castOp->hasAttrOfType<UnitAttr>("emitc.reference")) {
     if (failed(emitter.emitReferenceToType(op.getLoc(),
                                            op.getResult(0).getType())))
       return failure();
@@ -919,34 +919,70 @@ static LogicalResult printOperation(CppEmitter &emitter, ModuleOp moduleOp) {
   return success();
 }
 
+template <class FuncOpClass>
 static LogicalResult printFunctionArgs(CppEmitter &emitter,
-                                       Operation *functionOp,
+                                       FuncOpClass functionOp,
                                        ArrayRef<Type> arguments) {
   raw_indented_ostream &os = emitter.ostream();
 
+  uint32_t index = 0;
+
   return (
       interleaveCommaWithError(arguments, os, [&](Type arg) -> LogicalResult {
+        bool hasReference = functionOp.template getArgAttrOfType<UnitAttr>(
+                                index, "emitc.reference") != nullptr;
+        index += 1;
+        if (hasReference)
+          return emitter.emitReferenceToType(functionOp->getLoc(), arg);
         return emitter.emitType(functionOp->getLoc(), arg);
       }));
 }
 
 static LogicalResult printFunctionArgs(CppEmitter &emitter,
                                        Operation *functionOp,
+                                       ArrayRef<Type> arguments) {
+  if (auto emitCDialectFunc = dyn_cast<emitc::FuncOp>(functionOp)) {
+    return printFunctionArgs(emitter, emitCDialectFunc, arguments);
+  }
+  if (auto funcDialectFunc = dyn_cast<func::FuncOp>(functionOp)) {
+    return printFunctionArgs(emitter, funcDialectFunc, arguments);
+  }
+
+  raw_indented_ostream &os = emitter.ostream();
+  return (
+      interleaveCommaWithError(arguments, os, [&](Type arg) -> LogicalResult {
+        return emitter.emitType(functionOp->getLoc(), arg);
+      }));
+}
+
+template <class FuncOpClass>
+static LogicalResult printFunctionArgs(CppEmitter &emitter,
+                                       FuncOpClass functionOp,
                                        Region::BlockArgListType arguments) {
   raw_indented_ostream &os = emitter.ostream();
 
-  if (auto emitCFunc = dyn_cast<emitc::FuncOp>(functionOp)) {
-    return (interleaveCommaWithError(
-        arguments, os, [&](BlockArgument arg) -> LogicalResult {
-          bool hasReference =
-              emitCFunc.getArgAttrOfType<UnitAttr>(
-                  arg.getArgNumber(), "emitc.reference") != nullptr;
-          return emitter.emitVariableDeclaration(
-              functionOp->getLoc(), arg.getType(), emitter.getOrCreateName(arg),
-              hasReference);
-        }));
+  return (interleaveCommaWithError(
+      arguments, os, [&](BlockArgument arg) -> LogicalResult {
+        bool hasReference =
+            functionOp.template getArgAttrOfType<UnitAttr>(
+                arg.getArgNumber(), "emitc.reference") != nullptr;
+        return emitter.emitVariableDeclaration(
+            functionOp->getLoc(), arg.getType(), emitter.getOrCreateName(arg),
+            hasReference);
+      }));
+}
+
+static LogicalResult printFunctionArgs(CppEmitter &emitter,
+                                       Operation *functionOp,
+                                       Region::BlockArgListType arguments) {
+  if (auto emitCDialectFunc = dyn_cast<emitc::FuncOp>(functionOp)) {
+    return printFunctionArgs(emitter, emitCDialectFunc, arguments);
+  }
+  if (auto funcDialectFunc = dyn_cast<func::FuncOp>(functionOp)) {
+    return printFunctionArgs(emitter, funcDialectFunc, arguments);
   }
 
+  raw_indented_ostream &os = emitter.ostream();
   return (interleaveCommaWithError(arguments, os,
                                    [&](BlockArgument arg) -> LogicalResult {
                                      return emitter.emitVariableDeclaration(
