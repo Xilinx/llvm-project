@@ -20,6 +20,7 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Target/Cpp/CppEmitter.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
@@ -924,17 +925,14 @@ static LogicalResult printFunctionArgs(CppEmitter &emitter,
                                        ArrayRef<Type> arguments) {
   raw_indented_ostream &os = emitter.ostream();
 
-  uint32_t index = 0;
-
-  return (
-      interleaveCommaWithError(arguments, os, [&](Type arg) -> LogicalResult {
+  return (interleaveCommaWithError(
+      llvm::enumerate(arguments), os, [&](auto arg) -> LogicalResult {
         bool hasReference =
             functionOp.template getArgAttrOfType<UnitAttr>(
-                index, emitc::getReferenceAttributeName()) != nullptr;
-        index += 1;
+                arg.index(), emitc::getReferenceAttributeName()) != nullptr;
         if (hasReference)
-          return emitter.emitReferenceToType(functionOp->getLoc(), arg);
-        return emitter.emitType(functionOp->getLoc(), arg);
+          return emitter.emitReferenceToType(functionOp->getLoc(), arg.value());
+        return emitter.emitType(functionOp->getLoc(), arg.value());
       }));
 }
 
