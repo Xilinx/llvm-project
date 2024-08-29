@@ -28,10 +28,3 @@ func.func @cast_ptr(%arg0 : !emitc.ptr<!emitc.opaque<"void">>) {
   %1 = emitc.cast %arg0 : !emitc.ptr<!emitc.opaque<"void">> to !emitc.ptr<i32>
   return
 }
-
-// CHECK-LABEL: void cast_ref
-func.func @cast_ref(%arg0 : i32) {
-  // CHECK-NEXT: int32_t &[[V1:[^ ]*]] = (int32_t &) [[V0:[^ ]*]]
-  %1 = emitc.cast %arg0 {emitc.reference} : i32 to i32
-  return
-}

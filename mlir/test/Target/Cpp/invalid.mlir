@@ -85,3 +85,11 @@ func.func @ptr_to_array() {
   %v = "emitc.variable"(){value = #emitc.opaque<"NULL">} : () -> !emitc.ptr<!emitc.array<9xi16>>
   return
 }
+
+// -----
+
+func.func @cast_ref(%arg0 : i32) {
+  // expected-error@+1 {{'emitc.cast' op cast of value type must not bear a reference}}
+  %1 = emitc.cast %arg0 {emitc.reference} : i32 to i32
+  return
+}
