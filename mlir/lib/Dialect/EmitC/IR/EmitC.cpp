@@ -244,6 +244,15 @@ bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
        emitc::isSupportedFloatType(output) || isa<emitc::PointerType>(output)));
 }
 
+LogicalResult CastOp::verify() {
+  bool isReference = (*this)->hasAttrOfType<UnitAttr>("emitc.reference");
+
+  if (isReference)
+    return emitOpError("cast of value type must not bear a reference");
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // CallOp
 //===----------------------------------------------------------------------===//
