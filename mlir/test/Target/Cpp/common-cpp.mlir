@@ -94,3 +94,8 @@ func.func @apply(%arg0: i32) -> !emitc.ptr<i32> {
 func.func @array_type(%arg0: !emitc.array<3xi32>, %arg1: !emitc.array<10x20xf32>) {
   return
 }
+
+// CHECK: void arg_references(int32_t (&v1)[3], float (&v2)[10][20], int32_t &v3)
+func.func @arg_references(%arg0: !emitc.array<3xi32> {emitc.reference}, %arg1: !emitc.array<10x20xf32> {emitc.reference}, %arg2: i32 {emitc.reference}) {
+  return
+}

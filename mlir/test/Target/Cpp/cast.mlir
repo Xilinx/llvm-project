@@ -29,6 +29,13 @@ func.func @cast_ptr(%arg0 : !emitc.ptr<!emitc.opaque<"void">>) {
   return
 }
 
+// CHECK-LABEL: void cast_ref
+func.func @cast_ref(%arg0 : i32) {
+  // CHECK-NEXT: int32_t &[[V1:[^ ]*]] = (int32_t &) [[V0:[^ ]*]]
+  %1 = emitc.cast %arg0 {emitc.reference} : i32 to i32
+  return
+}
+
 // CHECK-LABEL: void cast_array
 func.func @cast_array(%arg0: !emitc.array<10xi32>) {
   %1 = emitc.cast %arg0 : !emitc.array<10xi32> to !emitc.array<2x5xi32>
