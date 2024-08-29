@@ -37,5 +37,5 @@ func.func @use_global(%i: index) -> f32 {
   // CHECK:   return myglobal[[[V1]]];
 }
 
-emitc.global @ref : i32 = #emitc.opaque<"myglobal_int"> {emitc.reference}
+emitc.global @ref : i32 = #emitc.opaque<"myglobal_int"> ref
 // CHECK: int32_t &ref = myglobal_int;

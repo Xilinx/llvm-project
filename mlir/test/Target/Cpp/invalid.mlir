@@ -90,6 +90,6 @@ func.func @ptr_to_array() {
 
 func.func @cast_ref(%arg0 : i32) {
   // expected-error@+1 {{'emitc.cast' op cast of value type must not bear a reference}}
-  %1 = emitc.cast %arg0 {emitc.reference} : i32 to i32
+  %1 = emitc.cast %arg0 : i32 to i32 ref
   return
 }

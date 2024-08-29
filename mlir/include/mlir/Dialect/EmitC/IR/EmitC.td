@@ -285,9 +285,10 @@ def EmitC_CastOp : EmitC_Op<"cast",
     ```
   }];
 
-  let arguments = (ins EmitCType:$source);
+  let arguments = (ins EmitCType:$source,
+                       UnitAttr:$reference);
   let results = (outs EmitCType:$dest);
-  let assemblyFormat = "$source attr-dict `:` type($source) `to` type($dest)";
+  let assemblyFormat = "$source attr-dict `:` type($source) `to` type($dest) (`ref` $reference^)?";
   let hasVerifier = 1;
 }
 
@@ -1051,7 +1052,8 @@ def EmitC_GlobalOp : EmitC_Op<"global", [Symbol]> {
                        OptionalAttr<EmitC_OpaqueOrTypedAttr>:$initial_value,
                        UnitAttr:$extern_specifier,
                        UnitAttr:$static_specifier,
-                       UnitAttr:$const_specifier);
+                       UnitAttr:$const_specifier,
+                       UnitAttr:$reference);
 
   let assemblyFormat = [{
        (`extern` $extern_specifier^)?
@@ -1059,6 +1061,7 @@ def EmitC_GlobalOp : EmitC_Op<"global", [Symbol]> {
        (`const` $const_specifier^)?
        $sym_name
        `:` custom<EmitCGlobalOpTypeAndInitialValue>($type, $initial_value)
+       (`ref` $reference^)?
        attr-dict
   }];
 

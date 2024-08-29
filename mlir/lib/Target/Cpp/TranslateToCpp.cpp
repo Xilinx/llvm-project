@@ -25,6 +25,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 #include <stack>
@@ -725,7 +726,7 @@ static LogicalResult printOperation(CppEmitter &emitter, emitc::CastOp castOp) {
   if (failed(emitter.emitAssignPrefix(op)))
     return failure();
   os << "(";
-  if (castOp->hasAttrOfType<UnitAttr>(emitc::getReferenceAttributeName())) {
+  if (castOp.getReference()) {
     if (failed(emitter.emitReferenceToType(op.getLoc(),
                                            op.getResult(0).getType())))
       return failure();
@@ -1453,11 +1454,18 @@ LogicalResult CppEmitter::emitVariableDeclaration(OpResult result,
     return result.getDefiningOp()->emitError(
         "result variable for the operation already declared");
   }
-  if (failed(emitVariableDeclaration(
-          result.getOwner()->getLoc(), result.getType(),
-          getOrCreateName(result),
-          result.getDefiningOp()->hasAttrOfType<UnitAttr>(
-              emitc::getReferenceAttributeName()))))
+  Operation *definingOp = result.getDefiningOp();
+  bool isReference = false;
+  // List all ops that can produce references here
+  if (auto castOp = llvm::dyn_cast<emitc::CastOp>(definingOp)) {
+    isReference = castOp.getReference();
+  }
+  if (auto globalOp = llvm::dyn_cast<emitc::GlobalOp>(definingOp)) {
+    isReference = globalOp.getReference();
+  }
+  if (failed(emitVariableDeclaration(result.getOwner()->getLoc(),
+                                     result.getType(), getOrCreateName(result),
+                                     isReference)))
     return failure();
   if (trailingSemicolon)
     os << ";\n";
@@ -1472,9 +1480,8 @@ LogicalResult CppEmitter::emitGlobalVariable(GlobalOp op) {
   if (op.getConstSpecifier())
     os << "const ";
 
-  if (failed(emitVariableDeclaration(
-          op->getLoc(), op.getType(), op.getSymName(),
-          op->hasAttrOfType<UnitAttr>(emitc::getReferenceAttributeName())))) {
+  if (failed(emitVariableDeclaration(op->getLoc(), op.getType(),
+                                     op.getSymName(), op.getReference()))) {
     return failure();
   }
 
