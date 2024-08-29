@@ -9,6 +9,7 @@
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
@@ -1472,8 +1473,9 @@ LogicalResult CppEmitter::emitGlobalVariable(GlobalOp op) {
   if (op.getConstSpecifier())
     os << "const ";
 
-  if (failed(emitVariableDeclaration(op->getLoc(), op.getType(),
-                                     op.getSymName(), false))) {
+  if (failed(emitVariableDeclaration(
+          op->getLoc(), op.getType(), op.getSymName(),
+          op->hasAttrOfType<UnitAttr>("emitc.reference")))) {
     return failure();
   }
 
