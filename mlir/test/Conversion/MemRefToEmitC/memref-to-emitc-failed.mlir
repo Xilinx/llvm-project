@@ -43,3 +43,21 @@ func.func @zero_rank() {
 
 // expected-error@+1 {{failed to legalize operation 'memref.global'}}
 memref.global "nested" constant @nested_global : memref<3x7xf32>
+
+// -----
+
+// CHECK-LABEL: memref_expand_dyn_shape
+func.func @memref_expand_dyn_shape(%arg: memref<?xi32>) -> memref<?x5xi32> {
+  // expected-error@+1 {{failed to legalize operation 'memref.expand_shape'}}
+  %0 = memref.expand_shape %arg [[0, 1]] : memref<?xi32> into memref<?x5xi32>
+  return %0 : memref<?x5xi32>
+}
+
+// -----
+
+// CHECK-LABEL: memref_collapse_dyn_shape
+func.func @memref_collapse_dyn_shape(%arg: memref<?x5xi32>) -> memref<?xi32> {
+  // expected-error@+1 {{failed to legalize operation 'memref.collapse_shape'}}
+  %0 = memref.collapse_shape %arg [[0, 1]] : memref<?x5xi32> into memref<?xi32>
+  return %0 : memref<?xi32>
+}

@@ -187,7 +187,7 @@ struct ConvertCollapseShape final
                                          "cannot convert result type");
     }
 
-    // Exclude dynamic shapes. This op can generate them,
+    // Do not generate casts between arrays with dynamic shapes
     auto shape = arrayValue.getType().getShape();
     for (auto d : shape) {
       if (d == ShapedType::kDynamic)
@@ -217,6 +217,13 @@ struct ConvertExpandShape final
     if (!resultTy) {
       return rewriter.notifyMatchFailure(op.getLoc(),
                                          "cannot convert result type");
+    }
+
+    // Do not generate casts between arrays with dynamic shapes
+    auto shape = arrayValue.getType().getShape();
+    for (auto d : shape) {
+      if (d == ShapedType::kDynamic)
+        return failure();
     }
     auto newCastOp = rewriter.create<emitc::CastOp>(op->getLoc(), resultTy,
                                                     operands.getSrc());
