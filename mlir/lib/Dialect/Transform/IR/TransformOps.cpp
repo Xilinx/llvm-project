@@ -2636,6 +2636,7 @@ transform::PrintOp::apply(transform::TransformRewriter &rewriter,
   if (getSkipRegions().value_or(false))
     printFlags.skipRegions();
 
+  printFlags.elideLargeElementsAttrs(16);
   if (!getTarget()) {
     llvm::outs() << "top-level ]]]\n";
     state.getTopLevel()->print(llvm::outs(), printFlags);
