@@ -78,7 +78,7 @@ func.func @memref_index_values(%i: index, %j: index) -> index {
 
 // CHECK-LABEL: memref_expand_shape
 func.func @memref_expand_shape(%arg: memref<10xi32>) -> memref<2x5xi32> {
-  // CHECK: emitc.cast %{{[^ ]*}} {emitc.reference} : !emitc.array<10xi32> to !emitc.array<2x5xi32>
+  // CHECK: emitc.cast %{{[^ ]*}} : !emitc.array<10xi32> to !emitc.array<2x5xi32> ref
   %0 = memref.expand_shape %arg [[0, 1]] : memref<10xi32> into memref<2x5xi32>
   return %0 : memref<2x5xi32>
 }
@@ -88,7 +88,7 @@ func.func @memref_expand_shape(%arg: memref<10xi32>) -> memref<2x5xi32> {
 
 // CHECK-LABEL: memref_collapse_shape
 func.func @memref_collapse_shape(%arg: memref<2x5xi32>) -> memref<10xi32> {
-  // CHECK: emitc.cast %{{[^ ]*}} {emitc.reference} : !emitc.array<2x5xi32> to !emitc.array<10xi32>
+  // CHECK: emitc.cast %{{[^ ]*}} : !emitc.array<2x5xi32> to !emitc.array<10xi32> ref
   %0 = memref.collapse_shape %arg [[0, 1]] : memref<2x5xi32> into memref<10xi32>
   return %0 : memref<10xi32>
 }

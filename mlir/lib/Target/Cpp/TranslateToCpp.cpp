@@ -9,6 +9,7 @@
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
@@ -19,10 +20,12 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/Target/Cpp/CppEmitter.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 #include <stack>
@@ -723,8 +726,7 @@ static LogicalResult printOperation(CppEmitter &emitter, emitc::CastOp castOp) {
   if (failed(emitter.emitAssignPrefix(op)))
     return failure();
   os << "(";
-  // Cast of lvalues return lvalues and therefore references.
-  if (castOp->hasAttrOfType<UnitAttr>("emitc.reference")) {
+  if (castOp.getReference()) {
     if (failed(emitter.emitReferenceToType(op.getLoc(),
                                            op.getResult(0).getType())))
       return failure();
@@ -924,16 +926,14 @@ static LogicalResult printFunctionArgs(CppEmitter &emitter,
                                        ArrayRef<Type> arguments) {
   raw_indented_ostream &os = emitter.ostream();
 
-  uint32_t index = 0;
-
-  return (
-      interleaveCommaWithError(arguments, os, [&](Type arg) -> LogicalResult {
-        bool hasReference = functionOp.template getArgAttrOfType<UnitAttr>(
-                                index, "emitc.reference") != nullptr;
-        index += 1;
+  return (interleaveCommaWithError(
+      llvm::enumerate(arguments), os, [&](auto arg) -> LogicalResult {
+        bool hasReference =
+            functionOp.template getArgAttrOfType<UnitAttr>(
+                arg.index(), emitc::getReferenceAttributeName()) != nullptr;
         if (hasReference)
-          return emitter.emitReferenceToType(functionOp->getLoc(), arg);
-        return emitter.emitType(functionOp->getLoc(), arg);
+          return emitter.emitReferenceToType(functionOp->getLoc(), arg.value());
+        return emitter.emitType(functionOp->getLoc(), arg.value());
       }));
 }
 
@@ -962,9 +962,9 @@ static LogicalResult printFunctionArgs(CppEmitter &emitter,
 
   return (interleaveCommaWithError(
       arguments, os, [&](BlockArgument arg) -> LogicalResult {
-        bool hasReference =
-            functionOp.template getArgAttrOfType<UnitAttr>(
-                arg.getArgNumber(), "emitc.reference") != nullptr;
+        bool hasReference = functionOp.template getArgAttrOfType<UnitAttr>(
+                                arg.getArgNumber(),
+                                emitc::getReferenceAttributeName()) != nullptr;
         return emitter.emitVariableDeclaration(
             functionOp->getLoc(), arg.getType(), emitter.getOrCreateName(arg),
             hasReference);
@@ -1454,10 +1454,18 @@ LogicalResult CppEmitter::emitVariableDeclaration(OpResult result,
     return result.getDefiningOp()->emitError(
         "result variable for the operation already declared");
   }
-  if (failed(emitVariableDeclaration(
-          result.getOwner()->getLoc(), result.getType(),
-          getOrCreateName(result),
-          result.getDefiningOp()->hasAttrOfType<UnitAttr>("emitc.reference"))))
+  Operation *definingOp = result.getDefiningOp();
+  bool isReference = false;
+  // List all ops that can produce references here
+  if (auto castOp = llvm::dyn_cast<emitc::CastOp>(definingOp)) {
+    isReference = castOp.getReference();
+  }
+  if (auto globalOp = llvm::dyn_cast<emitc::GlobalOp>(definingOp)) {
+    isReference = globalOp.getReference();
+  }
+  if (failed(emitVariableDeclaration(result.getOwner()->getLoc(),
+                                     result.getType(), getOrCreateName(result),
+                                     isReference)))
     return failure();
   if (trailingSemicolon)
     os << ";\n";
@@ -1473,7 +1481,7 @@ LogicalResult CppEmitter::emitGlobalVariable(GlobalOp op) {
     os << "const ";
 
   if (failed(emitVariableDeclaration(op->getLoc(), op.getType(),
-                                     op.getSymName(), false))) {
+                                     op.getSymName(), op.getReference()))) {
     return failure();
   }
 

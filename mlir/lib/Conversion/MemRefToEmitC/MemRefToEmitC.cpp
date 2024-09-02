@@ -195,7 +195,7 @@ struct ConvertCollapseShape final
     }
     auto newCastOp = rewriter.create<emitc::CastOp>(op->getLoc(), resultTy,
                                                     operands.getSrc());
-    newCastOp->setAttr("emitc.reference", UnitAttr::get(op->getContext()));
+    newCastOp.setReference(true);
     rewriter.replaceOp(op, newCastOp);
     return success();
   }
@@ -220,7 +220,7 @@ struct ConvertExpandShape final
     }
     auto newCastOp = rewriter.create<emitc::CastOp>(op->getLoc(), resultTy,
                                                     operands.getSrc());
-    newCastOp->setAttr("emitc.reference", UnitAttr::get(op->getContext()));
+    newCastOp.setReference(true);
     rewriter.replaceOp(op, newCastOp);
     return success();
   }

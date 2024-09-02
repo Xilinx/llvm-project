@@ -40,7 +40,7 @@ func.func @cast(%arg0: i32) {
 }
 
 func.func @cast_array(%arg : !emitc.array<4xf32>) {
-    %1 = emitc.cast %arg {emitc.reference}: !emitc.array<4xf32> to !emitc.array<4xf32>
+    %1 = emitc.cast %arg: !emitc.array<4xf32> to !emitc.array<4xf32> ref
     return
 }
 
