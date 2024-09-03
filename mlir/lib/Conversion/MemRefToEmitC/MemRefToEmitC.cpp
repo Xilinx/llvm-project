@@ -188,11 +188,9 @@ struct ConvertCollapseShape final
     }
 
     // Do not generate casts between arrays with dynamic shapes
-    auto shape = arrayValue.getType().getShape();
-    for (auto d : shape) {
-      if (d == ShapedType::kDynamic)
-        return failure();
-    }
+    if (!arrayValue.getType().hasStaticShape())
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "dynamic shapes not supported");
     auto newCastOp = rewriter.create<emitc::CastOp>(op->getLoc(), resultTy,
                                                     operands.getSrc());
     newCastOp.setReference(true);
@@ -220,11 +218,10 @@ struct ConvertExpandShape final
     }
 
     // Do not generate casts between arrays with dynamic shapes
-    auto shape = arrayValue.getType().getShape();
-    for (auto d : shape) {
-      if (d == ShapedType::kDynamic)
-        return failure();
-    }
+    if (!arrayValue.getType().hasStaticShape())
+      return rewriter.notifyMatchFailure(op.getLoc(),
+                                         "dynamic shapes not supported");
+
     auto newCastOp = rewriter.create<emitc::CastOp>(op->getLoc(), resultTy,
                                                     operands.getSrc());
     newCastOp.setReference(true);

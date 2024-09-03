@@ -228,14 +228,12 @@ LogicalResult emitc::AssignOp::verify() {
 bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
   Type input = inputs.front(), output = outputs.front();
 
-  // Arrays & pointers don't cast to/from scalars
-  if (isa<emitc::ArrayType, emitc::PointerType>(input) !=
-      isa<emitc::ArrayType, emitc::PointerType>(output))
+  // Cast to array is only possible from an array
+  if (isa<emitc::ArrayType>(input) != isa<emitc::ArrayType>(output))
     return false;
 
-  // Arrays & pointers can be casted to each other.
-  if (isa<emitc::ArrayType, emitc::PointerType>(input) &&
-      isa<emitc::ArrayType, emitc::PointerType>(output))
+  // Arrays can be casted to arrays by reference.
+  if (isa<emitc::ArrayType>(input) && isa<emitc::ArrayType>(output))
     return true;
 
   // Scalars
@@ -974,8 +972,6 @@ LogicalResult emitc::ArrayType::verify(
   for (int64_t dim : shape) {
     if (dim < 0)
       return emitError() << "dimensions must have non-negative size";
-    // TODO support dynamic dimensions on the outermost dimension,
-    // like int (*a)[50][100]
     if (dim == ShapedType::kDynamic)
       return emitError() << "dimensions must have static size";
   }
