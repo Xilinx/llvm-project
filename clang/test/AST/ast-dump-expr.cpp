@@ -164,7 +164,7 @@ void UnaryExpressions(int *p) {
   // CHECK-NEXT: DeclRefExpr 0x{{[^ ]*}} <col:8> 'int *' lvalue ParmVar 0x{{[^ ]*}} 'p' 'int *'
 
   ::delete p;
-  // CHECK: CXXDeleteExpr 0x{{[^ ]*}} <line:[[@LINE-1]]:3, col:12> 'void' global Function 0x{{[^ ]*}} 'operator delete' 'void (void *) noexcept'
+  // CHECK: CXXDeleteExpr 0x{{[^ ]*}} <line:[[@LINE-1]]:3, col:12> 'void' global Function 0x{{[^ ]*}} 'operator delete' 'void (void *, unsigned long) noexcept'
   // CHECK-NEXT: ImplicitCastExpr
   // CHECK-NEXT: DeclRefExpr 0x{{[^ ]*}} <col:12> 'int *' lvalue ParmVar 0x{{[^ ]*}} 'p' 'int *'
 
@@ -583,3 +583,10 @@ void NonADLCall3() {
   f(x);
 }
 } // namespace test_adl_call_three
+
+namespace GH35300 {
+struct Sock {};
+void leakNewFn() { new struct Sock; }
+// CHECK: CXXNewExpr {{.*}} <col:20, col:31> 'struct Sock *'
+}
+
