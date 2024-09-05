@@ -112,13 +112,8 @@ ForLowering::matchAndRewrite(ForOp forOp, OpAdaptor adaptor,
                                        resultVariables)))
     return rewriter.notifyMatchFailure(forOp,
                                        "create variables for results failed");
-  SmallVector<Value> iterArgsVariables;
-  if (failed(createVariablesForResults(forOp, getTypeConverter(), rewriter,
-                                       iterArgsVariables)))
-    return rewriter.notifyMatchFailure(forOp,
-                                       "create variables for iter args failed");
 
-  assignValues(forOp.getInits(), iterArgsVariables, rewriter, loc);
+  assignValues(forOp.getInits(), resultVariables, rewriter, loc);
 
   emitc::ForOp loweredFor = rewriter.create<emitc::ForOp>(
       loc, adaptor.getLowerBound(), adaptor.getUpperBound(), adaptor.getStep());
@@ -130,15 +125,12 @@ ForLowering::matchAndRewrite(ForOp forOp, OpAdaptor adaptor,
 
   SmallVector<Value> replacingValues;
   replacingValues.push_back(loweredFor.getInductionVar());
-  replacingValues.append(iterArgsVariables.begin(), iterArgsVariables.end());
+  replacingValues.append(resultVariables.begin(), resultVariables.end());
 
   Block *adaptorBody = &(adaptor.getRegion().front());
   rewriter.mergeBlocks(adaptorBody, loweredBody, replacingValues);
-  lowerYield(iterArgsVariables, rewriter,
+  lowerYield(resultVariables, rewriter,
              cast<scf::YieldOp>(loweredBody->getTerminator()));
-
-  // Copy iterArgs into results after the for loop.
-  assignValues(iterArgsVariables, resultVariables, rewriter, loc);
 
   rewriter.replaceOp(forOp, resultVariables);
   return success();
