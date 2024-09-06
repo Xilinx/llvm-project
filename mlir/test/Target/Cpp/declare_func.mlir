@@ -26,13 +26,13 @@ emitc.func @array_arg(%arg0: !emitc.array<3xi32>) {
 // CHECK: void reference_scalar_arg(int32_t &[[V2:[^ ]*]]);
 emitc.declare_func @reference_scalar_arg
 // CHECK: void reference_scalar_arg(int32_t  &[[V2:[^ ]*]]) {
-emitc.func @reference_scalar_arg(%arg0: i32 {emitc.reference}) {
+emitc.func @reference_scalar_arg(%arg0: i32 ref) {
     emitc.return
 }
 
 // CHECK: void reference_array_arg(int32_t (&[[V2:[^ ]*]])[3]);
 emitc.declare_func @reference_array_arg
 // CHECK: void reference_array_arg(int32_t  (&[[V2:[^ ]*]])[3]) {
-emitc.func @reference_array_arg(%arg0: !emitc.array<3xi32> {emitc.reference}) {
+emitc.func @reference_array_arg(%arg0: !emitc.array<3xi32> ref) {
     emitc.return
 }

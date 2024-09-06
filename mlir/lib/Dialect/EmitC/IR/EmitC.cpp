@@ -8,6 +8,7 @@
 
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/EmitC/IR/EmitCTraits.h"
+#include "mlir/Dialect/EmitC/IR/FunctionOpAssembly.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
@@ -245,7 +246,7 @@ bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
 }
 
 LogicalResult CastOp::verify() {
-  bool isReference = this->getReference();
+  bool isReference = getReference();
 
   if (isa<emitc::ArrayType>(getDest().getType())) {
     if (!isReference)
@@ -545,16 +546,15 @@ ParseResult FuncOp::parse(OpAsmParser &parser, OperationState &result) {
          function_interface_impl::VariadicFlag,
          std::string &) { return builder.getFunctionType(argTypes, results); };
 
-  return function_interface_impl::parseFunctionOp(
-      parser, result, /*allowVariadic=*/false,
-      getFunctionTypeAttrName(result.name), buildFuncType,
-      getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name));
+  return parseFunctionOp(parser, result, /*allowVariadic=*/false,
+                         getFunctionTypeAttrName(result.name), buildFuncType,
+                         getArgAttrsAttrName(result.name),
+                         getResAttrsAttrName(result.name));
 }
 
 void FuncOp::print(OpAsmPrinter &p) {
-  function_interface_impl::printFunctionOp(
-      p, *this, /*isVariadic=*/false, getFunctionTypeAttrName(),
-      getArgAttrsAttrName(), getResAttrsAttrName());
+  printFunctionOp(p, *this, /*isVariadic=*/false, getFunctionTypeAttrName(),
+                  getArgAttrsAttrName(), getResAttrsAttrName());
 }
 
 LogicalResult FuncOp::verify() {
