@@ -5,9 +5,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-// This function printer/parser are the same as FunctionInterfaceImpl,
-// except that they print out arguments followed by "ref" if they bear the
-// emitc.reference attribute.
+// This function printer/parser are copies of those in
+// Interfaces/FunctionImplementation.cpp, except that they print out arguments
+// followed by "ref" if they bear the emitc.reference attribute.
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
@@ -260,9 +260,8 @@ static void printFunctionResultList(OpAsmPrinter &p, ArrayRef<Type> types,
     os << ')';
 }
 
-void printFunctionSignature(OpAsmPrinter &p, FunctionOpInterface op,
-                            ArrayRef<Type> argTypes, bool isVariadic,
-                            ArrayRef<Type> resultTypes) {
+void printFunctionSignature(OpAsmPrinter &p, FuncOp op, ArrayRef<Type> argTypes,
+                            bool isVariadic, ArrayRef<Type> resultTypes) {
   Region &body = op->getRegion(0);
   bool isExternal = body.empty();
 
@@ -305,7 +304,7 @@ void printFunctionSignature(OpAsmPrinter &p, FunctionOpInterface op,
   }
 }
 
-void printFunctionOp(OpAsmPrinter &p, FunctionOpInterface op, bool isVariadic,
+void printFunctionOp(OpAsmPrinter &p, FuncOp op, bool isVariadic,
                      StringRef typeAttrName, StringAttr argAttrsName,
                      StringAttr resAttrsName) {
   // Print the operation and the function name.
