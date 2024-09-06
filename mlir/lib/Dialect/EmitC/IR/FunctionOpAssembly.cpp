@@ -62,7 +62,7 @@ parseFunctionArgumentList(OpAsmParser &parser, bool allowVariadic,
           if (!arguments.empty() && arguments.back().ssaName.name.empty())
             return parser.emitError(argument.ssaName.location,
                                     "expected type instead of SSA identifier");
-          if (!parser.parseOptionalKeyword("ref")) {
+          if (succeeded(parser.parseOptionalKeyword("ref"))) {
             llvm::ArrayRef<NamedAttribute> origAttrs;
             if (!argument.attrs.empty())
               origAttrs = argument.attrs.getValue();
@@ -87,7 +87,7 @@ parseFunctionArgumentList(OpAsmParser &parser, bool allowVariadic,
               parser.parseOptionalAttrDict(attrs) ||
               parser.parseOptionalLocationSpecifier(argument.sourceLoc))
             return failure();
-          if (!parser.parseOptionalKeyword("ref")) {
+          if (succeeded(parser.parseOptionalKeyword("ref"))) {
             // Add attribute to argument
             attrs.push_back(NamedAttribute(
                 StringAttr::get(parser.getContext(),
@@ -101,45 +101,38 @@ parseFunctionArgumentList(OpAsmParser &parser, bool allowVariadic,
       });
 }
 
-/// Parse a function result list.
+/// Parse a function result.
 ///
-///   function-result-list ::= function-result-list-parens
-///                          | non-function-type
-///   function-result-list-parens ::= `(` `)`
-///                                 | `(` function-result-list-no-parens `)`
-///   function-result-list-no-parens ::= function-result (`,` function-result)*
-///   function-result ::= type attribute-dict?
+///   function-result ::= type | `(` type attribute-dict? `)`
 ///
 static ParseResult
-parseFunctionResultList(OpAsmParser &parser, SmallVectorImpl<Type> &resultTypes,
-                        SmallVectorImpl<DictionaryAttr> &resultAttrs) {
-  if (failed(parser.parseOptionalLParen())) {
-    // We already know that there is no `(`, so parse a type.
-    // Because there is no `(`, it cannot be a function type.
-    Type ty;
-    if (parser.parseType(ty))
-      return failure();
-    resultTypes.push_back(ty);
-    resultAttrs.emplace_back();
-    return success();
+parseFunctionResult(OpAsmParser &parser, SmallVectorImpl<Type> &resultTypes,
+                    SmallVectorImpl<DictionaryAttr> &resultAttrs) {
+
+  bool hasLParen = succeeded(parser.parseOptionalLParen());
+
+  if (hasLParen) {
+    // Special case for an empty set of parens.
+    if (succeeded(parser.parseOptionalRParen()))
+      return success();
   }
 
-  // Special case for an empty set of parens.
-  if (succeeded(parser.parseOptionalRParen()))
+  // Parse a single type.
+  Type ty;
+  if (parser.parseType(ty))
+    return failure();
+  resultTypes.push_back(ty);
+  resultAttrs.emplace_back();
+
+  // There can be no attribute without parentheses (they would be confused with
+  // the function body)
+  if (!hasLParen)
     return success();
 
-  // Parse individual function results.
-  if (parser.parseCommaSeparatedList([&]() -> ParseResult {
-        resultTypes.emplace_back();
-        resultAttrs.emplace_back();
-        NamedAttrList attrs;
-        if (parser.parseType(resultTypes.back()) ||
-            parser.parseOptionalAttrDict(attrs))
-          return failure();
-        resultAttrs.back() = attrs.getDictionary(parser.getContext());
-        return success();
-      }))
-    return failure();
+  // Parse result attributes if any.
+  NamedAttrList attrs;
+  if (succeeded(parser.parseOptionalAttrDict(attrs)))
+    resultAttrs.back() = attrs.getDictionary(parser.getContext());
 
   return parser.parseRParen();
 }
@@ -152,7 +145,7 @@ parseFunctionSignature(OpAsmParser &parser, bool allowVariadic,
   if (parseFunctionArgumentList(parser, allowVariadic, arguments, isVariadic))
     return failure();
   if (succeeded(parser.parseOptionalArrow()))
-    return parseFunctionResultList(parser, resultTypes, resultAttrs);
+    return parseFunctionResult(parser, resultTypes, resultAttrs);
   return success();
 }
 
@@ -238,28 +231,6 @@ parseFunctionOp(OpAsmParser &parser, OperationState &result, bool allowVariadic,
   return success();
 }
 
-/// Print a function result list. The provided `attrs` must either be null, or
-/// contain a set of DictionaryAttrs of the same arity as `types`.
-static void printFunctionResultList(OpAsmPrinter &p, ArrayRef<Type> types,
-                                    ArrayAttr attrs) {
-  assert(!types.empty() && "Should not be called for empty result list.");
-  assert((!attrs || attrs.size() == types.size()) &&
-         "Invalid number of attributes.");
-
-  auto &os = p.getStream();
-  bool needsParens = types.size() > 1 || llvm::isa<FunctionType>(types[0]) ||
-                     (attrs && !llvm::cast<DictionaryAttr>(attrs[0]).empty());
-  if (needsParens)
-    os << '(';
-  llvm::interleaveComma(llvm::seq<size_t>(0, types.size()), os, [&](size_t i) {
-    p.printType(types[i]);
-    if (attrs)
-      p.printOptionalAttrDict(llvm::cast<DictionaryAttr>(attrs[i]).getValue());
-  });
-  if (needsParens)
-    os << ')';
-}
-
 void printFunctionSignature(OpAsmPrinter &p, FuncOp op, ArrayRef<Type> argTypes,
                             bool isVariadic, ArrayRef<Type> resultTypes) {
   Region &body = op->getRegion(0);
@@ -298,9 +269,13 @@ void printFunctionSignature(OpAsmPrinter &p, FuncOp op, ArrayRef<Type> argTypes,
   p << ')';
 
   if (!resultTypes.empty()) {
+    assert(resultTypes.size() == 1);
     p.getStream() << " -> ";
     auto resultAttrs = op.getResAttrsAttr();
-    printFunctionResultList(p, resultTypes, resultAttrs);
+    p.printType(resultTypes[0]);
+    if (resultAttrs)
+      p.printOptionalAttrDict(
+          llvm::cast<DictionaryAttr>(resultAttrs[0]).getValue());
   }
 }
 
