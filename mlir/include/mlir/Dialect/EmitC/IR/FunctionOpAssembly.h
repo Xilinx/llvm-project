@@ -14,9 +14,10 @@
 #include "mlir/Support/LogicalResult.h"
 
 #include "mlir/IR/Builders.h"
-#include "mlir/Interfaces/FunctionInterfaces.h"
 
 namespace mlir::emitc {
+
+class FuncOp;
 
 ParseResult
 parseFunctionSignature(OpAsmParser &parser, bool allowVariadic,
@@ -30,11 +31,10 @@ parseFunctionOp(OpAsmParser &parser, OperationState &result, bool allowVariadic,
                 function_interface_impl::FuncTypeBuilder funcTypeBuilder,
                 StringAttr argAttrsName, StringAttr resAttrsName);
 
-void printFunctionSignature(OpAsmPrinter &p, FunctionOpInterface op,
-                            ArrayRef<Type> argTypes, bool isVariadic,
-                            ArrayRef<Type> resultTypes);
+void printFunctionSignature(OpAsmPrinter &p, FuncOp op, ArrayRef<Type> argTypes,
+                            bool isVariadic, ArrayRef<Type> resultTypes);
 
-void printFunctionOp(OpAsmPrinter &p, FunctionOpInterface op, bool isVariadic,
+void printFunctionOp(OpAsmPrinter &p, FuncOp op, bool isVariadic,
                      StringRef typeAttrName, StringAttr argAttrsName,
                      StringAttr resAttrsName);
 
