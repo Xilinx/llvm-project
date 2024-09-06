@@ -235,7 +235,7 @@ bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
 }
 
 LogicalResult CastOp::verify() {
-  if (this->getReference())
+  if (getReference())
     return emitOpError("cast of value type must not bear a reference");
 
   return success();

@@ -989,12 +989,12 @@ static LogicalResult printFunctionArgs(CppEmitter &emitter,
   }
 
   raw_indented_ostream &os = emitter.ostream();
-  return (interleaveCommaWithError(arguments, os,
-                                   [&](BlockArgument arg) -> LogicalResult {
-                                     return emitter.emitVariableDeclaration(
-                                         functionOp->getLoc(), arg.getType(),
-                                         emitter.getOrCreateName(arg), false);
-                                   }));
+  return (interleaveCommaWithError(
+      arguments, os, [&](BlockArgument arg) -> LogicalResult {
+        return emitter.emitVariableDeclaration(
+            functionOp->getLoc(), arg.getType(), emitter.getOrCreateName(arg),
+            /*isReference=*/false);
+      }));
 }
 
 static LogicalResult printFunctionBody(CppEmitter &emitter,
