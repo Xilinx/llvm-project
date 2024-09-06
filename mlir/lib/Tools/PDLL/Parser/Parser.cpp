@@ -787,7 +787,7 @@ LogicalResult Parser::convertExpressionTo(
     return diag;
   };
 
-  if (auto exprOpType = exprType.dyn_cast<ast::OperationType>())
+  if (auto exprOpType = dyn_cast<ast::OperationType>(exprType))
     return convertOpExpressionTo(expr, exprOpType, type, emitConvertError);
 
   // FIXME: Decide how to allow/support converting a single result to multiple,
@@ -802,7 +802,7 @@ LogicalResult Parser::convertExpressionTo(
     return success();
 
   // Handle tuple types.
-  if (auto exprTupleType = exprType.dyn_cast<ast::TupleType>())
+  if (auto exprTupleType = dyn_cast<ast::TupleType>(exprType))
     return convertTupleExpressionTo(expr, exprTupleType, type, emitConvertError,
                                     noteAttachFn);
 
@@ -814,7 +814,7 @@ LogicalResult Parser::convertOpExpressionTo(
     function_ref<ast::InFlightDiagnostic()> emitErrorFn) {
   // Two operation types are compatible if they have the same name, or if the
   // expected type is more general.
-  if (auto opType = type.dyn_cast<ast::OperationType>()) {
+  if (auto opType = dyn_cast<ast::OperationType>(type)) {
     if (opType.getName())
       return emitErrorFn();
     return success();
@@ -866,7 +866,7 @@ LogicalResult Parser::convertTupleExpressionTo(
     function_ref<ast::InFlightDiagnostic()> emitErrorFn,
     function_ref<void(ast::Diagnostic &diag)> noteAttachFn) {
   // Handle conversions between tuples.
-  if (auto tupleType = type.dyn_cast<ast::TupleType>()) {
+  if (auto tupleType = dyn_cast<ast::TupleType>(type)) {
     if (tupleType.size() != exprType.size())
       return emitErrorFn();
 
@@ -3188,7 +3188,7 @@ Parser::createVariableDecl(StringRef name, SMRange loc, ast::Expr *initializer,
   }
 
   // Constraint types cannot be used when defining variables.
-  if (type.isa<ast::ConstraintType, ast::RewriteType>()) {
+  if (isa<ast::ConstraintType, ast::RewriteType>(type)) {
     return emitError(
         loc, llvm::formatv("unable to define variable of `{0}` type", type));
   }
@@ -3418,7 +3418,7 @@ Parser::createBuiltinCall(SMRange loc, ast::Decl *function,
 FailureOr<ast::Type> Parser::validateMemberAccess(ast::Expr *parentExpr,
                                                   StringRef name, SMRange loc) {
   ast::Type parentType = parentExpr->getType();
-  if (ast::OperationType opType = parentType.dyn_cast<ast::OperationType>()) {
+  if (ast::OperationType opType = dyn_cast<ast::OperationType>(parentType)) {
     if (name == ast::AllResultsMemberAccessExpr::getMemberName())
       return valueRangeTy;
 
@@ -3444,7 +3444,7 @@ FailureOr<ast::Type> Parser::validateMemberAccess(ast::Expr *parentExpr,
       // operations. It returns a single value.
       return valueTy;
     }
-  } else if (auto tupleType = parentType.dyn_cast<ast::TupleType>()) {
+  } else if (auto tupleType = dyn_cast<ast::TupleType>(parentType)) {
     // Handle indexed results.
     unsigned index = 0;
     if (llvm::isDigit(name[0]) && !name.getAsInteger(/*Radix=*/10, index) &&
@@ -3481,7 +3481,7 @@ FailureOr<ast::OperationExpr *> Parser::createOperationExpr(
   for (ast::NamedAttributeDecl *attr : attributes) {
     // Check for an attribute type, or a type awaiting resolution.
     ast::Type attrType = attr->getValue()->getType();
-    if (!attrType.isa<ast::AttributeType>()) {
+    if (!isa<ast::AttributeType>(attrType)) {
       return emitError(
           attr->getValue()->getLoc(),
           llvm::formatv("expected `Attr` expression, but got `{0}`", attrType));
@@ -3660,7 +3660,7 @@ LogicalResult Parser::validateOperationOperandsOrResults(
     // ValueRange. This situations arises quite often with nested operation
     // expressions: `op<my_dialect.foo>(op<my_dialect.bar>)`
     if (singleTy == valueTy) {
-      if (valueExprType.isa<ast::OperationType>()) {
+      if (isa<ast::OperationType>(valueExprType)) {
         valueExpr = convertOpToValue(valueExpr);
         continue;
       }
@@ -3684,7 +3684,7 @@ Parser::createTupleExpr(SMRange loc, ArrayRef<ast::Expr *> elements,
                         ArrayRef<StringRef> elementNames) {
   for (const ast::Expr *element : elements) {
     ast::Type eleTy = element->getType();
-    if (eleTy.isa<ast::ConstraintType, ast::RewriteType, ast::TupleType>()) {
+    if (isa<ast::ConstraintType, ast::RewriteType, ast::TupleType>(eleTy)) {
       return emitError(
           element->getLoc(),
           llvm::formatv("unable to build a tuple with `{0}` element", eleTy));
@@ -3700,7 +3700,7 @@ FailureOr<ast::EraseStmt *> Parser::createEraseStmt(SMRange loc,
                                                     ast::Expr *rootOp) {
   // Check that root is an Operation.
   ast::Type rootType = rootOp->getType();
-  if (!rootType.isa<ast::OperationType>())
+  if (!isa<ast::OperationType>(rootType))
     return emitError(rootOp->getLoc(), "expected `Op` expression");
 
   return ast::EraseStmt::create(ctx, loc, rootOp);
@@ -3711,7 +3711,7 @@ Parser::createReplaceStmt(SMRange loc, ast::Expr *rootOp,
                           MutableArrayRef<ast::Expr *> replValues) {
   // Check that root is an Operation.
   ast::Type rootType = rootOp->getType();
-  if (!rootType.isa<ast::OperationType>()) {
+  if (!isa<ast::OperationType>(rootType)) {
     return emitError(
         rootOp->getLoc(),
         llvm::formatv("expected `Op` expression, but got `{0}`", rootType));
@@ -3724,7 +3724,7 @@ Parser::createReplaceStmt(SMRange loc, ast::Expr *rootOp,
     ast::Type replType = replExpr->getType();
 
     // Check that replExpr is an Operation, Value, or ValueRange.
-    if (replType.isa<ast::OperationType>()) {
+    if (isa<ast::OperationType>(replType)) {
       if (shouldConvertOpToValues)
         replExpr = convertOpToValue(replExpr);
       continue;
@@ -3746,7 +3746,7 @@ Parser::createRewriteStmt(SMRange loc, ast::Expr *rootOp,
                           ast::CompoundStmt *rewriteBody) {
   // Check that root is an Operation.
   ast::Type rootType = rootOp->getType();
-  if (!rootType.isa<ast::OperationType>()) {
+  if (!isa<ast::OperationType>(rootType)) {
     return emitError(
         rootOp->getLoc(),
         llvm::formatv("expected `Op` expression, but got `{0}`", rootType));
@@ -3761,9 +3761,9 @@ Parser::createRewriteStmt(SMRange loc, ast::Expr *rootOp,
 
 LogicalResult Parser::codeCompleteMemberAccess(ast::Expr *parentExpr) {
   ast::Type parentType = parentExpr->getType();
-  if (ast::OperationType opType = parentType.dyn_cast<ast::OperationType>())
+  if (ast::OperationType opType = dyn_cast<ast::OperationType>(parentType))
     codeCompleteContext->codeCompleteOperationMemberAccess(opType);
-  else if (ast::TupleType tupleType = parentType.dyn_cast<ast::TupleType>())
+  else if (ast::TupleType tupleType = dyn_cast<ast::TupleType>(parentType))
     codeCompleteContext->codeCompleteTupleMemberAccess(tupleType);
   return failure();
 }

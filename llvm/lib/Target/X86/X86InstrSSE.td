@@ -1554,7 +1554,6 @@ def CVTPS2DQrm : PDI<0x5B, MRMSrcMem, (outs VR128:$dst), (ins f128mem:$src),
                        (v4i32 (X86cvtp2Int (memopv4f32 addr:$src))))]>,
                      Sched<[WriteCvtPS2ILd]>, SIMD_EXC;
 
-
 // Convert Packed Double FP to Packed DW Integers
 let Predicates = [HasAVX, NoVLX], Uses = [MXCSR], mayRaiseFPException = 1 in {
 // The assembler can recognize rr 256-bit instructions by seeing a ymm
@@ -1584,6 +1583,20 @@ def VCVTPD2DQYrm : SDI<0xE6, MRMSrcMem, (outs VR128:$dst), (ins f256mem:$src),
                        [(set VR128:$dst,
                          (v4i32 (X86cvtp2Int (loadv4f64 addr:$src))))]>,
                        VEX, VEX_L, Sched<[WriteCvtPD2IYLd]>, WIG;
+}
+
+let Predicates = [HasAVX] in {
+  def : Pat<(v4i32 (lrint VR128:$src)), (VCVTPS2DQrr VR128:$src)>;
+  def : Pat<(v4i32 (lrint (loadv4f32 addr:$src))), (VCVTPS2DQrm addr:$src)>;
+  def : Pat<(v8i32 (lrint VR256:$src)), (VCVTPS2DQYrr VR256:$src)>;
+  def : Pat<(v8i32 (lrint (loadv8f32 addr:$src))), (VCVTPS2DQYrm addr:$src)>;
+  def : Pat<(v4i32 (lrint VR256:$src)), (VCVTPD2DQYrr VR256:$src)>;
+  def : Pat<(v4i32 (lrint (loadv4f64 addr:$src))), (VCVTPD2DQYrm addr:$src)>;
+}
+
+let Predicates = [UseSSE2] in {
+  def : Pat<(v4i32 (lrint VR128:$src)), (CVTPS2DQrr VR128:$src)>;
+  def : Pat<(v4i32 (lrint (loadv4f32 addr:$src))), (CVTPS2DQrm addr:$src)>;
 }
 
 def : InstAlias<"vcvtpd2dqx\t{$src, $dst|$dst, $src}",
@@ -6726,31 +6739,31 @@ let Predicates = [HasCRC32, HasEGPR, In64BitMode], OpMap = T_MAP4, OpEnc = EncEV
 
 // FIXME: Is there a better scheduler class for SHA than WriteVecIMul?
 multiclass SHAI_binop<bits<8> Opc, string OpcodeStr, Intrinsic IntId,
-                      X86FoldableSchedWrite sched, string Suffix = "", bit UsesXMM0 = 0> {
-  def rr#Suffix : I<Opc, MRMSrcReg, (outs VR128:$dst),
-                    (ins VR128:$src1, VR128:$src2),
-                    !if(UsesXMM0,
-                        !strconcat(OpcodeStr, "\t{%xmm0, $src2, $dst|$dst, $src2, xmm0}"),
-                        !strconcat(OpcodeStr, "\t{$src2, $dst|$dst, $src2}")),
-                    [!if(UsesXMM0,
-                         (set VR128:$dst, (IntId VR128:$src1, VR128:$src2, XMM0)),
-                         (set VR128:$dst, (IntId VR128:$src1, VR128:$src2)))]>,
-                    T8, Sched<[sched]>;
+                      X86FoldableSchedWrite sched, bit UsesXMM0 = 0> {
+  def rr : I<Opc, MRMSrcReg, (outs VR128:$dst),
+             (ins VR128:$src1, VR128:$src2),
+             !if(UsesXMM0,
+                 !strconcat(OpcodeStr, "\t{%xmm0, $src2, $dst|$dst, $src2, xmm0}"),
+                 !strconcat(OpcodeStr, "\t{$src2, $dst|$dst, $src2}")),
+             [!if(UsesXMM0,
+                  (set VR128:$dst, (IntId VR128:$src1, VR128:$src2, XMM0)),
+                  (set VR128:$dst, (IntId VR128:$src1, VR128:$src2)))]>,
+             T8, Sched<[sched]>;
 
-  def rm#Suffix : I<Opc, MRMSrcMem, (outs VR128:$dst),
-                    (ins VR128:$src1, i128mem:$src2),
-                    !if(UsesXMM0,
-                        !strconcat(OpcodeStr, "\t{%xmm0, $src2, $dst|$dst, $src2, xmm0}"),
-                        !strconcat(OpcodeStr, "\t{$src2, $dst|$dst, $src2}")),
-                    [!if(UsesXMM0,
-                         (set VR128:$dst, (IntId VR128:$src1,
-                           (memop addr:$src2), XMM0)),
-                         (set VR128:$dst, (IntId VR128:$src1,
-                           (memop addr:$src2))))]>, T8,
-                    Sched<[sched.Folded, sched.ReadAfterFold]>;
+  def rm : I<Opc, MRMSrcMem, (outs VR128:$dst),
+             (ins VR128:$src1, i128mem:$src2),
+             !if(UsesXMM0,
+                 !strconcat(OpcodeStr, "\t{%xmm0, $src2, $dst|$dst, $src2, xmm0}"),
+                 !strconcat(OpcodeStr, "\t{$src2, $dst|$dst, $src2}")),
+             [!if(UsesXMM0,
+                  (set VR128:$dst, (IntId VR128:$src1,
+                    (memop addr:$src2), XMM0)),
+                  (set VR128:$dst, (IntId VR128:$src1,
+                    (memop addr:$src2))))]>, T8,
+             Sched<[sched.Folded, sched.ReadAfterFold]>;
 }
 
-let Constraints = "$src1 = $dst", Predicates = [HasSHA, NoEGPR] in {
+let Constraints = "$src1 = $dst", Predicates = [HasSHA] in {
   def SHA1RNDS4rri : Ii8<0xCC, MRMSrcReg, (outs VR128:$dst),
                          (ins VR128:$src1, VR128:$src2, u8imm:$src3),
                          "sha1rnds4\t{$src3, $src2, $dst|$dst, $src2, $src3}",
@@ -6777,7 +6790,7 @@ let Constraints = "$src1 = $dst", Predicates = [HasSHA, NoEGPR] in {
 
   let Uses=[XMM0] in
   defm SHA256RNDS2 : SHAI_binop<0xCB, "sha256rnds2", int_x86_sha256rnds2,
-                                SchedWriteVecIMul.XMM, "", 1>;
+                                SchedWriteVecIMul.XMM, 1>;
 
   defm SHA256MSG1 : SHAI_binop<0xCC, "sha256msg1", int_x86_sha256msg1,
                                SchedWriteVecIMul.XMM>;
@@ -6785,47 +6798,6 @@ let Constraints = "$src1 = $dst", Predicates = [HasSHA, NoEGPR] in {
                                SchedWriteVecIMul.XMM>;
 }
 
-let Constraints = "$src1 = $dst", Predicates = [HasSHA, HasEGPR, In64BitMode] in {
-  def SHA1RNDS4rri_EVEX: Ii8<0xD4, MRMSrcReg, (outs VR128:$dst),
-                             (ins VR128:$src1, VR128:$src2, u8imm:$src3),
-                             "sha1rnds4\t{$src3, $src2, $dst|$dst, $src2, $src3}",
-                             [(set VR128:$dst,
-                               (int_x86_sha1rnds4 VR128:$src1, VR128:$src2,
-                                (i8 timm:$src3)))]>,
-                         EVEX, NoCD8, T_MAP4, Sched<[SchedWriteVecIMul.XMM]>;
-  def SHA1RNDS4rmi_EVEX: Ii8<0xD4, MRMSrcMem, (outs VR128:$dst),
-                             (ins VR128:$src1, i128mem:$src2, u8imm:$src3),
-                             "sha1rnds4\t{$src3, $src2, $dst|$dst, $src2, $src3}",
-                             [(set VR128:$dst,
-                               (int_x86_sha1rnds4 VR128:$src1,
-                                (memop addr:$src2),
-                                (i8 timm:$src3)))]>,
-                         EVEX, NoCD8, T_MAP4,
-                         Sched<[SchedWriteVecIMul.XMM.Folded,
-                                SchedWriteVecIMul.XMM.ReadAfterFold]>;
-
-  defm SHA1NEXTE : SHAI_binop<0xD8, "sha1nexte", int_x86_sha1nexte,
-                                   SchedWriteVecIMul.XMM, "_EVEX">,
-                        EVEX, NoCD8, T_MAP4;
-  defm SHA1MSG1  : SHAI_binop<0xD9, "sha1msg1", int_x86_sha1msg1,
-                              SchedWriteVecIMul.XMM, "_EVEX">,
-                   EVEX, NoCD8, T_MAP4;
-  defm SHA1MSG2  : SHAI_binop<0xDA, "sha1msg2", int_x86_sha1msg2,
-                              SchedWriteVecIMul.XMM, "_EVEX">,
-                   EVEX, NoCD8, T_MAP4;
-
-  let Uses=[XMM0] in
-  defm SHA256RNDS2 : SHAI_binop<0xDB, "sha256rnds2", int_x86_sha256rnds2,
-                                SchedWriteVecIMul.XMM, "_EVEX", 1>,
-                     EVEX, NoCD8, T_MAP4;
-
-  defm SHA256MSG1 : SHAI_binop<0xDC, "sha256msg1", int_x86_sha256msg1,
-                               SchedWriteVecIMul.XMM, "_EVEX">,
-                    EVEX, NoCD8, T_MAP4;
-  defm SHA256MSG2 : SHAI_binop<0xDD, "sha256msg2", int_x86_sha256msg2,
-                               SchedWriteVecIMul.XMM, "_EVEX">,
-                    EVEX, NoCD8, T_MAP4;
-}
 
 //===----------------------------------------------------------------------===//
 // AES-NI Instructions
