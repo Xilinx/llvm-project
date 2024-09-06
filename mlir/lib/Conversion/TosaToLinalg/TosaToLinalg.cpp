@@ -13,11 +13,11 @@
 #include "mlir/Conversion/TosaToLinalg/TosaToLinalg.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
+#include "mlir/Dialect/Index/IR/IndexOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"
 #include "mlir/Dialect/Utils/ReshapeOpsUtils.h"
@@ -91,7 +91,7 @@ static Value createLinalgBodyCalculationForElementwiseOp(
   }
 
   // tosa::DivOp
-  if (isa<tosa::DivOp>(op)) {
+  if (isa<tosa::IntDivOp>(op)) {
     if (elementTy.isSignlessInteger())
       return rewriter.create<arith::DivSIOp>(loc, resultTypes, args);
     else
@@ -669,7 +669,7 @@ static SmallVector<Value> expandInputRanks(PatternRewriter &rewriter,
                                            Location loc, Operation *operation,
                                            ValueRange operands) {
   auto rank =
-      operation->getResultTypes().front().cast<RankedTensorType>().getRank();
+      cast<RankedTensorType>(operation->getResultTypes().front()).getRank();
   return llvm::map_to_vector(operands, [&](Value operand) {
     return expandRank(rewriter, loc, operand, rank);
   });
@@ -731,7 +731,7 @@ computeTargetSize(PatternRewriter &rewriter, Location loc, IndexPool &indexPool,
   // dimension, that is the target size. An occurrence of an additional static
   // dimension greater than 1 with a different value is undefined behavior.
   for (auto operand : operands) {
-    auto size = operand.getType().cast<RankedTensorType>().getDimSize(dim);
+    auto size = cast<RankedTensorType>(operand.getType()).getDimSize(dim);
     if (!ShapedType::isDynamic(size) && size > 1)
       return {rewriter.getIndexAttr(size), operand};
   }
@@ -739,7 +739,7 @@ computeTargetSize(PatternRewriter &rewriter, Location loc, IndexPool &indexPool,
   // Filter operands with dynamic dimension
   auto operandsWithDynamicDim =
       llvm::to_vector(llvm::make_filter_range(operands, [&](Value operand) {
-        return operand.getType().cast<RankedTensorType>().isDynamicDim(dim);
+        return cast<RankedTensorType>(operand.getType()).isDynamicDim(dim);
       }));
 
   // If no operand has a dynamic dimension, it means all sizes were 1
@@ -769,7 +769,7 @@ static std::pair<SmallVector<OpFoldResult>, SmallVector<Value>>
 computeTargetShape(PatternRewriter &rewriter, Location loc,
                    IndexPool &indexPool, ValueRange operands) {
   assert(!operands.empty());
-  auto rank = operands.front().getType().cast<RankedTensorType>().getRank();
+  auto rank = cast<RankedTensorType>(operands.front().getType()).getRank();
   SmallVector<OpFoldResult> targetShape;
   SmallVector<Value> masterOperands;
   for (auto dim : llvm::seq<int64_t>(0, rank)) {
@@ -786,7 +786,7 @@ static Value broadcastDynamicDimension(PatternRewriter &rewriter, Location loc,
                                        int64_t dim, OpFoldResult targetSize,
                                        Value masterOperand) {
   // Nothing to do if this is a static dimension
-  auto rankedTensorType = operand.getType().cast<RankedTensorType>();
+  auto rankedTensorType = cast<RankedTensorType>(operand.getType());
   if (!rankedTensorType.isDynamicDim(dim))
     return operand;
 
@@ -868,7 +868,7 @@ static Value broadcastDynamicDimensions(PatternRewriter &rewriter, Location loc,
                                         IndexPool &indexPool, Value operand,
                                         ArrayRef<OpFoldResult> targetShape,
                                         ArrayRef<Value> masterOperands) {
-  int64_t rank = operand.getType().cast<RankedTensorType>().getRank();
+  int64_t rank = cast<RankedTensorType>(operand.getType()).getRank();
   assert((int64_t)targetShape.size() == rank);
   assert((int64_t)masterOperands.size() == rank);
   for (auto index : llvm::seq<int64_t>(0, rank))
@@ -901,7 +901,7 @@ emitElementwiseComputation(ConversionPatternRewriter &rewriter, Location loc,
                            const TypeConverter *converter) {
   // Generate output tensor
   auto resultType = cast_or_null<RankedTensorType>(converter->convertType(
-      operation->getResultTypes().front().cast<RankedTensorType>()));
+      cast<RankedTensorType>(operation->getResultTypes().front())));
   if (!resultType) {
     return rewriter.notifyMatchFailure(operation, "failed to convert type");
   }
@@ -2424,8 +2424,7 @@ struct RFFT2dConverter final : public OpConversionPattern<RFFT2dOp> {
     llvm::SmallVector<int64_t, 3> staticSizes;
     dispatchIndexOpFoldResults(dims, dynamicSizes, staticSizes);
 
-    auto elementType =
-        input.getType().cast<RankedTensorType>().getElementType();
+    auto elementType = cast<RankedTensorType>(input.getType()).getElementType();
     return RankedTensorType::get(staticSizes, elementType);
   }
 
@@ -2484,7 +2483,7 @@ struct RFFT2dConverter final : public OpConversionPattern<RFFT2dOp> {
     auto loc = rfft2d.getLoc();
     auto input = operands.getInput();
     auto elementType =
-        input.getType().cast<ShapedType>().getElementType().cast<FloatType>();
+        cast<FloatType>(cast<ShapedType>(input.getType()).getElementType());
 
     // Compute the output type and set of dynamic sizes
     llvm::SmallVector<Value> dynamicSizes;
@@ -2525,16 +2524,25 @@ struct RFFT2dConverter final : public OpConversionPattern<RFFT2dOp> {
       Value sumImag = args[2];
 
       // Indices for angle computation
-      auto oy = createLinalgIndex(builder, loc, elementType, 1);
-      auto ox = createLinalgIndex(builder, loc, elementType, 2);
-      auto iy = createLinalgIndex(builder, loc, elementType, 3);
-      auto ix = createLinalgIndex(builder, loc, elementType, 4);
+      Value oy = builder.create<linalg::IndexOp>(loc, 1);
+      Value ox = builder.create<linalg::IndexOp>(loc, 2);
+      Value iy = builder.create<linalg::IndexOp>(loc, 3);
+      Value ix = builder.create<linalg::IndexOp>(loc, 4);
 
-      // angle = 2 * pi() * ((iy * oy) / H + (ix * ox) / W)
-      auto iyXoy = builder.create<arith::MulFOp>(loc, iy, oy);
-      auto ixXox = builder.create<arith::MulFOp>(loc, ix, ox);
-      auto yComponent = builder.create<arith::DivFOp>(loc, iyXoy, constH);
-      auto xComponent = builder.create<arith::DivFOp>(loc, ixXox, constW);
+      // Calculating angle without integer parts of components as sin/cos are
+      // periodic: angle = 2 * pi() * ( ( (iy * oy) % H) / H + ( (ix * ox) % W )
+      // / W);
+      auto iyXoy = builder.create<index::MulOp>(loc, iy, oy);
+      auto ixXox = builder.create<index::MulOp>(loc, ix, ox);
+
+      auto iyRem = builder.create<index::RemUOp>(loc, iyXoy, dimH);
+      auto ixRem = builder.create<index::RemUOp>(loc, ixXox, dimW);
+
+      auto iyRemFloat = castIndexToFloat(builder, loc, elementType, iyRem);
+      auto ixRemFloat = castIndexToFloat(builder, loc, elementType, ixRem);
+
+      auto yComponent = builder.create<arith::DivFOp>(loc, iyRemFloat, constH);
+      auto xComponent = builder.create<arith::DivFOp>(loc, ixRemFloat, constW);
       auto sumXY = builder.create<arith::AddFOp>(loc, yComponent, xComponent);
       auto angle = builder.create<arith::MulFOp>(loc, twoPi, sumXY);
 
@@ -2638,22 +2646,30 @@ struct FFT2dConverter final : OpRewritePattern<FFT2dOp> {
       Value sumImag = args[3];
 
       // Indices for angle computation
-      Value oy =
-          RFFT2dConverter::createLinalgIndex(builder, loc, real_el_ty, 1);
-      Value ox =
-          RFFT2dConverter::createLinalgIndex(builder, loc, real_el_ty, 2);
-      Value iy =
-          RFFT2dConverter::createLinalgIndex(builder, loc, real_el_ty, 3);
-      Value ix =
-          RFFT2dConverter::createLinalgIndex(builder, loc, real_el_ty, 4);
+      Value oy = builder.create<linalg::IndexOp>(loc, 1);
+      Value ox = builder.create<linalg::IndexOp>(loc, 2);
+      Value iy = builder.create<linalg::IndexOp>(loc, 3);
+      Value ix = builder.create<linalg::IndexOp>(loc, 4);
 
-      // float_t angle = sign_val * 2 * pi() * ((iy * oy) / H + (ix * ox) / W);
-      auto iyXoy = builder.create<arith::MulFOp>(loc, iy, oy);
-      auto ixXox = builder.create<arith::MulFOp>(loc, ix, ox);
-      auto yComponent = builder.create<arith::DivFOp>(loc, iyXoy, constH);
-      auto xComponent = builder.create<arith::DivFOp>(loc, ixXox, constW);
+      // float_t angle = sign_val * 2 * pi() * ( ( (iy * oy) % H) / H + ( (ix *
+      // ox) % W ) / W);
+      auto iyXoy = builder.create<index::MulOp>(loc, iy, oy);
+      auto ixXox = builder.create<index::MulOp>(loc, ix, ox);
+
+      auto iyRem = builder.create<index::RemUOp>(loc, iyXoy, dimH);
+      auto ixRem = builder.create<index::RemUOp>(loc, ixXox, dimW);
+
+      auto iyRemFloat =
+          RFFT2dConverter::castIndexToFloat(builder, loc, real_el_ty, iyRem);
+      auto ixRemFloat =
+          RFFT2dConverter::castIndexToFloat(builder, loc, real_el_ty, ixRem);
+
+      auto yComponent = builder.create<arith::DivFOp>(loc, iyRemFloat, constH);
+      auto xComponent = builder.create<arith::DivFOp>(loc, ixRemFloat, constW);
+
       auto sumXY = builder.create<arith::AddFOp>(loc, yComponent, xComponent);
       auto angle = builder.create<arith::MulFOp>(loc, twoPi, sumXY);
+
       if (inverse.getValue()) {
         angle = builder.create<arith::MulFOp>(
             loc, angle,
@@ -2709,7 +2725,7 @@ void mlir::tosa::populateTosaToLinalgConversionPatterns(
       PointwiseConverter<tosa::AddOp>,
       PointwiseConverter<tosa::SubOp>,
       PointwiseConverter<tosa::MulOp>,
-      PointwiseConverter<tosa::DivOp>,
+      PointwiseConverter<tosa::IntDivOp>,
       PointwiseConverter<tosa::NegateOp>,
       PointwiseConverter<tosa::PowOp>,
       PointwiseConverter<tosa::ReciprocalOp>,
