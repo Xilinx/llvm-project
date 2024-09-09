@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -split-input-file
+// RUN: mlir-opt %s -split-input-file | FileCheck %s
 
 // CHECK: emitc.func @f
 // CHECK-SAME: %{{[^:]*}}: i32 ref
