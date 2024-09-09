@@ -1058,6 +1058,12 @@ LogicalResult GlobalOp::verify() {
   }
   if (getInitialValue().has_value()) {
     Attribute initValue = getInitialValue().value();
+    if (getReference() && !isa<emitc::OpaqueAttr>(initValue)) {
+      return emitOpError("global reference initial value must be an opaque "
+                         "attribute, got ")
+             << initValue;
+    }
+
     // Check that the type of the initial value is compatible with the type of
     // the global variable.
     if (auto elementsAttr = llvm::dyn_cast<ElementsAttr>(initValue)) {
@@ -1086,6 +1092,8 @@ LogicalResult GlobalOp::verify() {
                          "or opaque attribute, but got ")
              << initValue;
     }
+  } else if (getReference()) {
+    return emitOpError("global reference must be initialized");
   }
   if (getStaticSpecifier() && getExternSpecifier()) {
     return emitOpError("cannot have both static and extern specifiers");
