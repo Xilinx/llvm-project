@@ -138,7 +138,7 @@ func.func @cast_tensor(%arg : tensor<f32>) {
 // -----
 
 func.func @cast_array(%arg : !emitc.array<4xf32>) {
-    // expected-error @+1 {{'emitc.cast' op operand type '!emitc.array<4xf32>' and result type '!emitc.array<4xf32>' are cast incompatible}}
+    // expected-error @+1 {{'emitc.cast' op cast of array must bear a reference}}
     %1 = emitc.cast %arg: !emitc.array<4xf32> to !emitc.array<4xf32>
     return
 }

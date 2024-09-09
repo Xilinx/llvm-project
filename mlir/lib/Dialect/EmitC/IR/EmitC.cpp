@@ -228,6 +228,15 @@ LogicalResult emitc::AssignOp::verify() {
 bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
   Type input = inputs.front(), output = outputs.front();
 
+  // Cast to array is only possible from an array
+  if (isa<emitc::ArrayType>(input) != isa<emitc::ArrayType>(output))
+    return false;
+
+  // Arrays can be casted to arrays by reference.
+  if (isa<emitc::ArrayType>(input) && isa<emitc::ArrayType>(output))
+    return true;
+
+  // Scalars
   return (
       (emitc::isIntegerIndexOrOpaqueType(input) ||
        emitc::isSupportedFloatType(input) || isa<emitc::PointerType>(input)) &&
@@ -236,7 +245,15 @@ bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
 }
 
 LogicalResult CastOp::verify() {
-  if (getReference())
+  bool isReference = getReference();
+
+  if (isa<emitc::ArrayType>(getDest().getType())) {
+    if (!isReference)
+      return emitOpError("cast of array must bear a reference");
+    return success();
+  }
+
+  if (isReference)
     return emitOpError("cast of value type must not bear a reference");
 
   return success();
@@ -954,6 +971,8 @@ LogicalResult emitc::ArrayType::verify(
   for (int64_t dim : shape) {
     if (dim < 0)
       return emitError() << "dimensions must have non-negative size";
+    if (dim == ShapedType::kDynamic)
+      return emitError() << "dimensions must have static size";
   }
 
   if (!elementType)

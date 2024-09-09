@@ -39,6 +39,11 @@ func.func @cast(%arg0: i32) {
   return
 }
 
+func.func @cast_array(%arg : !emitc.array<4xf32>) {
+    %1 = emitc.cast %arg: !emitc.array<4xf32> to !emitc.array<4xf32> ref
+    return
+}
+
 func.func @c() {
   %1 = "emitc.constant"(){value = 42 : i32} : () -> i32
   %2 = "emitc.constant"(){value = 42 : index} : () -> !emitc.size_t
