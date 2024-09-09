@@ -317,7 +317,7 @@ func.func @test_expression_multiple_results(%arg0: i32) -> i32 {
 
 // -----
 
-// expected-error @+1 {{'emitc.func' op requires zero or exactly one result, but has 2}}
+// expected-error @+1 {{expected ')'}}
 emitc.func @multiple_results(%0: i32) -> (i32, i32) {
   emitc.return %0 : i32
 }
@@ -450,3 +450,13 @@ func.func @use_global() {
   %0 = emitc.get_global @myglobal : f32
   return
 }
+
+// -----
+
+// expected-error @+1 {{'emitc.global' op global reference initial value must be an opaque attribute, got dense<128>}}
+emitc.global const @myref : !emitc.array<2xi16> = dense<128> ref
+
+// -----
+
+// expected-error @+1 {{'emitc.global' op global reference must be initialized}}
+emitc.global const @myref : !emitc.array<2xi16> ref
