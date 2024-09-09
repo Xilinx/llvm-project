@@ -244,10 +244,14 @@ void printFunctionSignature(OpAsmPrinter &p, FuncOp op, ArrayRef<Type> argTypes,
 
     // Exclude reference attribute if there is to replace it by ref
     SmallVector<NamedAttribute> attrs;
+    bool isReference = false;
     if (argAttrs) {
       for (auto attr : llvm::cast<DictionaryAttr>(argAttrs[i]).getValue()) {
-        if (attr.getName() != emitc::getReferenceAttributeName())
+        if (attr.getName() != emitc::getReferenceAttributeName()) {
           attrs.push_back(attr);
+        } else {
+          isReference = true;
+        }
       }
     }
 
@@ -258,6 +262,9 @@ void printFunctionSignature(OpAsmPrinter &p, FuncOp op, ArrayRef<Type> argTypes,
       if (argAttrs)
         p.printOptionalAttrDict(attrs);
     }
+
+    if (isReference)
+      p << " ref";
   }
 
   if (isVariadic) {
