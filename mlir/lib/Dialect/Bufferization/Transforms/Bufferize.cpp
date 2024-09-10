@@ -227,6 +227,7 @@ struct OneShotBufferizePass
       opt.testAnalysisOnly = testAnalysisOnly;
       opt.bufferizeFunctionBoundaries = bufferizeFunctionBoundaries;
       opt.bufferizeBodilessFunctionResults = bufferizeBodilessFunctionResults;
+      opt.checkParallelRegions = checkParallelRegions;
       opt.noAnalysisFuncFilter = noAnalysisFuncFilter;
 
       // Configure type converter.
