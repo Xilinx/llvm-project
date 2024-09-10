@@ -8,6 +8,7 @@
 
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/EmitC/IR/EmitCTraits.h"
+#include "mlir/Dialect/EmitC/IR/FunctionOpAssembly.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -122,6 +123,8 @@ bool mlir::emitc::isPointerWideType(Type type) {
       type);
 }
 
+StringRef mlir::emitc::getReferenceAttributeName() { return "emitc.reference"; }
+
 /// Check that the type of the initial value is compatible with the operations
 /// result type.
 static LogicalResult verifyInitializationAttribute(Operation *op,
@@ -225,11 +228,35 @@ LogicalResult emitc::AssignOp::verify() {
 bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
   Type input = inputs.front(), output = outputs.front();
 
+  // Cast to array is only possible from an array
+  if (isa<emitc::ArrayType>(input) != isa<emitc::ArrayType>(output))
+    return false;
+
+  // Arrays can be casted to arrays by reference.
+  if (isa<emitc::ArrayType>(input) && isa<emitc::ArrayType>(output))
+    return true;
+
+  // Scalars
   return (
       (emitc::isIntegerIndexOrOpaqueType(input) ||
        emitc::isSupportedFloatType(input) || isa<emitc::PointerType>(input)) &&
       (emitc::isIntegerIndexOrOpaqueType(output) ||
        emitc::isSupportedFloatType(output) || isa<emitc::PointerType>(output)));
+}
+
+LogicalResult CastOp::verify() {
+  bool isReference = getReference();
+
+  if (isa<emitc::ArrayType>(getDest().getType())) {
+    if (!isReference)
+      return emitOpError("cast of array must bear a reference");
+    return success();
+  }
+
+  if (isReference)
+    return emitOpError("cast of value type must not bear a reference");
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -518,16 +545,15 @@ ParseResult FuncOp::parse(OpAsmParser &parser, OperationState &result) {
          function_interface_impl::VariadicFlag,
          std::string &) { return builder.getFunctionType(argTypes, results); };
 
-  return function_interface_impl::parseFunctionOp(
-      parser, result, /*allowVariadic=*/false,
-      getFunctionTypeAttrName(result.name), buildFuncType,
-      getArgAttrsAttrName(result.name), getResAttrsAttrName(result.name));
+  return parseFunctionOp(parser, result, /*allowVariadic=*/false,
+                         getFunctionTypeAttrName(result.name), buildFuncType,
+                         getArgAttrsAttrName(result.name),
+                         getResAttrsAttrName(result.name));
 }
 
 void FuncOp::print(OpAsmPrinter &p) {
-  function_interface_impl::printFunctionOp(
-      p, *this, /*isVariadic=*/false, getFunctionTypeAttrName(),
-      getArgAttrsAttrName(), getResAttrsAttrName());
+  printFunctionOp(p, *this, /*isVariadic=*/false, getFunctionTypeAttrName(),
+                  getArgAttrsAttrName(), getResAttrsAttrName());
 }
 
 LogicalResult FuncOp::verify() {
@@ -945,6 +971,8 @@ LogicalResult emitc::ArrayType::verify(
   for (int64_t dim : shape) {
     if (dim < 0)
       return emitError() << "dimensions must have non-negative size";
+    if (dim == ShapedType::kDynamic)
+      return emitError() << "dimensions must have static size";
   }
 
   if (!elementType)
@@ -1029,6 +1057,12 @@ LogicalResult GlobalOp::verify() {
   }
   if (getInitialValue().has_value()) {
     Attribute initValue = getInitialValue().value();
+    if (getReference() && !isa<emitc::OpaqueAttr>(initValue)) {
+      return emitOpError("global reference initial value must be an opaque "
+                         "attribute, got ")
+             << initValue;
+    }
+
     // Check that the type of the initial value is compatible with the type of
     // the global variable.
     if (auto elementsAttr = llvm::dyn_cast<ElementsAttr>(initValue)) {
@@ -1057,6 +1091,8 @@ LogicalResult GlobalOp::verify() {
                          "or opaque attribute, but got ")
              << initValue;
     }
+  } else if (getReference()) {
+    return emitOpError("global reference must be initialized");
   }
   if (getStaticSpecifier() && getExternSpecifier()) {
     return emitOpError("cannot have both static and extern specifiers");
