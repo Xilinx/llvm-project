@@ -18,11 +18,15 @@ let isCodeGenOnly=1 in {
   def ASSIGN_TYPE: Pseudo<(outs ANYID:$dst_id), (ins ANYID:$src_id, TYPE:$src_ty)>;
   def DECL_TYPE: Pseudo<(outs ANYID:$dst_id), (ins ANYID:$src_id, TYPE:$src_ty)>;
   def GET_ID: Pseudo<(outs ID:$dst_id), (ins ANYID:$src)>;
+  def GET_ID64: Pseudo<(outs ID64:$dst_id), (ins ANYID:$src)>;
   def GET_fID: Pseudo<(outs fID:$dst_id), (ins ANYID:$src)>;
-  def GET_pID: Pseudo<(outs pID:$dst_id), (ins ANYID:$src)>;
+  def GET_fID64: Pseudo<(outs fID64:$dst_id), (ins ANYID:$src)>;
+  def GET_pID32: Pseudo<(outs pID32:$dst_id), (ins ANYID:$src)>;
+  def GET_pID64: Pseudo<(outs pID64:$dst_id), (ins ANYID:$src)>;
   def GET_vID: Pseudo<(outs vID:$dst_id), (ins ANYID:$src)>;
   def GET_vfID: Pseudo<(outs vfID:$dst_id), (ins ANYID:$src)>;
-  def GET_vpID: Pseudo<(outs vpID:$dst_id), (ins ANYID:$src)>;
+  def GET_vpID32: Pseudo<(outs vpID32:$dst_id), (ins ANYID:$src)>;
+  def GET_vpID64: Pseudo<(outs vpID64:$dst_id), (ins ANYID:$src)>;
 }
 
 def SPVTypeBin : SDTypeProfile<1, 2, []>;
@@ -66,8 +70,10 @@ multiclass TernOpTypedGen<string name, bits<16> opCode, SDNode node, bit genP = 
     def SIVCond: TernOpTyped<name, opCode, vID, ID, node>;
   }
   if genP then {
-    def SPSCond: TernOpTyped<name, opCode, ID, pID, node>;
-    def SPVCond: TernOpTyped<name, opCode, vID, pID, node>;
+    def SPSCond32: TernOpTyped<name, opCode, ID, pID32, node>;
+    def SPVCond32: TernOpTyped<name, opCode, vID, pID32, node>;
+    def SPSCond64: TernOpTyped<name, opCode, ID, pID64, node>;
+    def SPVCond64: TernOpTyped<name, opCode, vID, pID64, node>;
   }
   if genV then {
     if genF then {
@@ -79,8 +85,10 @@ multiclass TernOpTypedGen<string name, bits<16> opCode, SDNode node, bit genP = 
       def VIVCond: TernOpTyped<name, opCode, vID, vID, node>;
     }
     if genP then {
-      def VPSCond: TernOpTyped<name, opCode, ID, vpID, node>;
-      def VPVCond: TernOpTyped<name, opCode, vID, vpID, node>;
+      def VPSCond32: TernOpTyped<name, opCode, ID, vpID32, node>;
+      def VPVCond32: TernOpTyped<name, opCode, vID, vpID32, node>;
+      def VPSCond64: TernOpTyped<name, opCode, ID, vpID64, node>;
+      def VPVCond64: TernOpTyped<name, opCode, vID, vpID64, node>;
     }
   }
 }
@@ -609,7 +617,7 @@ def OpFwidthCoarse: UnOp<"OpFwidthCoarse", 215>;
 def OpPhi: Op<245, (outs ID:$res), (ins TYPE:$type, ID:$var0, ID:$block0, variable_ops),
                   "$res = OpPhi $type $var0 $block0">;
 def OpLoopMerge: Op<246, (outs), (ins ID:$merge, ID:$continue, LoopControl:$lc, variable_ops),
-                  "OpLoopMerge $merge $merge $continue $lc">;
+                  "OpLoopMerge $merge $continue $lc">;
 def OpSelectionMerge: Op<247, (outs), (ins ID:$merge, SelectionControl:$sc),
                   "OpSelectionMerge $merge $sc">;
 def OpLabel: Op<248, (outs ID:$label), (ins), "$label = OpLabel">;
@@ -796,6 +804,11 @@ def OpGroupNonUniformRotateKHR: Op<4431, (outs ID:$res),
                   (ins TYPE:$type, ID:$scope, ID:$value, ID:$delta, variable_ops),
                   "$res = OpGroupNonUniformRotateKHR $type $scope $value $delta">;
 
+// SPV_KHR_shader_clock
+def OpReadClockKHR: Op<5056, (outs ID:$res),
+                  (ins TYPE:$type, ID:$scope),
+                  "$res = OpReadClockKHR $type $scope">;
+
 // 3.49.7, Constant-Creation Instructions
 
 //  - SPV_INTEL_function_pointers
@@ -843,3 +856,11 @@ def OpGroupLogicalOrKHR: Op<6407, (outs ID:$res), (ins TYPE:$type, ID:$scope, i3
                   "$res = OpGroupLogicalOrKHR $type $scope $groupOp $value">;
 def OpGroupLogicalXorKHR: Op<6408, (outs ID:$res), (ins TYPE:$type, ID:$scope, i32imm:$groupOp, ID:$value),
                   "$res = OpGroupLogicalXorKHR $type $scope $groupOp $value">;
+
+// Inline Assembly Instructions
+def OpAsmTargetINTEL: Op<5609, (outs ID:$res), (ins StringImm:$str), "$res = OpAsmTargetINTEL $str">;
+def OpAsmINTEL: Op<5610, (outs ID:$res), (ins TYPE:$type, TYPE:$asm_type, ID:$target,
+                                          StringImm:$asm, StringImm:$constraints),
+                  "$res = OpAsmINTEL $type $asm_type $target $asm">;
+def OpAsmCallINTEL: Op<5611, (outs ID:$res), (ins TYPE:$type, ID:$asm, variable_ops),
+                  "$res = OpAsmCallINTEL $type $asm">;

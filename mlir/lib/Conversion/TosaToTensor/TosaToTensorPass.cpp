@@ -45,7 +45,7 @@ public:
     target.addLegalDialect<tensor::TensorDialect>();
 
     TypeConverter converter;
-    mlir::tosa::populateTosaToLinalgTypeConversion(converter);
+    mlir::tosa::populateTosaTypeConversion(converter);
 
     mlir::tosa::populateTosaToTensorConversionPatterns(converter, &patterns);
 

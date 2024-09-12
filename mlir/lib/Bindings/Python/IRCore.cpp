@@ -241,7 +241,20 @@ struct PyGlobalDebugFlag {
     // Debug flags.
     py::class_<PyGlobalDebugFlag>(m, "_GlobalDebug", py::module_local())
         .def_property_static("flag", &PyGlobalDebugFlag::get,
-                             &PyGlobalDebugFlag::set, "LLVM-wide debug flag");
+                             &PyGlobalDebugFlag::set, "LLVM-wide debug flag")
+        .def_static(
+            "set_types",
+            [](const std::string &type) {
+              mlirSetGlobalDebugType(type.c_str());
+            },
+            "types"_a, "Sets specific debug types to be produced by LLVM")
+        .def_static("set_types", [](const std::vector<std::string> &types) {
+          std::vector<const char *> pointers;
+          pointers.reserve(types.size());
+          for (const std::string &str : types)
+            pointers.push_back(str.c_str());
+          mlirSetGlobalDebugTypes(pointers.data(), pointers.size());
+        });
   }
 };
 
@@ -675,6 +688,7 @@ void PyMlirContext::clearOperationsInside(PyOperationBase &op) {
       data->rootOp.getOperation().getContext()->clearOperation(op);
     else
       data->rootSeen = true;
+    return MlirWalkResult::MlirWalkResultAdvance;
   };
   mlirOperationWalk(op.getOperation(), invalidatingCallback,
                     static_cast<void *>(&data), MlirWalkPreOrder);
@@ -682,6 +696,17 @@ void PyMlirContext::clearOperationsInside(PyOperationBase &op) {
 void PyMlirContext::clearOperationsInside(MlirOperation op) {
   PyOperationRef opRef = PyOperation::forOperation(getRef(), op);
   clearOperationsInside(opRef->getOperation());
+}
+
+void PyMlirContext::clearOperationAndInside(PyOperationBase &op) {
+  MlirOperationWalkCallback invalidatingCallback = [](MlirOperation op,
+                                                      void *userData) {
+    PyMlirContextRef &contextRef = *static_cast<PyMlirContextRef *>(userData);
+    contextRef->clearOperation(op);
+    return MlirWalkResult::MlirWalkResultAdvance;
+  };
+  mlirOperationWalk(op.getOperation(), invalidatingCallback,
+                    &op.getOperation().getContext(), MlirWalkPreOrder);
 }
 
 size_t PyMlirContext::getLiveModuleCount() { return liveModules.size(); }
@@ -1112,12 +1137,16 @@ PyOperation::~PyOperation() {
   // If the operation has already been invalidated there is nothing to do.
   if (!valid)
     return;
-  auto &liveOperations = getContext()->liveOperations;
-  assert(liveOperations.count(operation.ptr) == 1 &&
-         "destroying operation not in live map");
-  liveOperations.erase(operation.ptr);
-  if (!isAttached()) {
-    mlirOperationDestroy(operation);
+
+  // Otherwise, invalidate the operation and remove it from live map when it is
+  // attached.
+  if (isAttached()) {
+    getContext()->clearOperation(*this);
+  } else {
+    // And destroy it when it is detached, i.e. owned by Python, in which case
+    // all nested operations must be invalidated at removed from the live map as
+    // well.
+    erase();
   }
 }
 
@@ -1250,6 +1279,38 @@ void PyOperationBase::writeBytecode(const py::object &fileObject,
     throw py::value_error((Twine("Unable to honor desired bytecode version ") +
                            Twine(*bytecodeVersion))
                               .str());
+}
+
+void PyOperationBase::walk(
+    std::function<MlirWalkResult(MlirOperation)> callback,
+    MlirWalkOrder walkOrder) {
+  PyOperation &operation = getOperation();
+  operation.checkValid();
+  struct UserData {
+    std::function<MlirWalkResult(MlirOperation)> callback;
+    bool gotException;
+    std::string exceptionWhat;
+    py::object exceptionType;
+  };
+  UserData userData{callback, false, {}, {}};
+  MlirOperationWalkCallback walkCallback = [](MlirOperation op,
+                                              void *userData) {
+    UserData *calleeUserData = static_cast<UserData *>(userData);
+    try {
+      return (calleeUserData->callback)(op);
+    } catch (py::error_already_set &e) {
+      calleeUserData->gotException = true;
+      calleeUserData->exceptionWhat = e.what();
+      calleeUserData->exceptionType = e.type();
+      return MlirWalkResult::MlirWalkResultInterrupt;
+    }
+  };
+  mlirOperationWalk(operation, walkCallback, &userData, walkOrder);
+  if (userData.gotException) {
+    std::string message("Exception raised in callback: ");
+    message.append(userData.exceptionWhat);
+    throw std::runtime_error(message);
+  }
 }
 
 py::object PyOperationBase::getAsm(bool binary,
@@ -1498,14 +1559,8 @@ py::object PyOperation::createOpView() {
 
 void PyOperation::erase() {
   checkValid();
-  // TODO: Fix memory hazards when erasing a tree of operations for which a deep
-  // Python reference to a child operation is live. All children should also
-  // have their `valid` bit set to false.
-  auto &liveOperations = getContext()->liveOperations;
-  if (liveOperations.count(operation.ptr))
-    liveOperations.erase(operation.ptr);
+  getContext()->clearOperationAndInside(*this);
   mlirOperationDestroy(operation);
-  valid = false;
 }
 
 //------------------------------------------------------------------------------
@@ -2515,6 +2570,15 @@ void mlir::python::populateIRCore(py::module &m) {
       .value("NOTE", MlirDiagnosticNote)
       .value("REMARK", MlirDiagnosticRemark);
 
+  py::enum_<MlirWalkOrder>(m, "WalkOrder", py::module_local())
+      .value("PRE_ORDER", MlirWalkPreOrder)
+      .value("POST_ORDER", MlirWalkPostOrder);
+
+  py::enum_<MlirWalkResult>(m, "WalkResult", py::module_local())
+      .value("ADVANCE", MlirWalkResultAdvance)
+      .value("INTERRUPT", MlirWalkResultInterrupt)
+      .value("SKIP", MlirWalkResultSkip);
+
   //----------------------------------------------------------------------------
   // Mapping of Diagnostics.
   //----------------------------------------------------------------------------
@@ -3045,7 +3109,9 @@ void mlir::python::populateIRCore(py::module &m) {
             return operation.createOpView();
           },
           "Detaches the operation from its parent block.")
-      .def("erase", [](PyOperationBase &self) { self.getOperation().erase(); });
+      .def("erase", [](PyOperationBase &self) { self.getOperation().erase(); })
+      .def("walk", &PyOperationBase::walk, py::arg("callback"),
+           py::arg("walk_order") = MlirWalkPostOrder);
 
   py::class_<PyOperation, PyOperationBase>(m, "Operation", py::module_local())
       .def_static("create", &PyOperation::create, py::arg("name"),
@@ -3180,6 +3246,19 @@ void mlir::python::populateIRCore(py::module &m) {
             return PyBlockArgumentList(self.getParentOperation(), self.get());
           },
           "Returns a list of block arguments.")
+      .def(
+          "add_argument",
+          [](PyBlock &self, const PyType &type, const PyLocation &loc) {
+            return mlirBlockAddArgument(self.get(), type, loc);
+          },
+          "Append an argument of the specified type to the block and returns "
+          "the newly added argument.")
+      .def(
+          "erase_argument",
+          [](PyBlock &self, unsigned index) {
+            return mlirBlockEraseArgument(self.get(), index);
+          },
+          "Erase the argument at 'index' and remove it from the argument list.")
       .def_property_readonly(
           "operations",
           [](PyBlock &self) {

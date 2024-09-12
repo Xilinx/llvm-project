@@ -47,6 +47,9 @@ bool isSupportedFloatType(mlir::Type type);
 /// Determines whether \p type is a emitc.size_t/ssize_t type.
 bool isPointerWideType(mlir::Type type);
 
+/// Give the name of the EmitC reference attribute.
+StringRef getReferenceAttributeName();
+
 } // namespace emitc
 } // namespace mlir
 

@@ -14,10 +14,6 @@
 namespace mlir {
 namespace math {
 #define GEN_PASS_DECL
-#include "mlir/Dialect/Math/Transforms/Passes.h.inc"
-#define GEN_PASS_DECL_MATHUPLIFTTOFMA
-#define GEN_PASS_DECL_MATHLEGALIZETOF32
-#include "mlir/Dialect/Math/Transforms/Passes.h.inc"
 #define GEN_PASS_REGISTRATION
 #include "mlir/Dialect/Math/Transforms/Passes.h.inc"
 } // namespace math
@@ -31,6 +27,9 @@ void populateExpandTanPattern(RewritePatternSet &patterns);
 void populateExpandSinhPattern(RewritePatternSet &patterns);
 void populateExpandCoshPattern(RewritePatternSet &patterns);
 void populateExpandTanhPattern(RewritePatternSet &patterns);
+void populateExpandAsinhPattern(RewritePatternSet &patterns);
+void populateExpandAcoshPattern(RewritePatternSet &patterns);
+void populateExpandAtanhPattern(RewritePatternSet &patterns);
 void populateExpandFmaFPattern(RewritePatternSet &patterns);
 void populateExpandFloorFPattern(RewritePatternSet &patterns);
 void populateExpandCeilFPattern(RewritePatternSet &patterns);

@@ -881,17 +881,17 @@ multiclass VPatMultiplyAddSDNode_VV_VX<SDNode op, string instruction_name> {
   }
 }
 
-multiclass VPatAVGADD_VV_VX_RM<SDNode vop, int vxrm> {
+multiclass VPatAVGADD_VV_VX_RM<SDNode vop, int vxrm, string suffix = ""> {
   foreach vti = AllIntegerVectors in {
     let Predicates = GetVTypePredicates<vti>.Predicates in {
       def : Pat<(vop (vti.Vector vti.RegClass:$rs1),
                      (vti.Vector vti.RegClass:$rs2)),
-                (!cast<Instruction>("PseudoVAADDU_VV_"#vti.LMul.MX)
+                (!cast<Instruction>("PseudoVAADD"#suffix#"_VV_"#vti.LMul.MX)
                   (vti.Vector (IMPLICIT_DEF)), vti.RegClass:$rs1, vti.RegClass:$rs2,
                   vxrm, vti.AVL, vti.Log2SEW, TA_MA)>;
       def : Pat<(vop (vti.Vector vti.RegClass:$rs1),
                      (vti.Vector (SplatPat (XLenVT GPR:$rs2)))),
-                (!cast<Instruction>("PseudoVAADDU_VX_"#vti.LMul.MX)
+                (!cast<Instruction>("PseudoVAADD"#suffix#"_VX_"#vti.LMul.MX)
                   (vti.Vector (IMPLICIT_DEF)), vti.RegClass:$rs1, GPR:$rs2,
                   vxrm, vti.AVL, vti.Log2SEW, TA_MA)>;
     }
@@ -1163,8 +1163,10 @@ defm : VPatBinarySDNode_VV_VX<ssubsat, "PseudoVSSUB">;
 defm : VPatBinarySDNode_VV_VX<usubsat, "PseudoVSSUBU">;
 
 // 12.2. Vector Single-Width Averaging Add and Subtract
-defm : VPatAVGADD_VV_VX_RM<avgflooru, 0b10>;
-defm : VPatAVGADD_VV_VX_RM<avgceilu, 0b00>;
+defm : VPatAVGADD_VV_VX_RM<avgfloors, 0b10>;
+defm : VPatAVGADD_VV_VX_RM<avgflooru, 0b10, suffix = "U">;
+defm : VPatAVGADD_VV_VX_RM<avgceils, 0b00>;
+defm : VPatAVGADD_VV_VX_RM<avgceilu, 0b00, suffix = "U">;
 
 // 15. Vector Mask Instructions
 
@@ -1392,7 +1394,7 @@ defm : VPatFPSetCCSDNode_VV_VF_FV<SETOLE, "PseudoVMFLE", "PseudoVMFGE">;
 // Floating-point vselects:
 // 11.15. Vector Integer Merge Instructions
 // 13.15. Vector Floating-Point Merge Instruction
-foreach fvti = AllFloatVectors in {
+foreach fvti = !listconcat(AllFloatVectors, AllBFloatVectors) in {
   defvar ivti = GetIntVTypeInfo<fvti>.Vti;
   let Predicates = GetVTypePredicates<ivti>.Predicates in {
     def : Pat<(fvti.Vector (vselect (fvti.Mask V0), fvti.RegClass:$rs1,
@@ -1410,7 +1412,9 @@ foreach fvti = AllFloatVectors in {
                    fvti.RegClass:$rs2, 0, (fvti.Mask V0), fvti.AVL, fvti.Log2SEW)>;
 
   }
-  let Predicates = GetVTypePredicates<fvti>.Predicates in 
+
+  let Predicates = !listconcat(GetVTypePredicates<GetFpVTypeInfo<fvti>.Vti>.Predicates,
+                               GetVTypeScalarPredicates<fvti>.Predicates) in 
     def : Pat<(fvti.Vector (vselect (fvti.Mask V0),
                                     (SplatFPOp fvti.ScalarRegClass:$rs1),
                                     fvti.RegClass:$rs2)),
@@ -1454,12 +1458,26 @@ foreach fvtiToFWti = AllWidenableFloatVectors in {
                 fvti.AVL, fvti.Log2SEW, TA_MA)>;
 }
 
+foreach fvtiToFWti = AllWidenableBFloatToFloatVectors in {
+  defvar fvti = fvtiToFWti.Vti;
+  defvar fwti = fvtiToFWti.Wti;
+  let Predicates = [HasVInstructionsBF16] in
+  def : Pat<(fvti.Vector (fpround (fwti.Vector fwti.RegClass:$rs1))),
+            (!cast<Instruction>("PseudoVFNCVTBF16_F_F_W_"#fvti.LMul.MX#"_E"#fvti.SEW)
+                (fvti.Vector (IMPLICIT_DEF)),
+                fwti.RegClass:$rs1,
+                // Value to indicate no rounding mode change in
+                // RISCVInsertReadWriteCSR
+                FRM_DYN,
+                fvti.AVL, fvti.Log2SEW, TA_MA)>;
+}
+
 //===----------------------------------------------------------------------===//
 // Vector Splats
 //===----------------------------------------------------------------------===//
 
 foreach fvti = !listconcat(AllFloatVectors, AllBFloatVectors) in {
-  let Predicates = !listconcat(GetVTypePredicates<fvti>.Predicates,
+  let Predicates = !listconcat(GetVTypePredicates<GetFpVTypeInfo<fvti>.Vti>.Predicates,
                                GetVTypeScalarPredicates<fvti>.Predicates) in
     def : Pat<(fvti.Vector (riscv_vfmv_v_f_vl undef, fvti.ScalarRegClass:$rs1, srcvalue)),
               (!cast<Instruction>("PseudoVFMV_V_"#fvti.ScalarSuffix#"_"#fvti.LMul.MX)

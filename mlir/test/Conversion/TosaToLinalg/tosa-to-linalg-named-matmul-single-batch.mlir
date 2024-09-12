@@ -8,7 +8,7 @@ func.func @matmul(%arg0: tensor<1x5x3xf32>, %arg1: tensor<1x3x6xf32>) -> (tensor
   // CHECK: %[[EMPTY:.*]] = tensor.empty() : tensor<5x6xf32>
   // CHECK: %[[FILL:.*]] = linalg.fill ins(%[[CONST]] : f32) outs(%[[EMPTY]] : tensor<5x6xf32>) -> tensor<5x6xf32>
   // CHECK: %[[MATMUL:.*]] = linalg.matmul ins(%[[COLLAPSE1]], %[[COLLAPSE2]] : tensor<5x3xf32>, tensor<3x6xf32>) outs(%[[FILL]] : tensor<5x6xf32>) -> tensor<5x6xf32>
-  // CHECK: tensor.expand_shape %[[MATMUL]] {{\[\[}}0, 1], [2]] : tensor<5x6xf32> into tensor<1x5x6xf32>
+  // CHECK: tensor.expand_shape %[[MATMUL]] {{\[\[}}0, 1], [2]] output_shape [1, 5, 6] : tensor<5x6xf32> into tensor<1x5x6xf32>
   %0 = "tosa.matmul"(%arg0, %arg1) : (tensor<1x5x3xf32>, tensor<1x3x6xf32>)  -> (tensor<1x5x6xf32>)
   return %0 : tensor<1x5x6xf32>
 }
@@ -25,7 +25,7 @@ func.func @matmul_quantized(%arg0: tensor<1x5x3xi8>, %arg1: tensor<1x3x6xi8>) ->
   // CHECK: %[[CONST1:.*]] = arith.constant 1
   // CHECK: %[[CONST2:.*]] = arith.constant 2
   // CHECK: %[[VAL_9:.*]] = linalg.quantized_matmul ins(%[[COLLAPSE1]], %[[COLLAPSE2]], %[[CONST1]], %[[CONST2]] : tensor<5x3xi8>, tensor<3x6xi8>, i32, i32) outs(%[[FILL]] : tensor<5x6xi32>) -> tensor<5x6xi32>
-  // CHECK:  tensor.expand_shape %[[VAL_9]] {{\[\[}}0, 1], [2]] : tensor<5x6xi32> into tensor<1x5x6xi32>
+  // CHECK:  tensor.expand_shape %[[VAL_9]] {{\[\[}}0, 1], [2]] output_shape [1, 5, 6] : tensor<5x6xi32> into tensor<1x5x6xi32>
   %0 = "tosa.matmul"(%arg0, %arg1) {quantization_info = #tosa.matmul_quant<a_zp = 1, b_zp = 2>} : (tensor<1x5x3xi8>, tensor<1x3x6xi8>) -> (tensor<1x5x6xi32>)
   return %0 : tensor<1x5x6xi32>
 }
@@ -56,7 +56,7 @@ func.func @matmul_dyn_independent_dim(%arg0: tensor<1x5x3xf32>, %arg1: tensor<1x
   // CHECK: %[[EMPTY:.*]] = tensor.empty(%[[DIM]]) : tensor<5x?xf32>
   // CHECK: %[[FILL:.*]] = linalg.fill ins(%[[CONST2]] : f32) outs(%[[EMPTY]] : tensor<5x?xf32>) -> tensor<5x?xf32>
   // CHECK: %[[MATMUL:.*]] = linalg.matmul ins(%[[COLLAPSE1]], %[[COLLAPSE2]] : tensor<5x3xf32>, tensor<3x?xf32>) outs(%[[FILL]] : tensor<5x?xf32>) -> tensor<5x?xf32>
-  // CHECK:           %[[VAL_10:.*]] = tensor.expand_shape %[[MATMUL]] {{\[\[}}0, 1], [2]] : tensor<5x?xf32> into tensor<1x5x?xf32>
+  // CHECK:           %[[VAL_10:.*]] = tensor.expand_shape %[[MATMUL]] {{\[\[}}0, 1], [2]] output_shape [1, 5, {{.*}}] : tensor<5x?xf32> into tensor<1x5x?xf32>
   %0 = "tosa.matmul"(%arg0, %arg1) : (tensor<1x5x3xf32>, tensor<1x3x?xf32>)  -> (tensor<1x5x?xf32>)
   return %0 : tensor<1x5x?xf32>
 }

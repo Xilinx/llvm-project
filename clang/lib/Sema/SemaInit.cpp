@@ -28,6 +28,7 @@
 #include "clang/Sema/Lookup.h"
 #include "clang/Sema/Ownership.h"
 #include "clang/Sema/SemaInternal.h"
+#include "clang/Sema/SemaObjC.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/PointerIntPair.h"
@@ -813,19 +814,13 @@ InitListChecker::FillInEmptyInitializations(const InitializedEntity &Entity,
 
   if (const RecordType *RType = ILE->getType()->getAs<RecordType>()) {
     const RecordDecl *RDecl = RType->getDecl();
-    if (RDecl->isUnion() && ILE->getInitializedFieldInUnion())
-      FillInEmptyInitForField(0, ILE->getInitializedFieldInUnion(),
-                              Entity, ILE, RequiresSecondPass, FillWithNoInit);
-    else if (RDecl->isUnion() && isa<CXXRecordDecl>(RDecl) &&
-             cast<CXXRecordDecl>(RDecl)->hasInClassInitializer()) {
-      for (auto *Field : RDecl->fields()) {
-        if (Field->hasInClassInitializer()) {
-          FillInEmptyInitForField(0, Field, Entity, ILE, RequiresSecondPass,
-                                  FillWithNoInit);
-          break;
-        }
-      }
+    if (RDecl->isUnion() && ILE->getInitializedFieldInUnion()) {
+      FillInEmptyInitForField(0, ILE->getInitializedFieldInUnion(), Entity, ILE,
+                              RequiresSecondPass, FillWithNoInit);
     } else {
+      assert((!RDecl->isUnion() || !isa<CXXRecordDecl>(RDecl) ||
+              !cast<CXXRecordDecl>(RDecl)->hasInClassInitializer()) &&
+             "We should have computed initialized fields already");
       // The fields beyond ILE->getNumInits() are default initialized, so in
       // order to leave them uninitialized, the ILE is expanded and the extra
       // fields are then filled with NoInitExpr.
@@ -849,7 +844,7 @@ InitListChecker::FillInEmptyInitializations(const InitializedEntity &Entity,
       }
 
       for (auto *Field : RDecl->fields()) {
-        if (Field->isUnnamedBitfield())
+        if (Field->isUnnamedBitField())
           continue;
 
         if (hadError)
@@ -875,7 +870,7 @@ InitListChecker::FillInEmptyInitializations(const InitializedEntity &Entity,
 
   InitializedEntity ElementEntity = Entity;
   unsigned NumInits = ILE->getNumInits();
-  unsigned NumElements = NumInits;
+  uint64_t NumElements = NumInits;
   if (const ArrayType *AType = SemaRef.Context.getAsArrayType(ILE->getType())) {
     ElementType = AType->getElementType();
     if (const auto *CAType = dyn_cast<ConstantArrayType>(AType))
@@ -895,7 +890,7 @@ InitListChecker::FillInEmptyInitializations(const InitializedEntity &Entity,
     ElementType = ILE->getType();
 
   bool SkipEmptyInitChecks = false;
-  for (unsigned Init = 0; Init != NumElements; ++Init) {
+  for (uint64_t Init = 0; Init != NumElements; ++Init) {
     if (hadError)
       return;
 
@@ -1027,7 +1022,7 @@ int InitListChecker::numStructUnionElements(QualType DeclType) {
   if (auto *CXXRD = dyn_cast<CXXRecordDecl>(structDecl))
     InitializableMembers += CXXRD->getNumBases();
   for (const auto *Field : structDecl->fields())
-    if (!Field->isUnnamedBitfield())
+    if (!Field->isUnnamedBitField())
       ++InitializableMembers;
 
   if (structDecl->isUnion())
@@ -2163,19 +2158,22 @@ void InitListChecker::CheckStructUnionTypes(
         return;
       for (RecordDecl::field_iterator FieldEnd = RD->field_end();
            Field != FieldEnd; ++Field) {
-        if (Field->hasInClassInitializer()) {
+        if (Field->hasInClassInitializer() ||
+            (Field->isAnonymousStructOrUnion() &&
+             Field->getType()->getAsCXXRecordDecl()->hasInClassInitializer())) {
           StructuredList->setInitializedFieldInUnion(*Field);
           // FIXME: Actually build a CXXDefaultInitExpr?
           return;
         }
       }
+      llvm_unreachable("Couldn't find in-class initializer");
     }
 
     // Value-initialize the first member of the union that isn't an unnamed
     // bitfield.
     for (RecordDecl::field_iterator FieldEnd = RD->field_end();
          Field != FieldEnd; ++Field) {
-      if (!Field->isUnnamedBitfield()) {
+      if (!Field->isUnnamedBitField()) {
         CheckEmptyInitializable(
             InitializedEntity::InitializeMember(*Field, &Entity),
             IList->getEndLoc());
@@ -2196,7 +2194,7 @@ void InitListChecker::CheckStructUnionTypes(
 
     // Designated inits always initialize fields, so if we see one, all
     // remaining base classes have no explicit initializer.
-    if (Init && isa<DesignatedInitExpr>(Init))
+    if (isa_and_nonnull<DesignatedInitExpr>(Init))
       Init = nullptr;
 
     // C++ [over.match.class.deduct]p1.6:
@@ -2338,7 +2336,7 @@ void InitListChecker::CheckStructUnionTypes(
     if (Field->getType()->isIncompleteArrayType())
       break;
 
-    if (Field->isUnnamedBitfield()) {
+    if (Field->isUnnamedBitField()) {
       // Don't initialize unnamed bitfields, e.g. "int : 20;"
       ++Field;
       continue;
@@ -2398,7 +2396,7 @@ void InitListChecker::CheckStructUnionTypes(
       if (HasDesignatedInit && InitializedFields.count(*it))
         continue;
 
-      if (!it->isUnnamedBitfield() && !it->hasInClassInitializer() &&
+      if (!it->isUnnamedBitField() && !it->hasInClassInitializer() &&
           !it->getType()->isIncompleteArrayType()) {
         auto Diag = HasDesignatedInit
                         ? diag::warn_missing_designated_field_initializers
@@ -2414,7 +2412,7 @@ void InitListChecker::CheckStructUnionTypes(
   if (!StructuredList && Field != FieldEnd && !RD->isUnion() &&
       !Field->getType()->isIncompleteArrayType()) {
     for (; Field != FieldEnd && !hadError; ++Field) {
-      if (!Field->isUnnamedBitfield() && !Field->hasInClassInitializer())
+      if (!Field->isUnnamedBitField() && !Field->hasInClassInitializer())
         CheckEmptyInitializable(
             InitializedEntity::InitializeMember(*Field, &Entity),
             IList->getEndLoc());
@@ -2784,7 +2782,7 @@ InitListChecker::CheckDesignatedInitializer(const InitializedEntity &Entity,
     unsigned FieldIndex = NumBases;
 
     for (auto *FI : RD->fields()) {
-      if (FI->isUnnamedBitfield())
+      if (FI->isUnnamedBitField())
         continue;
       if (declaresSameEntity(KnownField, FI)) {
         KnownField = FI;
@@ -2858,7 +2856,7 @@ InitListChecker::CheckDesignatedInitializer(const InitializedEntity &Entity,
       // Find the field that we just initialized.
       FieldDecl *PrevField = nullptr;
       for (auto FI = RD->field_begin(); FI != RD->field_end(); ++FI) {
-        if (FI->isUnnamedBitfield())
+        if (FI->isUnnamedBitField())
           continue;
         if (*NextField != RD->field_end() &&
             declaresSameEntity(*FI, **NextField))
@@ -2976,7 +2974,7 @@ InitListChecker::CheckDesignatedInitializer(const InitializedEntity &Entity,
     // If this the first designator, our caller will continue checking
     // the rest of this struct/class/union subobject.
     if (IsFirstDesignator) {
-      if (Field != RD->field_end() && Field->isUnnamedBitfield())
+      if (Field != RD->field_end() && Field->isUnnamedBitField())
         ++Field;
 
       if (NextField)
@@ -5585,7 +5583,7 @@ static void TryOrBuildParenListInitialization(
     for (FieldDecl *FD : RD->fields()) {
       // Unnamed bitfields should not be initialized at all, either with an arg
       // or by default.
-      if (FD->isUnnamedBitfield())
+      if (FD->isUnnamedBitField())
         continue;
 
       InitializedEntity SubEntity =
@@ -6018,8 +6016,8 @@ static bool tryObjCWritebackConversion(Sema &S,
 
   // Handle write-back conversion.
   QualType ConvertedArgType;
-  if (!S.isObjCWritebackConversion(ArgType, Entity.getType(),
-                                   ConvertedArgType))
+  if (!S.ObjC().isObjCWritebackConversion(ArgType, Entity.getType(),
+                                          ConvertedArgType))
     return false;
 
   // We should copy unless we're passing to an argument explicitly
@@ -6211,10 +6209,10 @@ void InitializationSequence::InitializeFrom(Sema &S,
   if (Args.size() == 1) {
     Initializer = Args[0];
     if (S.getLangOpts().ObjC) {
-      if (S.CheckObjCBridgeRelatedConversions(Initializer->getBeginLoc(),
-                                              DestType, Initializer->getType(),
-                                              Initializer) ||
-          S.CheckConversionToObjCLiteral(DestType, Initializer))
+      if (S.ObjC().CheckObjCBridgeRelatedConversions(
+              Initializer->getBeginLoc(), DestType, Initializer->getType(),
+              Initializer) ||
+          S.ObjC().CheckConversionToObjCLiteral(DestType, Initializer))
         Args[0] = Initializer;
     }
     if (!isa<InitListExpr>(Initializer))
@@ -6352,7 +6350,7 @@ void InitializationSequence::InitializeFrom(Sema &S,
     // class member of array type from a parenthesized initializer list.
     else if (S.getLangOpts().CPlusPlus &&
              Entity.getKind() == InitializedEntity::EK_Member &&
-             Initializer && isa<InitListExpr>(Initializer)) {
+             isa_and_nonnull<InitListExpr>(Initializer)) {
       TryListInitialization(S, Entity, Kind, cast<InitListExpr>(Initializer),
                             *this, TreatUnavailableAsInvalid);
       AddParenthesizedArrayInitStep(DestType);
@@ -6576,12 +6574,12 @@ void InitializationSequence::InitializeFrom(Sema &S,
 
     AddPassByIndirectCopyRestoreStep(DestType, ShouldCopy);
   } else if (ICS.isBad()) {
-    DeclAccessPair dap;
-    if (isLibstdcxxPointerReturnFalseHack(S, Entity, Initializer)) {
+    if (isLibstdcxxPointerReturnFalseHack(S, Entity, Initializer))
       AddZeroInitializationStep(Entity.getType());
-    } else if (Initializer->getType() == Context.OverloadTy &&
-               !S.ResolveAddressOfOverloadedFunction(Initializer, DestType,
-                                                     false, dap))
+    else if (DeclAccessPair Found;
+             Initializer->getType() == Context.OverloadTy &&
+             !S.ResolveAddressOfOverloadedFunction(Initializer, DestType,
+                                                   /*Complain=*/false, Found))
       SetFailed(InitializationSequence::FK_AddressOfOverloadFailed);
     else if (Initializer->getType()->isFunctionType() &&
              isExprAnUnaddressableFunction(S, Initializer))
@@ -7753,9 +7751,9 @@ static void visitLocalsRetainedByReferenceBinding(IndirectLocalPath &Path,
     break;
   }
 
-  case Stmt::OMPArraySectionExprClass: {
+  case Stmt::ArraySectionExprClass: {
     visitLocalsRetainedByInitializer(Path,
-                                     cast<OMPArraySectionExpr>(Init)->getBase(),
+                                     cast<ArraySectionExpr>(Init)->getBase(),
                                      Visit, true, EnableLifetimeWarnings);
     break;
   }
@@ -7930,7 +7928,7 @@ static void visitLocalsRetainedByInitializer(IndirectLocalPath &Path,
         for (const auto *I : RD->fields()) {
           if (Index >= ILE->getNumInits())
             break;
-          if (I->isUnnamedBitfield())
+          if (I->isUnnamedBitField())
             continue;
           Expr *SubInit = ILE->getInit(Index);
           if (I->getType()->isReferenceType())
@@ -8340,8 +8338,17 @@ void Sema::checkInitializerLifetime(const InitializedEntity &Entity,
             << Entity.getType()->isReferenceType() << CLE->getInitializer() << 2
             << DiagRange;
       } else {
-        Diag(DiagLoc, diag::warn_ret_local_temp_addr_ref)
-         << Entity.getType()->isReferenceType() << DiagRange;
+        // P2748R5: Disallow Binding a Returned Glvalue to a Temporary.
+        // [stmt.return]/p6: In a function whose return type is a reference,
+        // other than an invented function for std::is_convertible ([meta.rel]),
+        // a return statement that binds the returned reference to a temporary
+        // expression ([class.temporary]) is ill-formed.
+        if (getLangOpts().CPlusPlus26 && Entity.getType()->isReferenceType())
+          Diag(DiagLoc, diag::err_ret_local_temp_ref)
+              << Entity.getType()->isReferenceType() << DiagRange;
+        else
+          Diag(DiagLoc, diag::warn_ret_local_temp_addr_ref)
+              << Entity.getType()->isReferenceType() << DiagRange;
       }
       break;
     }
@@ -8786,7 +8793,7 @@ ExprResult InitializationSequence::Perform(Sema &S,
   // constant expressions here in order to perform narrowing checks =(
   EnterExpressionEvaluationContext Evaluated(
       S, EnterExpressionEvaluationContext::InitList,
-      CurInit.get() && isa<InitListExpr>(CurInit.get()));
+      isa_and_nonnull<InitListExpr>(CurInit.get()));
 
   // C++ [class.abstract]p2:
   //   no objects of an abstract class can be created except as subobjects
@@ -9057,11 +9064,11 @@ ExprResult InitializationSequence::Perform(Sema &S,
         }
       }
 
-      Sema::CheckedConversionKind CCK
-        = Kind.isCStyleCast()? Sema::CCK_CStyleCast
-        : Kind.isFunctionalCast()? Sema::CCK_FunctionalCast
-        : Kind.isExplicitCast()? Sema::CCK_OtherCast
-        : Sema::CCK_ImplicitConversion;
+      CheckedConversionKind CCK =
+          Kind.isCStyleCast()       ? CheckedConversionKind::CStyleCast
+          : Kind.isFunctionalCast() ? CheckedConversionKind::FunctionalCast
+          : Kind.isExplicitCast()   ? CheckedConversionKind::OtherCast
+                                    : CheckedConversionKind::Implicit;
       ExprResult CurInitExprRes =
         S.PerformImplicitConversion(CurInit.get(), Step->Type, *Step->ICS,
                                     getAssignmentAction(Entity), CCK);
@@ -9532,7 +9539,7 @@ static bool DiagnoseUninitializedReference(Sema &S, SourceLocation Loc,
     return false;
 
   for (const auto *FI : RD->fields()) {
-    if (FI->isUnnamedBitfield())
+    if (FI->isUnnamedBitField())
       continue;
 
     if (DiagnoseUninitializedReference(S, FI->getLocation(), FI->getType())) {
@@ -9566,12 +9573,12 @@ static void emitBadConversionNotes(Sema &S, const InitializedEntity &entity,
 
     // Emit a possible note about the conversion failing because the
     // operand is a message send with a related result type.
-    S.EmitRelatedResultTypeNote(op);
+    S.ObjC().EmitRelatedResultTypeNote(op);
 
     // Emit a possible note about a return failing because we're
     // expecting a related result type.
     if (entity.getKind() == InitializedEntity::EK_Result)
-      S.EmitRelatedResultTypeNoteForReturn(destType);
+      S.ObjC().EmitRelatedResultTypeNoteForReturn(destType);
   }
   QualType fromType = op->getType();
   QualType fromPointeeType = fromType.getCanonicalType()->getPointeeType();
@@ -9632,6 +9639,8 @@ bool InitializationSequence::Diagnose(Sema &S,
   if (!Failed())
     return false;
 
+  QualType DestType = Entity.getType();
+
   // When we want to diagnose only one element of a braced-init-list,
   // we need to factor it out.
   Expr *OnlyArg;
@@ -9641,11 +9650,21 @@ bool InitializationSequence::Diagnose(Sema &S,
       OnlyArg = List->getInit(0);
     else
       OnlyArg = Args[0];
+
+    if (OnlyArg->getType() == S.Context.OverloadTy) {
+      DeclAccessPair Found;
+      if (FunctionDecl *FD = S.ResolveAddressOfOverloadedFunction(
+              OnlyArg, DestType.getNonReferenceType(), /*Complain=*/false,
+              Found)) {
+        if (Expr *Resolved =
+                S.FixOverloadedFunctionReference(OnlyArg, Found, FD).get())
+          OnlyArg = Resolved;
+      }
+    }
   }
   else
     OnlyArg = nullptr;
 
-  QualType DestType = Entity.getType();
   switch (Failure) {
   case FK_TooManyInitsForReference:
     // FIXME: Customize for the initialized entity?
@@ -10789,8 +10808,6 @@ QualType Sema::DeduceTemplateSpecializationFromInitializer(
 
   // FIXME: Perform "exact type" matching first, per CWG discussion?
   //        Or implement this via an implied 'T(T) -> T' deduction guide?
-
-  // FIXME: Do we need/want a std::initializer_list<T> special case?
 
   // Look up deduction guides, including those synthesized from constructors.
   //

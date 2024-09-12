@@ -645,7 +645,7 @@ LazyValueInfoImpl::solveBlockValueImpl(Value *Val, BasicBlock *BB) {
   // instruction is placed, even if it could legally be hoisted much higher.
   // That is unfortunate.
   PointerType *PT = dyn_cast<PointerType>(BBI->getType());
-  if (PT && isKnownNonZero(BBI, /*Depth=*/0, DL))
+  if (PT && isKnownNonZero(BBI, DL))
     return ValueLatticeElement::getNot(ConstantPointerNull::get(PT));
 
   if (BBI->getType()->isIntegerTy()) {
@@ -1116,9 +1116,6 @@ LazyValueInfoImpl::getValueFromSimpleICmpCondition(CmpInst::Predicate Pred,
     if (!R)
       return std::nullopt;
     RHSRange = toConstantRange(*R, RHS->getType());
-  } else if (Instruction *I = dyn_cast<Instruction>(RHS)) {
-    if (auto *Ranges = I->getMetadata(LLVMContext::MD_range))
-      RHSRange = getConstantRangeFromMetadata(*Ranges);
   }
 
   ConstantRange TrueValues =
@@ -1863,8 +1860,7 @@ LazyValueInfo::getPredicateAt(unsigned Pred, Value *V, Constant *C,
   Module *M = CxtI->getModule();
   const DataLayout &DL = M->getDataLayout();
   if (V->getType()->isPointerTy() && C->isNullValue() &&
-      isKnownNonZero(V->stripPointerCastsSameRepresentation(), /*Depth=*/0,
-                     DL)) {
+      isKnownNonZero(V->stripPointerCastsSameRepresentation(), DL)) {
     if (Pred == ICmpInst::ICMP_EQ)
       return LazyValueInfo::False;
     else if (Pred == ICmpInst::ICMP_NE)

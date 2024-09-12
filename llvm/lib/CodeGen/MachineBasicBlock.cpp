@@ -1330,9 +1330,9 @@ MachineBasicBlock *MachineBasicBlock::SplitCriticalEdge(
     LIS->repairIntervalsInRange(this, getFirstTerminator(), end(), UsedRegs);
   }
 
-  if (MachineDominatorTree *MDT =
-          P.getAnalysisIfAvailable<MachineDominatorTree>())
-    MDT->recordSplitCriticalEdge(this, Succ, NMBB);
+  if (auto *MDTWrapper =
+          P.getAnalysisIfAvailable<MachineDominatorTreeWrapperPass>())
+    MDTWrapper->getDomTree().recordSplitCriticalEdge(this, Succ, NMBB);
 
   if (MachineLoopInfo *MLI = P.getAnalysisIfAvailable<MachineLoopInfo>())
     if (MachineLoop *TIL = MLI->getLoopFor(this)) {
@@ -1726,6 +1726,12 @@ MachineBasicBlock::getEndClobberMask(const TargetRegisterInfo *TRI) const {
 
 void MachineBasicBlock::clearLiveIns() {
   LiveIns.clear();
+}
+
+void MachineBasicBlock::clearLiveIns(
+    std::vector<RegisterMaskPair> &OldLiveIns) {
+  assert(OldLiveIns.empty() && "Vector must be empty");
+  std::swap(LiveIns, OldLiveIns);
 }
 
 MachineBasicBlock::livein_iterator MachineBasicBlock::livein_begin() const {
