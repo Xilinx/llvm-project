@@ -802,7 +802,7 @@ func.func @canonicalize_optimize_sqrt_reciprocal_tile_no_match(%arg0: tensor<1x5
 
 // -----
 
-// CHECK-LABEL
+// CHECK-LABEL: @fold_log_exp
 func.func @fold_log_exp(%arg0: tensor<?x1xf32>) -> tensor<?x1xf32> {
   // CHECK: return %arg{{.*}} : tensor<?x1xf32>
   %0 = tosa.exp %arg0 : (tensor<?x1xf32>) -> tensor<?x1xf32>
