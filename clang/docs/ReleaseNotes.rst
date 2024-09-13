@@ -115,6 +115,7 @@ AST Dumping Potentially Breaking Changes
 ----------------------------------------
 
 - The text ast-dumper has improved printing of TemplateArguments.
+- The text decl-dumper prints template parameters' trailing requires expressions now.
 
 Clang Frontend Potentially Breaking Changes
 -------------------------------------------
@@ -1110,8 +1111,6 @@ clang-format
 - Adds ``AllowShortCaseExpressionOnASingleLine`` option.
 - Adds ``AlignCaseArrows`` suboption to ``AlignConsecutiveShortCaseStatements``.
 - Adds ``LeftWithLastLine`` suboption to ``AlignEscapedNewlines``.
-- Adds ``KeepEmptyLines`` option to deprecate ``KeepEmptyLinesAtEOF``
-  and ``KeepEmptyLinesAtTheStartOfBlocks``.
 
 libclang
 --------
