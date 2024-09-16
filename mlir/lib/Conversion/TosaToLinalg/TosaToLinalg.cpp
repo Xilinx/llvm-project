@@ -191,7 +191,8 @@ static Value createLinalgBodyCalculationForElementwiseOp(
     Value max = rewriter.create<arith::ConstantIntOp>(
         loc, APInt::getSignedMaxValue(inputBitWidth).getSExtValue(),
         intermediateType);
-    auto clamp = clampIntHelper(loc, sub, min, max, rewriter);
+    auto clamp =
+        clampIntHelper(loc, sub, min, max, rewriter, /*isUnsigned=*/false);
 
     // Truncate to the final value.
     return rewriter.create<arith::TruncIOp>(loc, elementTy, clamp);
@@ -402,24 +403,26 @@ static Value createLinalgBodyCalculationForElementwiseOp(
     int64_t max =
         cast<IntegerAttr>(op->getAttr("max_int")).getValue().getSExtValue();
 
+    int64_t minRepresentable = std::numeric_limits<int64_t>::min();
+    int64_t maxRepresentable = std::numeric_limits<int64_t>::max();
     if (intTy.isUnsignedInteger()) {
-      if (intTy.getIntOrFloatBitWidth() > 63) {
-        (void)rewriter.notifyMatchFailure(
-            op, "support for 64-bit or larger integers is not implemented");
-        return {};
+      minRepresentable = 0;
+      if (intTy.getIntOrFloatBitWidth() <= 63) {
+        maxRepresentable = (int64_t)APInt::getMaxValue(intTy.getIntOrFloatBitWidth())
+                          .getZExtValue();
       }
-      min = std::max(min, (int64_t)0);
-      max = std::min(max,
-                     (int64_t)APInt::getMaxValue(intTy.getIntOrFloatBitWidth())
-                         .getZExtValue());
-    } else {
-      min =
-          std::max(min, APInt::getSignedMinValue(intTy.getIntOrFloatBitWidth())
-                            .getSExtValue());
-      max =
-          std::min(max, APInt::getSignedMaxValue(intTy.getIntOrFloatBitWidth())
-                            .getSExtValue());
+    } else if(intTy.getIntOrFloatBitWidth() <= 64) {
+      // Ensure that min & max fit into signed n-bit constants.
+      minRepresentable = APInt::getSignedMinValue(intTy.getIntOrFloatBitWidth())
+                            .getSExtValue();
+      maxRepresentable = APInt::getSignedMaxValue(intTy.getIntOrFloatBitWidth())
+                            .getSExtValue();
     }
+    // Ensure that the bounds are representable as n-bit signed/unsigned integers.
+    min = std::max(min, minRepresentable);
+    max = std::max(max, minRepresentable);
+    min = std::min(min, maxRepresentable);
+    max = std::min(max, maxRepresentable);
 
     auto minVal = rewriter.create<arith::ConstantIntOp>(
         loc, min, intTy.getIntOrFloatBitWidth());
@@ -666,10 +669,8 @@ static Value expandRank(PatternRewriter &rewriter, Location loc, Value tensor,
 }
 
 static SmallVector<Value> expandInputRanks(PatternRewriter &rewriter,
-                                           Location loc, Operation *operation,
-                                           ValueRange operands) {
-  auto rank =
-      cast<RankedTensorType>(operation->getResultTypes().front()).getRank();
+                                           Location loc, ValueRange operands,
+                                           int64_t rank) {
   return llvm::map_to_vector(operands, [&](Value operand) {
     return expandRank(rewriter, loc, operand, rank);
   });
@@ -898,10 +899,10 @@ static LogicalResult
 emitElementwiseComputation(ConversionPatternRewriter &rewriter, Location loc,
                            Operation *operation, ValueRange operands,
                            ArrayRef<OpFoldResult> targetShape,
-                           const TypeConverter *converter) {
+                           const TypeConverter &converter) {
   // Generate output tensor
-  auto resultType = cast_or_null<RankedTensorType>(converter->convertType(
-      cast<RankedTensorType>(operation->getResultTypes().front())));
+  auto resultType = cast_or_null<RankedTensorType>(
+      converter.convertType(operation->getResultTypes().front()));
   if (!resultType) {
     return rewriter.notifyMatchFailure(operation, "failed to convert type");
   }
@@ -953,7 +954,7 @@ emitElementwiseComputation(ConversionPatternRewriter &rewriter, Location loc,
 static LogicalResult
 elementwiseMatchAndRewriteHelper(Operation *operation, ValueRange operands,
                                  ConversionPatternRewriter &rewriter,
-                                 const TypeConverter *converter) {
+                                 const TypeConverter &converter) {
 
   // Collect op properties
   assert(operation->getNumResults() == 1 && "elementwise op expects 1 result");
@@ -966,7 +967,9 @@ elementwiseMatchAndRewriteHelper(Operation *operation, ValueRange operands,
   // Lower operation
   IndexPool indexPool;
   auto loc = operation->getLoc();
-  auto expandedOperands = expandInputRanks(rewriter, loc, operation, operands);
+  auto rank =
+      cast<RankedTensorType>(operation->getResultTypes().front()).getRank();
+  auto expandedOperands = expandInputRanks(rewriter, loc, operands, rank);
   auto [targetShape, masterOperands] =
       computeTargetShape(rewriter, loc, indexPool, expandedOperands);
   auto broadcastOperands = broadcastDynamicDimensions(
@@ -1173,8 +1176,8 @@ public:
   LogicalResult
   matchAndRewrite(SrcOp op, OpAdaptor operands,
                   ConversionPatternRewriter &rewriter) const final {
-    return elementwiseMatchAndRewriteHelper(op, operands.getOperands(),
-                                            rewriter, this->getTypeConverter());
+    return elementwiseMatchAndRewriteHelper(
+        op, operands.getOperands(), rewriter, *this->getTypeConverter());
   }
 };
 
@@ -1398,7 +1401,7 @@ public:
               loc, nestedBuilder.getI32IntegerAttr(intMax));
 
           value = clampIntHelper(nestedLoc, value, intMinVal, intMaxVal,
-                                 nestedBuilder);
+                                 nestedBuilder, /*isUnsigned=*/false);
 
           if (outIntType.getWidth() < 32) {
             value = nestedBuilder.create<arith::TruncIOp>(
@@ -1772,7 +1775,7 @@ public:
 
           auto offset = b.create<arith::SelectOp>(pred, one, zeroI32);
           val = b.create<arith::AddIOp>(val, offset);
-          val = clampIntHelper(loc, val, zeroI32, max, b);
+          val = clampIntHelper(loc, val, zeroI32, max, b, /*isUnsigned=*/false);
           return b.create<arith::IndexCastOp>(b.getIndexType(), val);
         };
 
@@ -1793,8 +1796,10 @@ public:
                                   Value max, ImplicitLocOpBuilder &b) {
           val0 = in;
           val1 = b.create<arith::AddIOp>(val0, oneVal);
-          val0 = clampIntHelper(loc, val0, zeroI32, max, b);
-          val1 = clampIntHelper(loc, val1, zeroI32, max, b);
+          val0 =
+              clampIntHelper(loc, val0, zeroI32, max, b, /*isUnsigned=*/false);
+          val1 =
+              clampIntHelper(loc, val1, zeroI32, max, b, /*isUnsigned=*/false);
           val0 = b.create<arith::IndexCastOp>(b.getIndexType(), val0);
           val1 = b.create<arith::IndexCastOp>(b.getIndexType(), val1);
         };
@@ -2760,7 +2765,10 @@ void mlir::tosa::populateTosaToLinalgConversionPatterns(
       PointwiseConverter<tosa::CeilOp>,
       PointwiseConverter<tosa::FloorOp>,
       PointwiseConverter<tosa::ClampOp>,
-      PointwiseConverter<tosa::SigmoidOp>,
+      PointwiseConverter<tosa::SigmoidOp>
+        >(converter, patterns->getContext());
+
+  patterns->add<
       IdentityNConverter<tosa::IdentityOp>,
       ReduceConverter<tosa::ReduceAllOp>,
       ReduceConverter<tosa::ReduceAnyOp>,

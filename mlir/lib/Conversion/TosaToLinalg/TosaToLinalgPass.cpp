@@ -46,9 +46,6 @@ public:
   }
 
   void runOnOperation() override {
-    TypeConverter converter;
-    mlir::tosa::populateTosaToLinalgTypeConversion(converter);
-
     RewritePatternSet patterns(&getContext());
     ConversionTarget target(getContext());
     target.addLegalDialect<linalg::LinalgDialect, tensor::TensorDialect,
@@ -64,12 +61,15 @@ public:
     target.addLegalOp<tosa::SliceOp>();
     target.addLegalOp<tosa::ReshapeOp>();
     target.addLegalOp<tosa::PadOp>();
+    TypeConverter converter;
     target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
       return converter.isSignatureLegal(op.getFunctionType());
     });
     target.addDynamicallyLegalDialect<func::FuncDialect>(
         [&](Operation *op) { return converter.isLegal(op); });
     target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
+
+    tosa::populateTosaTypeConversion(converter);
 
     FunctionOpInterface func = getOperation();
     mlir::tosa::populateTosaToLinalgConversionPatterns(converter, &patterns);
