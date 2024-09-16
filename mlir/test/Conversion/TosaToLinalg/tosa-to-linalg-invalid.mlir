@@ -30,15 +30,6 @@ func.func @unranked_add(%arg0 : tensor<10x10xf32> , %arg1 : tensor<10x10xf32>, %
 
 // -----
 
-// CHECK-LABEL: @clamp_on_large_int
-func.func @clamp_on_large_int(%arg0: tensor<1xui64>) -> tensor<1xui64> {
-  // expected-error@+1 {{failed to legalize operation 'tosa.clamp'}}
-  %0 = tosa.clamp %arg0 {min_int = -1 : i64, max_int = 5 : i64, min_fp = 1.0 : f32, max_fp = 5.0 : f32} : (tensor<1xui64>) -> tensor<1xui64>
-  return %0 : tensor<1xui64>
-}
-
-// -----
-
 // CHECK-LABEL: @rfft2d_with_non_float_type
 func.func @rfft2d_with_non_float_type(%arg0 : tensor<1x1x1xi32>) -> (tensor<1x1x1xi32>, tensor<1x1x1xi32>) {
   // expected-error@+1 {{failed to legalize operation 'tosa.rfft2d'}}
