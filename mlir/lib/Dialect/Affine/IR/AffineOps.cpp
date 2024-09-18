@@ -2806,7 +2806,8 @@ LogicalResult AffineIfOp::verify() {
 
   // Verify that the operands are valid dimension/symbols.
   if (failed(verifyDimAndSymbolIdentifiers(*this, getOperands(),
-                                           condition.getNumDims(), true)))
+                                           condition.getNumDims(),
+                                           /*allowNonAffineDimOperands=*/true)))
     return failure();
 
   return success();
