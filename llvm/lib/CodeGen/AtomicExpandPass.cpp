@@ -21,7 +21,7 @@
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
 #include "llvm/CodeGen/AtomicExpand.h"
 #include "llvm/CodeGen/AtomicExpandUtils.h"
-#include "llvm/CodeGen/RuntimeLibcalls.h"
+#include "llvm/CodeGen/RuntimeLibcallUtil.h"
 #include "llvm/CodeGen/TargetLowering.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
@@ -142,7 +142,7 @@ struct ReplacementIRBuilder
   // Preserves the DebugLoc from I, and preserves still valid metadata.
   // Enable StrictFP builder mode when appropriate.
   explicit ReplacementIRBuilder(Instruction *I, const DataLayout &DL)
-      : IRBuilder(I->getContext(), DL,
+      : IRBuilder(I->getContext(), InstSimplifyFolder(DL),
                   IRBuilderCallbackInserter(
                       [this](Instruction *I) { addMMRAMD(I); })) {
     SetInsertPoint(I);
@@ -208,7 +208,7 @@ bool AtomicExpandImpl::run(Function &F, const TargetMachine *TM) {
   if (!Subtarget->enableAtomicExpand())
     return false;
   TLI = Subtarget->getTargetLowering();
-  DL = &F.getParent()->getDataLayout();
+  DL = &F.getDataLayout();
 
   SmallVector<Instruction *, 1> AtomicInsts;
 
@@ -1205,7 +1205,7 @@ Value *AtomicExpandImpl::insertRMWLLSCLoop(
   Function *F = BB->getParent();
 
   assert(AddrAlign >=
-             F->getParent()->getDataLayout().getTypeStoreSize(ResultTy) &&
+             F->getDataLayout().getTypeStoreSize(ResultTy) &&
          "Expected at least natural alignment at this point.");
 
   // Given: atomicrmw some_op iN* %addr, iN %incr ordering
