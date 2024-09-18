@@ -499,11 +499,13 @@ ParseResult mlir::affine::parseDimAndSymbolList(
 template <typename OpTy>
 static LogicalResult
 verifyDimAndSymbolIdentifiers(OpTy &op, Operation::operand_range operands,
-                              unsigned numDims) {
+                              unsigned numDims,
+                              bool allowNonAffineDimOperands = false) {
   unsigned opIt = 0;
   for (auto operand : operands) {
     if (opIt++ < numDims) {
-      if (!isValidDim(operand, getAffineScope(op)))
+      if (!isValidDim(operand, getAffineScope(op)) &&
+          !(allowNonAffineDimOperands && operand.getType().isIndex()))
         return op.emitOpError("operand cannot be used as a dimension id");
     } else if (!isValidSymbol(operand, getAffineScope(op))) {
       return op.emitOpError("operand cannot be used as a symbol");
@@ -2804,7 +2806,7 @@ LogicalResult AffineIfOp::verify() {
 
   // Verify that the operands are valid dimension/symbols.
   if (failed(verifyDimAndSymbolIdentifiers(*this, getOperands(),
-                                           condition.getNumDims())))
+                                           condition.getNumDims(), true)))
     return failure();
 
   return success();

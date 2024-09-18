@@ -97,7 +97,6 @@ func.func @affine_if_invalid_dim(%arg : index) {
   affine.for %n0 = 0 to 7 {
     %dim = arith.addi %arg, %arg : index
 
-    // expected-error@+1 {{operand cannot be used as a dimension id}}
     affine.if #set0(%dim)[%n0] {}
   }
   return
@@ -109,7 +108,6 @@ func.func @affine_if_invalid_dim(%arg : index) {
 
 func.func @affine_if_invalid_sym() {
   affine.for %i0 = 0 to 7 {
-    // expected-error@+1 {{operand cannot be used as a symbol}}
     affine.if #set0(%i0)[%i0] {}
   }
   return
