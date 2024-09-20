@@ -5,13 +5,11 @@
 func.func @memref_store(%v : f32, %i: index, %j: index) {
   // CHECK: %[[j:.*]] = builtin.unrealized_conversion_cast %[[argj]] : index to !emitc.size_t 
   // CHECK: %[[i:.*]] = builtin.unrealized_conversion_cast %[[argi]] : index to !emitc.size_t 
-  
-
-  // CHECK: %[[ALLOCA:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.array<4x8xf32>
+  // CHECK-NEXT: %[[ALLOCA:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.array<4x8xf32>
   %0 = memref.alloca() : memref<4x8xf32>
 
-  // CHECK: %[[SUBSCRIPT:.*]] = emitc.subscript %[[ALLOCA]][%[[i]], %[[j]]] : (!emitc.array<4x8xf32>, !emitc.size_t, !emitc.size_t) -> f32
-  // CHECK: emitc.assign %[[v]] : f32 to %[[SUBSCRIPT:.*]] : f32
+  // CHECK-NEXT: %[[SUBSCRIPT:.*]] = emitc.subscript %[[ALLOCA]][%[[i]], %[[j]]] : (!emitc.array<4x8xf32>, !emitc.size_t, !emitc.size_t) -> !emitc.lvalue<f32>
+  // CHECK-NEXT: emitc.assign %[[v]] : f32 to %[[SUBSCRIPT]] : <f32>
   memref.store %v, %0[%i, %j] : memref<4x8xf32>
   return
 }
@@ -23,16 +21,13 @@ func.func @memref_store(%v : f32, %i: index, %j: index) {
 func.func @memref_load(%i: index, %j: index) -> f32 {
   // CHECK: %[[j:.*]] = builtin.unrealized_conversion_cast %[[argj]] : index to !emitc.size_t
   // CHECK: %[[i:.*]] = builtin.unrealized_conversion_cast %[[argi]] : index to !emitc.size_t
-  
-
-  // CHECK: %[[ALLOCA:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.array<4x8xf32>
+  // CHECK-NEXT: %[[ALLOCA:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.array<4x8xf32>
   %0 = memref.alloca() : memref<4x8xf32>
 
-  // CHECK: %[[LOAD:.*]] = emitc.subscript %[[ALLOCA]][%[[i]], %[[j]]] : (!emitc.array<4x8xf32>, !emitc.size_t, !emitc.size_t) -> f32
-  // CHECK: %[[VAR:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> f32
-  // CHECK: emitc.assign %[[LOAD]] : f32 to %[[VAR]] : f32
+  // CHECK-NEXT: %[[SUBSCRIPT:.*]] = emitc.subscript %[[ALLOCA]][%[[i]], %[[j]]] : (!emitc.array<4x8xf32>, !emitc.size_t, !emitc.size_t) -> !emitc.lvalue<f32>
+  // CHECK-NEXT: %[[LOAD:.*]] = emitc.load %[[SUBSCRIPT]] : <f32>
   %1 = memref.load %0[%i, %j] : memref<4x8xf32>
-  // CHECK: return %[[VAR]] : f32
+  // CHECK-NEXT: return %[[LOAD]] : f32
   return %1 : f32
 }
 
@@ -41,14 +36,15 @@ func.func @memref_load(%i: index, %j: index) -> f32 {
 // CHECK-LABEL: globals
 module @globals {
   memref.global "private" constant @internal_global : memref<3x7xf32> = dense<4.0>
-  // CHECK: emitc.global static const @internal_global : !emitc.array<3x7xf32> = dense<4.000000e+00>
+  // CHECK-NEXT: emitc.global static const @internal_global : !emitc.array<3x7xf32> = dense<4.000000e+00>
   memref.global @public_global : memref<3x7xf32>
-  // CHECK: emitc.global extern @public_global : !emitc.array<3x7xf32>
+  // CHECK-NEXT: emitc.global extern @public_global : !emitc.array<3x7xf32>
   memref.global @uninitialized_global : memref<3x7xf32> = uninitialized
-  // CHECK: emitc.global extern @uninitialized_global : !emitc.array<3x7xf32>
+  // CHECK-NEXT: emitc.global extern @uninitialized_global : !emitc.array<3x7xf32>
 
+  // CHECK-LABEL: use_global
   func.func @use_global() {
-    // CHECK: emitc.get_global @public_global : !emitc.array<3x7xf32>
+    // CHECK-NEXT: emitc.get_global @public_global : !emitc.array<3x7xf32>
     %0 = memref.get_global @public_global : memref<3x7xf32>
     return
   }
@@ -66,12 +62,11 @@ func.func @memref_index_values(%i: index, %j: index) -> index {
   // CHECK: %[[ALLOCA:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.array<4x8x!emitc.size_t>
   %0 = memref.alloca() : memref<4x8xindex>
 
-  // CHECK: %[[LOAD:.*]] = emitc.subscript %[[ALLOCA]][%[[i]], %[[j]]] : (!emitc.array<4x8x!emitc.size_t>, !emitc.size_t, !emitc.size_t) -> !emitc.size_t
-  // CHECK: %[[VAR:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.size_t
-  // CHECK: emitc.assign %[[LOAD]] : !emitc.size_t to %[[VAR]] : !emitc.size_t
+  // CHECK: %[[SUB:.*]] = emitc.subscript %[[ALLOCA]][%[[i]], %[[j]]] : (!emitc.array<4x8x!emitc.size_t>, !emitc.size_t, !emitc.size_t) -> !emitc.lvalue<!emitc.size_t>
+  // CHECK: %[[LOAD:.*]] = emitc.load %[[SUB]] : <!emitc.size_t>
   %1 = memref.load %0[%i, %j] : memref<4x8xindex>
 
-  // CHECK: %[[CAST_RET:.*]] = builtin.unrealized_conversion_cast %[[VAR]] : !emitc.size_t to index
+  // CHECK: %[[CAST_RET:.*]] = builtin.unrealized_conversion_cast %[[LOAD]] : !emitc.size_t to index
   // CHECK: return %[[CAST_RET]] : index
   return %1 : index
 }
