@@ -132,22 +132,6 @@ func.func @illegal_f8E5M2FNUZ_type(%arg0: f8E5M2FNUZ, %arg1: f8E5M2FNUZ) {
 
 // -----
 
-func.func @illegal_f16_type(%arg0: f16, %arg1: f16) {
-    // expected-error @+1 {{'emitc.mul' op operand #0 must be floating-point type supported by EmitC or integer, index or opaque type supported by EmitC, but got 'f16'}}
-    %mul = "emitc.mul" (%arg0, %arg1) : (f16, f16) -> f16
-    return
-}
-
-// -----
-
-func.func @illegal_bf16_type(%arg0: bf16, %arg1: bf16) {
-    // expected-error @+1 {{'emitc.mul' op operand #0 must be floating-point type supported by EmitC or integer, index or opaque type supported by EmitC, but got 'bf16'}}
-    %mul = "emitc.mul" (%arg0, %arg1) : (bf16, bf16) -> bf16
-    return
-}
-
-// -----
-
 func.func @illegal_f80_type(%arg0: f80, %arg1: f80) {
     // expected-error @+1 {{'emitc.mul' op operand #0 must be floating-point type supported by EmitC or integer, index or opaque type supported by EmitC, but got 'f80'}}
     %mul = "emitc.mul" (%arg0, %arg1) : (f80, f80) -> f80
