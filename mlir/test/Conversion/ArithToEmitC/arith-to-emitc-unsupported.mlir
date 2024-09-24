@@ -136,23 +136,6 @@ func.func @arith_remui_vector(%arg0: vector<5xi32>, %arg1: vector<5xi32>) -> vec
 
 // -----
 
-func.func @arith_extf_to_bf16(%arg0: f8E4M3FN) {
-  // expected-error @+1 {{failed to legalize operation 'arith.extf'}}
-  %ext = arith.extf %arg0 : f8E4M3FN to bf16
-  return
-}
-
-// -----
-
-func.func @arith_extf_to_f16(%arg0: f8E4M3FN) {
-  // expected-error @+1 {{failed to legalize operation 'arith.extf'}}
-  %ext = arith.extf %arg0 : f8E4M3FN to f16
-  return
-}
-
-
-// -----
-
 func.func @arith_extf_to_tf32(%arg0: f8E4M3FN) {
   // expected-error @+1 {{failed to legalize operation 'arith.extf'}}
   %ext = arith.extf %arg0 : f8E4M3FN to tf32
@@ -188,22 +171,6 @@ func.func @arith_truncf_to_f80(%arg0: f128) {
 func.func @arith_truncf_to_tf32(%arg0: f64) {
   // expected-error @+1 {{failed to legalize operation 'arith.truncf'}}
   %trunc = arith.truncf %arg0 : f64 to tf32
-  return
-}
-
-// -----
-
-func.func @arith_truncf_to_f16(%arg0: f64) {
-  // expected-error @+1 {{failed to legalize operation 'arith.truncf'}}
-  %trunc = arith.truncf %arg0 : f64 to f16
-  return
-}
-
-// -----
-
-func.func @arith_truncf_to_bf16(%arg0: f64) {
-  // expected-error @+1 {{failed to legalize operation 'arith.truncf'}}
-  %trunc = arith.truncf %arg0 : f64 to bf16
   return
 }
 
