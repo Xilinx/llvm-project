@@ -14,6 +14,10 @@ The following convention is followed:
     or any of the C++ headers in which the type is defined.
 *   If `emitc.array` with a dimension of size zero, then the code
     requires [a GCC extension](https://gcc.gnu.org/onlinedocs/gcc/Zero-Length.html).
+*   If `_Float16` is used, the code requires the support of C additional
+    floating types.
+*   If `__bf16` is used, the code requires a compiler that supports it, such as 
+    GCC or Clang.
 *   Else the generated code is compatible with C99.
 
 These restrictions are neither inherent to the EmitC dialect itself nor to the
