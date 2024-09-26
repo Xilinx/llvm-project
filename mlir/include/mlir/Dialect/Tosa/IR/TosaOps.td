@@ -1010,7 +1010,7 @@ def Tosa_CosOp : Tosa_ElementwiseOp<"cos",
   }];
 
   let arguments = (ins
-    Tosa_FloatTensor:$input
+    Tosa_FloatTensor:$input1
   );
 
   let results = (outs
@@ -1189,7 +1189,7 @@ def Tosa_SinOp : Tosa_ElementwiseOp<"sin",
   }];
 
   let arguments = (ins
-    Tosa_FloatTensor:$input
+    Tosa_FloatTensor:$input1
   );
 
   let results = (outs
