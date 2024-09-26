@@ -800,8 +800,6 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
     MLIRContext *context, ::std::optional<Location> location,
     PadOp::Adaptor adaptor,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
-
-  Type inputType = getElementTypeOrSelf(adaptor.getInput1());
   ShapeAdaptor inputShape(adaptor.getInput1().getType());
   ShapeAdaptor paddingShape(adaptor.getPadding().getType());
   SmallVector<int64_t> outputShape;
@@ -822,8 +820,7 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
     }
 
     outputShape.resize(paddingShape.getDimSize(0), ShapedType::kDynamic);
-    inferredReturnShapes.push_back(
-        ShapedTypeComponents(outputShape, inputType));
+    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
     return success();
   }
 
@@ -831,8 +828,7 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
   // If the paddings value is not a constant, all dimensions must be dynamic.
   if (!matchPattern(adaptor.getPadding(), m_Constant(&paddings))) {
     outputShape.resize(inputShape.getRank(), ShapedType::kDynamic);
-    inferredReturnShapes.push_back(
-        ShapedTypeComponents(outputShape, inputType));
+    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
     return success();
   }
 
@@ -852,7 +848,7 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
                           paddingValues[i * 2 + 1]);
   }
 
-  inferredReturnShapes.push_back(ShapedTypeComponents(outputShape, inputType));
+  inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
   return success();
 }
 
@@ -1423,7 +1419,6 @@ REDUCE_SHAPE_INFER(tosa::ReduceProdOp)
 REDUCE_SHAPE_INFER(tosa::ReduceSumOp)
 #undef REDUCE_SHAPE_INFER
 COMPATIBLE_RETURN_TYPES(tosa::ConcatOp)
-COMPATIBLE_RETURN_TYPES(tosa::PadOp)
 #undef COMPATIBLE_RETURN_TYPES
 
 template <typename T>

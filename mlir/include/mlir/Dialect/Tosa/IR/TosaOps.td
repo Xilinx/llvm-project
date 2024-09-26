@@ -1579,7 +1579,7 @@ def Tosa_ConcatOp : Tosa_InferTensorTypeOp<"concat"> {
 //===----------------------------------------------------------------------===//
 // Operator: pad
 //===----------------------------------------------------------------------===//
-def Tosa_PadOp : Tosa_InferShapedTypeOp<"pad", [InferTensorType]> {
+def Tosa_PadOp : Tosa_InferShapedTypeOp<"pad"> {
   let summary = "Pads a tensor with value specified.";
 
   let description = [{
@@ -1619,13 +1619,6 @@ def Tosa_PadOp : Tosa_InferShapedTypeOp<"pad", [InferTensorType]> {
   let hasCanonicalizer = 1;
   let hasFolder = 1;
   let hasVerifier = 1;
-
-  let extraClassDeclaration = [{
-    /// Returns true when two result types are compatible for this op;
-    /// Method used by InferTypeOpInterface.
-    static bool isCompatibleReturnTypes(TypeRange l, TypeRange r);
-  }];
-
 }
 
 //===----------------------------------------------------------------------===//
