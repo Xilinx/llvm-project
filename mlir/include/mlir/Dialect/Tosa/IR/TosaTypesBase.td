@@ -90,13 +90,15 @@ def HasNo0Dimensions : And<[
     IsRankedTensorTypePred,
     CPred<"::llvm::all_of(::llvm::cast<::mlir::RankedTensorType>($_self).getShape(), [](auto v) { return v != 0; })">]>;
 
+// AMD: removed HasNo0Dimensions constraint below to allow lowerings
+// in onnx-mlir like onnx.Split.
 class TosaTensorOf<
     list<Type> allowedTypes, string summary = "tosa-conformant tensor">
-    : TensorOf<allowedTypes, [Or<[HasNo0Dimensions, IsUnrankedTensorTypePred]>], summary>;
+    : TensorOf<allowedTypes, [], summary>;
 
 class TosaRankedTensorOf<
     list<Type> allowedTypes, list<Pred> preds = [], string summary = "tosa-conformant ranked tensor">
-    : RankedTensorOf<allowedTypes, !listconcat([HasNo0Dimensions], preds), summary>;
+    : RankedTensorOf<allowedTypes, preds, summary>;
 
 class TosaUnrankedTensorOf<list<Type> allowedTypes, list<Pred> preds = [], string summary = "tosa-conformant unranked tensor">
     : UnrankedTensorOf<allowedTypes, preds, summary>;
