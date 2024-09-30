@@ -13,3 +13,11 @@ func.func @poison_tensor() {
   %1 = ub.poison : tensor<f32>
   return
 }
+
+// -----
+
+func.func @poison_vector() {
+  // expected-error @+1 {{failed to legalize operation 'ub.poison'}}
+  %1 = "ub.poison"() {value = #ub.poison} : () -> vector<4xi64>
+  return
+}
