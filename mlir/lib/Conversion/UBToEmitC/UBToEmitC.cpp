@@ -37,21 +37,15 @@ struct PoisonOpLowering : public OpConversionPattern<ub::PoisonOp> {
     if (!convertedType)
       return rewriter.notifyMatchFailure(op.getLoc(), "type conversion failed");
 
-    Attribute value;
-    if (emitc::isIntegerIndexOrOpaqueType(convertedType)) {
-      value = IntegerAttr::get((emitc::isPointerWideType(convertedType)
-                                    ? IndexType::get(getContext())
-                                    : convertedType),
-                               0);
-    } else if (emitc::isSupportedFloatType(convertedType)) {
-      value = FloatAttr::get(convertedType, 0);
-    } else {
+    if (!(emitc::isIntegerIndexOrOpaqueType(convertedType) ||
+          emitc::isSupportedFloatType(convertedType))) {
       return rewriter.notifyMatchFailure(
           op.getLoc(), "only scalar poison values can be lowered");
     }
 
     // Any constant will be fine to lower a poison op
-    rewriter.replaceOpWithNewOp<emitc::VariableOp>(op, convertedType, value);
+    rewriter.replaceOpWithNewOp<emitc::VariableOp>(
+        op, convertedType, emitc::OpaqueAttr::get(op->getContext(), ""));
     return success();
   }
 };
