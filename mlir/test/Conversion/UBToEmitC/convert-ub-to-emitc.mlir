@@ -2,11 +2,11 @@
 
 // CHECK-LABEL: func.func @poison
 func.func @poison() {
-  // CHECK: "emitc.variable"{{.*}} -> i32
+  // CHECK: "emitc.variable"() <{value = 42 : i32}> : () -> i32
   %0 = ub.poison : i32
-  // CHECK: "emitc.variable"{{.*}} -> f32
+  // CHECK: "emitc.variable"() <{value = 4.200000e+01 : f32}> : () -> f32
   %1 = ub.poison : f32
-  // CHECK: "emitc.variable"{{.*}} -> !emitc.size_t
+  // CHECK: "emitc.variable"() <{value = 42 : index}> : () -> !emitc.size_t
   %2 = ub.poison : index
   return
 }

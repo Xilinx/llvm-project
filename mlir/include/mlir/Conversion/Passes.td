@@ -1248,6 +1248,11 @@ def ConvertUBToEmitC : Pass<"convert-ub-to-emitc"> {
     This pass converts supported UB ops to EmitC dialect.
   }];
   let dependentDialects = ["emitc::EmitCDialect"];
+  let options = [
+    Option<"noInitialization", "no-initialization", "bool",
+           /*default=*/"false",
+           "Do not initialize the generated variables">,
+  ];
 }
 
 //===----------------------------------------------------------------------===//
