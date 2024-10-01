@@ -26,7 +26,13 @@ using namespace mlir;
 
 namespace {
 struct PoisonOpLowering : public OpConversionPattern<ub::PoisonOp> {
-  using OpConversionPattern::OpConversionPattern;
+  bool noInitialization;
+
+public:
+  PoisonOpLowering(const TypeConverter &converter, MLIRContext *context,
+                   bool noInitialization)
+      : OpConversionPattern<ub::PoisonOp>(converter, context),
+        noInitialization(noInitialization) {}
 
   LogicalResult
   matchAndRewrite(ub::PoisonOp op, OpAdaptor adaptor,
@@ -43,18 +49,30 @@ struct PoisonOpLowering : public OpConversionPattern<ub::PoisonOp> {
           op.getLoc(), "only scalar poison values can be lowered");
     }
 
+    Attribute value;
+    if (noInitialization) {
+      value = emitc::OpaqueAttr::get(op->getContext(), "");
+    } else if (emitc::isIntegerIndexOrOpaqueType(convertedType)) {
+      value = IntegerAttr::get((emitc::isPointerWideType(convertedType))
+                                   ? IndexType::get(op.getContext())
+                                   : convertedType,
+                               42);
+    } else if (emitc::isSupportedFloatType(convertedType)) {
+      value = FloatAttr::get(convertedType, 42.0f);
+    }
+
     // Any constant will be fine to lower a poison op
-    rewriter.replaceOpWithNewOp<emitc::VariableOp>(
-        op, convertedType, emitc::OpaqueAttr::get(op->getContext(), ""));
+    rewriter.replaceOpWithNewOp<emitc::VariableOp>(op, convertedType, value);
     return success();
   }
 };
 } // namespace
 
 void ub::populateUBToEmitCConversionPatterns(TypeConverter &converter,
-                                             RewritePatternSet &patterns) {
+                                             RewritePatternSet &patterns,
+                                             bool noInitialization) {
   MLIRContext *ctx = patterns.getContext();
-  patterns.add<PoisonOpLowering>(converter, ctx);
+  patterns.add<PoisonOpLowering>(converter, ctx, noInitialization);
 }
 
 struct ConvertUBToEmitC : public impl::ConvertUBToEmitCBase<ConvertUBToEmitC> {
@@ -70,7 +88,8 @@ struct ConvertUBToEmitC : public impl::ConvertUBToEmitCBase<ConvertUBToEmitC> {
     target.addLegalDialect<emitc::EmitCDialect>();
     target.addIllegalDialect<ub::UBDialect>();
 
-    mlir::ub::populateUBToEmitCConversionPatterns(converter, patterns);
+    mlir::ub::populateUBToEmitCConversionPatterns(converter, patterns,
+                                                  noInitialization);
 
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
