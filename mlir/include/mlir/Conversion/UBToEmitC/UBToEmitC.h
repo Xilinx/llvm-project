@@ -18,7 +18,8 @@ namespace mlir {
 
 namespace ub {
 void populateUBToEmitCConversionPatterns(TypeConverter &converter,
-                                         RewritePatternSet &patterns);
+                                         RewritePatternSet &patterns,
+                                         bool noInitialization);
 } // namespace ub
 } // namespace mlir
 
