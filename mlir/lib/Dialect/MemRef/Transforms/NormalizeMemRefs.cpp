@@ -175,6 +175,17 @@ bool NormalizeMemRefs::areMemRefsNormalizable(func::FuncOp funcOp) {
     return false;
 
   if (funcOp
+          .walk([&](memref::AllocaOp allocaOp) -> WalkResult {
+            Value oldMemRef = allocaOp.getResult();
+            if (!allocaOp.getType().getLayout().isIdentity() &&
+                !isMemRefNormalizable(oldMemRef.getUsers()))
+              return WalkResult::interrupt();
+            return WalkResult::advance();
+          })
+          .wasInterrupted())
+    return false;
+
+  if (funcOp
           .walk([&](func::CallOp callOp) -> WalkResult {
             for (unsigned resIndex :
                  llvm::seq<unsigned>(0, callOp.getNumResults())) {
@@ -346,6 +357,11 @@ void NormalizeMemRefs::normalizeFuncOpMemRefs(func::FuncOp funcOp,
   funcOp.walk([&](memref::AllocOp op) { allocOps.push_back(op); });
   for (memref::AllocOp allocOp : allocOps)
     (void)normalizeMemRef(&allocOp);
+
+  SmallVector<memref::AllocaOp, 4> allocaOps;
+  funcOp.walk([&](memref::AllocaOp op) { allocaOps.push_back(op); });
+  for (memref::AllocaOp allocaOp : allocaOps)
+    (void)normalizeMemRef(&allocaOp);
 
   // We use this OpBuilder to create new memref layout later.
   OpBuilder b(funcOp);
