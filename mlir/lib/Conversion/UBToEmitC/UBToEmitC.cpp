@@ -50,17 +50,14 @@ public:
     }
 
     Attribute value;
-
     if (noInitialization) {
       value = emitc::OpaqueAttr::get(op->getContext(), "");
-    }
-    if (!noInitialization && emitc::isIntegerIndexOrOpaqueType(convertedType)) {
+    } else if (emitc::isIntegerIndexOrOpaqueType(convertedType)) {
       value = IntegerAttr::get((emitc::isPointerWideType(convertedType))
                                    ? IndexType::get(op.getContext())
                                    : convertedType,
                                42);
-    }
-    if (!noInitialization && emitc::isSupportedFloatType(convertedType)) {
+    } else if (emitc::isSupportedFloatType(convertedType)) {
       value = FloatAttr::get(convertedType, 42.0f);
     }
 
