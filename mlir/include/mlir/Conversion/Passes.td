@@ -1239,6 +1239,18 @@ def TosaToTensor : Pass<"tosa-to-tensor"> {
 }
 
 //===----------------------------------------------------------------------===//
+// UBToEmitC
+//===----------------------------------------------------------------------===//
+
+def ConvertUBToEmitC : Pass<"convert-ub-to-emitc"> {
+  let summary = "Convert UB dialect to EmitC dialect";
+  let description = [{
+    This pass converts supported UB ops to EmitC dialect.
+  }];
+  let dependentDialects = ["emitc::EmitCDialect"];
+}
+
+//===----------------------------------------------------------------------===//
 // UBToLLVM
 //===----------------------------------------------------------------------===//
 
