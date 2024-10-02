@@ -358,7 +358,7 @@ void NormalizeMemRefs::normalizeFuncOpMemRefs(func::FuncOp funcOp,
   for (memref::AllocOp allocOp : allocOps)
     (void)normalizeMemRef(&allocOp);
 
-  SmallVector<memref::AllocaOp, 4> allocaOps;
+  SmallVector<memref::AllocaOp> allocaOps;
   funcOp.walk([&](memref::AllocaOp op) { allocaOps.push_back(op); });
   for (memref::AllocaOp allocaOp : allocaOps)
     (void)normalizeMemRef(&allocaOp);
