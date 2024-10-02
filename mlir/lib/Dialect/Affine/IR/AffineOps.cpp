@@ -2765,6 +2765,13 @@ struct AlwaysTrueOrFalseIf : public OpRewritePattern<AffineIfOp> {
 };
 } // namespace
 
+void AffineIfOp::getRegionInvocationBounds(
+    ArrayRef<Attribute> operands,
+    SmallVectorImpl<InvocationBounds> &invocationBounds) {
+  // Non-constant condition. Each region may be executed 0 or 1 times.
+  invocationBounds.assign(getNumRegions(), {0, 1});
+}
+
 /// AffineIfOp has two regions -- `then` and `else`. The flow of data should be
 /// as follows: AffineIfOp -> `then`/`else` -> AffineIfOp
 void AffineIfOp::getSuccessorRegions(
