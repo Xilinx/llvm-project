@@ -254,17 +254,6 @@ func.func @arith_shift_right_index(%amount: i32) {
 
 // -----
 
-// CHECK-LABEL: arith_signed_integer_div_rem
-func.func @arith_signed_integer_div_rem(%arg0: i32, %arg1: i32) {
-  // CHECK: emitc.div %arg0, %arg1 : (i32, i32) -> i32
-  %0 = arith.divsi %arg0, %arg1 : i32
-  // CHECK: emitc.rem %arg0, %arg1 : (i32, i32) -> i32
-  %1 = arith.remsi %arg0, %arg1 : i32
-  return
-}
-
-// -----
-
 func.func @arith_select(%arg0: i1, %arg1: tensor<8xi32>, %arg2: tensor<8xi32>) -> () {
   // CHECK: [[V0:[^ ]*]] = emitc.conditional %arg0, %arg1, %arg2 : tensor<8xi32>
   %0 = arith.select %arg0, %arg1, %arg2 : i1, tensor<8xi32>
@@ -581,17 +570,6 @@ func.func @arith_negf(%arg0: f32) -> f32 {
 
 // -----
 
-func.func @arith_negf(%arg0: f32) -> f32 {
-  // CHECK-LABEL: arith_negf
-  // CHECK-SAME: %[[Arg0:[^ ]*]]: f32
-  // CHECK: %[[N:[^ ]*]] = emitc.unary_minus %[[Arg0]] : (f32) -> f32
-  %n = arith.negf %arg0 : f32
-  // CHECK: return %[[N]]
-  return %n: f32
-}
-
-// -----
-
 func.func @arith_float_to_int_cast_ops(%arg0: f32, %arg1: f64) {
   // CHECK: emitc.cast %arg0 : f32 to i32
   %0 = arith.fptosi %arg0 : f32 to i32
@@ -739,6 +717,25 @@ func.func @arith_index_castui(%arg0: i32) -> i32 {
 
   return %int : i32
 }
+
+// -----
+
+func.func @arith_divui_remui(%arg0: i32, %arg1: i32) -> i32 {
+  // CHECK-LABEL: arith_divui_remui
+  // CHECK-SAME: (%[[Arg0:[^ ]*]]: i32, %[[Arg1:[^ ]*]]: i32)
+  // CHECK: %[[Conv0:.*]] = emitc.cast %[[Arg0]] : i32 to ui32
+  // CHECK: %[[Conv1:.*]] = emitc.cast %[[Arg1]] : i32 to ui32
+  // CHECK: %[[Div:.*]] = emitc.div %[[Conv0]], %[[Conv1]] : (ui32, ui32) -> ui32
+  %div = arith.divui %arg0, %arg1 : i32
+
+  // CHECK: %[[Conv2:.*]] = emitc.cast %[[Arg0]] : i32 to ui32
+  // CHECK: %[[Conv3:.*]] = emitc.cast %[[Arg1]] : i32 to ui32
+  // CHECK: %[[Rem:.*]] = emitc.rem %[[Conv2]], %[[Conv3]] : (ui32, ui32) -> ui32
+  %rem = arith.remui %arg0, %arg1 : i32
+
+  return %div : i32
+}
+
 // -----
 
 func.func @arith_extf_truncf(%arg0: f32, %arg1: f64) {
