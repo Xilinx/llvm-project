@@ -113,7 +113,7 @@ ForLowering::matchAndRewrite(ForOp forOp, OpAdaptor adaptor,
     return rewriter.notifyMatchFailure(forOp,
                                        "create variables for results failed");
 
-  assignValues(forOp.getInits(), resultVariables, rewriter, loc);
+  assignValues(adaptor.getInitArgs(), resultVariables, rewriter, loc);
 
   emitc::ForOp loweredFor = rewriter.create<emitc::ForOp>(
       loc, adaptor.getLowerBound(), adaptor.getUpperBound(), adaptor.getStep());
