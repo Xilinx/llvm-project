@@ -209,9 +209,11 @@ LogicalResult emitc::AssignOp::verify() {
   Value variable = getVar();
   Operation *variableDef = variable.getDefiningOp();
   if (!variableDef ||
-      !llvm::isa<emitc::VariableOp, emitc::SubscriptOp>(variableDef))
+      !llvm::isa<emitc::GetGlobalOp, emitc::MemberOp, emitc::MemberOfPtrOp,
+                 emitc::SubscriptOp, emitc::VariableOp>(variableDef))
     return emitOpError() << "requires first operand (" << variable
-                         << ") to be a Variable or subscript";
+                         << ") to be a get_global, member, member of pointer, "
+                            "subscript or variable";
 
   Value value = getValue();
   if (variable.getType() != value.getType())
@@ -971,10 +973,10 @@ LogicalResult emitc::ArrayType::verify(
     return emitError() << "shape must not be empty";
 
   for (int64_t dim : shape) {
-    if (dim < 0)
-      return emitError() << "dimensions must have non-negative size";
     if (dim == ShapedType::kDynamic)
       return emitError() << "dimensions must have static size";
+    if (dim < 0)
+      return emitError() << "dimensions must have non-negative size";
   }
 
   if (!elementType)

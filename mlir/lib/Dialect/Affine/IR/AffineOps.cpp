@@ -499,12 +499,14 @@ ParseResult mlir::affine::parseDimAndSymbolList(
 template <typename OpTy>
 static LogicalResult
 verifyDimAndSymbolIdentifiers(OpTy &op, Operation::operand_range operands,
-                              unsigned numDims) {
+                              unsigned numDims,
+                              bool allowNonAffineDimOperands = false) {
   unsigned opIt = 0;
   for (auto operand : operands) {
     if (opIt++ < numDims) {
-      /*if (!isValidDim(operand, getAffineScope(op)))
-        return op.emitOpError("operand cannot be used as a dimension id");*/
+      if (!isValidDim(operand, getAffineScope(op)) &&
+          !(allowNonAffineDimOperands && operand.getType().isIndex()))
+        return op.emitOpError("operand cannot be used as a dimension id");
     } else if (!isValidSymbol(operand, getAffineScope(op))) {
       return op.emitOpError("operand cannot be used as a symbol");
     }
@@ -1707,11 +1709,11 @@ LogicalResult AffineDmaStartOp::fold(ArrayRef<Attribute> cstOperands,
 void AffineDmaStartOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
-  effects.emplace_back(MemoryEffects::Read::get(), getSrcMemRef(),
+  effects.emplace_back(MemoryEffects::Read::get(), &getSrcMemRefMutable(),
                        SideEffects::DefaultResource::get());
-  effects.emplace_back(MemoryEffects::Write::get(), getDstMemRef(),
+  effects.emplace_back(MemoryEffects::Write::get(), &getDstMemRefMutable(),
                        SideEffects::DefaultResource::get());
-  effects.emplace_back(MemoryEffects::Read::get(), getTagMemRef(),
+  effects.emplace_back(MemoryEffects::Read::get(), &getTagMemRefMutable(),
                        SideEffects::DefaultResource::get());
 }
 
@@ -1797,7 +1799,7 @@ LogicalResult AffineDmaWaitOp::fold(ArrayRef<Attribute> cstOperands,
 void AffineDmaWaitOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {
-  effects.emplace_back(MemoryEffects::Read::get(), getTagMemRef(),
+  effects.emplace_back(MemoryEffects::Read::get(), &getTagMemRefMutable(),
                        SideEffects::DefaultResource::get());
 }
 
@@ -2763,6 +2765,13 @@ struct AlwaysTrueOrFalseIf : public OpRewritePattern<AffineIfOp> {
 };
 } // namespace
 
+void AffineIfOp::getRegionInvocationBounds(
+    ArrayRef<Attribute> operands,
+    SmallVectorImpl<InvocationBounds> &invocationBounds) {
+  // Non-constant condition. Each region may be executed 0 or 1 times.
+  invocationBounds.assign(getNumRegions(), {0, 1});
+}
+
 /// AffineIfOp has two regions -- `then` and `else`. The flow of data should be
 /// as follows: AffineIfOp -> `then`/`else` -> AffineIfOp
 void AffineIfOp::getSuccessorRegions(
@@ -2804,7 +2813,8 @@ LogicalResult AffineIfOp::verify() {
 
   // Verify that the operands are valid dimension/symbols.
   if (failed(verifyDimAndSymbolIdentifiers(*this, getOperands(),
-                                           condition.getNumDims())))
+                                           condition.getNumDims(),
+                                           /*allowNonAffineDimOperands=*/true)))
     return failure();
 
   return success();
@@ -4146,11 +4156,9 @@ static ParseResult parseAffineMapWithMinMax(OpAsmParser &parser,
       llvm::append_range(flatExprs, map.getValue().getResults());
       auto operandsRef = llvm::ArrayRef(mapOperands);
       auto dimsRef = operandsRef.take_front(map.getValue().getNumDims());
-      SmallVector<OpAsmParser::UnresolvedOperand> dims(dimsRef.begin(),
-                                                       dimsRef.end());
+      SmallVector<OpAsmParser::UnresolvedOperand> dims(dimsRef);
       auto symsRef = operandsRef.drop_front(map.getValue().getNumDims());
-      SmallVector<OpAsmParser::UnresolvedOperand> syms(symsRef.begin(),
-                                                       symsRef.end());
+      SmallVector<OpAsmParser::UnresolvedOperand> syms(symsRef);
       flatDimOperands.append(map.getValue().getNumResults(), dims);
       flatSymOperands.append(map.getValue().getNumResults(), syms);
       numMapsPerGroup.push_back(map.getValue().getNumResults());

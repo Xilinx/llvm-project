@@ -14,9 +14,11 @@
 #include "Common/CodeGenSchedule.h"
 #include "Common/CodeGenTarget.h"
 #include "Common/PredicateExpander.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/MC/MCInstrItineraries.h"
 #include "llvm/MC/MCSchedule.h"
@@ -31,8 +33,6 @@
 #include <cassert>
 #include <cstdint>
 #include <iterator>
-#include <map>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -239,6 +239,9 @@ void SubtargetEmitter::EmitSubtargetInfoMacroCalls(raw_ostream &OS) {
 
   OS << "\n#ifdef GET_SUBTARGETINFO_MC_DESC\n";
   OS << "#undef GET_SUBTARGETINFO_MC_DESC\n\n";
+
+  if (Target == "AArch64")
+    OS << "#include \"llvm/TargetParser/AArch64TargetParser.h\"\n\n";
 }
 
 //
@@ -256,8 +259,8 @@ unsigned SubtargetEmitter::FeatureKeyValues(
 
   llvm::sort(FeatureList, LessRecordFieldName());
 
-  // Check that there are no duplicate keys
-  std::set<StringRef> UniqueKeys;
+  // Check that there are no duplicate features.
+  DenseMap<StringRef, const Record *> UniqueFeatures;
 
   // Begin feature table
   OS << "// Sorted (by key) array of values for CPU features.\n"
@@ -288,9 +291,12 @@ unsigned SubtargetEmitter::FeatureKeyValues(
     OS << " },\n";
     ++NumFeatures;
 
-    if (!UniqueKeys.insert(CommandLineName).second)
-      PrintFatalError("Duplicate key in SubtargetFeatureKV: " +
-                      CommandLineName);
+    auto [It, Inserted] = UniqueFeatures.insert({CommandLineName, Feature});
+    if (!Inserted) {
+      PrintError(Feature, "Feature `" + CommandLineName + "` already defined.");
+      const Record *Previous = It->second;
+      PrintFatalNote(Previous, "Previous definition here.");
+    }
   }
 
   // End feature table
@@ -491,7 +497,7 @@ void SubtargetEmitter::EmitStageAndOperandCycleData(
   // operand cycles, and pipeline bypass tables. Then add the new Itinerary
   // object with computed offsets to the ProcItinLists result.
   unsigned StageCount = 1, OperandCycleCount = 1;
-  std::map<std::string, unsigned> ItinStageMap, ItinOperandMap;
+  StringMap<unsigned> ItinStageMap, ItinOperandMap;
   for (const CodeGenProcModel &ProcModel : SchedModels.procModels()) {
     // Add process itinerary to the list.
     std::vector<InstrItinerary> &ItinList = ProcItinLists.emplace_back();
@@ -1895,6 +1901,10 @@ void SubtargetEmitter::ParseFeaturesFunction(raw_ostream &OS) {
     return;
   }
 
+  if (Target == "AArch64")
+    OS << "  CPU = AArch64::resolveCPUAlias(CPU);\n"
+       << "  TuneCPU = AArch64::resolveCPUAlias(TuneCPU);\n";
+
   OS << "  InitMCProcessorInfo(CPU, TuneCPU, FS);\n"
      << "  const FeatureBitset &Bits = getFeatureBits();\n";
 
@@ -1946,6 +1956,11 @@ void SubtargetEmitter::emitGenMCSubtargetInfo(raw_ostream &OS) {
     OS << "  unsigned getHwMode(enum HwModeType type = HwMode_Default) const "
           "override;\n";
   }
+  if (Target == "AArch64")
+    OS << "  bool isCPUStringValid(StringRef CPU) const override {\n"
+       << "    CPU = AArch64::resolveCPUAlias(CPU);\n"
+       << "    return MCSubtargetInfo::isCPUStringValid(CPU);\n"
+       << "  }\n";
   OS << "};\n";
   EmitHwModeCheck(Target + "GenMCSubtargetInfo", OS);
 }
@@ -2013,6 +2028,9 @@ void SubtargetEmitter::run(raw_ostream &OS) {
   OS << "\nstatic inline MCSubtargetInfo *create" << Target
      << "MCSubtargetInfoImpl("
      << "const Triple &TT, StringRef CPU, StringRef TuneCPU, StringRef FS) {\n";
+  if (Target == "AArch64")
+    OS << "  CPU = AArch64::resolveCPUAlias(CPU);\n"
+       << "  TuneCPU = AArch64::resolveCPUAlias(TuneCPU);\n";
   OS << "  return new " << Target
      << "GenMCSubtargetInfo(TT, CPU, TuneCPU, FS, ";
   if (NumFeatures)
@@ -2045,6 +2063,8 @@ void SubtargetEmitter::run(raw_ostream &OS) {
 
   OS << "#include \"llvm/Support/Debug.h\"\n";
   OS << "#include \"llvm/Support/raw_ostream.h\"\n\n";
+  if (Target == "AArch64")
+    OS << "#include \"llvm/TargetParser/AArch64TargetParser.h\"\n\n";
   ParseFeaturesFunction(OS);
 
   OS << "#endif // GET_SUBTARGETINFO_TARGET_DESC\n\n";
@@ -2112,8 +2132,13 @@ void SubtargetEmitter::run(raw_ostream &OS) {
   }
 
   OS << ClassName << "::" << ClassName << "(const Triple &TT, StringRef CPU, "
-     << "StringRef TuneCPU, StringRef FS)\n"
-     << "  : TargetSubtargetInfo(TT, CPU, TuneCPU, FS, ";
+     << "StringRef TuneCPU, StringRef FS)\n";
+
+  if (Target == "AArch64")
+    OS << "  : TargetSubtargetInfo(TT, AArch64::resolveCPUAlias(CPU),\n"
+       << "                        AArch64::resolveCPUAlias(TuneCPU), FS, ";
+  else
+    OS << "  : TargetSubtargetInfo(TT, CPU, TuneCPU, FS, ";
   if (NumFeatures)
     OS << "ArrayRef(" << Target << "FeatureKV, " << NumFeatures << "), ";
   else
