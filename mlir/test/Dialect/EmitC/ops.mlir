@@ -240,6 +240,16 @@ emitc.verbatim "#endif  // __cplusplus"
 emitc.verbatim "typedef int32_t i32;"
 emitc.verbatim "typedef float f32;"
 
+// The value is not interpreted as format string if there are no operands.
+emitc.verbatim "{} {  }"
+
+func.func @test_verbatim(%arg0 : !emitc.ptr<i32>, %arg1 : i32) {
+  emitc.verbatim "{} + {};" %arg0, %arg1 : !emitc.ptr<i32>, i32
+
+  // Trailing '{' are ok and don't start a placeholder.
+  emitc.verbatim "{} + {} {" %arg0, %arg1 : !emitc.ptr<i32>, i32
+  return
+}
 
 emitc.global @uninit : i32
 emitc.global @myglobal_int : i32 = 4
