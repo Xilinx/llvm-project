@@ -7,6 +7,8 @@ on:
   pull_request:
     branches:
       - feature/fused-ops
+      - main
+      - 'users/**'
 
 jobs:
   code_formatter:
