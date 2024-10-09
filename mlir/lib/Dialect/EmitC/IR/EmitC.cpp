@@ -910,6 +910,78 @@ LogicalResult emitc::SubscriptOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// VerbatimOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult emitc::VerbatimOp::verify() {
+  FailureOr<SmallVector<ReplacementItem>> fmt = parseFormatString();
+  if (failed(fmt))
+    return failure();
+
+  size_t numPlaceholders = llvm::count_if(*fmt, [](ReplacementItem &item) {
+    return std::holds_alternative<Placeholder>(item);
+  });
+
+  if (numPlaceholders != getFmtArgs().size()) {
+    return emitOpError()
+           << "requires operands for each placeholder in the format string";
+  }
+  return success();
+}
+
+/// Parse a format string and return a list of its parts.
+/// A part is either a StringRef that has to be printed as-is, or
+/// a Placeholder which requires printing the next operand of the VerbatimOp.
+/// In the format string, all `{}` are replaced by Placeholders, except if the
+/// `{` is escaped by `{{` - then it doesn't start a placeholder.
+FailureOr<SmallVector<emitc::VerbatimOp::ReplacementItem>>
+emitc::VerbatimOp::parseFormatString() {
+  SmallVector<ReplacementItem> items;
+
+  // If there are not operands, the format string is not interpreted.
+  if (getFmtArgs().empty()) {
+    items.push_back(getValue());
+    return items;
+  }
+
+  StringRef toParse = getValue();
+  while (!toParse.empty()) {
+    size_t idx = toParse.find('{');
+    if (idx == StringRef::npos) {
+      // No '{'
+      items.push_back(toParse);
+      break;
+    }
+    if (idx > 0) {
+      // Take all chars excluding the '{'.
+      items.push_back(toParse.take_front(idx));
+      toParse = toParse.drop_front(idx);
+      continue;
+    }
+    if (toParse.size() < 2) {
+      // '{' is last character
+      items.push_back(toParse);
+      break;
+    }
+    // toParse contains at least two characters and starts with `{`.
+    char nextChar = toParse[1];
+    if (nextChar == '{') {
+      // Double '{{' -> '{' (escaping).
+      items.push_back(toParse.take_front(1));
+      toParse = toParse.drop_front(2);
+      continue;
+    }
+    if (nextChar == '}') {
+      items.push_back(Placeholder{});
+      toParse = toParse.drop_front(2);
+      continue;
+    }
+    return emitOpError() << "expected '}' after unescaped '{'";
+  }
+  return items;
+}
+
+//===----------------------------------------------------------------------===//
 // EmitC Enums
 //===----------------------------------------------------------------------===//
 

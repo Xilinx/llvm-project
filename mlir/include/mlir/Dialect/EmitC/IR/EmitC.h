@@ -27,6 +27,8 @@
 #include "mlir/Dialect/EmitC/IR/EmitCDialect.h.inc"
 #include "mlir/Dialect/EmitC/IR/EmitCEnums.h.inc"
 
+#include <variant>
+
 namespace mlir {
 namespace emitc {
 void buildTerminatedBody(OpBuilder &builder, Location loc);

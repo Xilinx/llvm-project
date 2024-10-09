@@ -476,3 +476,51 @@ emitc.global const @myref : !emitc.array<2xi16> = dense<128> ref
 
 // expected-error @+1 {{'emitc.global' op global reference must be initialized}}
 emitc.global const @myref : !emitc.array<2xi16> ref
+
+// -----
+
+func.func @test_verbatim(%arg0 : !emitc.ptr<i32>, %arg1 : i32) {
+  // expected-error @+1 {{'emitc.verbatim' op requires operands for each placeholder in the format string}}
+  emitc.verbatim "" %arg0, %arg1 : !emitc.ptr<i32>, i32
+  return
+}
+
+// -----
+
+func.func @test_verbatim(%arg0 : !emitc.ptr<i32>, %arg1 : i32) {
+  // expected-error @+1 {{'emitc.verbatim' op requires operands for each placeholder in the format string}}
+  emitc.verbatim "abc" %arg0, %arg1 : !emitc.ptr<i32>, i32
+  return
+}
+
+// -----
+
+func.func @test_verbatim(%arg0 : !emitc.ptr<i32>, %arg1 : i32) {
+  // expected-error @+1 {{'emitc.verbatim' op requires operands for each placeholder in the format string}}
+  emitc.verbatim "{}" %arg0, %arg1 : !emitc.ptr<i32>, i32
+  return
+}
+
+// -----
+
+func.func @test_verbatim(%arg0 : !emitc.ptr<i32>, %arg1 : i32) {
+  // expected-error @+1 {{'emitc.verbatim' op requires operands for each placeholder in the format string}}
+  emitc.verbatim "{} {} {}" %arg0, %arg1 : !emitc.ptr<i32>, i32
+  return
+}
+
+// -----
+
+func.func @test_verbatim(%arg0 : !emitc.ptr<i32>, %arg1 : i32) {
+  // expected-error @+1 {{'emitc.verbatim' op expected '}' after unescaped '{'}}
+  emitc.verbatim "{ " %arg0, %arg1 : !emitc.ptr<i32>, i32
+  return
+}
+
+// -----
+
+func.func @test_verbatim(%arg0 : !emitc.ptr<i32>, %arg1 : i32) {
+  // expected-error @+1 {{'emitc.verbatim' op expected '}' after unescaped '{'}}
+  emitc.verbatim "{a} " %arg0, %arg1 : !emitc.ptr<i32>, i32
+  return
+}
