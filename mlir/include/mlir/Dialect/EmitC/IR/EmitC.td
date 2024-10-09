@@ -1162,7 +1162,7 @@ def EmitC_VerbatimOp : EmitC_Op<"verbatim"> {
     format string, where `{}` is a placeholder for an operand in their order.
     For example, `emitc.verbatim "#pragma my src={} dst={}" %src, %dest : i32, i32`
     would be emitted as `#pragma my src=a dst=b` if `%src` became `a` and
-    `%dest` as `b` in the C code.
+    `%dest` became `b` in the C code.
     `{{` in the format string is interpreted as a single `{` and doesn't introduce
     a placeholder.
   }];
