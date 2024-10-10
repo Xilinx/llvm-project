@@ -903,6 +903,8 @@ def Tosa_TableOp : Tosa_InferShapedTypeOp<"table"> {
   let assemblyFormat = [{
     $input `,` $table attr-dict `:` `(` type($input) `,` type($table) `)` `->` type($output)
   }];
+
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
