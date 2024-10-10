@@ -529,12 +529,14 @@ static bool isFusableWithReshapeByDimExpansion(LinalgOp linalgOp,
                       [](Attribute attr) {
                         return cast<AffineMapAttr>(attr)
                             .getValue()
-                            .isProjectedPermutation();
+                            .isProjectedPermutation(
+                                /*allowZeroInResults=*/true);
                       }) &&
          operandMap.getNumResults() > 0 &&
          llvm::all_of(operandMap.getResults(), [&](AffineExpr expr) {
-           return isParallelIterator(
-               iteratorTypes[cast<AffineDimExpr>(expr).getPosition()]);
+           auto dimExpr = dyn_cast<AffineDimExpr>(expr);
+           return !dimExpr ||
+                  isParallelIterator(iteratorTypes[dimExpr.getPosition()]);
          });
 }
 
@@ -595,12 +597,14 @@ LogicalResult ExpansionInfo::compute(LinalgOp linalgOp,
   SmallVector<unsigned> numExpandedDims(fusedIndexMap.getNumDims(), 1);
   expandedShapeMap.resize(fusedIndexMap.getNumDims());
   for (const auto &resultExpr : llvm::enumerate(fusedIndexMap.getResults())) {
-    unsigned pos = cast<AffineDimExpr>(resultExpr.value()).getPosition();
-    AffineMap foldedDims = reassociationMaps[resultExpr.index()];
-    numExpandedDims[pos] = foldedDims.getNumResults();
-    ArrayRef<int64_t> shape =
-        expandedShape.slice(foldedDims.getDimPosition(0), numExpandedDims[pos]);
-    expandedShapeMap[pos].assign(shape.begin(), shape.end());
+    if (auto dimExpr = dyn_cast<AffineDimExpr>(resultExpr.value())) {
+      unsigned pos = dimExpr.getPosition();
+      AffineMap foldedDims = reassociationMaps[resultExpr.index()];
+      numExpandedDims[pos] = foldedDims.getNumResults();
+      ArrayRef<int64_t> shape = expandedShape.slice(
+          foldedDims.getDimPosition(0), numExpandedDims[pos]);
+      expandedShapeMap[pos].assign(shape.begin(), shape.end());
+    }
   }
   // The remaining dimensions remain the same.
   for (unsigned i : llvm::seq<unsigned>(0, fusedIndexMap.getNumDims()))
@@ -653,12 +657,18 @@ getIndexingMapInExpandedOp(OpBuilder &builder, AffineMap indexingMap,
                            const ExpansionInfo &expansionInfo) {
   SmallVector<AffineExpr> newExprs;
   for (AffineExpr expr : indexingMap.getResults()) {
-    unsigned pos = cast<AffineDimExpr>(expr).getPosition();
-    SmallVector<AffineExpr, 4> expandedExprs = llvm::to_vector<4>(
-        llvm::map_range(expansionInfo.getExpandedDims(pos), [&](int64_t v) {
-          return builder.getAffineDimExpr(static_cast<unsigned>(v));
-        }));
-    newExprs.append(expandedExprs.begin(), expandedExprs.end());
+    if (auto dimExpr = dyn_cast<AffineDimExpr>(expr)) {
+      unsigned pos = dimExpr.getPosition();
+      SmallVector<AffineExpr, 4> expandedExprs = llvm::to_vector<4>(
+          llvm::map_range(expansionInfo.getExpandedDims(pos), [&](int64_t v) {
+            return builder.getAffineDimExpr(static_cast<unsigned>(v));
+          }));
+      newExprs.append(expandedExprs.begin(), expandedExprs.end());
+    } else if (auto constantExpr = dyn_cast<AffineConstantExpr>(expr)) {
+      newExprs.push_back(constantExpr);
+    } else {
+      llvm_unreachable("invalid affine expr");
+    }
   }
   return AffineMap::get(expansionInfo.getExpandedOpNumDims(),
                         indexingMap.getNumSymbols(), newExprs,

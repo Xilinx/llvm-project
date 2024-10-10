@@ -431,6 +431,64 @@ func.func @reshape_as_producer_projected_permutation(
 
 // -----
 
+func.func @reshape_as_producer_projected_permutation_zero(
+    %arg0 : tensor<33x8x?xi32>, %shape : tensor<264x?x4xi32>) -> tensor<264x?x4xi32>
+{
+  %0 = tensor.collapse_shape %arg0 [[0, 1], [2]]
+    : tensor<33x8x?xi32> into tensor<264x?xi32>
+  %1 = linalg.generic
+    {indexing_maps = [affine_map<(d0, d1, d2) -> (0, d1)>,
+                      affine_map<(d0, d1, d2) -> (d0, d1, d2)>],
+     iterator_types = ["parallel", "parallel", "parallel"]}
+     ins(%0 : tensor<264x?xi32>)
+    outs(%shape : tensor<264x?x4xi32>) {
+  ^bb0(%arg1: i32, %s: i32):
+    %idx0 = linalg.index 0 : index
+    %idx1 = linalg.index 1 : index
+    %idx2 = linalg.index 2 : index
+    %2 = arith.index_cast %idx0 : index to i32
+    %3 = arith.addi %arg1, %2 : i32
+    %4 = arith.index_cast %idx1 : index to i32
+    %5 = arith.addi %3, %4 : i32
+    %6 = arith.index_cast %idx2 : index to i32
+    %7 = arith.addi %5, %6 : i32
+    linalg.yield %7 : i32
+  } -> tensor<264x?x4xi32>
+  return %1 : tensor<264x?x4xi32>
+}
+
+// CHECK-LABEL: reshape_as_producer_projected_permutation_zero
+//   CHECK-DAG: #[[MAP0:.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2)>
+//   CHECK-DAG: #[[MAP1:.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+//   CHECK-DAG: #[[MAP2:.+]] = affine_map<(d0, d1) -> (d0 + d1 * 8)>
+//       CHECK: @reshape_as_producer_projected_permutation
+//  CHECK-SAME:   %[[ARG0:.+]]: tensor<33x8x?xi32>
+//       CHECK:   %[[RES:.+]] = linalg.generic
+//  CHECK-SAME:     indexing_maps = [#[[MAP0]], #[[MAP1]]]
+//  CHECK-SAME:     ins(%[[ARG0]] : tensor<33x8x?xi32>)
+//       CHECK:   ^{{.+}}(
+//  CHECK-SAME:     %[[ARG1:[a-zA-Z0-9]+]]: i32,
+//  CHECK-SAME:     %[[ARG2:[a-zA-Z0-9]+]]: i32)
+//   CHECK-DAG:       %[[IDX0:.+]] = linalg.index 0 : index
+//   CHECK-DAG:       %[[IDX1:.+]] = linalg.index 1 : index
+//   CHECK-DAG:       %[[IDX2:.+]] = linalg.index 2 : index
+//   CHECK-DAG:       %[[IDX3:.+]] = linalg.index 3 : index
+//   CHECK-DAG:       %[[T0:.+]] = affine.apply #[[MAP2]](%[[IDX1]], %[[IDX0]])
+//       CHECK:       %[[T1:.+]] = arith.index_cast %[[T0]] : index to i32
+//       CHECK:       %[[T2:.+]] = arith.addi %[[ARG1]], %[[T1]] : i32
+//       CHECK:       %[[T3:.+]] = arith.index_cast %[[IDX2]] : index to i32
+//       CHECK:       %[[T4:.+]] = arith.addi %[[T2]], %[[T3]] : i32
+//       CHECK:       %[[T5:.+]] = arith.index_cast %[[IDX3]] : index to i32
+//       CHECK:       %[[T6:.+]] = arith.addi %[[T4]], %[[T5]] : i32
+//       CHECK:       linalg.yield %[[T6]] : i32
+//       CHECK:    %[[RES2:.+]] = tensor.collapse_shape %[[RES]]
+//  CHECK-SAME:      [0, 1], [2], [3]
+//  CHECK-SAME:    : tensor<33x8x?x4xi32> into tensor<264x?x4xi32>
+//       CHECK:  return %[[RES2]] : tensor<264x?x4xi32>
+
+
+// -----
+
 #map0 = affine_map<(d0, d1) -> (d0, d1)>
 #map1 = affine_map<(d0, d1) -> (d1, d0)>
 func.func @generic_op_reshape_consumer_fusion_projected(%arg0 : tensor<?x?xf32>,
@@ -452,6 +510,7 @@ func.func @generic_op_reshape_consumer_fusion_projected(%arg0 : tensor<?x?xf32>,
   return %1 : tensor<?x?x4x5xf32>
 }
 
+// CHECK-LABEL: generic_op_reshape_consumer_fusion_projected
 //  CHECK-DAG: #[[MAP4:.+]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
 //  CHECK-DAG: #[[MAP5:.+]] = affine_map<(d0, d1, d2, d3) -> (d3, d0, d1, d2)>
 //      CHECK: func @generic_op_reshape_consumer_fusion_projected
