@@ -25,20 +25,20 @@ emitc.func @func(%arg: f32) {
   %a = "emitc.variable"(){value = #emitc.opaque<"">} : () -> !emitc.array<3x7xi32>
   // CHECK: int32_t [[A:[^ ]*]][3][7];
 
-  emitc.verbatim "{}" %arg : f32
+  emitc.verbatim "{}" args %arg : f32
   // CHECK: [[V0]]
 
-  emitc.verbatim "{} {{a" %arg : f32
+  emitc.verbatim "{} {{a" args %arg : f32
   // CHECK-NEXT: [[V0]] {a
 
-  emitc.verbatim "#pragma my var={} property" %arg : f32
+  emitc.verbatim "#pragma my var={} property" args %arg : f32
   // CHECK-NEXT: #pragma my var=[[V0]] property
 
   // Trailing '{' are printed as-is.
-  emitc.verbatim "#pragma my var={} {" %arg : f32
+  emitc.verbatim "#pragma my var={} {" args %arg : f32
   // CHECK-NEXT: #pragma my var=[[V0]] {
 
-  emitc.verbatim "#pragma my2 var={} property" %a : !emitc.array<3x7xi32>
+  emitc.verbatim "#pragma my2 var={} property" args %a : !emitc.array<3x7xi32>
   // CHECK-NEXT: #pragma my2 var=[[A]] property
   emitc.return
 }

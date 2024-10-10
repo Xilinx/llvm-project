@@ -1181,7 +1181,7 @@ def EmitC_VerbatimOp : EmitC_Op<"verbatim"> {
   let builders = [OpBuilder<(ins "::mlir::StringAttr":$value), [{ build($_builder, $_state, value, {}); }] >];
   let builders = [OpBuilder<(ins "::llvm::StringRef":$value), [{ build($_builder, $_state, value, {}); }] >];
   let hasVerifier = 1;
-  let assemblyFormat = "$value ($fmtArgs^ `:` type($fmtArgs))? attr-dict";
+  let assemblyFormat = "$value (`args` $fmtArgs^ `:` type($fmtArgs))? attr-dict";
 }
 
 def EmitC_AssignOp : EmitC_Op<"assign", []> {
