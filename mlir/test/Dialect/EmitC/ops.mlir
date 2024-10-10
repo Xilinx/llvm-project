@@ -244,10 +244,15 @@ emitc.verbatim "typedef float f32;"
 emitc.verbatim "{} {  }"
 
 func.func @test_verbatim(%arg0 : !emitc.ptr<i32>, %arg1 : i32) {
-  emitc.verbatim "{} + {};" %arg0, %arg1 : !emitc.ptr<i32>, i32
+  emitc.verbatim "{} + {};" args %arg0, %arg1 : !emitc.ptr<i32>, i32
 
   // Trailing '{' are ok and don't start a placeholder.
-  emitc.verbatim "{} + {} {" %arg0, %arg1 : !emitc.ptr<i32>, i32
+  emitc.verbatim "{} + {} {" args %arg0, %arg1 : !emitc.ptr<i32>, i32
+
+  // Check there is no ambiguity whether %a is the argument to the emitc.verbatim op.
+  emitc.verbatim "a"
+  %a = "emitc.constant"(){value = 42 : i32} : () -> i32
+
   return
 }
 
