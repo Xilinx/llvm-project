@@ -2137,6 +2137,7 @@ struct LinalgElementwiseOpFusionPass
 
     // Add folding with reshape by expansion patterns.
     ControlFusionFn defaultControlFn = [](OpOperand *fusedOperand) {
+      return true;
       Operation *producer = fusedOperand->get().getDefiningOp();
       return producer && producer->hasOneUse();
     };
