@@ -1689,6 +1689,133 @@ struct TosaFoldConstantPad : public TosaFoldConstantBase<tosa::PadOp> {
 };
 
 template <typename BaseType, typename RangeT>
+void sliceArray(ShapedType inputType, RangeT inputValues,
+                llvm::ArrayRef<int64_t> startValues, ShapedType outputType,
+                SmallVector<BaseType> &outputValues) {
+
+  auto outputShape = outputType.getShape();
+  auto inputShape = inputType.getShape();
+
+  int64_t rank = inputType.getRank();
+
+  // Implements the logic from
+  // https://www.mlplatform.org/tosa/tosa_spec.html#_slice
+  for (size_t outIndex = 0, e = outputValues.size(); outIndex < e; ++outIndex) {
+    auto indexInTarget = offsetToIndex(outputShape, outIndex);
+
+    for (int64_t i = 0; i < rank; ++i) {
+      indexInTarget[i] = indexInTarget[i] + startValues[i];
+    }
+
+    auto inputIndexOffset = indexToOffset(inputShape, indexInTarget);
+    outputValues[outIndex] = inputValues[inputIndexOffset];
+  }
+}
+
+template <typename BaseType>
+DenseElementsAttr sliceType(ElementsAttr attr, ShapedType inputType,
+                            llvm::ArrayRef<int64_t> start,
+                            ShapedType outputType) {
+
+  auto inputValues = attr.getValues<BaseType>();
+  SmallVector<BaseType> outputValues(outputType.getNumElements(),
+                                     *std::begin(inputValues));
+  sliceArray<BaseType>(inputType, inputValues, start, outputType, outputValues);
+  return DenseElementsAttr::get(outputType,
+                                llvm::ArrayRef<BaseType>(outputValues));
+}
+
+template <typename BaseType>
+DenseElementsAttr sliceTypeRaw(ElementsAttr attr, ShapedType inputType,
+                               llvm::ArrayRef<int64_t> start,
+                               ShapedType outputType) {
+
+  ArrayRef<BaseType> inputValues =
+      cast<DenseIntOrFPElementsAttr>(attr).getNonSplatRawData<BaseType>();
+
+  SmallVector<BaseType> outputValues;
+  outputValues.resize_for_overwrite(outputType.getNumElements());
+  sliceArray<BaseType>(inputType, inputValues, start, outputType, outputValues);
+
+  ArrayRef rawOutputValues(reinterpret_cast<const char *>(outputValues.data()),
+                           outputValues.size() * sizeof(BaseType));
+  return DenseElementsAttr::getFromRawBuffer(outputType, rawOutputValues);
+}
+
+DenseElementsAttr slice(ShapedType inputType, ElementsAttr inputValues,
+                        llvm::ArrayRef<int64_t> start, ShapedType outputType) {
+
+  auto baseType = inputType.getElementType();
+
+  if (inputValues.isSplat()) {
+    if (isa<IntegerType>(baseType))
+      return DenseElementsAttr::get(outputType,
+                                    inputValues.getSplatValue<APInt>());
+    return DenseElementsAttr::get(outputType,
+                                  inputValues.getSplatValue<APFloat>());
+  }
+
+  // Handle possible integer types
+  if (auto intType = dyn_cast<IntegerType>(baseType)) {
+    switch (intType.getWidth()) {
+    case 1:
+      // i1 has special alignment which is not handled by sliceTypeRaw.
+      return sliceType<bool>(inputValues, inputType, start, outputType);
+    case 8:
+      return sliceTypeRaw<uint8_t>(inputValues, inputType, start, outputType);
+    case 16:
+      return sliceTypeRaw<uint16_t>(inputValues, inputType, start, outputType);
+    case 32:
+      return sliceTypeRaw<uint32_t>(inputValues, inputType, start, outputType);
+    case 64:
+      return sliceTypeRaw<uint64_t>(inputValues, inputType, start, outputType);
+    default:
+      return sliceType<APInt>(inputValues, inputType, start, outputType);
+    }
+  }
+
+  // Handle possible float types
+  if (baseType.isF32()) {
+    return sliceTypeRaw<uint32_t>(inputValues, inputType, start, outputType);
+  }
+  if (baseType.isF64()) {
+    return sliceTypeRaw<uint64_t>(inputValues, inputType, start, outputType);
+  }
+  if (baseType.isBF16()) {
+    return sliceTypeRaw<uint16_t>(inputValues, inputType, start, outputType);
+  }
+  return sliceType<APFloat>(inputValues, inputType, start, outputType);
+}
+
+struct TosaFoldConstantSlice : public TosaFoldConstantBase<tosa::SliceOp> {
+  using TosaFoldConstantBase::TosaFoldConstantBase;
+
+  LogicalResult matchAndRewrite(tosa::SliceOp op,
+                                PatternRewriter &rewriter) const override {
+    auto outputType = cast<ShapedType>(op.getType());
+    // TOSA doesn't support quantized types.
+    if (!outputType.getElementType().isIntOrIndexOrFloat())
+      return failure();
+
+    auto start = op.getStart();
+    auto input = op.getInput();
+    ElementsAttr inputValues;
+    if (!matchPattern(input, m_Constant(&inputValues)))
+      return failure();
+
+    // Only fold op with multiple users if foldSplatOrSingleUseOnly is false.
+    if (!llvm::hasSingleElement(input.getDefiningOp()->getUsers()) &&
+        foldSplatOrSingleUseOnly)
+      return failure();
+
+    auto resultAttr = slice(input.getType(), inputValues, start, outputType);
+    rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, outputType, resultAttr);
+
+    return success();
+  }
+};
+
+template <typename BaseType, typename RangeT>
 void tileArray(ShapedType inputType, RangeT inputValues, ShapedType outputType,
                SmallVector<BaseType> &outputValues) {
 
@@ -1991,6 +2118,7 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
   patterns.add<TosaFoldConstantMinimum>(ctx, options.foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantMaximum>(ctx, options.foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantPad>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantSlice>(ctx, options.foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantMatMul>(ctx, options.foldSplatOrSingleUseOnly);
   if (options.enableTileFolding)
     patterns.add<TosaFoldConstantTile>(ctx, options.foldSplatOrSingleUseOnly);
