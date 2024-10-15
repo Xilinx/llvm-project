@@ -137,7 +137,8 @@ struct PDLIndexSymbol {
 
   /// Return the location of the definition of this symbol.
   SMRange getDefLoc() const {
-    if (const ast::Decl *decl = llvm::dyn_cast_if_present<const ast::Decl *>(definition)) {
+    if (const ast::Decl *decl =
+            llvm::dyn_cast_if_present<const ast::Decl *>(definition)) {
       const ast::Name *declName = decl->getName();
       return declName ? declName->getLoc() : decl->getLoc();
     }
@@ -394,7 +395,8 @@ PDLDocument::PDLDocument(const lsp::URIForFile &uri, StringRef contents,
     if (auto lspDiag = getLspDiagnoticFromDiag(sourceMgr, diag, uri))
       diagnostics.push_back(std::move(*lspDiag));
   });
-  astModule = parsePDLLAST(astContext, sourceMgr, /*enableDocumentation=*/true);
+  astModule = parsePDLLAST(astContext, sourceMgr, /*enableDocumentation=*/true,
+                           /*emitWarningOnRepeatedIncludeAtMainFile=*/true);
 
   // Initialize the set of parsed includes.
   lsp::gatherIncludeFiles(sourceMgr, parsedIncludes);
@@ -466,7 +468,8 @@ PDLDocument::findHover(const lsp::URIForFile &uri,
     return std::nullopt;
 
   // Add hover for operation names.
-  if (const auto *op = llvm::dyn_cast_if_present<const ods::Operation *>(symbol->definition))
+  if (const auto *op =
+          llvm::dyn_cast_if_present<const ods::Operation *>(symbol->definition))
     return buildHoverForOpName(op, hoverRange);
   const auto *decl = symbol->definition.get<const ast::Decl *>();
   return findHover(decl, hoverRange);
@@ -587,7 +590,7 @@ lsp::Hover PDLDocument::buildHoverForUserConstraintOrRewrite(
       hoverOS << "***\n";
     }
     ast::Type resultType = decl->getResultType();
-    if (auto resultTupleTy = resultType.dyn_cast<ast::TupleType>()) {
+    if (auto resultTupleTy = dyn_cast<ast::TupleType>(resultType)) {
       if (!resultTupleTy.empty()) {
         hoverOS << "Results:\n";
         for (auto it : llvm::zip(resultTupleTy.getElementNames(),
@@ -795,13 +798,13 @@ public:
     }
     if (allowInlineTypeConstraints) {
       /// Attr<Type>.
-      if (!currentType || currentType.isa<ast::AttributeType>())
+      if (!currentType || isa<ast::AttributeType>(currentType))
         addCoreConstraint("Attr<type>", "mlir::Attribute", "Attr<$1>");
       /// Value<Type>.
-      if (!currentType || currentType.isa<ast::ValueType>())
+      if (!currentType || isa<ast::ValueType>(currentType))
         addCoreConstraint("Value<type>", "mlir::Value", "Value<$1>");
       /// ValueRange<TypeRange>.
-      if (!currentType || currentType.isa<ast::ValueRangeType>())
+      if (!currentType || isa<ast::ValueRangeType>(currentType))
         addCoreConstraint("ValueRange<type>", "mlir::ValueRange",
                           "ValueRange<$1>");
     }
@@ -810,6 +813,8 @@ public:
     while (scope) {
       for (const ast::Decl *decl : scope->getDecls()) {
         if (const auto *cst = dyn_cast<ast::UserConstraintDecl>(decl)) {
+          if (cst->getName().getName().starts_with("__builtin"))
+            continue;
           lsp::CompletionItem item;
           item.label = cst->getName().getName().str();
           item.kind = lsp::CompletionItemKind::Interface;
@@ -990,6 +995,7 @@ PDLDocument::getCodeCompletion(const lsp::URIForFile &uri,
 
   ast::Context tmpContext(tmpODSContext);
   (void)parsePDLLAST(tmpContext, sourceMgr, /*enableDocumentation=*/true,
+                     /*emitWarningOnRepeatedIncludeAtMainFile=*/true,
                      &lspCompleteContext);
 
   return completionList;
@@ -1145,6 +1151,7 @@ lsp::SignatureHelp PDLDocument::getSignatureHelp(const lsp::URIForFile &uri,
 
   ast::Context tmpContext(tmpODSContext);
   (void)parsePDLLAST(tmpContext, sourceMgr, /*enableDocumentation=*/true,
+                     /*emitWarningOnRepeatedIncludeAtMainFile=*/true,
                      &completeContext);
 
   return signatureHelp;
@@ -1242,7 +1249,7 @@ void PDLDocument::getInlayHintsFor(const ast::OperationExpr *expr,
                                    const lsp::URIForFile &uri,
                                    std::vector<lsp::InlayHint> &inlayHints) {
   // Check for ODS information.
-  ast::OperationType opType = expr->getType().dyn_cast<ast::OperationType>();
+  ast::OperationType opType = dyn_cast<ast::OperationType>(expr->getType());
   const auto *odsOp = opType ? opType.getODSOperation() : nullptr;
 
   auto addOpHint = [&](const ast::Expr *valueExpr, StringRef label) {
@@ -1806,8 +1813,7 @@ void lsp::PDLLServer::getInlayHints(const URIForFile &uri, const Range &range,
 
   // Drop any duplicated hints that may have cropped up.
   llvm::sort(inlayHints);
-  inlayHints.erase(std::unique(inlayHints.begin(), inlayHints.end()),
-                   inlayHints.end());
+  inlayHints.erase(llvm::unique(inlayHints), inlayHints.end());
 }
 
 std::optional<lsp::PDLLViewOutputResult>

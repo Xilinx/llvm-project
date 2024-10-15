@@ -14,6 +14,7 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Index/IR/IndexDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -26,6 +27,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
+#include <mlir/Dialect/Func/Transforms/FuncConversions.h>
 
 namespace mlir {
 #define GEN_PASS_DEF_TOSATOLINALG
@@ -40,7 +42,7 @@ public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry
         .insert<arith::ArithDialect, linalg::LinalgDialect, math::MathDialect,
-                tensor::TensorDialect, scf::SCFDialect>();
+                index::IndexDialect, tensor::TensorDialect, scf::SCFDialect>();
   }
 
   void runOnOperation() override {
@@ -59,11 +61,23 @@ public:
     target.addLegalOp<tosa::SliceOp>();
     target.addLegalOp<tosa::ReshapeOp>();
     target.addLegalOp<tosa::PadOp>();
-
+    TypeConverter converter;
+    target.addDynamicallyLegalOp<func::FuncOp>([&](func::FuncOp op) {
+      return converter.isSignatureLegal(op.getFunctionType());
+    });
+    target.addDynamicallyLegalDialect<func::FuncDialect>(
+        [&](Operation *op) { return converter.isLegal(op); });
     target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
 
+    tosa::populateTosaTypeConversion(converter);
+
     FunctionOpInterface func = getOperation();
-    mlir::tosa::populateTosaToLinalgConversionPatterns(&patterns);
+    mlir::tosa::populateTosaToLinalgConversionPatterns(converter, &patterns);
+    populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                   converter);
+    populateCallOpTypeConversionPattern(patterns, converter);
+    populateReturnOpTypeConversionPattern(patterns, converter);
+
     if (failed(applyFullConversion(func, target, std::move(patterns))))
       signalPassFailure();
   }
@@ -77,7 +91,7 @@ std::unique_ptr<Pass> mlir::tosa::createTosaToLinalg() {
 void mlir::tosa::addTosaToLinalgPasses(
     OpPassManager &pm, const TosaToLinalgOptions &options,
     const TosaToLinalgNamedOptions &tosaToLinalgNamedOptions,
-    tosa::TosaValidationOptions const &validationOptions) {
+    std::optional<tosa::TosaValidationOptions> validationOptions) {
   // Optional decompositions are designed to benefit linalg.
   if (!options.disableTosaDecompositions)
     pm.addNestedPass<func::FuncOp>(tosa::createTosaOptionalDecompositions());
@@ -89,10 +103,13 @@ void mlir::tosa::addTosaToLinalgPasses(
       tosa::createTosaToLinalgNamed(tosaToLinalgNamedOptions));
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
   // TODO: Remove pass that operates on const tensor and enable optionality
+  TosaLayerwiseConstantFoldPassOptions tosaFoldOptions;
+  tosaFoldOptions.aggressiveReduceConstant = options.aggressiveReduceConstant;
   pm.addNestedPass<func::FuncOp>(tosa::createTosaLayerwiseConstantFoldPass(
-      {options.aggressiveReduceConstant}));
+      tosaFoldOptions));
   pm.addNestedPass<func::FuncOp>(tosa::createTosaMakeBroadcastablePass());
-  pm.addPass(tosa::createTosaValidation(validationOptions));
+  if (validationOptions)
+    pm.addPass(tosa::createTosaValidation(*validationOptions));
   pm.addNestedPass<func::FuncOp>(tosa::createTosaToLinalg());
 }
 
@@ -109,11 +126,12 @@ void mlir::tosa::registerTosaToLinalgPipelines() {
       [](OpPassManager &pm) {
         TosaToLinalgOptions tosaToLinalgOptions;
         TosaToLinalgNamedOptions tosaToLinalgNamedOptions;
+        TosaValidationOptions validationOptions;
+        validationOptions.profile = tosa::TosaProfileEnum::BaseInference;
+        validationOptions.StrictOperationSpecAlignment = true;
+        validationOptions.level = tosa::TosaLevelEnum::EightK;
         tosa::addTosaToLinalgPasses(pm, tosaToLinalgOptions,
                                     tosaToLinalgNamedOptions,
-                                    /* validationOptions = */
-                                    {tosa::TosaProfileEnum::BaseInference,
-                                     /* StrictOperationSpecAlignment = */ true,
-                                     tosa::TosaLevelEnum::EightK});
+                                    validationOptions);
       });
 }

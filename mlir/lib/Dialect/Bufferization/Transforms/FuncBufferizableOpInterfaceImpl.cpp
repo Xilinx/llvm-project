@@ -326,7 +326,7 @@ struct FuncOpInterface
   static bool supportsUnstructuredControlFlow() { return true; }
 
   bool hasTensorSemantics(Operation *op) const {
-    auto isaTensor = [](Type type) { return isa<TensorType>(type); };
+    auto isaTensor = llvm::IsaPred<TensorType>;
 
     // A function has tensor semantics if it has tensor arguments/results.
     auto funcOp = cast<FuncOp>(op);
@@ -407,10 +407,17 @@ struct FuncOpInterface
     if (funcOp.isExternal()) {
       SmallVector<Type> retTypes;
       for (Type resultType : funcType.getResults()) {
-        if (isa<TensorType>(resultType))
-          return funcOp->emitError() << "cannot bufferize bodiless function "
-                                     << "that returns a tensor";
-        retTypes.push_back(resultType);
+        if (auto tensorType = dyn_cast<TensorType>(resultType)) {
+          if (!options.bufferizeBodilessFunctionResults) {
+            return funcOp->emitError() << "cannot bufferize bodiless function "
+                                       << "that returns a tensor";
+          }
+          retTypes.push_back(options.functionArgTypeConverterFn(
+              tensorType, *options.defaultMemorySpaceFn(tensorType), funcOp,
+              options));
+        } else {
+          retTypes.push_back(resultType);
+        }
       }
       funcOp.setType(FunctionType::get(op->getContext(), argTypes, retTypes));
       return success();

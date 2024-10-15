@@ -43,6 +43,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Endian.h"
+#include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/Threading.h"
@@ -152,6 +153,11 @@ struct AsmPrinterOptions {
       llvm::cl::desc("Elide ElementsAttrs with \"...\" that have "
                      "more elements than the given upper limit")};
 
+  llvm::cl::opt<unsigned> newlineAfterAttr{
+      "mlir-newline-after-attr",
+      llvm::cl::desc("Break attributes on ops into multiple lines with more "
+                     "than the given upper limit")};
+
   llvm::cl::opt<unsigned> elideResourceStringsIfLarger{
       "mlir-elide-resource-strings-if-larger",
       llvm::cl::desc(
@@ -189,6 +195,11 @@ struct AsmPrinterOptions {
       "mlir-print-value-users", llvm::cl::init(false),
       llvm::cl::desc(
           "Print users of operation results and block arguments as a comment")};
+
+  llvm::cl::opt<bool> printUniqueSSAIDs{
+      "mlir-print-unique-ssa-ids", llvm::cl::init(false),
+      llvm::cl::desc("Print unique SSA ID numbers for values, block arguments "
+                     "and naming conflicts across all regions")};
 };
 } // namespace
 
@@ -206,12 +217,17 @@ OpPrintingFlags::OpPrintingFlags()
     : printDebugInfoFlag(false), printDebugInfoPrettyFormFlag(false),
       printGenericOpFormFlag(false), skipRegionsFlag(false),
       assumeVerifiedFlag(false), printLocalScope(false),
-      printValueUsersFlag(false) {
+      printValueUsersFlag(false), printUniqueSSAIDsFlag(false) {
   // Initialize based upon command line options, if they are available.
   if (!clOptions.isConstructed())
     return;
   if (clOptions->elideElementsAttrIfLarger.getNumOccurrences())
     elementsAttrElementLimit = clOptions->elideElementsAttrIfLarger;
+  if (clOptions->printElementsAttrWithHexIfLarger.getNumOccurrences())
+    elementsAttrHexElementLimit =
+        clOptions->printElementsAttrWithHexIfLarger.getValue();
+  if (clOptions->newlineAfterAttr.getNumOccurrences())
+    newlineAfterAttr = clOptions->newlineAfterAttr;
   if (clOptions->elideResourceStringsIfLarger.getNumOccurrences())
     resourceStringCharLimit = clOptions->elideResourceStringsIfLarger;
   printDebugInfoFlag = clOptions->printDebugInfoOpt;
@@ -221,6 +237,7 @@ OpPrintingFlags::OpPrintingFlags()
   printLocalScope = clOptions->printLocalScopeOpt;
   skipRegionsFlag = clOptions->skipRegionsOpt;
   printValueUsersFlag = clOptions->printValueUsers;
+  printUniqueSSAIDsFlag = clOptions->printUniqueSSAIDs;
 }
 
 /// Enable the elision of large elements attributes, by printing a '...'
@@ -230,6 +247,20 @@ OpPrintingFlags::OpPrintingFlags()
 OpPrintingFlags &
 OpPrintingFlags::elideLargeElementsAttrs(int64_t largeElementLimit) {
   elementsAttrElementLimit = largeElementLimit;
+  return *this;
+}
+
+OpPrintingFlags &
+OpPrintingFlags::printLargeElementsAttrWithHex(int64_t largeElementLimit) {
+  elementsAttrHexElementLimit = largeElementLimit;
+  return *this;
+}
+
+/// Enables breaking attributes on individual lines when there are more than
+/// the given number of attributes on an operation.
+OpPrintingFlags &
+OpPrintingFlags::newlineAfterAttribute(int64_t attributeLimit) {
+  newlineAfterAttr = attributeLimit;
   return *this;
 }
 
@@ -287,9 +318,27 @@ bool OpPrintingFlags::shouldElideElementsAttr(ElementsAttr attr) const {
          !llvm::isa<SplatElementsAttr>(attr);
 }
 
+/// Return if the given ElementsAttr should be printed as hex string.
+bool OpPrintingFlags::shouldPrintElementsAttrWithHex(ElementsAttr attr) const {
+  // -1 is used to disable hex printing.
+  return (elementsAttrHexElementLimit != -1) &&
+         (elementsAttrHexElementLimit < int64_t(attr.getNumElements())) &&
+         !llvm::isa<SplatElementsAttr>(attr);
+}
+
 /// Return the size limit for printing large ElementsAttr.
 std::optional<int64_t> OpPrintingFlags::getLargeElementsAttrLimit() const {
   return elementsAttrElementLimit;
+}
+
+/// Return the size limit for printing large ElementsAttr as hex string.
+int64_t OpPrintingFlags::getLargeElementsAttrHexLimit() const {
+  return elementsAttrHexElementLimit;
+}
+
+/// Return the size limit for printing newlines after attributes.
+std::optional<unsigned> OpPrintingFlags::getNewlineAfterAttrLimit() const {
+  return newlineAfterAttr;
 }
 
 /// Return the size limit for printing large ElementsAttr.
@@ -328,21 +377,9 @@ bool OpPrintingFlags::shouldPrintValueUsers() const {
   return printValueUsersFlag;
 }
 
-/// Returns true if an ElementsAttr with the given number of elements should be
-/// printed with hex.
-static bool shouldPrintElementsAttrWithHex(int64_t numElements) {
-  // Check to see if a command line option was provided for the limit.
-  if (clOptions.isConstructed()) {
-    if (clOptions->printElementsAttrWithHexIfLarger.getNumOccurrences()) {
-      // -1 is used to disable hex printing.
-      if (clOptions->printElementsAttrWithHexIfLarger == -1)
-        return false;
-      return numElements > clOptions->printElementsAttrWithHexIfLarger;
-    }
-  }
-
-  // Otherwise, default to printing with hex if the number of elements is >100.
-  return numElements > 100;
+/// Return if the printer should use unique IDs.
+bool OpPrintingFlags::shouldPrintUniqueSSAIDs() const {
+  return printUniqueSSAIDsFlag || shouldPrintGenericOpForm();
 }
 
 //===----------------------------------------------------------------------===//
@@ -381,6 +418,12 @@ public:
     llvm::interleaveComma(c, os, eachFn);
   }
 
+  template <typename Container, typename UnaryFunctor>
+  inline void interleave(const Container &c, UnaryFunctor eachFn,
+                         StringRef separator) const {
+    llvm::interleave(c, os, eachFn, separator);
+  }
+
   /// This enum describes the different kinds of elision for the type of an
   /// attribute when printing it.
   enum class AttrTypeElision {
@@ -395,10 +438,12 @@ public:
 
   /// Print the given attribute or an alias.
   void printAttribute(Attribute attr,
-                      AttrTypeElision typeElision = AttrTypeElision::Never);
+                      AttrTypeElision typeElision = AttrTypeElision::Never,
+                      SmallString<16> separator = StringRef(", "));
   /// Print the given attribute without considering an alias.
   void printAttributeImpl(Attribute attr,
-                          AttrTypeElision typeElision = AttrTypeElision::Never);
+                          AttrTypeElision typeElision = AttrTypeElision::Never,
+                          SmallString<16> separator = StringRef(", "));
 
   /// Print the alias for the given attribute, return failure if no alias could
   /// be printed.
@@ -437,8 +482,10 @@ public:
 protected:
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<StringRef> elidedAttrs = {},
+                             unsigned currentIndent = 0,
                              bool withKeyword = false);
-  void printNamedAttribute(NamedAttribute attr);
+  void printNamedAttribute(NamedAttribute attr,
+                           SmallString<16> separator = StringRef(", "));
   void printTrailingLocation(Location loc, bool allowAlias = true);
   void printLocationInternal(LocationAttr loc, bool pretty = false,
                              bool isTopLevel = false);
@@ -983,9 +1030,13 @@ static StringRef sanitizeIdentifier(StringRef name, SmallString<16> &buffer,
                                     bool allowTrailingDigit = true) {
   assert(!name.empty() && "Shouldn't have an empty name here");
 
+  auto validChar = [&](char ch) {
+    return llvm::isAlnum(ch) || allowedPunctChars.contains(ch);
+  };
+
   auto copyNameToBuffer = [&] {
     for (char ch : name) {
-      if (llvm::isAlnum(ch) || allowedPunctChars.contains(ch))
+      if (validChar(ch))
         buffer.push_back(ch);
       else if (ch == ' ')
         buffer.push_back('_');
@@ -997,7 +1048,7 @@ static StringRef sanitizeIdentifier(StringRef name, SmallString<16> &buffer,
   // Check to see if this name is valid. If it starts with a digit, then it
   // could conflict with the autogenerated numeric ID's, so add an underscore
   // prefix to avoid problems.
-  if (isdigit(name[0])) {
+  if (isdigit(name[0]) || (!validChar(name[0]) && name[0] != ' ')) {
     buffer.push_back('_');
     copyNameToBuffer();
     return buffer;
@@ -1013,7 +1064,7 @@ static StringRef sanitizeIdentifier(StringRef name, SmallString<16> &buffer,
 
   // Check to see that the name consists of only valid identifier characters.
   for (char ch : name) {
-    if (!llvm::isAlnum(ch) && !allowedPunctChars.contains(ch)) {
+    if (!validChar(ch)) {
       copyNameToBuffer();
       return buffer;
     }
@@ -1364,8 +1415,14 @@ SSANameState::SSANameState(Operation *op, const OpPrintingFlags &printerFlags)
   while (!nameContext.empty()) {
     Region *region;
     UsedNamesScopeTy *parentScope;
-    std::tie(region, nextValueID, nextArgumentID, nextConflictID, parentScope) =
-        nameContext.pop_back_val();
+
+    if (printerFlags.shouldPrintUniqueSSAIDs())
+      // To print unique SSA IDs, ignore saved ID counts from parent regions
+      std::tie(region, std::ignore, std::ignore, std::ignore, parentScope) =
+          nameContext.pop_back_val();
+    else
+      std::tie(region, nextValueID, nextArgumentID, nextConflictID,
+               parentScope) = nameContext.pop_back_val();
 
     // When we switch from one subtree to another, pop the scopes(needless)
     // until the parent scope.
@@ -2029,7 +2086,7 @@ void AsmPrinter::Impl::printLocationInternal(LocationAttr loc, bool pretty,
           os << '>';
         }
         os << '[';
-        interleave(
+        llvm::interleave(
             loc.getLocations(),
             [&](Location loc) { printLocationInternal(loc, pretty); },
             [&]() { os << ", "; });
@@ -2039,7 +2096,8 @@ void AsmPrinter::Impl::printLocationInternal(LocationAttr loc, bool pretty,
 
 /// Print a floating point value in a way that the parser will be able to
 /// round-trip losslessly.
-static void printFloatValue(const APFloat &apValue, raw_ostream &os) {
+static void printFloatValue(const APFloat &apValue, raw_ostream &os,
+                            bool *printedHex = nullptr) {
   // We would like to output the FP constant value in exponential notation,
   // but we cannot do this if doing so will lose precision.  Check here to
   // make sure that we only output it in exponential format if we can parse
@@ -2080,6 +2138,8 @@ static void printFloatValue(const APFloat &apValue, raw_ostream &os) {
 
   // Print special values in hexadecimal format. The sign bit should be included
   // in the literal.
+  if (printedHex)
+    *printedHex = true;
   SmallVector<char, 16> str;
   APInt apInt = apValue.bitcastToAPInt();
   apInt.toString(str, /*Radix=*/16, /*Signed=*/false,
@@ -2197,7 +2257,8 @@ LogicalResult AsmPrinter::Impl::printAlias(Type type) {
 }
 
 void AsmPrinter::Impl::printAttribute(Attribute attr,
-                                      AttrTypeElision typeElision) {
+                                      AttrTypeElision typeElision,
+                                      SmallString<16> separator) {
   if (!attr) {
     os << "<<NULL ATTRIBUTE>>";
     return;
@@ -2206,11 +2267,12 @@ void AsmPrinter::Impl::printAttribute(Attribute attr,
   // Try to print an alias for this attribute.
   if (succeeded(printAlias(attr)))
     return;
-  return printAttributeImpl(attr, typeElision);
+  return printAttributeImpl(attr, typeElision, separator);
 }
 
 void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
-                                          AttrTypeElision typeElision) {
+                                          AttrTypeElision typeElision,
+                                          SmallString<16> separator) {
   if (!isa<BuiltinDialect>(attr.getDialect())) {
     printDialectAttribute(attr);
   } else if (auto opaqueAttr = llvm::dyn_cast<OpaqueAttr>(attr)) {
@@ -2228,10 +2290,27 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
     return;
   } else if (auto dictAttr = llvm::dyn_cast<DictionaryAttr>(attr)) {
     os << '{';
-    interleaveComma(dictAttr.getValue(),
-                    [&](NamedAttribute attr) { printNamedAttribute(attr); });
+    SmallString<16> separatorBracket = StringRef("");
+    bool breakOnNewLine =
+        printerFlags.getNewlineAfterAttrLimit() && separator.size() > 2;
+    if (breakOnNewLine) {
+      separator.reserve(separator.capacity() + 2);
+      separator.append("  ");
+      separatorBracket.reserve(separator.size() + 2);
+      separatorBracket.push_back('\n');
+      for (size_t i = 0; i < separator.size() - 2; ++i) {
+        separatorBracket.push_back(' ');
+      }
+      os << separatorBracket;
+    }
+    interleave(
+        dictAttr.getValue(),
+        [&](NamedAttribute attr) { printNamedAttribute(attr); }, separator);
+    if (breakOnNewLine) {
+      separatorBracket.pop_back_n(2);
+      os << separatorBracket;
+    }
     os << '}';
-
   } else if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attr)) {
     Type intType = intAttr.getType();
     if (intType.isSignlessInteger(1)) {
@@ -2241,9 +2320,9 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
       return;
     }
 
-    // Only print attributes as unsigned if they are explicitly unsigned or are
-    // signless 1-bit values.  Indexes, signed values, and multi-bit signless
-    // values print as signed.
+    // Only print attributes as unsigned if they are explicitly unsigned or
+    // are signless 1-bit values.  Indexes, signed values, and multi-bit
+    // signless values print as signed.
     bool isUnsigned =
         intType.isUnsignedInteger() || intType.isSignlessInteger(1);
     intAttr.getValue().print(os, !isUnsigned);
@@ -2253,10 +2332,12 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
       return;
 
   } else if (auto floatAttr = llvm::dyn_cast<FloatAttr>(attr)) {
-    printFloatValue(floatAttr.getValue(), os);
+    bool printedHex = false;
+    printFloatValue(floatAttr.getValue(), os, &printedHex);
 
     // FloatAttr elides the type if F64.
-    if (typeElision == AttrTypeElision::May && floatAttr.getType().isF64())
+    if (typeElision == AttrTypeElision::May && floatAttr.getType().isF64() &&
+        !printedHex)
       return;
 
   } else if (auto strAttr = llvm::dyn_cast<StringAttr>(attr)) {
@@ -2264,11 +2345,36 @@ void AsmPrinter::Impl::printAttributeImpl(Attribute attr,
 
   } else if (auto arrayAttr = llvm::dyn_cast<ArrayAttr>(attr)) {
     os << '[';
-    interleaveComma(arrayAttr.getValue(), [&](Attribute attr) {
-      printAttribute(attr, AttrTypeElision::May);
-    });
+    bool breakOnNewLine =
+        printerFlags.getNewlineAfterAttrLimit() && separator.size() > 2;
+    bool isDictAttrPresent = false;
+    for (auto attribute : arrayAttr.getValue()) {
+      if (auto dictAttr = llvm::dyn_cast<DictionaryAttr>(attribute))
+        isDictAttrPresent = true;
+    }
+    if (isDictAttrPresent && breakOnNewLine) {
+      separator.reserve(separator.capacity() + 2);
+      separator.append("  ");
+      SmallString<16> separatorBracket = StringRef("\n");
+      separatorBracket.reserve(separator.size() + 2);
+      for (size_t i = 0; i < separator.size() - 2; ++i) {
+        separatorBracket.push_back(' ');
+      }
+      os << separatorBracket;
+      interleave(
+          arrayAttr.getValue(),
+          [&](Attribute attr) {
+            printAttribute(attr, AttrTypeElision::May, separator);
+          },
+          separator);
+      separatorBracket.pop_back_n(2);
+      os << separatorBracket;
+    } else {
+      interleaveComma(arrayAttr.getValue(), [&](Attribute attr) {
+        printAttribute(attr, AttrTypeElision::May, separator);
+      });
+    }
     os << ']';
-
   } else if (auto affineMapAttr = llvm::dyn_cast<AffineMapAttr>(attr)) {
     os << "affine_map<";
     affineMapAttr.getValue().print(os);
@@ -2435,9 +2541,7 @@ void AsmPrinter::Impl::printDenseIntOrFPElementsAttr(
   auto elementType = type.getElementType();
 
   // Check to see if we should format this attribute as a hex string.
-  auto numElements = type.getNumElements();
-  if (!attr.isSplat() && allowHex &&
-      shouldPrintElementsAttrWithHex(numElements)) {
+  if (allowHex && printerFlags.shouldPrintElementsAttrWithHex(attr)) {
     ArrayRef<char> rawData = attr.getRawData();
     if (llvm::endianness::native == llvm::endianness::big) {
       // Convert endianess in big-endian(BE) machines. `rawData` is BE in BE
@@ -2546,10 +2650,12 @@ void AsmPrinter::Impl::printTypeImpl(Type type) {
       })
       .Case<IndexType>([&](Type) { os << "index"; })
       .Case<Float8E5M2Type>([&](Type) { os << "f8E5M2"; })
+      .Case<Float8E4M3Type>([&](Type) { os << "f8E4M3"; })
       .Case<Float8E4M3FNType>([&](Type) { os << "f8E4M3FN"; })
       .Case<Float8E5M2FNUZType>([&](Type) { os << "f8E5M2FNUZ"; })
       .Case<Float8E4M3FNUZType>([&](Type) { os << "f8E4M3FNUZ"; })
       .Case<Float8E4M3B11FNUZType>([&](Type) { os << "f8E4M3B11FNUZ"; })
+      .Case<Float8E3M4Type>([&](Type) { os << "f8E3M4"; })
       .Case<BFloat16Type>([&](Type) { os << "bf16"; })
       .Case<Float16Type>([&](Type) { os << "f16"; })
       .Case<FloatTF32Type>([&](Type) { os << "tf32"; })
@@ -2657,6 +2763,7 @@ void AsmPrinter::Impl::printTypeImpl(Type type) {
 
 void AsmPrinter::Impl::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                                              ArrayRef<StringRef> elidedAttrs,
+                                             unsigned currentIndent,
                                              bool withKeyword) {
   // If there are no attributes, then there is nothing to be done.
   if (attrs.empty())
@@ -2667,11 +2774,31 @@ void AsmPrinter::Impl::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
     // Print the 'attributes' keyword if necessary.
     if (withKeyword)
       os << " attributes";
+    os << " {";
+
+    SmallString<16> separator = StringRef(", ");
+    if (printerFlags.getNewlineAfterAttrLimit() &&
+        attrs.size() > *printerFlags.getNewlineAfterAttrLimit()) {
+
+      // Increase indent to match the visually match the "{ " below.
+      // currentIndent += 2;
+
+      separator.clear();
+      separator.reserve(currentIndent + 2);
+      separator.append(",\n");
+      for (size_t i = 0; i < currentIndent; ++i)
+        separator.push_back(' ');
+
+      // Already put the first attribute on its own line.
+      os << "\n";
+      os.indent(currentIndent);
+    }
 
     // Otherwise, print them all out in braces.
-    os << " {";
-    interleaveComma(filteredAttrs,
-                    [&](NamedAttribute attr) { printNamedAttribute(attr); });
+    interleave(
+        filteredAttrs,
+        [&](NamedAttribute attr) { printNamedAttribute(attr, separator); },
+        separator);
     os << '}';
   };
 
@@ -2688,7 +2815,8 @@ void AsmPrinter::Impl::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
   if (!filteredAttrs.empty())
     printFilteredAttributesFn(filteredAttrs);
 }
-void AsmPrinter::Impl::printNamedAttribute(NamedAttribute attr) {
+void AsmPrinter::Impl::printNamedAttribute(NamedAttribute attr,
+                                           SmallString<16> separator) {
   // Print the name without quotes if possible.
   ::printKeywordOrString(attr.getName().strref(), os);
 
@@ -2697,7 +2825,8 @@ void AsmPrinter::Impl::printNamedAttribute(NamedAttribute attr) {
     return;
 
   os << " = ";
-  printAttribute(attr.getValue());
+  printAttribute(attr.getValue(), /*typeElision*/ AttrTypeElision::Never,
+                 separator);
 }
 
 void AsmPrinter::Impl::printDialectAttribute(Attribute attr) {
@@ -3118,12 +3247,13 @@ public:
   /// Print an optional attribute dictionary with a given set of elided values.
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<StringRef> elidedAttrs = {}) override {
-    Impl::printOptionalAttrDict(attrs, elidedAttrs);
+    Impl::printOptionalAttrDict(attrs, elidedAttrs,
+                                currentIndent + indentWidth);
   }
   void printOptionalAttrDictWithKeyword(
       ArrayRef<NamedAttribute> attrs,
       ArrayRef<StringRef> elidedAttrs = {}) override {
-    Impl::printOptionalAttrDict(attrs, elidedAttrs,
+    Impl::printOptionalAttrDict(attrs, elidedAttrs, currentIndent + indentWidth,
                                 /*withKeyword=*/true);
   }
 
@@ -3962,6 +4092,11 @@ void Block::printAsOperand(raw_ostream &os, bool printType) {
 void Block::printAsOperand(raw_ostream &os, AsmState &state) {
   OperationPrinter printer(os, state.getImpl());
   printer.printBlockName(this);
+}
+
+raw_ostream &mlir::operator<<(raw_ostream &os, Block &block) {
+  block.print(os);
+  return os;
 }
 
 //===--------------------------------------------------------------------===//

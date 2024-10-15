@@ -39,7 +39,6 @@ add_llvm_target(BPFCodeGen
   BPFSubtarget.cpp
   BPFTargetMachine.cpp
   BPFMIPeephole.cpp
-  BPFMIChecking.cpp
   BPFMISimplifyPatchable.cpp
   BTFDebug.cpp
 
@@ -54,6 +53,7 @@ add_llvm_target(BPFCodeGen
   GlobalISel
   IPO
   MC
+  Passes
   Scalar
   SelectionDAG
   Support

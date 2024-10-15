@@ -118,8 +118,8 @@ def AffineForOp : Affine_Op<"for",
     [AttrSizedOperandSegments, AutomaticAllocationScope,
      ImplicitAffineTerminator, ConditionallySpeculatable,
      RecursiveMemoryEffects, DeclareOpInterfaceMethods<LoopLikeOpInterface,
-     ["getSingleInductionVar", "getSingleLowerBound", "getSingleStep",
-      "getSingleUpperBound", "getYieldedValuesMutable",
+     ["getLoopInductionVars", "getLoopLowerBounds", "getLoopSteps",
+      "getLoopUpperBounds", "getYieldedValuesMutable",
       "replaceWithAdditionalYields"]>,
      DeclareOpInterfaceMethods<RegionBranchOpInterface,
      ["getEntrySuccessorOperands"]>]> {
@@ -336,7 +336,8 @@ def AffineForOp : Affine_Op<"for",
 def AffineIfOp : Affine_Op<"if",
                            [ImplicitAffineTerminator, RecursivelySpeculatable,
                             RecursiveMemoryEffects, NoRegionArguments,
-                            DeclareOpInterfaceMethods<RegionBranchOpInterface>
+                            DeclareOpInterfaceMethods<RegionBranchOpInterface,
+                            ["getRegionInvocationBounds"]>
                            ]> {
   let summary = "if-then-else operation";
   let description = [{
@@ -742,7 +743,8 @@ def AffineParallelOp : Affine_Op<"parallel",
 }
 
 def AffinePrefetchOp : Affine_Op<"prefetch",
-  [DeclareOpInterfaceMethods<AffineMapAccessInterface>]> {
+  [DeclareOpInterfaceMethods<AffineMapAccessInterface>,
+   MemRefsNormalizable]> {
   let summary = "affine prefetch operation";
   let description = [{
     The `affine.prefetch` op prefetches data from a memref location described

@@ -20,6 +20,7 @@
 // -verify-machineinstrs.
 //===----------------------------------------------------------------------===//
 
+#include "llvm/CodeGen/MachineVerifier.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -55,6 +56,7 @@
 #include "llvm/CodeGen/SlotIndexes.h"
 #include "llvm/CodeGen/StackMaps.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
+#include "llvm/CodeGen/TargetLowering.h"
 #include "llvm/CodeGen/TargetOpcodes.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
@@ -92,6 +94,9 @@ using namespace llvm;
 namespace {
 
   struct MachineVerifier {
+    MachineVerifier(MachineFunctionAnalysisManager &MFAM, const char *b)
+        : MFAM(&MFAM), Banner(b) {}
+
     MachineVerifier(Pass *pass, const char *b) : PASS(pass), Banner(b) {}
 
     MachineVerifier(const char *b, LiveVariables *LiveVars,
@@ -102,6 +107,7 @@ namespace {
 
     unsigned verify(const MachineFunction &MF);
 
+    MachineFunctionAnalysisManager *MFAM = nullptr;
     Pass *const PASS = nullptr;
     const char *Banner;
     const MachineFunction *MF = nullptr;
@@ -225,7 +231,7 @@ namespace {
     // This is calculated only when trying to verify convergence control tokens.
     // Similar to the LLVM IR verifier, we calculate this locally instead of
     // relying on the pass manager.
-    MachineDomTree DT;
+    MachineDominatorTree DT;
 
     void visitMachineFunctionBefore();
     void visitMachineBasicBlockBefore(const MachineBasicBlock *MBB);
@@ -301,21 +307,21 @@ namespace {
     void verifyProperties(const MachineFunction &MF);
   };
 
-  struct MachineVerifierPass : public MachineFunctionPass {
+  struct MachineVerifierLegacyPass : public MachineFunctionPass {
     static char ID; // Pass ID, replacement for typeid
 
     const std::string Banner;
 
-    MachineVerifierPass(std::string banner = std::string())
-      : MachineFunctionPass(ID), Banner(std::move(banner)) {
-        initializeMachineVerifierPassPass(*PassRegistry::getPassRegistry());
-      }
+    MachineVerifierLegacyPass(std::string banner = std::string())
+        : MachineFunctionPass(ID), Banner(std::move(banner)) {
+      initializeMachineVerifierLegacyPassPass(*PassRegistry::getPassRegistry());
+    }
 
     void getAnalysisUsage(AnalysisUsage &AU) const override {
       AU.addUsedIfAvailable<LiveStacks>();
-      AU.addUsedIfAvailable<LiveVariables>();
-      AU.addUsedIfAvailable<SlotIndexes>();
-      AU.addUsedIfAvailable<LiveIntervals>();
+      AU.addUsedIfAvailable<LiveVariablesWrapperPass>();
+      AU.addUsedIfAvailable<SlotIndexesWrapperPass>();
+      AU.addUsedIfAvailable<LiveIntervalsWrapperPass>();
       AU.setPreservesAll();
       MachineFunctionPass::getAnalysisUsage(AU);
     }
@@ -337,13 +343,28 @@ namespace {
 
 } // end anonymous namespace
 
-char MachineVerifierPass::ID = 0;
+PreservedAnalyses
+MachineVerifierPass::run(MachineFunction &MF,
+                         MachineFunctionAnalysisManager &MFAM) {
+  // Skip functions that have known verification problems.
+  // FIXME: Remove this mechanism when all problematic passes have been
+  // fixed.
+  if (MF.getProperties().hasProperty(
+          MachineFunctionProperties::Property::FailsVerification))
+    return PreservedAnalyses::all();
+  unsigned FoundErrors = MachineVerifier(MFAM, Banner.c_str()).verify(MF);
+  if (FoundErrors)
+    report_fatal_error("Found " + Twine(FoundErrors) + " machine code errors.");
+  return PreservedAnalyses::all();
+}
 
-INITIALIZE_PASS(MachineVerifierPass, "machineverifier",
+char MachineVerifierLegacyPass::ID = 0;
+
+INITIALIZE_PASS(MachineVerifierLegacyPass, "machineverifier",
                 "Verify generated machine code", false, false)
 
 FunctionPass *llvm::createMachineVerifierPass(const std::string &Banner) {
-  return new MachineVerifierPass(Banner);
+  return new MachineVerifierLegacyPass(Banner);
 }
 
 void llvm::verifyMachineFunction(const std::string &Banner,
@@ -427,12 +448,23 @@ unsigned MachineVerifier::verify(const MachineFunction &MF) {
       MachineFunctionProperties::Property::TracksDebugUserValues);
 
   if (PASS) {
-    LiveInts = PASS->getAnalysisIfAvailable<LiveIntervals>();
+    auto *LISWrapper = PASS->getAnalysisIfAvailable<LiveIntervalsWrapperPass>();
+    LiveInts = LISWrapper ? &LISWrapper->getLIS() : nullptr;
     // We don't want to verify LiveVariables if LiveIntervals is available.
+    auto *LVWrapper = PASS->getAnalysisIfAvailable<LiveVariablesWrapperPass>();
     if (!LiveInts)
-      LiveVars = PASS->getAnalysisIfAvailable<LiveVariables>();
+      LiveVars = LVWrapper ? &LVWrapper->getLV() : nullptr;
     LiveStks = PASS->getAnalysisIfAvailable<LiveStacks>();
-    Indexes = PASS->getAnalysisIfAvailable<SlotIndexes>();
+    auto *SIWrapper = PASS->getAnalysisIfAvailable<SlotIndexesWrapperPass>();
+    Indexes = SIWrapper ? &SIWrapper->getSI() : nullptr;
+  }
+  if (MFAM) {
+    MachineFunction &Func = const_cast<MachineFunction &>(MF);
+    LiveInts = MFAM->getCachedResult<LiveIntervalsAnalysis>(Func);
+    if (!LiveInts)
+      LiveVars = MFAM->getCachedResult<LiveVariablesAnalysis>(Func);
+    // TODO: LiveStks = MFAM->getCachedResult<LiveStacksAnalysis>(Func);
+    Indexes = MFAM->getCachedResult<SlotIndexesAnalysis>(Func);
   }
 
   verifySlotIndexes();
@@ -1506,8 +1538,39 @@ void MachineVerifier::verifyPreISelGenericInstruction(const MachineInstr *MI) {
     LLT SrcTy = MRI->getType(MI->getOperand(2).getReg());
 
     if ((DstTy.isVector() != SrcTy.isVector()) ||
-        (DstTy.isVector() && DstTy.getNumElements() != SrcTy.getNumElements()))
+        (DstTy.isVector() &&
+         DstTy.getElementCount() != SrcTy.getElementCount()))
       report("Generic vector icmp/fcmp must preserve number of lanes", MI);
+
+    break;
+  }
+  case TargetOpcode::G_SCMP:
+  case TargetOpcode::G_UCMP: {
+    LLT DstTy = MRI->getType(MI->getOperand(0).getReg());
+    LLT SrcTy = MRI->getType(MI->getOperand(1).getReg());
+    LLT SrcTy2 = MRI->getType(MI->getOperand(2).getReg());
+
+    if (SrcTy.isPointerOrPointerVector() || SrcTy2.isPointerOrPointerVector()) {
+      report("Generic scmp/ucmp does not support pointers as operands", MI);
+      break;
+    }
+
+    if (DstTy.isPointerOrPointerVector()) {
+      report("Generic scmp/ucmp does not support pointers as a result", MI);
+      break;
+    }
+
+    if ((DstTy.isVector() != SrcTy.isVector()) ||
+        (DstTy.isVector() &&
+         DstTy.getElementCount() != SrcTy.getElementCount())) {
+      report("Generic vector scmp/ucmp must preserve number of lanes", MI);
+      break;
+    }
+
+    if (SrcTy != SrcTy2) {
+      report("Generic scmp/ucmp must have same input types", MI);
+      break;
+    }
 
     break;
   }
@@ -1767,16 +1830,77 @@ void MachineVerifier::verifyPreISelGenericInstruction(const MachineInstr *MI) {
     LLT DstTy = MRI->getType(MI->getOperand(0).getReg());
     LLT SrcTy = MRI->getType(MI->getOperand(1).getReg());
 
-    if (!DstTy.isScalableVector())
+    if (!DstTy.isScalableVector()) {
       report("Destination type must be a scalable vector", MI);
+      break;
+    }
 
-    if (!SrcTy.isScalar())
+    if (!SrcTy.isScalar()) {
       report("Source type must be a scalar", MI);
+      break;
+    }
 
-    if (DstTy.getScalarType() != SrcTy)
-      report("Element type of the destination must be the same type as the "
-             "source type",
+    if (TypeSize::isKnownGT(DstTy.getElementType().getSizeInBits(),
+                            SrcTy.getSizeInBits())) {
+      report("Element type of the destination must be the same size or smaller "
+             "than the source type",
              MI);
+      break;
+    }
+
+    break;
+  }
+  case TargetOpcode::G_EXTRACT_VECTOR_ELT: {
+    LLT DstTy = MRI->getType(MI->getOperand(0).getReg());
+    LLT SrcTy = MRI->getType(MI->getOperand(1).getReg());
+    LLT IdxTy = MRI->getType(MI->getOperand(2).getReg());
+
+    if (!DstTy.isScalar() && !DstTy.isPointer()) {
+      report("Destination type must be a scalar or pointer", MI);
+      break;
+    }
+
+    if (!SrcTy.isVector()) {
+      report("First source must be a vector", MI);
+      break;
+    }
+
+    auto TLI = MF->getSubtarget().getTargetLowering();
+    if (IdxTy.getSizeInBits() !=
+        TLI->getVectorIdxTy(MF->getDataLayout()).getFixedSizeInBits()) {
+      report("Index type must match VectorIdxTy", MI);
+      break;
+    }
+
+    break;
+  }
+  case TargetOpcode::G_INSERT_VECTOR_ELT: {
+    LLT DstTy = MRI->getType(MI->getOperand(0).getReg());
+    LLT VecTy = MRI->getType(MI->getOperand(1).getReg());
+    LLT ScaTy = MRI->getType(MI->getOperand(2).getReg());
+    LLT IdxTy = MRI->getType(MI->getOperand(3).getReg());
+
+    if (!DstTy.isVector()) {
+      report("Destination type must be a vector", MI);
+      break;
+    }
+
+    if (VecTy != DstTy) {
+      report("Destination type and vector type must match", MI);
+      break;
+    }
+
+    if (!ScaTy.isScalar() && !ScaTy.isPointer()) {
+      report("Inserted element must be a scalar or pointer", MI);
+      break;
+    }
+
+    auto TLI = MF->getSubtarget().getTargetLowering();
+    if (IdxTy.getSizeInBits() !=
+        TLI->getVectorIdxTy(MF->getDataLayout()).getFixedSizeInBits()) {
+      report("Index type must match VectorIdxTy", MI);
+      break;
+    }
 
     break;
   }
@@ -1865,6 +1989,17 @@ void MachineVerifier::verifyPreISelGenericInstruction(const MachineInstr *MI) {
         (MI->getOperand(MI->getNumOperands() - 1).getImm() & ~1LL))
       report("'tail' flag (last operand) must be an immediate 0 or 1", MI);
 
+    break;
+  }
+  case TargetOpcode::G_UBSANTRAP: {
+    const MachineOperand &KindOp = MI->getOperand(0);
+    if (!MI->getOperand(0).isImm()) {
+      report("Crash kind must be an immediate", &KindOp, 0);
+      break;
+    }
+    int64_t Kind = MI->getOperand(0).getImm();
+    if (!isInt<8>(Kind))
+      report("Crash kind must be 8 bit wide", &KindOp, 0);
     break;
   }
   case TargetOpcode::G_VECREDUCE_SEQ_FADD:
@@ -1990,6 +2125,12 @@ void MachineVerifier::verifyPreISelGenericInstruction(const MachineInstr *MI) {
       report("Src operand 1 must be a constant pool index", MI);
     if (!MRI->getType(MI->getOperand(0).getReg()).isPointer())
       report("Dst operand 0 must be a pointer", MI);
+    break;
+  }
+  case TargetOpcode::G_PTRAUTH_GLOBAL_VALUE: {
+    const MachineOperand &AddrOp = MI->getOperand(1);
+    if (!AddrOp.isReg() || !MRI->getType(AddrOp.getReg()).isPointer())
+      report("addr operand must be a pointer", &AddrOp, 1);
     break;
   }
   default:
@@ -3103,7 +3244,7 @@ void MachineVerifier::checkPHIOps(const MachineBasicBlock &MBB) {
 }
 
 static void
-verifyConvergenceControl(const MachineFunction &MF, MachineDomTree &DT,
+verifyConvergenceControl(const MachineFunction &MF, MachineDominatorTree &DT,
                          std::function<void(const Twine &Message)> FailureCB) {
   MachineConvergenceVerifier CV;
   CV.initialize(&errs(), FailureCB, MF);

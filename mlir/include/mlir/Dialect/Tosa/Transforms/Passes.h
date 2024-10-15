@@ -18,6 +18,7 @@
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+class TypeConverter;
 namespace tosa {
 
 #define GEN_PASS_DECL
@@ -30,13 +31,14 @@ void populateTosaDecomposeTransposeConv(MLIRContext *ctx,
                                         RewritePatternSet &patterns);
 void populateTosaDecomposeDepthwise(MLIRContext *ctx,
                                     RewritePatternSet &patterns);
-void populateTosaFoldConstantReciprocalPatterns(MLIRContext *ctx,
-                                                RewritePatternSet &patterns);
-void populateTosaFoldConstantTransposePatterns(MLIRContext *ctx,
-                                               RewritePatternSet &patterns);
+void populateTosaFoldConstantPatterns(
+    MLIRContext *ctx, RewritePatternSet &patterns,
+    const TosaLayerwiseConstantFoldPassOptions &options);
 void populateTosaConstantReduction(MLIRContext *ctx,
                                    RewritePatternSet &patterns,
                                    bool aggressiveReduceConstant);
+
+void populateTosaTypeConversion(TypeConverter &converter);
 
 std::unique_ptr<Pass> createTosaLayerwiseConstantFoldPass();
 std::unique_ptr<Pass> createTosaLayerwiseConstantFoldPass(

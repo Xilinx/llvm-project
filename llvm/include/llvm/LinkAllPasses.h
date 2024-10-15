@@ -21,7 +21,6 @@
 #include "llvm/Analysis/CallPrinter.h"
 #include "llvm/Analysis/DomPrinter.h"
 #include "llvm/Analysis/GlobalsModRef.h"
-#include "llvm/Analysis/IntervalPartition.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/Analysis/RegionPass.h"
@@ -89,8 +88,7 @@ namespace {
       (void) llvm::createLoopExtractorPass();
       (void) llvm::createLoopSimplifyPass();
       (void) llvm::createLoopStrengthReducePass();
-      (void) llvm::createLoopUnrollPass();
-      (void) llvm::createLowerConstantIntrinsicsPass();
+      (void)llvm::createLoopUnrollPass();
       (void) llvm::createLowerGlobalDtorsLegacyPass();
       (void) llvm::createLowerInvokePass();
       (void) llvm::createLowerSwitchPass();
@@ -114,13 +112,13 @@ namespace {
       (void)llvm::createTLSVariableHoistPass();
       (void) llvm::createConstantHoistingPass();
       (void)llvm::createCodeGenPrepareLegacyPass();
+      (void) llvm::createPostInlineEntryExitInstrumenterPass();
       (void) llvm::createEarlyCSEPass();
       (void) llvm::createGVNPass();
       (void) llvm::createPostDomTree();
       (void) llvm::createMergeICmpsLegacyPass();
       (void) llvm::createExpandLargeDivRemPass();
       (void)llvm::createExpandMemCmpLegacyPass();
-      (void) llvm::createExpandVectorPredicationPass();
       std::string buf;
       llvm::raw_string_ostream os(buf);
       (void) llvm::createPrintModulePass(os);
@@ -139,7 +137,6 @@ namespace {
       (void) llvm::createFixIrreduciblePass();
       (void)llvm::createSelectOptimizePass();
 
-      (void)new llvm::IntervalPartition();
       (void)new llvm::ScalarEvolutionWrapperPass();
       llvm::Function::Create(nullptr, llvm::GlobalValue::ExternalLinkage)->viewCFGOnly();
       llvm::RGPassManager RGM;

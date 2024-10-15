@@ -18,6 +18,7 @@
 #include "mlir/Pass/Pass.h"
 
 namespace mlir {
+class TypeConverter;
 
 #define GEN_PASS_DECL_TOSATOLINALG
 #define GEN_PASS_DECL_TOSATOLINALGNAMED
@@ -38,19 +39,24 @@ void addTosaToLinalgPasses(
     const TosaToLinalgNamedOptions &tosaToLinalgNamedOptions =
         TosaToLinalgNamedOptions(),
     // Note: Default to 'none' level unless otherwise specified.
-    tosa::TosaValidationOptions const &validationOptions = {
-        tosa::TosaProfileEnum::Undefined, false, tosa::TosaLevelEnum::None});
+    std::optional<tosa::TosaValidationOptions> validationOptions =
+        tosa::TosaValidationOptions{tosa::TosaProfileEnum::Undefined, false,
+                                    tosa::TosaLevelEnum::None});
 
 /// Populates TOSA to linalg pipelines
 /// Currently, this includes only the "tosa-to-linalg-pipeline".
 void registerTosaToLinalgPipelines();
 
 /// Populates conversion passes from TOSA dialect to Linalg dialect.
-void populateTosaToLinalgConversionPatterns(RewritePatternSet *patterns);
+void populateTosaToLinalgConversionPatterns(TypeConverter &converter,
+                                            RewritePatternSet *patterns);
 
 /// Populates conversion passes from TOSA dialect to Linalg named operations.
 void populateTosaToLinalgNamedConversionPatterns(
-    RewritePatternSet *patterns, const TosaToLinalgNamedOptions &options);
+    TypeConverter &converter, RewritePatternSet *patterns,
+    const TosaToLinalgNamedOptions &options);
+
+void populateTosaToLinalgTypeConversion(TypeConverter &converter);
 
 } // namespace tosa
 } // namespace mlir

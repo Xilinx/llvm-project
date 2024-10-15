@@ -138,7 +138,7 @@ func.func @cast_tensor(%arg : tensor<f32>) {
 // -----
 
 func.func @cast_array(%arg : !emitc.array<4xf32>) {
-    // expected-error @+1 {{'emitc.cast' op operand type '!emitc.array<4xf32>' and result type '!emitc.array<4xf32>' are cast incompatible}}
+    // expected-error @+1 {{'emitc.cast' op cast of array must bear a reference}}
     %1 = emitc.cast %arg: !emitc.array<4xf32> to !emitc.array<4xf32>
     return
 }
@@ -170,7 +170,7 @@ func.func @add_float_pointer(%arg0: f32, %arg1: !emitc.ptr<f32>) {
 // -----
 
 func.func @div_tensor(%arg0: tensor<i32>, %arg1: tensor<i32>) {
-    // expected-error @+1 {{'emitc.div' op operand #0 must be floating-point type supported by EmitC or integer type supported by EmitC or index or EmitC opaque type, but got 'tensor<i32>'}}
+    // expected-error @+1 {{'emitc.div' op operand #0 must be floating-point type supported by EmitC or integer, index or opaque type supported by EmitC, but got 'tensor<i32>'}}
     %1 = "emitc.div" (%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
     return
 }
@@ -178,7 +178,7 @@ func.func @div_tensor(%arg0: tensor<i32>, %arg1: tensor<i32>) {
 // -----
 
 func.func @mul_tensor(%arg0: tensor<i32>, %arg1: tensor<i32>) {
-    // expected-error @+1 {{'emitc.mul' op operand #0 must be floating-point type supported by EmitC or integer type supported by EmitC or index or EmitC opaque type, but got 'tensor<i32>'}}
+    // expected-error @+1 {{'emitc.mul' op operand #0 must be floating-point type supported by EmitC or integer, index or opaque type supported by EmitC, but got 'tensor<i32>'}}
     %1 = "emitc.mul" (%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
     return
 }
@@ -186,7 +186,7 @@ func.func @mul_tensor(%arg0: tensor<i32>, %arg1: tensor<i32>) {
 // -----
 
 func.func @rem_tensor(%arg0: tensor<i32>, %arg1: tensor<i32>) {
-    // expected-error @+1 {{'emitc.rem' op operand #0 must be integer type supported by EmitC or index or EmitC opaque type, but got 'tensor<i32>'}}
+    // expected-error @+1 {{'emitc.rem' op operand #0 must be integer, index or opaque type supported by EmitC, but got 'tensor<i32>'}}
     %1 = "emitc.rem" (%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
     return
 }
@@ -194,7 +194,7 @@ func.func @rem_tensor(%arg0: tensor<i32>, %arg1: tensor<i32>) {
 // -----
 
 func.func @rem_float(%arg0: f32, %arg1: f32) {
-    // expected-error @+1 {{'emitc.rem' op operand #0 must be integer type supported by EmitC or index or EmitC opaque type, but got 'f32'}}
+    // expected-error @+1 {{'emitc.rem' op operand #0 must be integer, index or opaque type supported by EmitC, but got 'f32'}}
     %1 = "emitc.rem" (%arg0, %arg1) : (f32, f32) -> f32
     return
 }
@@ -235,7 +235,7 @@ func.func @test_misplaced_yield() {
 // -----
 
 func.func @test_assign_to_non_variable(%arg1: f32, %arg2: f32) {
-  // expected-error @+1 {{'emitc.assign' op requires first operand (<block argument> of type 'f32' at index: 1) to be a Variable or subscript}}
+  // expected-error @+1 {{'emitc.assign' op requires first operand (<block argument> of type 'f32' at index: 1) to be a get_global, member, member of pointer, subscript or variable}}
   emitc.assign %arg1 : f32 to %arg2 : f32
   return
 }
@@ -317,7 +317,7 @@ func.func @test_expression_multiple_results(%arg0: i32) -> i32 {
 
 // -----
 
-// expected-error @+1 {{'emitc.func' op requires zero or exactly one result, but has 2}}
+// expected-error @+1 {{expected ')'}}
 emitc.func @multiple_results(%0: i32) -> (i32, i32) {
   emitc.return %0 : i32
 }
@@ -390,8 +390,137 @@ func.func @logical_or_resulterror(%arg0: i32, %arg1: i32) {
 
 // -----
 
-func.func @test_subscript_indices_mismatch(%arg0: !emitc.array<4x8xf32>, %arg2: index) {
-  // expected-error @+1 {{'emitc.subscript' op requires number of indices (1) to match the rank of the array type (2)}}
-  %0 = emitc.subscript %arg0[%arg2] : <4x8xf32>, index
+func.func @test_subscript_array_indices_mismatch(%arg0: !emitc.array<4x8xf32>, %arg1: index) {
+  // expected-error @+1 {{'emitc.subscript' op on array operand requires number of indices (1) to match the rank of the array type (2)}}
+  %0 = emitc.subscript %arg0[%arg1] : (!emitc.array<4x8xf32>, index) -> f32
+  return
+}
+
+// -----
+
+func.func @test_subscript_array_index_type_mismatch(%arg0: !emitc.array<4x8xf32>, %arg1: index, %arg2: f32) {
+  // expected-error @+1 {{'emitc.subscript' op on array operand requires index operand 1 to be integer-like, but got 'f32'}}
+  %0 = emitc.subscript %arg0[%arg1, %arg2] : (!emitc.array<4x8xf32>, index, f32) -> f32
+  return
+}
+
+// -----
+
+func.func @test_subscript_array_type_mismatch(%arg0: !emitc.array<4x8xf32>, %arg1: index, %arg2: index) {
+  // expected-error @+1 {{'emitc.subscript' op on array operand requires element type ('f32') and result type ('i32') to match}}
+  %0 = emitc.subscript %arg0[%arg1, %arg2] : (!emitc.array<4x8xf32>, index, index) -> i32
+  return
+}
+
+// -----
+
+func.func @test_subscript_ptr_indices_mismatch(%arg0: !emitc.ptr<f32>, %arg1: index) {
+  // expected-error @+1 {{'emitc.subscript' op on pointer operand requires one index operand, but got 2}}
+  %0 = emitc.subscript %arg0[%arg1, %arg1] : (!emitc.ptr<f32>, index, index) -> f32
+  return
+}
+
+// -----
+
+func.func @test_subscript_ptr_index_type_mismatch(%arg0: !emitc.ptr<f32>, %arg1: f64) {
+  // expected-error @+1 {{'emitc.subscript' op on pointer operand requires index operand to be integer-like, but got 'f64'}}
+  %0 = emitc.subscript %arg0[%arg1] : (!emitc.ptr<f32>, f64) -> f32
+  return
+}
+
+// -----
+
+func.func @test_subscript_ptr_type_mismatch(%arg0: !emitc.ptr<f32>, %arg1: index) {
+  // expected-error @+1 {{'emitc.subscript' op on pointer operand requires pointee type ('f32') and result type ('f64') to match}}
+  %0 = emitc.subscript %arg0[%arg1] : (!emitc.ptr<f32>, index) -> f64
+  return
+}
+
+// -----
+
+// expected-error @+1 {{'emitc.global' op cannot have both static and extern specifiers}}
+emitc.global extern static @uninit : i32
+
+// -----
+
+emitc.global @myglobal : !emitc.array<2xf32>
+
+func.func @use_global() {
+  // expected-error @+1 {{'emitc.get_global' op result type 'f32' does not match type '!emitc.array<2xf32>' of the global @myglobal}}
+  %0 = emitc.get_global @myglobal : f32
+  return
+}
+
+// -----
+
+func.func @member(%arg0: i32) {
+  // expected-error @+1 {{'emitc.member' op operand #0 must be EmitC opaque type, but got 'i32'}}
+  %0 = "emitc.member" (%arg0) {member = "a"} : (i32) -> i32
+  return
+}
+
+// -----
+
+func.func @member_of_ptr(%arg0: i32) {
+  // expected-error @+1 {{'emitc.member_of_ptr' op operand #0 must be EmitC opaque type or EmitC pointer type, but got 'i32}}
+  %0 = "emitc.member_of_ptr" (%arg0) {member = "a"} : (i32) -> i32
+  return
+}
+
+// -----
+
+// expected-error @+1 {{'emitc.global' op global reference initial value must be an opaque attribute, got dense<128>}}
+emitc.global const @myref : !emitc.array<2xi16> = dense<128> ref
+
+// -----
+
+// expected-error @+1 {{'emitc.global' op global reference must be initialized}}
+emitc.global const @myref : !emitc.array<2xi16> ref
+
+// -----
+
+func.func @test_verbatim(%arg0 : !emitc.ptr<i32>, %arg1 : i32) {
+  // expected-error @+1 {{'emitc.verbatim' op requires operands for each placeholder in the format string}}
+  emitc.verbatim "" args %arg0, %arg1 : !emitc.ptr<i32>, i32
+  return
+}
+
+// -----
+
+func.func @test_verbatim(%arg0 : !emitc.ptr<i32>, %arg1 : i32) {
+  // expected-error @+1 {{'emitc.verbatim' op requires operands for each placeholder in the format string}}
+  emitc.verbatim "abc" args %arg0, %arg1 : !emitc.ptr<i32>, i32
+  return
+}
+
+// -----
+
+func.func @test_verbatim(%arg0 : !emitc.ptr<i32>, %arg1 : i32) {
+  // expected-error @+1 {{'emitc.verbatim' op requires operands for each placeholder in the format string}}
+  emitc.verbatim "{}" args %arg0, %arg1 : !emitc.ptr<i32>, i32
+  return
+}
+
+// -----
+
+func.func @test_verbatim(%arg0 : !emitc.ptr<i32>, %arg1 : i32) {
+  // expected-error @+1 {{'emitc.verbatim' op requires operands for each placeholder in the format string}}
+  emitc.verbatim "{} {} {}" args %arg0, %arg1 : !emitc.ptr<i32>, i32
+  return
+}
+
+// -----
+
+func.func @test_verbatim(%arg0 : !emitc.ptr<i32>, %arg1 : i32) {
+  // expected-error @+1 {{'emitc.verbatim' op expected '}' after unescaped '{'}}
+  emitc.verbatim "{ " args %arg0, %arg1 : !emitc.ptr<i32>, i32
+  return
+}
+
+// -----
+
+func.func @test_verbatim(%arg0 : !emitc.ptr<i32>, %arg1 : i32) {
+  // expected-error @+1 {{'emitc.verbatim' op expected '}' after unescaped '{'}}
+  emitc.verbatim "{a} " args %arg0, %arg1 : !emitc.ptr<i32>, i32
   return
 }
