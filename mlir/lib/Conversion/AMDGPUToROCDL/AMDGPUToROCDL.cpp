@@ -321,6 +321,22 @@ struct LDSBarrierOpLowering : public ConvertOpToLLVMPattern<LDSBarrierOp> {
     return success();
   }
 };
+
+struct SchedBarrierOpLowering : public ConvertOpToLLVMPattern<SchedBarrierOp> {
+  SchedBarrierOpLowering(LLVMTypeConverter &converter, Chipset chipset)
+      : ConvertOpToLLVMPattern<SchedBarrierOp>(converter), chipset(chipset) {}
+
+  Chipset chipset;
+
+  LogicalResult
+  matchAndRewrite(SchedBarrierOp op, SchedBarrierOp::Adaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    rewriter.replaceOpWithNewOp<ROCDL::SchedBarrier>(op,
+                                                     (uint32_t)op.getOpts());
+    return success();
+  }
+};
+
 } // namespace
 
 /// If `input` is a vector of bytes, concatentate those bytes in little-endian
@@ -371,7 +387,7 @@ static void wmmaPushInputOperand(ConversionPatternRewriter &rewriter,
                                  bool isUnsigned, Value llvmInput,
                                  SmallVector<Value, 4> &operands) {
   Type inputType = llvmInput.getType();
-  auto vectorType = inputType.dyn_cast<VectorType>();
+  auto vectorType = dyn_cast<VectorType>(inputType);
   Type elemType = vectorType.getElementType();
 
   if (elemType.isBF16())
@@ -414,7 +430,7 @@ static void wmmaPushOutputOperand(ConversionPatternRewriter &rewriter,
                                   Value output, int32_t subwordOffset,
                                   bool clamp, SmallVector<Value, 4> &operands) {
   Type inputType = output.getType();
-  auto vectorType = inputType.dyn_cast<VectorType>();
+  auto vectorType = dyn_cast<VectorType>(inputType);
   Type elemType = vectorType.getElementType();
   if (elemType.isBF16())
     output = rewriter.create<LLVM::BitcastOp>(
@@ -569,9 +585,8 @@ static std::optional<StringRef> mfmaOpToIntrinsic(MFMAOp mfma,
 /// on the architecture you are compiling for.
 static std::optional<StringRef> wmmaOpToIntrinsic(WMMAOp wmma,
                                                   Chipset chipset) {
-
-  auto sourceVectorType = wmma.getSourceA().getType().dyn_cast<VectorType>();
-  auto destVectorType = wmma.getDestC().getType().dyn_cast<VectorType>();
+  auto sourceVectorType = dyn_cast<VectorType>(wmma.getSourceA().getType());
+  auto destVectorType = dyn_cast<VectorType>(wmma.getDestC().getType());
   auto elemSourceType = sourceVectorType.getElementType();
   auto elemDestType = destVectorType.getElementType();
 
@@ -727,7 +742,7 @@ LogicalResult ExtPackedFp8OpLowering::matchAndRewrite(
   Type f32 = getTypeConverter()->convertType(op.getResult().getType());
 
   Value source = adaptor.getSource();
-  auto sourceVecType = op.getSource().getType().dyn_cast<VectorType>();
+  auto sourceVecType = dyn_cast<VectorType>(op.getSource().getType());
   Type sourceElemType = getElementTypeOrSelf(op.getSource());
   // Extend to a v4i8
   if (!sourceVecType || sourceVecType.getNumElements() < 4) {
@@ -880,8 +895,8 @@ void mlir::populateAMDGPUToROCDLConversionPatterns(LLVMTypeConverter &converter,
                                ROCDL::RawPtrBufferAtomicUminOp>,
            RawBufferOpLowering<RawBufferAtomicCmpswapOp,
                                ROCDL::RawPtrBufferAtomicCmpSwap>,
-           LDSBarrierOpLowering, MFMAOpLowering, WMMAOpLowering,
-           ExtPackedFp8OpLowering, PackedTrunc2xFp8OpLowering,
+           LDSBarrierOpLowering, SchedBarrierOpLowering, MFMAOpLowering,
+           WMMAOpLowering, ExtPackedFp8OpLowering, PackedTrunc2xFp8OpLowering,
            PackedStochRoundFp8OpLowering>(converter, chipset);
 }
 

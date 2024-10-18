@@ -9,7 +9,6 @@
 #include "mlir/Tools/PDLL/Parser/Parser.h"
 #include "Lexer.h"
 #include "mlir/Support/IndentedOstream.h"
-#include "mlir/Support/LogicalResult.h"
 #include "mlir/TableGen/Argument.h"
 #include "mlir/TableGen/Attribute.h"
 #include "mlir/TableGen/Constraint.h"
@@ -24,6 +23,7 @@
 #include "mlir/Tools/PDLL/ODS/Operation.h"
 #include "mlir/Tools/PDLL/Parser/CodeComplete.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ManagedStatic.h"
@@ -31,6 +31,8 @@
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Parser.h"
+
+#include <filesystem>
 #include <optional>
 #include <string>
 
@@ -45,9 +47,12 @@ namespace {
 class Parser {
 public:
   Parser(ast::Context &ctx, llvm::SourceMgr &sourceMgr,
-         bool enableDocumentation, CodeCompleteContext *codeCompleteContext)
+         bool enableDocumentation, bool emitWarningOnRepeatedIncludeAtMainFile,
+         CodeCompleteContext *codeCompleteContext)
       : ctx(ctx), lexer(sourceMgr, ctx.getDiagEngine(), codeCompleteContext),
         curToken(lexer.lexToken()), enableDocumentation(enableDocumentation),
+        emitWarningOnRepeatedIncludeAtMainFile(
+            emitWarningOnRepeatedIncludeAtMainFile),
         typeTy(ast::TypeType::get(ctx)), valueTy(ast::ValueType::get(ctx)),
         typeRangeTy(ast::TypeRangeType::get(ctx)),
         valueRangeTy(ast::ValueRangeType::get(ctx)),
@@ -91,6 +96,13 @@ private:
     Interface,
   };
 
+  /// The current context of how a native operator is used. This differentiates
+  /// between whether the result of the operations is assigned to a variable.
+  enum class NativeOperatorContext {
+    Generic,
+    Let,
+  };
+
   //===--------------------------------------------------------------------===//
   // Parsing
   //===--------------------------------------------------------------------===//
@@ -105,6 +117,17 @@ private:
 
   /// Pop the last decl scope from the lexer.
   void popDeclScope() { curDeclScope = curDeclScope->getParentScope(); }
+
+  /// Creates a native constraint taking a set of Attr as arguments.
+  /// The number of arguments and their names is given by argNames.
+  /// The native returns an Attr when returnsAttr is true, otherwise returns
+  /// nothing.
+  template <class T>
+  T *declareBuiltin(StringRef name, ArrayRef<StringRef> argNames,
+                    bool returnsAttr);
+
+  /// Register all builtin natives.
+  void declareBuiltins();
 
   /// Parse the body of an AST module.
   LogicalResult parseModuleBody(SmallVectorImpl<ast::Decl *> &decls);
@@ -160,6 +183,7 @@ private:
   // Directives
 
   LogicalResult parseDirective(SmallVectorImpl<ast::Decl *> &decls);
+  LogicalResult parseOnce(SmallVectorImpl<ast::Decl *> &decls);
   LogicalResult parseInclude(SmallVectorImpl<ast::Decl *> &decls);
   LogicalResult parseTdInclude(StringRef filename, SMRange fileLoc,
                                SmallVectorImpl<ast::Decl *> &decls);
@@ -312,17 +336,30 @@ private:
   // Exprs
 
   FailureOr<ast::Expr *> parseExpr();
+  FailureOr<ast::Expr *> parseLogicalOrExpr();
+  FailureOr<ast::Expr *> parseLogicalAndExpr();
+  FailureOr<ast::Expr *> parseEqualityExpr();
+  FailureOr<ast::Expr *> parseRelationExpr();
+  FailureOr<ast::Expr *> parseExp2Log2AbsExpr();
+  FailureOr<ast::Expr *> parseAddSubExpr();
+  FailureOr<ast::Expr *> parseMulDivModExpr();
+  FailureOr<ast::Expr *> parseLogicalNotExpr();
+  FailureOr<ast::Expr *> parseOtherExpr();
 
   /// Identifier expressions.
+  FailureOr<ast::Expr *> parseArrayAttrExpr();
   FailureOr<ast::Expr *> parseAttributeExpr();
   FailureOr<ast::Expr *> parseCallExpr(ast::Expr *parentExpr,
                                        bool isNegated = false);
   FailureOr<ast::Expr *> parseDeclRefExpr(StringRef name, SMRange loc);
+  FailureOr<ast::Expr *> parseDictAttrExpr();
   FailureOr<ast::Expr *> parseIdentifierExpr();
   FailureOr<ast::Expr *> parseInlineConstraintLambdaExpr();
   FailureOr<ast::Expr *> parseInlineRewriteLambdaExpr();
   FailureOr<ast::Expr *> parseMemberAccessExpr(ast::Expr *parentExpr);
   FailureOr<ast::Expr *> parseNegatedExpr();
+  FailureOr<ast::Expr *> parseIntegerExpr();
+  FailureOr<ast::Expr *> parseStringExpr();
   FailureOr<ast::OpNameDecl *> parseOperationName(bool allowEmptyName = false);
   FailureOr<ast::OpNameDecl *> parseWrappedOperationName(bool allowEmptyName);
   FailureOr<ast::Expr *>
@@ -331,7 +368,6 @@ private:
   FailureOr<ast::Expr *> parseTupleExpr();
   FailureOr<ast::Expr *> parseTypeExpr();
   FailureOr<ast::Expr *> parseUnderscoreExpr();
-
   //===--------------------------------------------------------------------===//
   // Stmts
 
@@ -416,6 +452,13 @@ private:
   FailureOr<ast::MemberAccessExpr *>
   createMemberAccessExpr(ast::Expr *parentExpr, StringRef name, SMRange loc);
 
+  // Create a native call with \p function and \p arguments.
+  // This should be accompanied by a C++ implementation of the function that
+  // needs to be linked and registered in passes that process PDLL files.
+  FailureOr<ast::Expr *>
+  createBuiltinCall(SMRange loc, ast::Decl *function,
+                    MutableArrayRef<ast::Expr *> arguments);
+
   /// Validate the member access `name` into the given parent expression. On
   /// success, this also returns the type of the member accessed.
   FailureOr<ast::Type> validateMemberAccess(ast::Expr *parentExpr,
@@ -425,7 +468,8 @@ private:
                       OpResultTypeContext resultTypeContext,
                       SmallVectorImpl<ast::Expr *> &operands,
                       MutableArrayRef<ast::NamedAttributeDecl *> attributes,
-                      SmallVectorImpl<ast::Expr *> &results);
+                      SmallVectorImpl<ast::Expr *> &results,
+                      unsigned numRegions);
   LogicalResult
   validateOperationOperands(SMRange loc, std::optional<StringRef> name,
                             const ods::Operation *odsOp,
@@ -521,6 +565,9 @@ private:
     consumeToken();
     return success();
   }
+  void emitWarning(SMRange loc, const Twine &msg) {
+    lexer.emitWarning(loc, msg);
+  }
   LogicalResult emitError(SMRange loc, const Twine &msg) {
     lexer.emitError(loc, msg);
     return failure();
@@ -551,12 +598,19 @@ private:
   /// viable.
   bool enableDocumentation;
 
+  /// A flag indicating if the parser will emit a warning when same header is
+  /// found parsing the main file
+  bool emitWarningOnRepeatedIncludeAtMainFile;
+
   /// The most recently defined decl scope.
   ast::DeclScope *curDeclScope = nullptr;
   llvm::SpecificBumpPtrAllocator<ast::DeclScope> scopeAllocator;
 
   /// The current context of the parser.
   ParserContext parserContext = ParserContext::Global;
+
+  /// The default PDLL native operator context
+  NativeOperatorContext nativeOperatorContext = NativeOperatorContext::Generic;
 
   /// Cached types to simplify verification and expression creation.
   ast::Type typeTy, valueTy;
@@ -568,12 +622,121 @@ private:
 
   /// The optional code completion context.
   CodeCompleteContext *codeCompleteContext;
+
+  struct {
+    ast::UserRewriteDecl *addEntryToDictionaryAttr_Rewrite;
+    ast::UserConstraintDecl *addEntryToDictionaryAttr_Constraint;
+    ast::UserRewriteDecl *addElemToArrayAttr;
+    ast::UserRewriteDecl *mulRewrite;
+    ast::UserRewriteDecl *divRewrite;
+    ast::UserRewriteDecl *modRewrite;
+    ast::UserRewriteDecl *addRewrite;
+    ast::UserRewriteDecl *subRewrite;
+    ast::UserRewriteDecl *log2Rewrite;
+    ast::UserRewriteDecl *exp2Rewrite;
+    ast::UserRewriteDecl *absRewrite;
+    ast::UserConstraintDecl *mulConstraint;
+    ast::UserConstraintDecl *divConstraint;
+    ast::UserConstraintDecl *modConstraint;
+    ast::UserConstraintDecl *addConstraint;
+    ast::UserConstraintDecl *subConstraint;
+    ast::UserConstraintDecl *log2Constraint;
+    ast::UserConstraintDecl *exp2Constraint;
+    ast::UserConstraintDecl *absConstraint;
+    ast::UserConstraintDecl *equals;
+  } builtins{};
+
+  // Allows to keep track of those files that has been marked with #once
+  llvm::StringSet<> canonicalPathOfFilesMarkedWithOnceDirective;
 };
 } // namespace
+
+template <class T>
+T *Parser::declareBuiltin(StringRef name, ArrayRef<StringRef> argNames,
+                          bool returnsAttr) {
+  SMRange loc;
+  auto attrConstr = ast::ConstraintRef(
+      ast::AttrConstraintDecl::create(ctx, loc, nullptr), loc);
+
+  pushDeclScope();
+  SmallVector<ast::VariableDecl *> args;
+  for (auto argName : argNames) {
+    FailureOr<ast::VariableDecl *> arg =
+        createArgOrResultVariableDecl(argName, loc, attrConstr);
+    assert(succeeded(arg));
+    args.push_back(*arg);
+  }
+  SmallVector<ast::VariableDecl *> results;
+  if (returnsAttr) {
+    auto result = createArgOrResultVariableDecl("", loc, attrConstr);
+    assert(succeeded(result));
+    results.push_back(*result);
+  }
+  popDeclScope();
+
+  auto *constraintDecl =
+      T::createNative(ctx, ast::Name::create(ctx, name, loc), args, results, {},
+                      createUserConstraintRewriteResultType(results));
+  curDeclScope->add(constraintDecl);
+  return constraintDecl;
+}
+
+void Parser::declareBuiltins() {
+  builtins.addEntryToDictionaryAttr_Rewrite =
+      declareBuiltin<ast::UserRewriteDecl>(
+          "__builtin_addEntryToDictionaryAttr_rewrite",
+          {"attr", "attrName", "attrEntry"},
+          /*returnsAttr=*/true);
+  builtins.addEntryToDictionaryAttr_Constraint =
+      declareBuiltin<ast::UserConstraintDecl>(
+          "__builtin_addEntryToDictionaryAttr_constraint",
+          {"attr", "attrName", "attrEntry"},
+          /*returnsAttr=*/true);
+  builtins.addElemToArrayAttr = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_addElemToArrayAttr", {"attr", "element"},
+      /*returnsAttr=*/true);
+  builtins.mulRewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_mulRewrite", {"lhs", "rhs"}, true);
+  builtins.divRewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_divRewrite", {"lhs", "rhs"}, true);
+  builtins.modRewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_modRewrite", {"lhs", "rhs"}, true);
+  builtins.addRewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_addRewrite", {"lhs", "rhs"}, true);
+  builtins.subRewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_subRewrite", {"lhs", "rhs"}, true);
+  builtins.log2Rewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_log2Rewrite", {"Attr"}, true);
+  builtins.exp2Rewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_exp2Rewrite", {"Attr"}, true);
+  builtins.absRewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_absRewrite", {"Attr"}, true);
+  builtins.mulConstraint = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_mulConstraint", {"lhs", "rhs"}, true);
+  builtins.divConstraint = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_divConstraint", {"lhs", "rhs"}, true);
+  builtins.modConstraint = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_modConstraint", {"lhs", "rhs"}, true);
+  builtins.addConstraint = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_addConstraint", {"lhs", "rhs"}, true);
+  builtins.subConstraint = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_subConstraint", {"lhs", "rhs"}, true);
+  builtins.log2Constraint = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_log2Constraint", {"Attr"}, true);
+  builtins.exp2Constraint = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_exp2Constraint", {"Attr"}, true);
+  builtins.absConstraint = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_absConstraint", {"Attr"}, true);
+  builtins.equals = declareBuiltin<ast::UserConstraintDecl>(
+      "__builtin_equals", {"lhs", "rhs"},
+      /*returnsAttr=*/false);
+}
 
 FailureOr<ast::Module *> Parser::parseModule() {
   SMLoc moduleLoc = curToken.getStartLoc();
   pushDeclScope();
+
+  declareBuiltins();
 
   // Parse the top-level decls of the module.
   SmallVector<ast::Decl *> decls;
@@ -623,7 +786,7 @@ LogicalResult Parser::convertExpressionTo(
     return diag;
   };
 
-  if (auto exprOpType = exprType.dyn_cast<ast::OperationType>())
+  if (auto exprOpType = dyn_cast<ast::OperationType>(exprType))
     return convertOpExpressionTo(expr, exprOpType, type, emitConvertError);
 
   // FIXME: Decide how to allow/support converting a single result to multiple,
@@ -638,7 +801,7 @@ LogicalResult Parser::convertExpressionTo(
     return success();
 
   // Handle tuple types.
-  if (auto exprTupleType = exprType.dyn_cast<ast::TupleType>())
+  if (auto exprTupleType = dyn_cast<ast::TupleType>(exprType))
     return convertTupleExpressionTo(expr, exprTupleType, type, emitConvertError,
                                     noteAttachFn);
 
@@ -650,7 +813,7 @@ LogicalResult Parser::convertOpExpressionTo(
     function_ref<ast::InFlightDiagnostic()> emitErrorFn) {
   // Two operation types are compatible if they have the same name, or if the
   // expected type is more general.
-  if (auto opType = type.dyn_cast<ast::OperationType>()) {
+  if (auto opType = dyn_cast<ast::OperationType>(type)) {
     if (opType.getName())
       return emitErrorFn();
     return success();
@@ -702,7 +865,7 @@ LogicalResult Parser::convertTupleExpressionTo(
     function_ref<ast::InFlightDiagnostic()> emitErrorFn,
     function_ref<void(ast::Diagnostic &diag)> noteAttachFn) {
   // Handle conversions between tuples.
-  if (auto tupleType = type.dyn_cast<ast::TupleType>()) {
+  if (auto tupleType = dyn_cast<ast::TupleType>(type)) {
     if (tupleType.size() != exprType.size())
       return emitErrorFn();
 
@@ -758,6 +921,15 @@ LogicalResult Parser::convertTupleExpressionTo(
     return convertToRange({valueTy, valueRangeTy}, valueRangeTy);
   if (type == typeRangeTy)
     return convertToRange({typeTy, typeRangeTy}, typeRangeTy);
+  if (type == attrTy && exprType.size() == 1 &&
+      exprType.getElementTypes()[0] == type) {
+    // Parenthesis become tuples. Allow to unpack single element tuples
+    // to expressions.
+    expr = ast::MemberAccessExpr::create(ctx, expr->getLoc(), expr,
+                                         llvm::to_string(0),
+                                         exprType.getElementTypes()[0]);
+    return success();
+  }
 
   return emitErrorFn();
 }
@@ -769,8 +941,26 @@ LogicalResult Parser::parseDirective(SmallVectorImpl<ast::Decl *> &decls) {
   StringRef directive = curToken.getSpelling();
   if (directive == "#include")
     return parseInclude(decls);
+  if (directive == "#once")
+    return parseOnce(decls);
 
   return emitError("unknown directive `" + directive + "`");
+}
+
+LogicalResult Parser::parseOnce(SmallVectorImpl<ast::Decl *> &decls) {
+  consumeToken(Token::directive);
+
+  // #once directive is meant for included files and the main file is not added
+  // into the include stack, just return
+  if (lexer.isLexingMainFile()) {
+    return success();
+  }
+
+  // Mark this file as already included
+  canonicalPathOfFilesMarkedWithOnceDirective.insert(
+      lexer.getCurrentInclude().str());
+
+  return success();
 }
 
 LogicalResult Parser::parseInclude(SmallVectorImpl<ast::Decl *> &decls) {
@@ -793,9 +983,36 @@ LogicalResult Parser::parseInclude(SmallVectorImpl<ast::Decl *> &decls) {
   // Check the type of include. If ending with `.pdll`, this is another pdl file
   // to be parsed along with the current module.
   if (filename.ends_with(".pdll")) {
-    if (failed(lexer.pushInclude(filename, fileLoc)))
+    std::string includedFile;
+    if (!lexer.getSourceMgr().OpenIncludeFile(filename.str(), includedFile))
       return emitError(fileLoc,
                        "unable to open include file `" + filename + "`");
+
+    std::error_code ec;
+    std::filesystem::path canonicalPath =
+        std::filesystem::canonical(includedFile, ec);
+    if (ec) {
+      return emitError(fileLoc,
+                       "unable to canonicalize path for include file `" +
+                           filename + "`");
+    }
+
+    // Check if included has been already processed
+    if (canonicalPathOfFilesMarkedWithOnceDirective.count(
+            canonicalPath.string())) {
+      if (emitWarningOnRepeatedIncludeAtMainFile && lexer.isLexingMainFile()) {
+        emitWarning(
+            fileLoc,
+            "included file is already included, and therefore has no effect");
+      }
+      return success();
+    }
+
+    LogicalResult couldPush = lexer.pushInclude(filename, fileLoc);
+    if (failed(couldPush)) {
+      return emitError(fileLoc,
+                       "unable to open include file `" + filename + "`");
+    }
 
     // If we added the include successfully, parse it into the current module.
     // Make sure to update to the next token after we finish parsing the nested
@@ -880,8 +1097,7 @@ void Parser::processTdIncludeRecords(llvm::RecordKeeper &tdRecords,
       -> const ods::TypeConstraint & {
     return odsContext.insertTypeConstraint(
         cst.constraint.getUniqueDefName(),
-        processDoc(cst.constraint.getSummary()),
-        cst.constraint.getCPPClassName());
+        processDoc(cst.constraint.getSummary()), cst.constraint.getCppType());
   };
   auto convertLocToRange = [&](llvm::SMLoc loc) -> llvm::SMRange {
     return {loc, llvm::SMLoc::getFromPointer(loc.getPointer() + 1)};
@@ -945,7 +1161,7 @@ void Parser::processTdIncludeRecords(llvm::RecordKeeper &tdRecords,
     tblgen::TypeConstraint constraint(def);
     decls.push_back(createODSNativePDLLConstraintDecl<ast::TypeConstraintDecl>(
         constraint, convertLocToRange(def->getLoc().front()), typeTy,
-        constraint.getCPPClassName()));
+        constraint.getCppType()));
   }
   /// OpInterfaces.
   ast::Type opTy = ast::OperationType::get(ctx);
@@ -1789,7 +2005,255 @@ FailureOr<ast::ConstraintRef> Parser::parseArgOrResultConstraint() {
 //===----------------------------------------------------------------------===//
 // Exprs
 
-FailureOr<ast::Expr *> Parser::parseExpr() {
+// Operator precedence follows C++:
+// When parsing an expression, an operator which is listed on some rows below
+// with a precedence will be bound tighter (as if by parentheses) to its
+// arguments than any operator that is listed on a row further below it with a
+// lower precedence. Operators that have the same precedence are bound to their
+// arguments left-to-right. Highest precedence first:
+// - call, member access
+// - logical not
+// - multipication, division, remainder
+// - addition, subtraction
+// - relation operators
+// - equality operators
+// - logical and
+// - logical or
+FailureOr<ast::Expr *> Parser::parseExpr() { return parseLogicalOrExpr(); }
+
+FailureOr<ast::Expr *> Parser::parseLogicalOrExpr() {
+  return parseLogicalAndExpr();
+}
+
+FailureOr<ast::Expr *> Parser::parseLogicalAndExpr() {
+  return parseEqualityExpr();
+}
+
+FailureOr<ast::Expr *> Parser::parseEqualityExpr() {
+  auto lhs = parseRelationExpr();
+  if (failed(lhs))
+    return failure();
+
+  switch (curToken.getKind()) {
+  case Token::equal_equal: {
+    consumeToken();
+    auto rhs = parseRelationExpr();
+    if (failed(rhs))
+      return failure();
+    SmallVector<ast::Expr *> args{*lhs, *rhs};
+    return createBuiltinCall(curToken.getLoc(), builtins.equals, args);
+  }
+  default:
+    return lhs;
+  }
+}
+
+FailureOr<ast::Expr *> Parser::parseRelationExpr() { return parseAddSubExpr(); }
+
+FailureOr<ast::Expr *> Parser::parseAddSubExpr() {
+  auto lhs = parseMulDivModExpr();
+  if (failed(lhs))
+    return failure();
+
+  for (;;) {
+    switch (curToken.getKind()) {
+    case Token::add: {
+      consumeToken();
+      auto rhs = parseMulDivModExpr();
+      if (failed(rhs))
+        return failure();
+      SmallVector<ast::Expr *> args{*lhs, *rhs};
+
+      // Check if it is in rewrite section but not in the let statement
+      bool inRewriteSection = parserContext == ParserContext::Rewrite;
+      if (inRewriteSection &&
+          nativeOperatorContext != NativeOperatorContext::Let)
+        return emitError("cannot evaluate add operator in rewrite section. "
+                         "Assign to a variable with `let`");
+
+      lhs = inRewriteSection ? createBuiltinCall(curToken.getLoc(),
+                                                 builtins.addRewrite, args)
+                             : createBuiltinCall(curToken.getLoc(),
+                                                 builtins.addConstraint, args);
+      continue;
+    }
+    case Token::sub: {
+      consumeToken();
+      auto rhs = parseMulDivModExpr();
+      if (failed(rhs))
+        return failure();
+      SmallVector<ast::Expr *> args{*lhs, *rhs};
+
+      // Check if it is in rewrite section but not in the let statement
+      bool inRewriteSection = parserContext == ParserContext::Rewrite;
+      if (inRewriteSection &&
+          nativeOperatorContext != NativeOperatorContext::Let)
+        return emitError("cannot evaluate sub operator in rewrite section. "
+                         "Assign to a variable with `let`");
+
+      lhs = inRewriteSection ? createBuiltinCall(curToken.getLoc(),
+                                                 builtins.subRewrite, args)
+                             : createBuiltinCall(curToken.getLoc(),
+                                                 builtins.subConstraint, args);
+      continue;
+    }
+    default:
+      return lhs;
+    }
+  }
+}
+
+FailureOr<ast::Expr *> Parser::parseMulDivModExpr() {
+  auto lhs = parseExp2Log2AbsExpr();
+  if (failed(lhs))
+    return failure();
+
+  for (;;) {
+    switch (curToken.getKind()) {
+    case Token::mul: {
+      consumeToken();
+      auto rhs = parseExp2Log2AbsExpr();
+      if (failed(rhs))
+        return failure();
+      SmallVector<ast::Expr *> args{*lhs, *rhs};
+
+      // Check if it is in rewrite section but not in the let statement
+      bool inRewriteSection = parserContext == ParserContext::Rewrite;
+      if (inRewriteSection &&
+          nativeOperatorContext != NativeOperatorContext::Let)
+        return emitError("cannot evaluate mul operator in rewrite section. "
+                         "Assign to a variable with `let`");
+
+      lhs = inRewriteSection ? createBuiltinCall(curToken.getLoc(),
+                                                 builtins.mulRewrite, args)
+                             : createBuiltinCall(curToken.getLoc(),
+                                                 builtins.mulConstraint, args);
+      continue;
+    }
+    case Token::div: {
+      consumeToken();
+      auto rhs = parseExp2Log2AbsExpr();
+      if (failed(rhs))
+        return failure();
+      SmallVector<ast::Expr *> args{*lhs, *rhs};
+
+      // Check if it is in rewrite section but not in the let statement
+      bool inRewriteSection = parserContext == ParserContext::Rewrite;
+      if (inRewriteSection &&
+          nativeOperatorContext != NativeOperatorContext::Let)
+        return emitError("cannot evaluate div operator in rewrite section. "
+                         "Assign to a variable with `let`");
+
+      lhs = inRewriteSection ? createBuiltinCall(curToken.getLoc(),
+                                                 builtins.divRewrite, args)
+                             : createBuiltinCall(curToken.getLoc(),
+                                                 builtins.divConstraint, args);
+      continue;
+    }
+    case Token::mod: {
+      consumeToken();
+      auto rhs = parseExp2Log2AbsExpr();
+      if (failed(rhs))
+        return failure();
+      SmallVector<ast::Expr *> args{*lhs, *rhs};
+      bool inRewriteSection = parserContext == ParserContext::Rewrite;
+      if (inRewriteSection &&
+          nativeOperatorContext != NativeOperatorContext::Let)
+        return emitError("cannot evaluate mod operator in rewrite section. "
+                         "Assign to a variable with `let`");
+
+      lhs = inRewriteSection ? createBuiltinCall(curToken.getLoc(),
+                                                 builtins.modRewrite, args)
+                             : createBuiltinCall(curToken.getLoc(),
+                                                 builtins.modConstraint, args);
+      continue;
+    }
+    default:
+      return lhs;
+    }
+  }
+}
+
+FailureOr<ast::Expr *> Parser::parseExp2Log2AbsExpr() {
+  FailureOr<ast::Expr *> expr = nullptr;
+
+  switch (curToken.getKind()) {
+  case Token::log2: {
+    consumeToken();
+    consumeToken(Token::l_paren);
+    expr = parseAddSubExpr();
+    if (failed(expr))
+      return failure();
+
+    // Check if it is in rewrite section but not in the let statement
+    bool inRewriteSection = parserContext == ParserContext::Rewrite;
+    if (inRewriteSection && nativeOperatorContext != NativeOperatorContext::Let)
+      return emitError("cannot evaluate log2 operator in rewrite section. "
+                       "Assign to a variable with `let`");
+
+    consumeToken(Token::r_paren);
+    return inRewriteSection
+               ? createBuiltinCall(curToken.getLoc(), builtins.log2Rewrite,
+                                   {*expr})
+               : createBuiltinCall(curToken.getLoc(), builtins.log2Constraint,
+                                   {*expr});
+  }
+  case Token::exp2: {
+    consumeToken();
+    consumeToken(Token::l_paren);
+    expr = parseAddSubExpr();
+    if (failed(expr))
+      return failure();
+
+    // Check if it is in rewrite section but not in the let statement
+    bool inRewriteSection = parserContext == ParserContext::Rewrite;
+    if (inRewriteSection && nativeOperatorContext != NativeOperatorContext::Let)
+      return emitError("cannot evaluate exp2 operator in rewrite section. "
+                       "Assign to a variable with `let`");
+
+    consumeToken(Token::r_paren);
+    return inRewriteSection
+               ? createBuiltinCall(curToken.getLoc(), builtins.exp2Rewrite,
+                                   {*expr})
+               : createBuiltinCall(curToken.getLoc(), builtins.exp2Constraint,
+                                   {*expr});
+  }
+  case Token::abs: {
+    consumeToken();
+    consumeToken(Token::l_paren);
+    expr = parseAddSubExpr();
+    if (failed(expr))
+      return failure();
+
+    // Check if it is in rewrite section but not in the let statement
+    bool inRewriteSection = parserContext == ParserContext::Rewrite;
+    if (inRewriteSection && nativeOperatorContext != NativeOperatorContext::Let)
+      return emitError("cannot evaluate abs operator in rewrite section. "
+                       "Assign to a variable with `let`");
+
+    consumeToken(Token::r_paren);
+    return inRewriteSection
+               ? createBuiltinCall(curToken.getLoc(), builtins.absRewrite,
+                                   {*expr})
+               : createBuiltinCall(curToken.getLoc(), builtins.absConstraint,
+                                   {*expr});
+  }
+  default:
+    return parseLogicalNotExpr();
+  }
+}
+
+FailureOr<ast::Expr *> Parser::parseLogicalNotExpr() {
+  switch (curToken.getKind()) {
+  case Token::kw_not:
+    return parseNegatedExpr();
+    break;
+  default:
+    return parseOtherExpr();
+  }
+}
+
+FailureOr<ast::Expr *> Parser::parseOtherExpr() {
   if (curToken.is(Token::underscore))
     return parseUnderscoreExpr();
 
@@ -1801,9 +2265,6 @@ FailureOr<ast::Expr *> Parser::parseExpr() {
     break;
   case Token::kw_Constraint:
     lhsExpr = parseInlineConstraintLambdaExpr();
-    break;
-  case Token::kw_not:
-    lhsExpr = parseNegatedExpr();
     break;
   case Token::identifier:
     lhsExpr = parseIdentifierExpr();
@@ -1820,6 +2281,21 @@ FailureOr<ast::Expr *> Parser::parseExpr() {
   case Token::l_paren:
     lhsExpr = parseTupleExpr();
     break;
+  case Token::l_brace:
+    lhsExpr = parseDictAttrExpr();
+    break;
+  case Token::l_square:
+    lhsExpr = parseArrayAttrExpr();
+    break;
+  case Token::integer:
+    lhsExpr = parseIntegerExpr();
+    break;
+  case Token::string:
+    lhsExpr = parseStringExpr();
+    break;
+  case Token::string_block:
+    return emitError("expected expression. If you are trying to create an "
+                     "ArrayAttr, use a space between `[` and `{`.");
   default:
     return emitError("expected expression");
   }
@@ -1841,6 +2317,39 @@ FailureOr<ast::Expr *> Parser::parseExpr() {
     if (failed(lhsExpr))
       return failure();
   }
+}
+
+FailureOr<ast::Expr *> Parser::parseArrayAttrExpr() {
+
+  consumeToken(Token::l_square);
+
+  if (parserContext != ParserContext::Rewrite)
+    return emitError(
+        "Parsing of array attributes as constraint not supported!");
+
+  FailureOr<ast::Expr *> arrayAttr = ast::AttributeExpr::create(ctx, curToken.getLoc(), "[]");
+  if (failed(arrayAttr))
+    return failure();
+
+  do {
+    FailureOr<ast::Expr *> attr = parseExpr();
+    if (failed(attr))
+      return failure();
+
+    SmallVector<ast::Expr *> arrayAttrArgs{*arrayAttr, *attr};
+    auto elemToArrayCall = createBuiltinCall(
+        curToken.getLoc(), builtins.addElemToArrayAttr, arrayAttrArgs);
+    if (failed(elemToArrayCall))
+      return failure();
+
+    // Uses the new array for the next element.
+    arrayAttr = elemToArrayCall;
+  } while (consumeIf(Token::comma));
+
+  if (failed(
+          parseToken(Token::r_square, "expected `]` to close array attribute")))
+    return failure();
+  return arrayAttr;
 }
 
 FailureOr<ast::Expr *> Parser::parseAttributeExpr() {
@@ -1900,6 +2409,70 @@ FailureOr<ast::Expr *> Parser::parseDeclRefExpr(StringRef name, SMRange loc) {
     return emitError(loc, "undefined reference to `" + name + "`");
 
   return createDeclRefExpr(loc, decl);
+}
+
+FailureOr<ast::Expr *> Parser::parseDictAttrExpr() {
+  consumeToken(Token::l_brace);
+  SMRange loc = curToken.getLoc();
+
+  FailureOr<ast::Expr *> dictAttrCall = ast::AttributeExpr::create(ctx, loc, "{}");
+  if (failed(dictAttrCall))
+    return failure();
+
+  // No key-values inside dictionary
+  if (consumeIf(Token::r_brace)) {
+    return dictAttrCall;
+  }
+
+  // Add each nested attribute to the dict
+  do {
+    FailureOr<ast::NamedAttributeDecl *> decl =
+        parseNamedAttributeDecl(std::nullopt);
+    if (failed(decl))
+      return failure();
+
+    ast::NamedAttributeDecl *namedDecl = *decl;
+
+    std::string stringAttrValue =
+        "\"" + std::string((*namedDecl).getName().getName()) + "\"";
+    auto *stringAttr = ast::AttributeExpr::create(ctx, loc, stringAttrValue);
+
+    // Declare it as a variable
+    std::string anonName =
+        llvm::formatv("dict{0}", anonymousDeclNameCounter++).str();
+    FailureOr<ast::VariableDecl *> stringAttrDecl =
+        createVariableDecl(anonName, namedDecl->getLoc(), stringAttr, {});
+    if (failed(stringAttrDecl))
+      return failure();
+
+    // Get its reference
+    auto stringAttrRef = parseDeclRefExpr(
+        (*stringAttrDecl)->getName().getName(), namedDecl->getLoc());
+    if (failed(stringAttrRef))
+      return failure();
+
+    // Create addEntryToDictionaryAttr native call.
+    SmallVector<ast::Expr *> arrayAttrArgs{*dictAttrCall, *stringAttrRef,
+                                           namedDecl->getValue()};
+
+    FailureOr<ast::Expr *> entryToDictionaryCall;
+    if (parserContext == ParserContext::Rewrite) {
+      entryToDictionaryCall = createBuiltinCall(
+          loc, builtins.addEntryToDictionaryAttr_Rewrite, arrayAttrArgs);
+    } else {
+      entryToDictionaryCall = createBuiltinCall(
+          loc, builtins.addEntryToDictionaryAttr_Constraint, arrayAttrArgs);
+    }
+    if (failed(entryToDictionaryCall))
+      return failure();
+
+    // Uses the new array for the next element.
+    dictAttrCall = entryToDictionaryCall;
+  } while (consumeIf(Token::comma));
+  if (failed(parseToken(Token::r_brace,
+                        "expected `}` to close dictionary attribute")))
+    return failure();
+  return dictAttrCall;
 }
 
 FailureOr<ast::Expr *> Parser::parseIdentifierExpr() {
@@ -1971,6 +2544,32 @@ FailureOr<ast::Expr *> Parser::parseNegatedExpr() {
   if (!curToken.is(Token::l_paren))
     return emitError("expected `(` after function name");
   return parseCallExpr(*identifierExpr, /*isNegated = */ true);
+}
+
+/// Parse
+///   integer : identifier
+/// into an AttributeExpr.
+/// Examples: '4 : i32', '0 : si1'
+FailureOr<ast::Expr *> Parser::parseIntegerExpr() {
+  SMRange loc = curToken.getLoc();
+  StringRef value = curToken.getSpelling();
+  consumeToken();
+  if (!consumeIf(Token::colon))
+    return emitError("expected colon after integer literal");
+  if (!curToken.is(Token::identifier))
+    return emitError("expected integer type");
+  StringRef type = curToken.getSpelling();
+  consumeToken();
+
+  auto allocated = copyStringWithNull(ctx, (Twine(value) + ":" + type).str());
+  return ast::AttributeExpr::create(ctx, loc, allocated);
+}
+
+FailureOr<ast::Expr *> Parser::parseStringExpr() {
+  SMRange loc = curToken.getLoc();
+  StringRef value = curToken.getSpelling();
+  consumeToken();
+  return ast::AttributeExpr::create(ctx, loc, value);
 }
 
 FailureOr<ast::OpNameDecl *> Parser::parseOperationName(bool allowEmptyName) {
@@ -2151,8 +2750,23 @@ Parser::parseOperationExpr(OpResultTypeContext inputResultTypeContext) {
     resultTypeContext = OpResultTypeContext::Interface;
   }
 
+  // Parse list of regions
+  unsigned numRegions = 0;
+  if (consumeIf(Token::l_paren)) {
+    do {
+      if (failed(parseToken(Token::l_brace, "expected `{` to open region")))
+        return failure();
+      if (failed(parseToken(Token::r_brace, "expected `}` to close region")))
+        return failure();
+      numRegions++;
+    } while (consumeIf(Token::comma));
+    if (failed(parseToken(Token::r_paren, "expected `)` to close region "
+                                          "list")))
+      return failure();
+  }
+
   return createOperationExpr(loc, *opNameDecl, resultTypeContext, operands,
-                             attributes, resultTypes);
+                             attributes, resultTypes, numRegions);
 }
 
 FailureOr<ast::Expr *> Parser::parseTupleExpr() {
@@ -2320,6 +2934,10 @@ FailureOr<ast::EraseStmt *> Parser::parseEraseStmt() {
 FailureOr<ast::LetStmt *> Parser::parseLetStmt() {
   SMRange loc = curToken.getLoc();
   consumeToken(Token::kw_let);
+
+  // The rewrite body of this statement is within a rewrite context.
+  llvm::SaveAndRestore saveCtx(nativeOperatorContext,
+                               NativeOperatorContext::Let);
 
   // Parse the name of the new variable.
   SMRange varLoc = curToken.getLoc();
@@ -2568,7 +3186,7 @@ Parser::createVariableDecl(StringRef name, SMRange loc, ast::Expr *initializer,
   }
 
   // Constraint types cannot be used when defining variables.
-  if (type.isa<ast::ConstraintType, ast::RewriteType>()) {
+  if (isa<ast::ConstraintType, ast::RewriteType>(type)) {
     return emitError(
         loc, llvm::formatv("unable to define variable of `{0}` type", type));
   }
@@ -2779,10 +3397,26 @@ Parser::createMemberAccessExpr(ast::Expr *parentExpr, StringRef name,
   return ast::MemberAccessExpr::create(ctx, loc, parentExpr, name, *memberType);
 }
 
+FailureOr<ast::Expr *>
+Parser::createBuiltinCall(SMRange loc, ast::Decl *function,
+                          MutableArrayRef<ast::Expr *> arguments) {
+
+  FailureOr<ast::Expr *> nativeFuncExpr = createDeclRefExpr(loc, function);
+  if (failed(nativeFuncExpr))
+    return failure();
+
+  FailureOr<ast::CallExpr *> nativeCall =
+      createCallExpr(loc, *nativeFuncExpr, arguments);
+  if (failed(nativeCall))
+    return failure();
+
+  return *nativeCall;
+}
+
 FailureOr<ast::Type> Parser::validateMemberAccess(ast::Expr *parentExpr,
                                                   StringRef name, SMRange loc) {
   ast::Type parentType = parentExpr->getType();
-  if (ast::OperationType opType = parentType.dyn_cast<ast::OperationType>()) {
+  if (ast::OperationType opType = dyn_cast<ast::OperationType>(parentType)) {
     if (name == ast::AllResultsMemberAccessExpr::getMemberName())
       return valueRangeTy;
 
@@ -2808,7 +3442,7 @@ FailureOr<ast::Type> Parser::validateMemberAccess(ast::Expr *parentExpr,
       // operations. It returns a single value.
       return valueTy;
     }
-  } else if (auto tupleType = parentType.dyn_cast<ast::TupleType>()) {
+  } else if (auto tupleType = dyn_cast<ast::TupleType>(parentType)) {
     // Handle indexed results.
     unsigned index = 0;
     if (llvm::isDigit(name[0]) && !name.getAsInteger(/*Radix=*/10, index) &&
@@ -2833,7 +3467,7 @@ FailureOr<ast::OperationExpr *> Parser::createOperationExpr(
     OpResultTypeContext resultTypeContext,
     SmallVectorImpl<ast::Expr *> &operands,
     MutableArrayRef<ast::NamedAttributeDecl *> attributes,
-    SmallVectorImpl<ast::Expr *> &results) {
+    SmallVectorImpl<ast::Expr *> &results, unsigned numRegions) {
   std::optional<StringRef> opNameRef = name->getName();
   const ods::Operation *odsOp = lookupODSOperation(opNameRef);
 
@@ -2845,7 +3479,7 @@ FailureOr<ast::OperationExpr *> Parser::createOperationExpr(
   for (ast::NamedAttributeDecl *attr : attributes) {
     // Check for an attribute type, or a type awaiting resolution.
     ast::Type attrType = attr->getValue()->getType();
-    if (!attrType.isa<ast::AttributeType>()) {
+    if (!isa<ast::AttributeType>(attrType)) {
       return emitError(
           attr->getValue()->getLoc(),
           llvm::formatv("expected `Attr` expression, but got `{0}`", attrType));
@@ -2870,7 +3504,7 @@ FailureOr<ast::OperationExpr *> Parser::createOperationExpr(
   }
 
   return ast::OperationExpr::create(ctx, loc, odsOp, name, operands, results,
-                                    attributes);
+                                    attributes, numRegions);
 }
 
 LogicalResult
@@ -3024,7 +3658,7 @@ LogicalResult Parser::validateOperationOperandsOrResults(
     // ValueRange. This situations arises quite often with nested operation
     // expressions: `op<my_dialect.foo>(op<my_dialect.bar>)`
     if (singleTy == valueTy) {
-      if (valueExprType.isa<ast::OperationType>()) {
+      if (isa<ast::OperationType>(valueExprType)) {
         valueExpr = convertOpToValue(valueExpr);
         continue;
       }
@@ -3048,7 +3682,7 @@ Parser::createTupleExpr(SMRange loc, ArrayRef<ast::Expr *> elements,
                         ArrayRef<StringRef> elementNames) {
   for (const ast::Expr *element : elements) {
     ast::Type eleTy = element->getType();
-    if (eleTy.isa<ast::ConstraintType, ast::RewriteType, ast::TupleType>()) {
+    if (isa<ast::ConstraintType, ast::RewriteType, ast::TupleType>(eleTy)) {
       return emitError(
           element->getLoc(),
           llvm::formatv("unable to build a tuple with `{0}` element", eleTy));
@@ -3064,7 +3698,7 @@ FailureOr<ast::EraseStmt *> Parser::createEraseStmt(SMRange loc,
                                                     ast::Expr *rootOp) {
   // Check that root is an Operation.
   ast::Type rootType = rootOp->getType();
-  if (!rootType.isa<ast::OperationType>())
+  if (!isa<ast::OperationType>(rootType))
     return emitError(rootOp->getLoc(), "expected `Op` expression");
 
   return ast::EraseStmt::create(ctx, loc, rootOp);
@@ -3075,7 +3709,7 @@ Parser::createReplaceStmt(SMRange loc, ast::Expr *rootOp,
                           MutableArrayRef<ast::Expr *> replValues) {
   // Check that root is an Operation.
   ast::Type rootType = rootOp->getType();
-  if (!rootType.isa<ast::OperationType>()) {
+  if (!isa<ast::OperationType>(rootType)) {
     return emitError(
         rootOp->getLoc(),
         llvm::formatv("expected `Op` expression, but got `{0}`", rootType));
@@ -3088,7 +3722,7 @@ Parser::createReplaceStmt(SMRange loc, ast::Expr *rootOp,
     ast::Type replType = replExpr->getType();
 
     // Check that replExpr is an Operation, Value, or ValueRange.
-    if (replType.isa<ast::OperationType>()) {
+    if (isa<ast::OperationType>(replType)) {
       if (shouldConvertOpToValues)
         replExpr = convertOpToValue(replExpr);
       continue;
@@ -3110,7 +3744,7 @@ Parser::createRewriteStmt(SMRange loc, ast::Expr *rootOp,
                           ast::CompoundStmt *rewriteBody) {
   // Check that root is an Operation.
   ast::Type rootType = rootOp->getType();
-  if (!rootType.isa<ast::OperationType>()) {
+  if (!isa<ast::OperationType>(rootType)) {
     return emitError(
         rootOp->getLoc(),
         llvm::formatv("expected `Op` expression, but got `{0}`", rootType));
@@ -3125,9 +3759,9 @@ Parser::createRewriteStmt(SMRange loc, ast::Expr *rootOp,
 
 LogicalResult Parser::codeCompleteMemberAccess(ast::Expr *parentExpr) {
   ast::Type parentType = parentExpr->getType();
-  if (ast::OperationType opType = parentType.dyn_cast<ast::OperationType>())
+  if (ast::OperationType opType = dyn_cast<ast::OperationType>(parentType))
     codeCompleteContext->codeCompleteOperationMemberAccess(opType);
-  else if (ast::TupleType tupleType = parentType.dyn_cast<ast::TupleType>())
+  else if (ast::TupleType tupleType = dyn_cast<ast::TupleType>(parentType))
     codeCompleteContext->codeCompleteTupleMemberAccess(tupleType);
   return failure();
 }
@@ -3195,7 +3829,9 @@ void Parser::codeCompleteOperationResultsSignature(
 FailureOr<ast::Module *>
 mlir::pdll::parsePDLLAST(ast::Context &ctx, llvm::SourceMgr &sourceMgr,
                          bool enableDocumentation,
+                         bool emitWarningOnRepeatedIncludeAtMainFile,
                          CodeCompleteContext *codeCompleteContext) {
-  Parser parser(ctx, sourceMgr, enableDocumentation, codeCompleteContext);
+  Parser parser(ctx, sourceMgr, enableDocumentation,
+                emitWarningOnRepeatedIncludeAtMainFile, codeCompleteContext);
   return parser.parseModule();
 }
