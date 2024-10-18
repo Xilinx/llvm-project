@@ -779,6 +779,7 @@ private:
   void printRegionArgument(BlockArgument arg, ArrayRef<NamedAttribute> argAttrs,
                            bool omitType) override {
     printType(arg.getType());
+    printOptionalAttrDict(argAttrs);
     // Visit the argument location.
     if (printerFlags.shouldPrintDebugInfo())
       // TODO: Allow deferring argument locations.
