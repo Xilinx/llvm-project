@@ -98,3 +98,12 @@ func.func @nested_for_yield(%arg0 : index, %arg1 : index, %arg2 : index) -> f32 
 // CHECK-NEXT:    }
 // CHECK-NEXT:    return %[[VAL_4]] : f32
 // CHECK-NEXT:  }
+
+func.func @loop_with_attr(%arg0 : index, %arg1 : index, %arg2 : index) {
+  scf.for %i0 = %arg0 to %arg1 step %arg2 {
+    %c1 = arith.constant 1 : index
+  } {test.value = 5 : index}
+  return
+}
+// CHECK-LABEL: func.func @loop_with_attr
+// CHECK: {test.value = 5 : index}

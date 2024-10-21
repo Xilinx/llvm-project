@@ -118,6 +118,9 @@ ForLowering::matchAndRewrite(ForOp forOp, OpAdaptor adaptor,
   emitc::ForOp loweredFor = rewriter.create<emitc::ForOp>(
       loc, adaptor.getLowerBound(), adaptor.getUpperBound(), adaptor.getStep());
 
+  // Propagate any attributes from the ODS forOp to the lowered emitc::for op.
+  loweredFor->setAttrs(forOp->getAttrs());
+
   Block *loweredBody = loweredFor.getBody();
 
   // Erase the auto-generated terminator for the lowered for op.
