@@ -20,6 +20,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/FormatVariadic.h"
 
 using namespace mlir;
 using namespace mlir::emitc;
@@ -929,22 +930,44 @@ LogicalResult emitc::VerbatimOp::verify() {
   return success();
 }
 
+static ParseResult parseVariadicFmtArgs(AsmParser &p,
+                                        SmallVector<Type> &params) {
+  Type type;
+  if (p.parseType(type))
+    return failure();
+
+  params.push_back(type);
+  while (succeeded(p.parseOptionalComma())) {
+    if (p.parseType(type))
+      return failure();
+    params.push_back(type);
+  }
+
+  return success();
+}
+
+static void printVariadicFmtArgs(AsmPrinter &p, ArrayRef<Type> params) {
+  llvm::interleaveComma(params, p, [&](Type type) { p.printType(type); });
+}
+
 /// Parse a format string and return a list of its parts.
 /// A part is either a StringRef that has to be printed as-is, or
 /// a Placeholder which requires printing the next operand of the VerbatimOp.
 /// In the format string, all `{}` are replaced by Placeholders, except if the
-/// `{` is escaped by `{{` - then it doesn't start a placeholder.
-FailureOr<SmallVector<emitc::VerbatimOp::ReplacementItem>>
-emitc::VerbatimOp::parseFormatString() {
-  SmallVector<ReplacementItem> items;
+/// `{` is escaped by `{{` - then it doesn't start a placeholder
+template <typename Op, class ArgType>
+FailureOr<SmallVector<typename Op::ReplacementItem>>
+parseFormatString(StringRef toParse, ArgType fmtArgs,
+                  std::optional<llvm::function_ref<mlir::InFlightDiagnostic()>>
+                      emitError = {}) {
+  SmallVector<typename Op::ReplacementItem> items;
 
   // If there are not operands, the format string is not interpreted.
-  if (getFmtArgs().empty()) {
-    items.push_back(getValue());
+  if (fmtArgs.empty()) {
+    items.push_back(toParse);
     return items;
   }
 
-  StringRef toParse = getValue();
   while (!toParse.empty()) {
     size_t idx = toParse.find('{');
     if (idx == StringRef::npos) {
@@ -972,13 +995,26 @@ emitc::VerbatimOp::parseFormatString() {
       continue;
     }
     if (nextChar == '}') {
-      items.push_back(Placeholder{});
+      items.push_back(typename Op::Placeholder{});
       toParse = toParse.drop_front(2);
       continue;
     }
-    return emitOpError() << "expected '}' after unescaped '{'";
+
+    if (emitError.has_value()) {
+      return (*emitError)() << "expected '}' after unescaped '{'";
+    }
+    return failure();
   }
   return items;
+}
+
+FailureOr<SmallVector<emitc::VerbatimOp::ReplacementItem>>
+emitc::VerbatimOp::parseFormatString() {
+  auto errorCallback = [&]() -> InFlightDiagnostic {
+    return this->emitError();
+  };
+  return ::parseFormatString<emitc::VerbatimOp>(getValue(), getFmtArgs(),
+                                                errorCallback);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1072,7 +1108,7 @@ emitc::ArrayType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
 
 LogicalResult mlir::emitc::OpaqueType::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-    llvm::StringRef value) {
+    llvm::StringRef value, ArrayRef<Type> fmtArgs) {
   if (value.empty()) {
     return emitError() << "expected non empty string in !emitc.opaque type";
   }
@@ -1080,7 +1116,27 @@ LogicalResult mlir::emitc::OpaqueType::verify(
     return emitError() << "pointer not allowed as outer type with "
                           "!emitc.opaque, use !emitc.ptr instead";
   }
+
+  FailureOr<SmallVector<ReplacementItem>> fmt =
+      ::parseFormatString<emitc::OpaqueType>(value, fmtArgs, emitError);
+  if (failed(fmt))
+    return failure();
+
+  size_t numPlaceholders = llvm::count_if(*fmt, [](ReplacementItem &item) {
+    return std::holds_alternative<Placeholder>(item);
+  });
+
+  if (numPlaceholders != fmtArgs.size()) {
+    return emitError()
+           << "requires operands for each placeholder in the format string";
+  }
+
   return success();
+}
+
+FailureOr<SmallVector<emitc::OpaqueType::ReplacementItem>>
+emitc::OpaqueType::parseFormatString() {
+  return ::parseFormatString<emitc::OpaqueType>(getValue(), getFmtArgs());
 }
 
 //===----------------------------------------------------------------------===//

@@ -1728,6 +1728,24 @@ LogicalResult CppEmitter::emitType(Location loc, Type type) {
   if (auto tType = dyn_cast<TupleType>(type))
     return emitTupleType(loc, tType.getTypes());
   if (auto oType = dyn_cast<emitc::OpaqueType>(type)) {
+    FailureOr<SmallVector<emitc::OpaqueType::ReplacementItem>> items =
+        oType.parseFormatString();
+    if (failed(items))
+      return failure();
+
+    auto fmtArg = oType.getFmtArgs().begin();
+    for (emitc::OpaqueType::ReplacementItem &item : *items) {
+      if (auto *str = std::get_if<StringRef>(&item)) {
+        os << *str;
+      } else {
+        if (failed(emitType(loc, *fmtArg++))) {
+          return failure();
+        }
+      }
+    }
+
+    return success();
+
     os << oType.getValue();
     return success();
   }
