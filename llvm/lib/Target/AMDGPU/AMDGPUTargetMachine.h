@@ -52,8 +52,7 @@ public:
     return TLOF.get();
   }
 
-  void registerPassBuilderCallbacks(PassBuilder &PB,
-                                    bool PopulateClassToPassNames) override;
+  void registerPassBuilderCallbacks(PassBuilder &PB) override;
   void registerDefaultAliasAnalyses(AAManager &) override;
 
   /// Get the integer value of a null pointer in the given address space.
@@ -67,6 +66,10 @@ public:
   getPredicatedAddrSpace(const Value *V) const override;
 
   unsigned getAddressSpaceForPseudoSourceKind(unsigned Kind) const override;
+
+  bool splitModule(Module &M, unsigned NumParts,
+                   function_ref<void(std::unique_ptr<Module> MPart)>
+                       ModuleCallback) override;
 };
 
 //===----------------------------------------------------------------------===//
@@ -93,6 +96,12 @@ public:
   bool useIPRA() const override {
     return true;
   }
+
+  Error buildCodeGenPipeline(ModulePassManager &MPM, raw_pwrite_stream &Out,
+                             raw_pwrite_stream *DwoOut,
+                             CodeGenFileType FileType,
+                             const CGPassBuilderOption &Opts,
+                             PassInstrumentationCallbacks *PIC) override;
 
   void registerMachineRegisterInfoCallback(MachineFunction &MF) const override;
 

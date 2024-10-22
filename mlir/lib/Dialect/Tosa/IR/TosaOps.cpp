@@ -139,7 +139,7 @@ void TosaDialect::initialize() {
   addInterfaces<TosaDialectBytecodeInterface, TosaInlinerInterface>();
   declarePromisedInterfaces<
       mesh::ShardingInterface, ClampOp, SigmoidOp, TanhOp, AddOp,
-      ArithmeticRightShiftOp, BitwiseAndOp, BitwiseOrOp, BitwiseXorOp, DivOp,
+      ArithmeticRightShiftOp, BitwiseAndOp, BitwiseOrOp, BitwiseXorOp, IntDivOp,
       LogicalAndOp, LogicalLeftShiftOp, LogicalRightShiftOp, LogicalOrOp,
       LogicalXorOp, MaximumOp, MinimumOp, MulOp, PowOp, SubOp, AbsOp,
       BitwiseNotOp, CeilOp, ClzOp, ExpOp, FloorOp, LogOp, LogicalNotOp,
@@ -168,7 +168,7 @@ ParseResult mlir::tosa::parseTypeOrAttr(OpAsmParser &parser, TypeAttr &typeAttr,
       return parser.emitError(parser.getCurrentLocation())
              << "expected attribute";
     }
-    if (auto typedAttr = attr.dyn_cast<TypedAttr>()) {
+    if (auto typedAttr = dyn_cast<TypedAttr>(attr)) {
       typeAttr = TypeAttr::get(typedAttr.getType());
     }
     return success();
@@ -186,7 +186,7 @@ ParseResult mlir::tosa::parseTypeOrAttr(OpAsmParser &parser, TypeAttr &typeAttr,
 void mlir::tosa::printTypeOrAttr(OpAsmPrinter &p, Operation *op, TypeAttr type,
                                  Attribute attr) {
   bool needsSpace = false;
-  auto typedAttr = attr.dyn_cast_or_null<TypedAttr>();
+  auto typedAttr = dyn_cast_or_null<TypedAttr>(attr);
   if (!typedAttr || typedAttr.getType() != type.getValue()) {
     p << ": ";
     p.printAttribute(type);
@@ -220,7 +220,8 @@ static bool hasZeroDimension(ShapedType shapedType) {
   return false;
 }
 
-template <typename T> static LogicalResult verifyConvOp(T op) {
+template <typename T>
+static LogicalResult verifyConvOp(T op) {
   // All TOSA conv ops have an input() and weight().
   auto inputType = llvm::dyn_cast<RankedTensorType>(op.getInput().getType());
   auto weightType = llvm::dyn_cast<RankedTensorType>(op.getWeight().getType());
@@ -680,6 +681,41 @@ LogicalResult tosa::ConcatOp::inferReturnTypeComponents(
   return success();
 }
 
+LogicalResult ConcatOp::verify() {
+  OperandRange inputs = getInput1();
+
+  auto inputRank = ShapedType::kDynamic;
+  bool hasRankedInputs = false;
+  for (auto input : inputs) {
+    auto inputType = llvm::cast<ShapedType>(input.getType());
+    if (inputType.hasRank()) {
+      hasRankedInputs = true;
+      inputRank = inputType.getRank();
+      break;
+    }
+  }
+
+  if (hasRankedInputs) {
+    int64_t axis = getAxis();
+    if (axis < 0 || axis >= std::max((int64_t)1, inputRank)) {
+      return emitOpError() << "axis must be in range 0 to " << inputRank - 1;
+    }
+
+    for (auto input : inputs) {
+      auto inputType = llvm::cast<ShapedType>(input.getType());
+      if (!inputType.hasRank()) {
+        continue;
+      }
+      if (inputRank != inputType.getRank()) {
+        return emitOpError()
+               << "rank of input " << inputType
+               << " does not match other input rank(s) (" << inputRank << ")";
+      }
+    }
+  }
+  return success();
+}
+
 LogicalResult tosa::EqualOp::inferReturnTypeComponents(
     MLIRContext *context, ::std::optional<Location> location,
     ValueShapeRange operands, DictionaryAttr attributes,
@@ -764,6 +800,8 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
     MLIRContext *context, ::std::optional<Location> location,
     PadOp::Adaptor adaptor,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+
+  Type inputType = getElementTypeOrSelf(adaptor.getInput1());
   ShapeAdaptor inputShape(adaptor.getInput1().getType());
   ShapeAdaptor paddingShape(adaptor.getPadding().getType());
   SmallVector<int64_t> outputShape;
@@ -784,7 +822,8 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
     }
 
     outputShape.resize(paddingShape.getDimSize(0), ShapedType::kDynamic);
-    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+    inferredReturnShapes.push_back(
+        ShapedTypeComponents(outputShape, inputType));
     return success();
   }
 
@@ -792,7 +831,8 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
   // If the paddings value is not a constant, all dimensions must be dynamic.
   if (!matchPattern(adaptor.getPadding(), m_Constant(&paddings))) {
     outputShape.resize(inputShape.getRank(), ShapedType::kDynamic);
-    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+    inferredReturnShapes.push_back(
+        ShapedTypeComponents(outputShape, inputType));
     return success();
   }
 
@@ -812,7 +852,39 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
                           paddingValues[i * 2 + 1]);
   }
 
-  inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+  inferredReturnShapes.push_back(ShapedTypeComponents(outputShape, inputType));
+  return success();
+}
+
+LogicalResult PadOp::verify() {
+  ShapedType inputType = llvm::cast<ShapedType>(getInput1().getType());
+  if (inputType.hasRank() && inputType.getRank() == 0) {
+    return emitOpError() << "input tensor rank must not be 0";
+  }
+
+  ShapedType paddingType = llvm::cast<ShapedType>(getPadding().getType());
+  if (paddingType.hasRank()) {
+    if (paddingType.getRank() != 2) {
+      return emitOpError() << "paddings must be a tensor of rank 2";
+    }
+    if (inputType.hasRank() && !paddingType.isDynamicDim(0) &&
+        inputType.getRank() != paddingType.getDimSize(0)) {
+      return emitOpError() << "paddings must be a tensor of shape ["
+                           << inputType.getRank() << ", 2]";
+    }
+    if (!paddingType.isDynamicDim(1) && paddingType.getDimSize(1) != 2) {
+      return emitOpError() << "paddings must be a tensor of shape ["
+                           << inputType.getRank() << ", 2]";
+    }
+
+    DenseIntElementsAttr paddings;
+    if (matchPattern(getPadding(), m_Constant(&paddings))) {
+      if (llvm::any_of(paddings,
+                       [](auto val) { return val.getSExtValue() < 0; })) {
+        return emitOpError() << "number of pad elements must be positive";
+      }
+    }
+  }
   return success();
 }
 
@@ -833,8 +905,15 @@ LogicalResult tosa::SliceOp::inferReturnTypeComponents(
 
 LogicalResult tosa::SliceOp::verify() {
   auto inputType = llvm::dyn_cast<RankedTensorType>(getInput().getType());
-  if (!inputType)
+  auto outputType = llvm::dyn_cast<RankedTensorType>(getType());
+  if (!inputType || !outputType)
     return success();
+
+ if (inputType.getRank() != outputType.getRank()) {
+    return emitOpError() << "rank of input (" << inputType.getRank()
+                         << ") and output (" << outputType.getRank()
+                         << ") must match";
+  }
 
   if (static_cast<size_t>(inputType.getRank()) != getStart().size())
     return emitOpError(
@@ -843,6 +922,26 @@ LogicalResult tosa::SliceOp::verify() {
   if (static_cast<size_t>(inputType.getRank()) != getSize().size())
     return emitOpError(
         "length of size attribute is not equal rank of input shape");
+
+  for (int64_t dim = 0; dim < outputType.getRank(); ++dim) {
+    if (getSize()[dim] != -1 && !outputType.isDynamicDim(dim) &&
+        getSize()[dim] != outputType.getShape()[dim]) {
+      return emitOpError() << "size attribute (" << getSize()[dim]
+                           << ") does not match output type ("
+                           << outputType.getShape()[dim] << ") in dimension "
+                           << dim;
+    }
+  }
+
+  for (int i = 0; i < inputType.getRank(); ++i) {
+    if (getSize()[i] != -1 && !inputType.isDynamicDim(i) &&
+        getStart()[i] + getSize()[i] > inputType.getShape()[i]) {
+      return emitOpError() << "start (" << getStart()[i] << ") plus size ("
+                           << getSize()[i]
+                           << ") goes out of bounds of input size ("
+                           << inputType.getShape()[i] << ") in dimension " << i;
+    }
+  }
 
   return success();
 }
@@ -954,22 +1053,52 @@ LogicalResult tosa::ReshapeOp::inferReturnTypeComponents(
   return success();
 }
 
-mlir::LogicalResult tosa::ReshapeOp::verify() {
-  ShapedType inputType = llvm::cast<ShapedType>(getInput1().getType());
-  ShapedType outputType = llvm::cast<ShapedType>(getType());
+llvm::LogicalResult tosa::ReshapeOp::verify() {
+  TensorType inputType = getInput1().getType();
+  RankedTensorType outputType = getType();
 
   if (hasZeroDimension(inputType) || hasZeroDimension(outputType))
     return emitOpError() << "tensor has a dimension with size zero. Each "
                             "dimension of a tensor must have size >= 1";
 
+  if ((int64_t)getNewShape().size() != outputType.getRank())
+    return emitOpError() << "new shape does not match result rank";
+
+  for (auto [newShapeDim, outputShapeDim] :
+       zip(getNewShape(), outputType.getShape()))
+    if (newShapeDim != -1 && outputShapeDim != ShapedType::kDynamic &&
+        newShapeDim != outputShapeDim)
+      return emitOpError() << "new shape is inconsistent with result shape";
+
   if (inputType.hasStaticShape() && outputType.hasStaticShape()) {
     int64_t inputElementsNum = inputType.getNumElements();
     int64_t outputElementsNum = outputType.getNumElements();
     if (inputElementsNum != outputElementsNum) {
-      return emitOpError() << "Cannot reshape " << inputElementsNum
+      return emitOpError() << "cannot reshape " << inputElementsNum
                            << " elements into " << outputElementsNum;
     }
+
+    if ((int64_t)getNewShape().size() != outputType.getRank()) {
+      return emitOpError() << "rank of newShape (" << getNewShape().size()
+                           << ") and output (" << outputType.getRank()
+                           << ") must match";
+    }
+
+    for (int64_t dim = 0; dim < outputType.getRank(); ++dim) {
+      if (getNewShape()[dim] != -1 &&
+          getNewShape()[dim] != outputType.getShape()[dim]) {
+        return emitOpError()
+               << "newShape attribute (" << getNewShape()[dim]
+               << ") does not match output type (" << outputType.getShape()[dim]
+               << ") in dimension " << dim;
+      }
+    }
   }
+
+  int missingDims = llvm::count(getNewShape(), -1);
+  if (missingDims > 1)
+    return emitOpError() << "expected at most one target dimension to be -1";
+
   return mlir::success();
 }
 
@@ -1101,7 +1230,39 @@ LogicalResult tosa::TransposeOp::verify() {
            "Unexpectedly found permutation tensor without rank");
     if (!isPermutationVector(constantPerms))
       return emitOpError() << "expected valid permutation tensor";
+
+    if (inputType.hasRank() && !llvm::all_of(constantPerms, [&](int64_t s) {
+          return s < inputType.getRank();
+        })) {
+      return emitOpError() << "permutation must be within input bounds";
+    }
   }
+  return success();
+}
+
+LogicalResult TransposeOp::reifyResultShapes(
+    OpBuilder &builder, ReifiedRankedShapedTypeDims &reifiedReturnShapes) {
+
+  SmallVector<int64_t> transposePerms;
+  if (getConstantPerms(transposePerms).failed())
+    return failure();
+
+  Value input = getInput1();
+  auto inputType = cast<TensorType>(input.getType());
+
+  SmallVector<OpFoldResult> returnedDims(inputType.getRank());
+  for (auto dim : transposePerms) {
+    int64_t dimInInput = transposePerms[dim];
+    if (inputType.isDynamicDim(dimInInput))
+      returnedDims[dim] =
+          builder.create<tensor::DimOp>(getLoc(), input, dimInInput)
+              .getResult();
+    else
+      returnedDims[dim] =
+          builder.getIndexAttr(inputType.getDimSize(dimInInput));
+  }
+
+  reifiedReturnShapes.emplace_back(std::move(returnedDims));
   return success();
 }
 
@@ -1248,6 +1409,7 @@ REDUCE_SHAPE_INFER(tosa::ReduceProdOp)
 REDUCE_SHAPE_INFER(tosa::ReduceSumOp)
 #undef REDUCE_SHAPE_INFER
 COMPATIBLE_RETURN_TYPES(tosa::ConcatOp)
+COMPATIBLE_RETURN_TYPES(tosa::PadOp)
 #undef COMPATIBLE_RETURN_TYPES
 
 template <typename T>
@@ -1340,12 +1502,12 @@ NARY_SHAPE_INFER(tosa::CeilOp)
 NARY_SHAPE_INFER(tosa::ClampOp)
 NARY_SHAPE_INFER(tosa::ClzOp)
 NARY_SHAPE_INFER(tosa::CosOp)
-NARY_SHAPE_INFER(tosa::DivOp)
 NARY_SHAPE_INFER(tosa::ExpOp)
 NARY_SHAPE_INFER(tosa::FloorOp)
 NARY_SHAPE_INFER(tosa::GreaterEqualOp)
 NARY_SHAPE_INFER(tosa::GreaterOp)
 NARY_SHAPE_INFER(tosa::IdentityOp)
+NARY_SHAPE_INFER(tosa::IntDivOp)
 NARY_SHAPE_INFER(tosa::LogOp)
 NARY_SHAPE_INFER(tosa::LogicalAndOp)
 NARY_SHAPE_INFER(tosa::LogicalLeftShiftOp)
