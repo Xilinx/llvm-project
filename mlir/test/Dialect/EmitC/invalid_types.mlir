@@ -14,6 +14,34 @@ func.func @illegal_opaque_type_2() {
 
 // -----
 
+// expected-error @+1 {{expected non-function type}}
+func.func @illegal_opaque_type(%arg0: !emitc.opaque<"{}, {}", "string">) {
+    return
+}
+
+// -----
+
+// expected-error @+1 {{requires operands for each placeholder in the format string}}
+func.func @illegal_opaque_type(%arg0: !emitc.opaque<"a", f32>) {
+    return
+}
+
+// -----
+
+    // expected-error @+1 {{requires operands for each placeholder in the format string}}
+func.func @illegal_opaque_type(%arg0: !emitc.opaque<"{}, {}", f32>) {
+    return
+}
+
+// -----
+
+// expected-error @+1 {{expected '}' after unescaped '{'}}
+func.func @illegal_opaque_type(%arg0: !emitc.opaque<"{ ", i32>) {
+    return
+}
+
+// -----
+
 func.func @illegal_array_missing_spec(
     // expected-error @+1 {{expected non-function type}}
     %arg0: !emitc.array<>) {

@@ -20,6 +20,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/FormatVariadic.h"
 
 using namespace mlir;
 using namespace mlir::emitc;
@@ -152,6 +153,64 @@ static LogicalResult verifyInitializationAttribute(Operation *op,
            << ")";
 
   return success();
+}
+
+/// Parse a format string and return a list of its parts.
+/// A part is either a StringRef that has to be printed as-is, or
+/// a Placeholder which requires printing the next operand of the VerbatimOp.
+/// In the format string, all `{}` are replaced by Placeholders, except if the
+/// `{` is escaped by `{{` - then it doesn't start a placeholder.
+template <class ArgType>
+FailureOr<SmallVector<ReplacementItem>>
+parseFormatString(StringRef toParse, ArgType fmtArgs,
+                  std::optional<llvm::function_ref<mlir::InFlightDiagnostic()>>
+                      emitError = {}) {
+  SmallVector<ReplacementItem> items;
+
+  // If there are not operands, the format string is not interpreted.
+  if (fmtArgs.empty()) {
+    items.push_back(toParse);
+    return items;
+  }
+
+  while (!toParse.empty()) {
+    size_t idx = toParse.find('{');
+    if (idx == StringRef::npos) {
+      // No '{'
+      items.push_back(toParse);
+      break;
+    }
+    if (idx > 0) {
+      // Take all chars excluding the '{'.
+      items.push_back(toParse.take_front(idx));
+      toParse = toParse.drop_front(idx);
+      continue;
+    }
+    if (toParse.size() < 2) {
+      // '{' is last character
+      items.push_back(toParse);
+      break;
+    }
+    // toParse contains at least two characters and starts with `{`.
+    char nextChar = toParse[1];
+    if (nextChar == '{') {
+      // Double '{{' -> '{' (escaping).
+      items.push_back(toParse.take_front(1));
+      toParse = toParse.drop_front(2);
+      continue;
+    }
+    if (nextChar == '}') {
+      items.push_back(Placeholder{});
+      toParse = toParse.drop_front(2);
+      continue;
+    }
+
+    if (emitError.has_value()) {
+      return (*emitError)() << "expected '}' after unescaped '{'";
+    }
+    return failure();
+  }
+  return items;
 }
 
 //===----------------------------------------------------------------------===//
@@ -914,7 +973,11 @@ LogicalResult emitc::SubscriptOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult emitc::VerbatimOp::verify() {
-  FailureOr<SmallVector<ReplacementItem>> fmt = parseFormatString();
+  auto errorCallback = [&]() -> InFlightDiagnostic {
+    return this->emitOpError();
+  };
+  FailureOr<SmallVector<ReplacementItem>> fmt =
+      ::parseFormatString(getValue(), getFmtArgs(), errorCallback);
   if (failed(fmt))
     return failure();
 
@@ -929,56 +992,29 @@ LogicalResult emitc::VerbatimOp::verify() {
   return success();
 }
 
-/// Parse a format string and return a list of its parts.
-/// A part is either a StringRef that has to be printed as-is, or
-/// a Placeholder which requires printing the next operand of the VerbatimOp.
-/// In the format string, all `{}` are replaced by Placeholders, except if the
-/// `{` is escaped by `{{` - then it doesn't start a placeholder.
-FailureOr<SmallVector<emitc::VerbatimOp::ReplacementItem>>
-emitc::VerbatimOp::parseFormatString() {
-  SmallVector<ReplacementItem> items;
+static ParseResult parseVariadicTypeFmtArgs(AsmParser &p,
+                                            SmallVector<Type> &params) {
+  Type type;
+  if (p.parseType(type))
+    return failure();
 
-  // If there are not operands, the format string is not interpreted.
-  if (getFmtArgs().empty()) {
-    items.push_back(getValue());
-    return items;
+  params.push_back(type);
+  while (succeeded(p.parseOptionalComma())) {
+    if (p.parseType(type))
+      return failure();
+    params.push_back(type);
   }
 
-  StringRef toParse = getValue();
-  while (!toParse.empty()) {
-    size_t idx = toParse.find('{');
-    if (idx == StringRef::npos) {
-      // No '{'
-      items.push_back(toParse);
-      break;
-    }
-    if (idx > 0) {
-      // Take all chars excluding the '{'.
-      items.push_back(toParse.take_front(idx));
-      toParse = toParse.drop_front(idx);
-      continue;
-    }
-    if (toParse.size() < 2) {
-      // '{' is last character
-      items.push_back(toParse);
-      break;
-    }
-    // toParse contains at least two characters and starts with `{`.
-    char nextChar = toParse[1];
-    if (nextChar == '{') {
-      // Double '{{' -> '{' (escaping).
-      items.push_back(toParse.take_front(1));
-      toParse = toParse.drop_front(2);
-      continue;
-    }
-    if (nextChar == '}') {
-      items.push_back(Placeholder{});
-      toParse = toParse.drop_front(2);
-      continue;
-    }
-    return emitOpError() << "expected '}' after unescaped '{'";
-  }
-  return items;
+  return success();
+}
+
+static void printVariadicTypeFmtArgs(AsmPrinter &p, ArrayRef<Type> params) {
+  llvm::interleaveComma(params, p, [&](Type type) { p.printType(type); });
+}
+
+FailureOr<SmallVector<ReplacementItem>> emitc::VerbatimOp::parseFormatString() {
+  // Error checking is done in verify.
+  return ::parseFormatString(getValue(), getFmtArgs());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1072,7 +1108,7 @@ emitc::ArrayType::cloneWith(std::optional<ArrayRef<int64_t>> shape,
 
 LogicalResult mlir::emitc::OpaqueType::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emitError,
-    llvm::StringRef value) {
+    llvm::StringRef value, ArrayRef<Type> fmtArgs) {
   if (value.empty()) {
     return emitError() << "expected non empty string in !emitc.opaque type";
   }
@@ -1080,7 +1116,27 @@ LogicalResult mlir::emitc::OpaqueType::verify(
     return emitError() << "pointer not allowed as outer type with "
                           "!emitc.opaque, use !emitc.ptr instead";
   }
+
+  FailureOr<SmallVector<ReplacementItem>> fmt =
+      ::parseFormatString(value, fmtArgs, emitError);
+  if (failed(fmt))
+    return failure();
+
+  size_t numPlaceholders = llvm::count_if(*fmt, [](ReplacementItem &item) {
+    return std::holds_alternative<Placeholder>(item);
+  });
+
+  if (numPlaceholders != fmtArgs.size()) {
+    return emitError()
+           << "requires operands for each placeholder in the format string";
+  }
+
   return success();
+}
+
+FailureOr<SmallVector<ReplacementItem>> emitc::OpaqueType::parseFormatString() {
+  // Error checking is done in verify.
+  return ::parseFormatString(getValue(), getFmtArgs());
 }
 
 //===----------------------------------------------------------------------===//
