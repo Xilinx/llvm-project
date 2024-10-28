@@ -14,30 +14,30 @@ func.func @illegal_opaque_type_2() {
 
 // -----
 
-func.func @illegal_opaque_type() {
-    // expected-error @+1 {{expected non-function type}}
-    %1 = "emitc.variable"(){value = "42" : !emitc.opaque<"{}, {}", "string">} : () -> !emitc.opaque<"mytype">
+// expected-error @+1 {{expected non-function type}}
+func.func @illegal_opaque_type(%arg0: !emitc.opaque<"{}, {}", "string">) {
+    return
 }
 
 // -----
 
-func.func @illegal_opaque_type() {
+// expected-error @+1 {{requires operands for each placeholder in the format string}}
+func.func @illegal_opaque_type(%arg0: !emitc.opaque<"a", f32>) {
+    return
+}
+
+// -----
+
     // expected-error @+1 {{requires operands for each placeholder in the format string}}
-    %1 = "emitc.variable"(){value = "42" : !emitc.opaque<"a", f32>} : () -> !emitc.opaque<"mytype">
+func.func @illegal_opaque_type(%arg0: !emitc.opaque<"{}, {}", f32>) {
+    return
 }
 
 // -----
 
-func.func @illegal_opaque_type() {
-    // expected-error @+1 {{requires operands for each placeholder in the format string}}
-    %1 = "emitc.variable"(){value = "42" : !emitc.opaque<"{}, {}", f32>} : () -> !emitc.opaque<"mytype">
-}
-
-// -----
-
-func.func @illegal_opaque_type() {
-    // expected-error @+1 {{expected '}' after unescaped '{'}}
-    %1 = "emitc.variable"(){value = "42" : !emitc.opaque<"{ ", i32>} : () -> !emitc.opaque<"mytype">
+// expected-error @+1 {{expected '}' after unescaped '{'}}
+func.func @illegal_opaque_type(%arg0: !emitc.opaque<"{ ", i32>) {
+    return
 }
 
 // -----
