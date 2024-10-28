@@ -1168,11 +1168,7 @@ def EmitC_VerbatimOp : EmitC_Op<"verbatim"> {
   }];
 
   let extraClassDeclaration = [{
-    // Either a literal string, or an placeholder for the fmtArgs.
-    struct Placeholder {};
-    using ReplacementItem = std::variant<StringRef, Placeholder>;
-
-    FailureOr<SmallVector<ReplacementItem>> parseFormatString();
+    FailureOr<SmallVector<::mlir::emitc::ReplacementItem>> parseFormatString();
   }];
 
   let arguments = (ins StrAttr:$value,

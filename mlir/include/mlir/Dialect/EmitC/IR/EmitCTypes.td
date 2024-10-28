@@ -107,11 +107,7 @@ def EmitC_OpaqueType : EmitC_Type<"Opaque", "opaque"> {
   let builders = [TypeBuilder<(ins "::llvm::StringRef":$value), [{ return $_get($_ctxt, value, SmallVector<Type>{}); }] >];
 
   let extraClassDeclaration = [{
-    // Either a literal string, or an placeholder for the fmtArgs.
-    struct Placeholder {};
-    using ReplacementItem = std::variant<StringRef, Placeholder>;
-
-    FailureOr<SmallVector<ReplacementItem>> parseFormatString();
+    FailureOr<SmallVector<::mlir::emitc::ReplacementItem>> parseFormatString();
   }];
 }
 

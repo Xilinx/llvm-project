@@ -512,14 +512,14 @@ static LogicalResult printOperation(CppEmitter &emitter,
                                     emitc::VerbatimOp verbatimOp) {
   raw_ostream &os = emitter.ostream();
 
-  FailureOr<SmallVector<emitc::VerbatimOp::ReplacementItem>> items =
+  FailureOr<SmallVector<ReplacementItem>> items =
       verbatimOp.parseFormatString();
   if (failed(items))
     return failure();
 
   auto fmtArg = verbatimOp.getFmtArgs().begin();
 
-  for (emitc::VerbatimOp::ReplacementItem &item : *items) {
+  for (ReplacementItem &item : *items) {
     if (auto *str = std::get_if<StringRef>(&item)) {
       os << *str;
     } else {
@@ -1728,13 +1728,12 @@ LogicalResult CppEmitter::emitType(Location loc, Type type) {
   if (auto tType = dyn_cast<TupleType>(type))
     return emitTupleType(loc, tType.getTypes());
   if (auto oType = dyn_cast<emitc::OpaqueType>(type)) {
-    FailureOr<SmallVector<emitc::OpaqueType::ReplacementItem>> items =
-        oType.parseFormatString();
+    FailureOr<SmallVector<ReplacementItem>> items = oType.parseFormatString();
     if (failed(items))
       return failure();
 
     auto fmtArg = oType.getFmtArgs().begin();
-    for (emitc::OpaqueType::ReplacementItem &item : *items) {
+    for (ReplacementItem &item : *items) {
       if (auto *str = std::get_if<StringRef>(&item)) {
         os << *str;
       } else {

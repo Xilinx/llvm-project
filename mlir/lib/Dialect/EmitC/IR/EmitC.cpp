@@ -955,12 +955,12 @@ static void printVariadicFmtArgs(AsmPrinter &p, ArrayRef<Type> params) {
 /// a Placeholder which requires printing the next operand of the VerbatimOp.
 /// In the format string, all `{}` are replaced by Placeholders, except if the
 /// `{` is escaped by `{{` - then it doesn't start a placeholder
-template <typename Op, class ArgType>
-FailureOr<SmallVector<typename Op::ReplacementItem>>
+template <class ArgType>
+FailureOr<SmallVector<ReplacementItem>>
 parseFormatString(StringRef toParse, ArgType fmtArgs,
                   std::optional<llvm::function_ref<mlir::InFlightDiagnostic()>>
                       emitError = {}) {
-  SmallVector<typename Op::ReplacementItem> items;
+  SmallVector<ReplacementItem> items;
 
   // If there are not operands, the format string is not interpreted.
   if (fmtArgs.empty()) {
@@ -995,7 +995,7 @@ parseFormatString(StringRef toParse, ArgType fmtArgs,
       continue;
     }
     if (nextChar == '}') {
-      items.push_back(typename Op::Placeholder{});
+      items.push_back(Placeholder{});
       toParse = toParse.drop_front(2);
       continue;
     }
@@ -1008,13 +1008,11 @@ parseFormatString(StringRef toParse, ArgType fmtArgs,
   return items;
 }
 
-FailureOr<SmallVector<emitc::VerbatimOp::ReplacementItem>>
-emitc::VerbatimOp::parseFormatString() {
+FailureOr<SmallVector<ReplacementItem>> emitc::VerbatimOp::parseFormatString() {
   auto errorCallback = [&]() -> InFlightDiagnostic {
-    return this->emitError();
+    return this->emitOpError();
   };
-  return ::parseFormatString<emitc::VerbatimOp>(getValue(), getFmtArgs(),
-                                                errorCallback);
+  return ::parseFormatString(getValue(), getFmtArgs(), errorCallback);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1118,7 +1116,7 @@ LogicalResult mlir::emitc::OpaqueType::verify(
   }
 
   FailureOr<SmallVector<ReplacementItem>> fmt =
-      ::parseFormatString<emitc::OpaqueType>(value, fmtArgs, emitError);
+      ::parseFormatString(value, fmtArgs, emitError);
   if (failed(fmt))
     return failure();
 
@@ -1134,9 +1132,8 @@ LogicalResult mlir::emitc::OpaqueType::verify(
   return success();
 }
 
-FailureOr<SmallVector<emitc::OpaqueType::ReplacementItem>>
-emitc::OpaqueType::parseFormatString() {
-  return ::parseFormatString<emitc::OpaqueType>(getValue(), getFmtArgs());
+FailureOr<SmallVector<ReplacementItem>> emitc::OpaqueType::parseFormatString() {
+  return ::parseFormatString(getValue(), getFmtArgs());
 }
 
 //===----------------------------------------------------------------------===//

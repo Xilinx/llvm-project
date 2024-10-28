@@ -52,6 +52,10 @@ bool isPointerWideType(mlir::Type type);
 /// Give the name of the EmitC reference attribute.
 StringRef getReferenceAttributeName();
 
+// Either a literal string, or an placeholder for the fmtArgs.
+struct Placeholder {};
+using ReplacementItem = std::variant<StringRef, Placeholder>;
+
 } // namespace emitc
 } // namespace mlir
 
