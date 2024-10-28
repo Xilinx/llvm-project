@@ -155,6 +155,64 @@ static LogicalResult verifyInitializationAttribute(Operation *op,
   return success();
 }
 
+/// Parse a format string and return a list of its parts.
+/// A part is either a StringRef that has to be printed as-is, or
+/// a Placeholder which requires printing the next operand of the VerbatimOp.
+/// In the format string, all `{}` are replaced by Placeholders, except if the
+/// `{` is escaped by `{{` - then it doesn't start a placeholder.
+template <class ArgType>
+FailureOr<SmallVector<ReplacementItem>>
+parseFormatString(StringRef toParse, ArgType fmtArgs,
+                  std::optional<llvm::function_ref<mlir::InFlightDiagnostic()>>
+                      emitError = {}) {
+  SmallVector<ReplacementItem> items;
+
+  // If there are not operands, the format string is not interpreted.
+  if (fmtArgs.empty()) {
+    items.push_back(toParse);
+    return items;
+  }
+
+  while (!toParse.empty()) {
+    size_t idx = toParse.find('{');
+    if (idx == StringRef::npos) {
+      // No '{'
+      items.push_back(toParse);
+      break;
+    }
+    if (idx > 0) {
+      // Take all chars excluding the '{'.
+      items.push_back(toParse.take_front(idx));
+      toParse = toParse.drop_front(idx);
+      continue;
+    }
+    if (toParse.size() < 2) {
+      // '{' is last character
+      items.push_back(toParse);
+      break;
+    }
+    // toParse contains at least two characters and starts with `{`.
+    char nextChar = toParse[1];
+    if (nextChar == '{') {
+      // Double '{{' -> '{' (escaping).
+      items.push_back(toParse.take_front(1));
+      toParse = toParse.drop_front(2);
+      continue;
+    }
+    if (nextChar == '}') {
+      items.push_back(Placeholder{});
+      toParse = toParse.drop_front(2);
+      continue;
+    }
+
+    if (emitError.has_value()) {
+      return (*emitError)() << "expected '}' after unescaped '{'";
+    }
+    return failure();
+  }
+  return items;
+}
+
 //===----------------------------------------------------------------------===//
 // AddOp
 //===----------------------------------------------------------------------===//
@@ -915,7 +973,11 @@ LogicalResult emitc::SubscriptOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult emitc::VerbatimOp::verify() {
-  FailureOr<SmallVector<ReplacementItem>> fmt = parseFormatString();
+  auto errorCallback = [&]() -> InFlightDiagnostic {
+    return this->emitOpError();
+  };
+  FailureOr<SmallVector<ReplacementItem>> fmt =
+      ::parseFormatString(getValue(), getFmtArgs(), errorCallback);
   if (failed(fmt))
     return failure();
 
@@ -950,69 +1012,9 @@ static void printVariadicTypeFmtArgs(AsmPrinter &p, ArrayRef<Type> params) {
   llvm::interleaveComma(params, p, [&](Type type) { p.printType(type); });
 }
 
-/// Parse a format string and return a list of its parts.
-/// A part is either a StringRef that has to be printed as-is, or
-/// a Placeholder which requires printing the next operand of the VerbatimOp.
-/// In the format string, all `{}` are replaced by Placeholders, except if the
-/// `{` is escaped by `{{` - then it doesn't start a placeholder.
-template <class ArgType>
-FailureOr<SmallVector<ReplacementItem>>
-parseFormatString(StringRef toParse, ArgType fmtArgs,
-                  std::optional<llvm::function_ref<mlir::InFlightDiagnostic()>>
-                      emitError = {}) {
-  SmallVector<ReplacementItem> items;
-
-  // If there are not operands, the format string is not interpreted.
-  if (fmtArgs.empty()) {
-    items.push_back(toParse);
-    return items;
-  }
-
-  while (!toParse.empty()) {
-    size_t idx = toParse.find('{');
-    if (idx == StringRef::npos) {
-      // No '{'
-      items.push_back(toParse);
-      break;
-    }
-    if (idx > 0) {
-      // Take all chars excluding the '{'.
-      items.push_back(toParse.take_front(idx));
-      toParse = toParse.drop_front(idx);
-      continue;
-    }
-    if (toParse.size() < 2) {
-      // '{' is last character
-      items.push_back(toParse);
-      break;
-    }
-    // toParse contains at least two characters and starts with `{`.
-    char nextChar = toParse[1];
-    if (nextChar == '{') {
-      // Double '{{' -> '{' (escaping).
-      items.push_back(toParse.take_front(1));
-      toParse = toParse.drop_front(2);
-      continue;
-    }
-    if (nextChar == '}') {
-      items.push_back(Placeholder{});
-      toParse = toParse.drop_front(2);
-      continue;
-    }
-
-    if (emitError.has_value()) {
-      return (*emitError)() << "expected '}' after unescaped '{'";
-    }
-    return failure();
-  }
-  return items;
-}
-
 FailureOr<SmallVector<ReplacementItem>> emitc::VerbatimOp::parseFormatString() {
-  auto errorCallback = [&]() -> InFlightDiagnostic {
-    return this->emitOpError();
-  };
-  return ::parseFormatString(getValue(), getFmtArgs(), errorCallback);
+  // Error checking is done in verify.
+  return ::parseFormatString(getValue(), getFmtArgs());
 }
 
 //===----------------------------------------------------------------------===//
@@ -1133,6 +1135,7 @@ LogicalResult mlir::emitc::OpaqueType::verify(
 }
 
 FailureOr<SmallVector<ReplacementItem>> emitc::OpaqueType::parseFormatString() {
+  // Error checking is done in verify.
   return ::parseFormatString(getValue(), getFmtArgs());
 }
 
