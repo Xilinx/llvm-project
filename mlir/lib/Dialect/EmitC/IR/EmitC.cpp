@@ -930,8 +930,8 @@ LogicalResult emitc::VerbatimOp::verify() {
   return success();
 }
 
-static ParseResult parseVariadicFmtArgs(AsmParser &p,
-                                        SmallVector<Type> &params) {
+static ParseResult parseVariadicTypeFmtArgs(AsmParser &p,
+                                            SmallVector<Type> &params) {
   Type type;
   if (p.parseType(type))
     return failure();
@@ -946,7 +946,7 @@ static ParseResult parseVariadicFmtArgs(AsmParser &p,
   return success();
 }
 
-static void printVariadicFmtArgs(AsmPrinter &p, ArrayRef<Type> params) {
+static void printVariadicTypeFmtArgs(AsmPrinter &p, ArrayRef<Type> params) {
   llvm::interleaveComma(params, p, [&](Type type) { p.printType(type); });
 }
 
@@ -954,7 +954,7 @@ static void printVariadicFmtArgs(AsmPrinter &p, ArrayRef<Type> params) {
 /// A part is either a StringRef that has to be printed as-is, or
 /// a Placeholder which requires printing the next operand of the VerbatimOp.
 /// In the format string, all `{}` are replaced by Placeholders, except if the
-/// `{` is escaped by `{{` - then it doesn't start a placeholder
+/// `{` is escaped by `{{` - then it doesn't start a placeholder.
 template <class ArgType>
 FailureOr<SmallVector<ReplacementItem>>
 parseFormatString(StringRef toParse, ArgType fmtArgs,
