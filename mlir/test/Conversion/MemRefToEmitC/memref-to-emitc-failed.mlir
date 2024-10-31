@@ -61,3 +61,48 @@ func.func @memref_collapse_dyn_shape(%arg: memref<?x5xi32>) -> memref<?xi32> {
   %0 = memref.collapse_shape %arg [[0, 1]] : memref<?x5xi32> into memref<?xi32>
   return %0 : memref<?xi32>
 }
+
+// -----
+
+// CHECK-LABEL: memref_reinterpret_cast_dyn_shape
+func.func @memref_reinterpret_cast_dyn_shape(%arg: memref<2x5xi32>, %size: index) -> memref<?xi32> {
+  // expected-error@+1 {{failed to legalize operation 'memref.reinterpret_cast'}}
+  %0 = memref.reinterpret_cast %arg to offset: [0], sizes: [%size], strides: [1] : memref<2x5xi32> to memref<?xi32>
+  return %0 : memref<?xi32>
+}
+
+// -----
+
+// CHECK-LABEL: memref_reinterpret_cast_dyn_offset
+func.func @memref_reinterpret_cast_dyn_offset(%arg: memref<2x5xi32>, %offset: index) -> memref<10xi32, strided<[1], offset: ?>> {
+  // expected-error@+1 {{failed to legalize operation 'memref.reinterpret_cast'}}
+  %0 = memref.reinterpret_cast %arg to offset: [%offset], sizes: [10], strides: [1] : memref<2x5xi32> to memref<10xi32, strided<[1], offset: ?>>
+  return %0 : memref<10xi32, strided<[1], offset:? >>
+}
+
+// -----
+
+// CHECK-LABEL: memref_reinterpret_cast_static_offset
+func.func @memref_reinterpret_cast_static_offset(%arg: memref<2x5xi32>) -> memref<10xi32, strided<[1], offset: 10>> {
+  // expected-error@+1 {{failed to legalize operation 'memref.reinterpret_cast'}}
+  %0 = memref.reinterpret_cast %arg to offset: [10], sizes: [10], strides: [1] : memref<2x5xi32> to memref<10xi32, strided<[1], offset: 10>>
+  return %0 : memref<10xi32, strided<[1], offset: 10>>
+}
+
+// -----
+
+// CHECK-LABEL: memref_reinterpret_cast_static_strides
+func.func @memref_reinterpret_cast_offset(%arg: memref<2x5xi32>) -> memref<10xi32, strided<[2], offset: 0>> {
+  // expected-error@+1 {{failed to legalize operation 'memref.reinterpret_cast'}}
+  %0 = memref.reinterpret_cast %arg to offset: [0], sizes: [10], strides: [2] : memref<2x5xi32> to memref<10xi32, strided<[2], offset: 0>>
+  return %0 : memref<10xi32, strided<[2], offset: 0>>
+}
+
+// -----
+
+// CHECK-LABEL: memref_reinterpret_cast_dyn_strides
+func.func @memref_reinterpret_cast_offset(%arg: memref<2x5xi32>, %stride: index) -> memref<10xi32, strided<[?], offset: 0>> {
+  // expected-error@+1 {{failed to legalize operation 'memref.reinterpret_cast'}}
+  %0 = memref.reinterpret_cast %arg to offset: [0], sizes: [10], strides: [%stride] : memref<2x5xi32> to memref<10xi32, strided<[?], offset: 0>>
+  return %0 : memref<10xi32, strided<[?], offset: 0>>
+}
