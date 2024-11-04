@@ -97,8 +97,17 @@ func.func @memref_collapse_shape(%arg: memref<2x5xi32>) -> memref<10xi32> {
 
 // -----
 
-// CHECK-LABEL: memref_reinterpret_cast
-func.func @memref_reinterpret_cast(%arg: memref<2x5xi32>) -> memref<10xi32> {
+// CHECK-LABEL: memref_reinterpret_cast_subset
+func.func @memref_reinterpret_cast_subset(%arg: memref<2x5xi32>) -> memref<8xi32> {
+  // CHECK: emitc.cast %{{[^ ]*}} : !emitc.array<2x5xi32> to !emitc.array<8xi32> ref
+  %0 = memref.reinterpret_cast %arg to offset: [0], sizes: [8], strides: [1] : memref<2x5xi32> to memref<8xi32>
+  return %0 : memref<8xi32>
+}
+
+// -----
+
+// CHECK-LABEL: memref_reinterpret_cast_reshape
+func.func @memref_reinterpret_cast_reshape(%arg: memref<2x5xi32>) -> memref<10xi32> {
   // CHECK: emitc.cast %{{[^ ]*}} : !emitc.array<2x5xi32> to !emitc.array<10xi32> ref
   %0 = memref.reinterpret_cast %arg to offset: [0], sizes: [10], strides: [1] : memref<2x5xi32> to memref<10xi32>
   return %0 : memref<10xi32>
