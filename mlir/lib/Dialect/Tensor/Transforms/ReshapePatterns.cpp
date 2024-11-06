@@ -210,6 +210,96 @@ struct BubbleUpExpandThroughParallelCollapse
   }
 };
 
+/// Pattern to bubble up a tensor.expand_shape op through a producer
+/// tensor.extract_slice op that has non intersecting reassociations.
+struct BubbleUpExpandThroughExtractSlice
+    : public OpRewritePattern<tensor::ExpandShapeOp> {
+  using OpRewritePattern<tensor::ExpandShapeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tensor::ExpandShapeOp expandOp,
+                                PatternRewriter &rewriter) const override {
+    auto extractOp = expandOp.getSrc().getDefiningOp<tensor::ExtractSliceOp>();
+    if (!extractOp)
+      return failure();
+
+    auto affectsDim = [&](int64_t dim) {
+      return getConstantIntValue(extractOp.getMixedSizes()[dim]) !=
+                 extractOp.getSourceType().getDimSize(dim) ||
+             extractOp.isDynamicSize(dim) ||
+             extractOp.getStaticSize(dim) != 0 ||
+             extractOp.isDynamicStride(dim) ||
+             extractOp.getStaticStride(dim) != 1;
+    };
+
+    // Reshapes are parallel to each other if none of the reassociation indices
+    // have greater than 1 index for both reshapes.
+    for (auto [srcDim, expandReassociation] :
+         llvm::enumerate(expandOp.getReassociationIndices())) {
+
+      if (affectsDim(srcDim) && expandReassociation.size() != 1) {
+        return rewriter.notifyMatchFailure(
+            expandOp,
+            "modified output dim of extract_slice is affected by expand");
+      }
+    }
+
+    // Create new expand_shape
+    SmallVector<OpFoldResult> newExpandOutputShape(getMixedValues(
+        expandOp.getStaticOutputShape(), expandOp.getOutputShape(), rewriter));
+
+    for (auto [outDim, outputSize] : enumerate(newExpandOutputShape)) {
+      int64_t srcDim = expandOp.getCorrespondingSourceDim(outDim);
+      if (expandOp.getReassociationIndices()[srcDim].size() == 1) {
+        outputSize =
+            rewriter.getIndexAttr(extractOp.getSourceType().getDimSize(srcDim));
+      }
+    }
+
+    SmallVector<Value> dynamicSizes;
+    SmallVector<int64_t> staticSizes;
+    dispatchIndexOpFoldResults(newExpandOutputShape, dynamicSizes, staticSizes);
+    auto expandResultType = expandOp.getResultType().clone(staticSizes);
+    auto newExpand = rewriter.create<tensor::ExpandShapeOp>(
+        expandOp.getLoc(), expandResultType, extractOp.getSource(),
+        expandOp.getReassociationIndices(), newExpandOutputShape);
+
+    // Create new extract_slice
+    // %extract = tensor.extract_slice %arg0[0, 0, 0, 0] [1, 255, 20, 20] [1, 1,
+    // 1, 1] : tensor<1x255x20x24xf32> to tensor<1x255x20x20xf32> %expand =
+    // tensor.expand_shape %extract [[0], [1, 2], [3], [4]] output_shape [1, 3,
+    // 85, 20, 20] : tensor<1x255x20x20xf32> into tensor<1x3x85x20x20xf32>
+
+    SmallVector<OpFoldResult> newOffsets;
+
+    SmallVector<OpFoldResult> newSizes;
+    SmallVector<OpFoldResult> newStrides;
+
+    for (auto [inpDim, reassoc] :
+         enumerate(expandOp.getReassociationIndices())) {
+      // The offsets/sizes/strides are currently expressed in inpDim, and we
+      // need to expand them.
+      if (reassoc.size() == 1) {
+        // This dimension is not affected by the expand_shape
+        newOffsets.push_back(extractOp.getMixedOffsets()[inpDim]);
+        newSizes.push_back(extractOp.getMixedSizes()[inpDim]);
+        newStrides.push_back(extractOp.getMixedStrides()[inpDim]);
+      } else {
+        for (auto outputDim : reassoc) {
+          // This dimension is not affected by the extract_slice; take a full
+          // slice of each input dim before it was expanded.
+          newOffsets.push_back(rewriter.getIndexAttr(0));
+          newSizes.push_back(newExpandOutputShape[outputDim]);
+          newStrides.push_back(rewriter.getIndexAttr(1));
+        }
+      }
+    }
+
+    rewriter.replaceOpWithNewOp<tensor::ExtractSliceOp>(
+        expandOp, newExpand.getResult(), newOffsets, newSizes, newStrides);
+    return success();
+  }
+};
+
 } // namespace
 
 void mlir::tensor::populateReassociativeReshapeFoldingPatterns(
@@ -225,5 +315,6 @@ void mlir::tensor::populateReassociativeReshapeFoldingPatterns(
 
 void mlir::tensor::populateBubbleUpExpandShapePatterns(
     RewritePatternSet &patterns) {
-  patterns.add<BubbleUpExpandThroughParallelCollapse>(patterns.getContext());
+  patterns.add<BubbleUpExpandThroughParallelCollapse,
+               BubbleUpExpandThroughExtractSlice>(patterns.getContext());
 }
