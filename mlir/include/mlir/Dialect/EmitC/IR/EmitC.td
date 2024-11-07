@@ -85,7 +85,11 @@ def EmitC_TranslationUnitOp : EmitC_Op<"tu",
   let regions = (region SizedRegion<1>:$bodyRegion);
 
   let assemblyFormat = "$id attr-dict-with-keyword $bodyRegion";
+  let builders = [OpBuilder<(ins CArg<"StringRef">:$id)>];
   let extraClassDeclaration = [{
+    /// Construct a module from the given location with an optional name.
+    static TranslationUnitOp create(Location loc, StringRef name);
+
     //===------------------------------------------------------------------===//
     // OpAsmOpInterface Methods
     //===------------------------------------------------------------------===//
@@ -96,6 +100,10 @@ def EmitC_TranslationUnitOp : EmitC_Op<"tu",
       return "emitc";
     }
   }];
+
+  // We need to ensure that the body region has a block;
+  // the auto-generated builders do not guarantee that.
+  let skipDefaultBuilders = 1;
 }
 
 def EmitC_AddOp : EmitC_BinaryOp<"add", [CExpression]> {
