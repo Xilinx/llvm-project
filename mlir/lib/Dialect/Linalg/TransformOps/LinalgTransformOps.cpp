@@ -557,6 +557,15 @@ transform::FuseOp::apply(transform::TransformRewriter &rewriter,
   tilingOptions = tilingOptions.setTileSizes(tileSizesOfr);
   scf::SCFTileAndFuseOptions tileAndFuseOptions;
   tileAndFuseOptions.tilingOptions = tilingOptions;
+
+  if (getApplyCleanup()) {
+    MLIRContext *context = rewriter.getContext();
+    RewritePatternSet patterns(context);
+    tensor::ExtractSliceOp::getCanonicalizationPatterns(patterns, context);
+    tensor::populateMergeConsecutiveInsertExtractSlicePatterns(patterns);
+    tileAndFuseOptions.cleanupPatterns = std::move(patterns);
+  }
+
   LogicalResult result = applyTilingToAll(
       rewriter, getOperation(), state.getPayloadOps(getTarget()),
       tileSizes.size() - llvm::count(tileSizes, 0), transformResults,
@@ -3845,6 +3854,47 @@ DiagnosedSilenceableFailure transform::WinogradConv2DOp::applyToOne(
 
   if (supported && failed(maybeTransformed)) {
     return emitSilenceableError() << "apply Winograd Conv2D failed";
+  }
+
+  results.push_back(*maybeTransformed);
+  return DiagnosedSilenceableFailure::success();
+}
+
+DiagnosedSilenceableFailure transform::DecomposeWinogradOp::applyToOne(
+    transform::TransformRewriter &rewriter, Operation *target,
+    transform::ApplyToEachResultList &results,
+    transform::TransformState &state) {
+  rewriter.setInsertionPoint(target);
+  FailureOr<Operation *> maybeTransformed = failure();
+  bool supported =
+      TypeSwitch<Operation *, bool>(target)
+          .Case([&](linalg::WinogradFilterTransformOp op) {
+            maybeTransformed = decomposeWinogradFilterTransformOp(rewriter, op);
+            return true;
+          })
+          .Case([&](linalg::WinogradInputTransformOp op) {
+            maybeTransformed = decomposeWinogradInputTransformOp(rewriter, op);
+            return true;
+          })
+          .Case([&](linalg::WinogradOutputTransformOp op) {
+            maybeTransformed = decomposeWinogradOutputTransformOp(rewriter, op);
+            return true;
+          })
+          .Default([&](Operation *op) { return false; });
+
+  if (!supported) {
+    DiagnosedSilenceableFailure diag =
+        emitSilenceableError()
+        << "this operation is not supported to decompose into other operations";
+    diag.attachNote(target->getLoc()) << "target op";
+    return diag;
+  }
+
+  if (supported && failed(maybeTransformed)) {
+    DiagnosedSilenceableFailure diag =
+        emitSilenceableError() << "decompose Winograd operations failed";
+    diag.attachNote(target->getLoc()) << "target op";
+    return diag;
   }
 
   results.push_back(*maybeTransformed);

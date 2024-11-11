@@ -284,18 +284,23 @@ def FuseOp : Op<Transform_Dialect, "structured.fuse",
   let description = [{
     Tiles the operations pointed to by the target handle and fuses their
     producers greedily using the options provided as attributes.
+
+    If `apply_cleanup` is true then slice canonicalization is applied between
+    fusion steps.
   }];
 
   let arguments =
     (ins TransformHandleTypeInterface:$target,
          DefaultValuedAttr<I64ArrayAttr, "{}">:$tile_sizes,
-         DefaultValuedAttr<I64ArrayAttr, "{}">:$tile_interchange);
+         DefaultValuedAttr<I64ArrayAttr, "{}">:$tile_interchange,
+         DefaultValuedAttr<BoolAttr, "false">:$apply_cleanup);
   let results = (outs TransformHandleTypeInterface:$transformed,
                       Variadic<TransformHandleTypeInterface>:$loops);
 
   let assemblyFormat = [{
     $target ($tile_sizes^)? (`interchange` $tile_interchange^)?
-    attr-dict `:` functional-type(operands, results)
+    (`apply_cleanup` `=` $apply_cleanup^)? attr-dict
+    `:` functional-type(operands, results)
   }];
   let hasVerifier = 1;
 }
@@ -2692,6 +2697,43 @@ def WinogradConv2DOp : Op<Transform_Dialect,
     ::mlir::DiagnosedSilenceableFailure applyToOne(
         ::mlir::transform::TransformRewriter &rewriter,
         ::mlir::linalg::LinalgOp target,
+        ::mlir::transform::ApplyToEachResultList &results,
+        ::mlir::transform::TransformState &state);
+  }];
+}
+
+def DecomposeWinogradOp : Op<Transform_Dialect,
+    "structured.decompose_winograd_op",
+    [FunctionalStyleTransformOpTrait, MemoryEffectsOpInterface,
+     TransformOpInterface, TransformEachOpTrait,
+     ReportTrackingListenerFailuresOpTrait]> {
+  let description = [{
+    Decompose winograd operations. It will convert filter, input and output
+    transform operations into a combination of scf, tensor, and linalg
+    equivalent operations. Before applying this transform operations, users
+    need to tile winograd transform operations into supported sizes.
+
+    #### Return modes:
+
+    This operation fails if `target` is unsupported. Otherwise, the operation
+    succeeds and returns a handle of the sequence that replaces the original
+    operations.
+  }];
+
+  let arguments = (ins TransformHandleTypeInterface:$target);
+  let results = (outs TransformHandleTypeInterface:$transformed);
+
+  let assemblyFormat =
+    "$target attr-dict `:` functional-type($target, results)";
+
+  let builders = [
+    OpBuilder<(ins "Value":$target)>
+  ];
+
+  let extraClassDeclaration = [{
+    ::mlir::DiagnosedSilenceableFailure applyToOne(
+        ::mlir::transform::TransformRewriter &rewriter,
+        ::mlir::Operation *target,
         ::mlir::transform::ApplyToEachResultList &results,
         ::mlir::transform::TransformState &state);
   }];
