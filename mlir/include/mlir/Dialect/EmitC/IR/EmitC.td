@@ -752,6 +752,12 @@ def EmitC_FuncOp : EmitC_Op<"func", [
 
     /// Returns the result types of this function.
     ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
+
+    //===------------------------------------------------------------------===//
+    // SymbolOpInterface Methods
+    //===------------------------------------------------------------------===//
+
+    bool isDeclaration() { return isExternal(); }
   }];
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;

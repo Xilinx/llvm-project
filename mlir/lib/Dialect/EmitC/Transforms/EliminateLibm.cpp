@@ -37,9 +37,9 @@ namespace {
 
 /// Replace all Libm calls (where callee has `libm` attribute + no definition)
 /// by opaque calls
-struct OpacifyLibmCall : public OpRewritePattern<func::CallOp> {
-  using OpRewritePattern<func::CallOp>::OpRewritePattern;
-  LogicalResult matchAndRewrite(func::CallOp callOp,
+struct OpacifyLibmCall : public OpRewritePattern<emitc::CallOp> {
+  using OpRewritePattern<emitc::CallOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(emitc::CallOp callOp,
                                 PatternRewriter &rewriter) const override {
 
     auto *st = SymbolTable::getNearestSymbolTable(callOp);
@@ -65,8 +65,8 @@ struct EliminateLibmPass : public impl::EliminateLibmBase<EliminateLibmPass> {
     MLIRContext *context = module->getContext();
 
     // Find the first math.h inclusion
-    SmallVector<func::FuncOp> libmPrototypes;
-    module.walk([&libmPrototypes](func::FuncOp funcOp) {
+    SmallVector<emitc::FuncOp> libmPrototypes;
+    module.walk([&libmPrototypes](emitc::FuncOp funcOp) {
       if (funcOp->hasAttr("libm") && funcOp.isDeclaration())
         libmPrototypes.push_back(funcOp);
     });
