@@ -16,12 +16,12 @@ emitc.func @f(%x: i32 ref) {
 
 // -----
 
-// CHECK: emitc.func @f
+// CHECK: emitc.func private @f
 // CHECK-SAME: i32 ref
-emitc.func @f(i32 ref)
+emitc.func private @f(i32 ref)
 
 // -----
 
-// CHECK: emitc.func @f
+// CHECK: emitc.func private @f
 // CHECK-SAME: i32 ref
-emitc.func @f(i32 {emitc.reference})
+emitc.func private @f(i32 {emitc.reference})
