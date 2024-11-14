@@ -1638,6 +1638,9 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
   if (hasDeferredEmission(&op))
     return success();
 
+  if (isa<ModuleOp, TranslationUnitOp>(op))
+    return success(); // skip adding newlines
+
   if (getEmittedExpression() ||
       (isa<emitc::ExpressionOp>(op) &&
        shouldBeInlined(cast<emitc::ExpressionOp>(op))))
