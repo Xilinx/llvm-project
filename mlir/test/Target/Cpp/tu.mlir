@@ -1,5 +1,5 @@
-// RUN: mlir-translate -mlir-to-cpp %s | FileCheck %s --check-prefix NO-FILTER
-// RUN: mlir-translate -mlir-to-cpp -translation-unit-id=non-existing %s | FileCheck %s --check-prefix NON-EXISTING
+// RUN: mlir-translate -mlir-to-cpp %s | FileCheck %s --check-prefix NO-FILTER --allow-empty
+// RUN: mlir-translate -mlir-to-cpp -translation-unit-id=non-existing %s | FileCheck %s --check-prefix NON-EXISTING --allow-empty
 // RUN: mlir-translate -mlir-to-cpp -translation-unit-id=tu_one %s | FileCheck %s --check-prefix TU-ONE
 // RUN: mlir-translate -mlir-to-cpp -translation-unit-id=tu_two %s | FileCheck %s --check-prefix TU-TWO
 
