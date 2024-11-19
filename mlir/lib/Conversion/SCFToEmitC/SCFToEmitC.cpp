@@ -21,6 +21,7 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/Value.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/OneToNTypeConversion.h"
 #include "mlir/Transforms/Passes.h"
@@ -79,22 +80,36 @@ createVariablesForResults(T op, const TypeConverter *typeConverter,
 
 // Create a series of assign ops assigning given values to given variables at
 // the current insertion point of given rewriter.
-static void assignValues(ValueRange values, SmallVector<Value> &variables,
-                         ConversionPatternRewriter &rewriter, Location loc) {
+static void assignValues(ValueRange values, ValueRange variables,
+                         ConversionPatternRewriter &rewriter, Location loc,
+                         const TypeConverter *typeConverter = nullptr) {
   for (auto [value, var] : llvm::zip(values, variables))
     rewriter.create<emitc::AssignOp>(loc, var, value);
 }
 
-static void lowerYield(SmallVector<Value> &resultVariables,
-                       ConversionPatternRewriter &rewriter,
-                       scf::YieldOp yield) {
+static void lowerYield(ValueRange resultVariables,
+                       ConversionPatternRewriter &rewriter, scf::YieldOp yield,
+                       const TypeConverter *typeConverter) {
   Location loc = yield.getLoc();
-  ValueRange operands = yield.getOperands();
 
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(yield);
 
-  assignValues(operands, resultVariables, rewriter, loc);
+  SmallVector<Value> yieldOperands;
+  for (auto originalOperand : yield.getOperands()) {
+    Value operand = originalOperand;
+
+    if (typeConverter && !typeConverter->isLegal(operand.getType())) {
+      Type resultType = typeConverter->convertType(operand.getType());
+      auto castToTarget =
+          rewriter.create<UnrealizedConversionCastOp>(loc, resultType, operand);
+      operand = castToTarget.getResult(0);
+    }
+
+    yieldOperands.push_back(operand);
+  }
+
+  assignValues(yieldOperands, resultVariables, rewriter, loc);
 
   rewriter.create<emitc::YieldOp>(loc);
   rewriter.eraseOp(yield);
@@ -118,22 +133,29 @@ ForLowering::matchAndRewrite(ForOp forOp, OpAdaptor adaptor,
   emitc::ForOp loweredFor = rewriter.create<emitc::ForOp>(
       loc, adaptor.getLowerBound(), adaptor.getUpperBound(), adaptor.getStep());
 
-  // Propagate any attributes from the ODS forOp to the lowered emitc::for op.
-  loweredFor->setAttrs(forOp->getAttrs());
-
   Block *loweredBody = loweredFor.getBody();
 
   // Erase the auto-generated terminator for the lowered for op.
   rewriter.eraseOp(loweredBody->getTerminator());
 
+  // Convert the original region types into the new types by adding unrealized
+  // casts in the begginning of the loop. This performs the conversion in place.
+  if (failed(rewriter.convertRegionTypes(&forOp.getRegion(),
+                                         *getTypeConverter(), nullptr))) {
+    return rewriter.notifyMatchFailure(forOp, "region types conversion failed");
+  }
+
+  // Register the replacements for the block arguments and inline the body of
+  // the scf.for loop into the body of the emitc::for loop.
+  Block *scfBody = &(forOp.getRegion().front());
   SmallVector<Value> replacingValues;
   replacingValues.push_back(loweredFor.getInductionVar());
   replacingValues.append(resultVariables.begin(), resultVariables.end());
+  rewriter.mergeBlocks(scfBody, loweredBody, replacingValues);
 
-  Block *adaptorBody = &(adaptor.getRegion().front());
-  rewriter.mergeBlocks(adaptorBody, loweredBody, replacingValues);
   lowerYield(resultVariables, rewriter,
-             cast<scf::YieldOp>(loweredBody->getTerminator()));
+             cast<scf::YieldOp>(loweredBody->getTerminator()),
+             getTypeConverter());
 
   rewriter.replaceOp(forOp, resultVariables);
   return success();
@@ -169,11 +191,12 @@ IfLowering::matchAndRewrite(IfOp ifOp, OpAdaptor adaptor,
   // emitc::if regions, but the scf::yield is replaced not only with an
   // emitc::yield, but also with a sequence of emitc::assign ops that set the
   // yielded values into the result variables.
-  auto lowerRegion = [&resultVariables, &rewriter](Region &region,
-                                                   Region &loweredRegion) {
+  auto lowerRegion = [&resultVariables, &rewriter,
+                      this](Region &region, Region &loweredRegion) {
     rewriter.inlineRegionBefore(region, loweredRegion, loweredRegion.end());
     Operation *terminator = loweredRegion.back().getTerminator();
-    lowerYield(resultVariables, rewriter, cast<scf::YieldOp>(terminator));
+    lowerYield(resultVariables, rewriter, cast<scf::YieldOp>(terminator),
+               getTypeConverter());
   };
 
   Region &thenRegion = adaptor.getThenRegion();

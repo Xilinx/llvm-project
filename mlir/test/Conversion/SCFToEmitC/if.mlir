@@ -68,3 +68,29 @@ func.func @test_if_yield(%arg0: i1, %arg1: f32) {
 // CHECK-NEXT:    }
 // CHECK-NEXT:    return
 // CHECK-NEXT:  }
+
+
+func.func @test_if_yield_index(%arg0: i1, %arg1: f32) {
+  %0 = arith.constant 0 : index
+  %1 = arith.constant 0 : index
+  %x = scf.if %arg0 -> (index) {
+    scf.yield %0 : index
+  } else {
+    scf.yield %1 : index
+  }
+  return
+}
+
+// CHECK:func.func @test_if_yield_index(%arg0: i1, %arg1: f32) {
+// CHECK:   %c0 = arith.constant 0 : index
+// CHECK:   %c0_0 = arith.constant 0 : index
+// CHECK:   %0 = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.size_t
+// CHECK:   emitc.if %arg0 {
+// CHECK:     %1 = builtin.unrealized_conversion_cast %c0 : index to !emitc.size_t
+// CHECK:     emitc.assign %1 : !emitc.size_t to %0 : !emitc.size_t
+// CHECK:   } else {
+// CHECK:     %1 = builtin.unrealized_conversion_cast %c0_0 : index to !emitc.size_t
+// CHECK:     emitc.assign %1 : !emitc.size_t to %0 : !emitc.size_t
+// CHECK:   }
+// CHECK:   return
+// CHECK: }
