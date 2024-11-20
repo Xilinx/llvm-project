@@ -107,21 +107,22 @@ func.func @for_yield_index(%arg0 : index, %arg1 : index, %arg2 : index) -> index
   return %r : index
 }
 
-// CHECK: func.func @for_yield_index(%arg0: index, %arg1: index, %arg2: index) -> index {
-// CHECK:     %0 = builtin.unrealized_conversion_cast %arg2 : index to !emitc.size_t
-// CHECK:     %1 = builtin.unrealized_conversion_cast %arg1 : index to !emitc.size_t
-// CHECK:     %2 = builtin.unrealized_conversion_cast %arg0 : index to !emitc.size_t
-// CHECK:     %c0 = arith.constant 0 : index
-// CHECK:     %3 = builtin.unrealized_conversion_cast %c0 : index to !emitc.size_t
-// CHECK:     %4 = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.size_t
-// CHECK:     emitc.assign %3 : !emitc.size_t to %4 : !emitc.size_t
-// CHECK:     emitc.for %arg3 = %2 to %1 step %0 {
-// CHECK:       %6 = builtin.unrealized_conversion_cast %4 : !emitc.size_t to index
-// CHECK:       %7 = builtin.unrealized_conversion_cast %6 : index to !emitc.size_t
-// CHECK:       emitc.assign %7 : !emitc.size_t to %4 : !emitc.size_t
+// CHECK-LABEL: func.func @for_yield_index(
+// CHECK-SAME: %[[ARG_0:.*]]: index, %[[ARG_1:.*]]: index, %[[ARG_2:.*]]: index) -> index {
+// CHECK:     %[[VAL_0:.*]] = builtin.unrealized_conversion_cast %[[ARG_2]] : index to !emitc.size_t
+// CHECK:     %[[VAL_1:.*]] = builtin.unrealized_conversion_cast %[[ARG_1]] : index to !emitc.size_t
+// CHECK:     %[[VAL_2:.*]] = builtin.unrealized_conversion_cast %[[ARG_0]] : index to !emitc.size_t
+// CHECK:     %[[C0:.*]] = arith.constant 0 : index
+// CHECK:     %[[VAL_3:.*]] = builtin.unrealized_conversion_cast %[[C0]] : index to !emitc.size_t
+// CHECK:     %[[VAL_4:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.size_t
+// CHECK:     emitc.assign %[[VAL_3]] : !emitc.size_t to %[[VAL_4]] : !emitc.size_t
+// CHECK:     emitc.for %[[VAL_5:.*]] = %[[VAL_2]] to %[[VAL_1]] step %[[VAL_0]] {
+// CHECK:       %[[VAL_6:.*]] = builtin.unrealized_conversion_cast %[[VAL_4]] : !emitc.size_t to index
+// CHECK:       %[[VAL_7:.*]] = builtin.unrealized_conversion_cast %[[VAL_6]] : index to !emitc.size_t
+// CHECK:       emitc.assign %[[VAL_7]] : !emitc.size_t to %[[VAL_4]] : !emitc.size_t
 // CHECK:     }
-// CHECK:     %5 = builtin.unrealized_conversion_cast %4 : !emitc.size_t to index
-// CHECK:     return %5 : index
+// CHECK:     %[[VAL_8:.*]] = builtin.unrealized_conversion_cast %[[VAL_4]] : !emitc.size_t to index
+// CHECK:     return %[[VAL_8]] : index
 // CHECK:   }
 
 
@@ -134,20 +135,21 @@ func.func @for_yield_update_loop_carried_var(%arg0 : index, %arg1 : index, %arg2
    return %r : index
  }
 
-// CHECK: func.func @for_yield_update_loop_carried_var(%arg0: index, %arg1: index, %arg2: index) -> index {
-// CHECK:   %0 = builtin.unrealized_conversion_cast %arg2 : index to !emitc.size_t
-// CHECK:   %1 = builtin.unrealized_conversion_cast %arg1 : index to !emitc.size_t
-// CHECK:   %2 = builtin.unrealized_conversion_cast %arg0 : index to !emitc.size_t
-// CHECK:   %c0 = arith.constant 0 : index
-// CHECK:   %3 = builtin.unrealized_conversion_cast %c0 : index to !emitc.size_t
-// CHECK:   %4 = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.size_t
-// CHECK:   emitc.assign %3 : !emitc.size_t to %4 : !emitc.size_t
-// CHECK:   emitc.for %arg3 = %2 to %1 step %0 {
-// CHECK:     %6 = builtin.unrealized_conversion_cast %4 : !emitc.size_t to index
-// CHECK:     %7 = arith.addi %6, %6 : index
-// CHECK:     %8 = builtin.unrealized_conversion_cast %7 : index to !emitc.size_t
-// CHECK:     emitc.assign %8 : !emitc.size_t to %4 : !emitc.size_t
+// CHECK-LABEL: func.func @for_yield_update_loop_carried_var(
+// CHECK-SAME:  %[[ARG_0:.*]]: index, %[[ARG_1:.*]]: index, %[[ARG_2:.*]]: index) -> index {
+// CHECK:   %[[VAL_0:.*]] = builtin.unrealized_conversion_cast %[[ARG_2]] : index to !emitc.size_t
+// CHECK:   %[[VAL_1:.*]] = builtin.unrealized_conversion_cast %[[ARG_1]] : index to !emitc.size_t
+// CHECK:   %[[VAL_2:.*]] = builtin.unrealized_conversion_cast %[[ARG_0]] : index to !emitc.size_t
+// CHECK:   %[[C0:.*]] = arith.constant 0 : index
+// CHECK:   %[[VAL_3:.*]] = builtin.unrealized_conversion_cast %[[C0]] : index to !emitc.size_t
+// CHECK:   %[[VAL_4:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.size_t
+// CHECK:   emitc.assign %[[VAL_3]] : !emitc.size_t to %[[VAL_4]] : !emitc.size_t
+// CHECK:   emitc.for %[[ARG_3:.*]] = %[[VAL_2]] to %[[VAL_1]] step %[[VAL_0]] {
+// CHECK:     %[[VAL_5:.*]] = builtin.unrealized_conversion_cast %[[VAL_4]] : !emitc.size_t to index
+// CHECK:     %[[VAL_6:.*]] = arith.addi %[[VAL_5]], %[[VAL_5]] : index
+// CHECK:     %[[VAL_8:.*]] = builtin.unrealized_conversion_cast %[[VAL_6]] : index to !emitc.size_t
+// CHECK:     emitc.assign %[[VAL_8]] : !emitc.size_t to %[[VAL_4]] : !emitc.size_t
 // CHECK:   }
-// CHECK:   %5 = builtin.unrealized_conversion_cast %4 : !emitc.size_t to index
-// CHECK:   return %5 : index
+// CHECK:   %[[VAL_9:.*]] = builtin.unrealized_conversion_cast %[[VAL_4]] : !emitc.size_t to index
+// CHECK:   return %[[VAL_9]] : index
 // CHECK: }
