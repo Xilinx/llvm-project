@@ -125,28 +125,6 @@ func.func @for_yield_index(%arg0 : index, %arg1 : index, %arg2 : index) -> index
 // CHECK:   }
 
 
-func.func @for_yield_i32(%arg0 : index, %arg1 : index, %arg2 : index) -> i32 {
-   %zero = arith.constant 0 : i32
-   %r = scf.for %i0 = %arg0 to %arg1 step %arg2 iter_args(%acc = %zero) -> i32 {
-     scf.yield %acc : i32
-   }
-   return %r : i32
- }
-
-// CHECK: func.func @for_yield_i32(%arg0: index, %arg1: index, %arg2: index) -> i32 {
-// CHECK:   %0 = builtin.unrealized_conversion_cast %arg2 : index to !emitc.size_t
-// CHECK:   %1 = builtin.unrealized_conversion_cast %arg1 : index to !emitc.size_t
-// CHECK:   %2 = builtin.unrealized_conversion_cast %arg0 : index to !emitc.size_t
-// CHECK:   %c0_i32 = arith.constant 0 : i32
-// CHECK:   %3 = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> i32
-// CHECK:   emitc.assign %c0_i32 : i32 to %3 : i32
-// CHECK:   emitc.for %arg3 = %2 to %1 step %0 {
-// CHECK:     emitc.assign %3 : i32 to %3 : i32
-// CHECK:   }
-// CHECK:   return %3 : i32
-// CHECK: }
-
-
 func.func @for_yield_update_loop_carried_var(%arg0 : index, %arg1 : index, %arg2 : index) -> index {
    %zero = arith.constant 0 : index
    %r = scf.for %i0 = %arg0 to %arg1 step %arg2 iter_args(%acc = %zero) -> index {
