@@ -139,7 +139,7 @@ ForLowering::matchAndRewrite(ForOp forOp, OpAdaptor adaptor,
   rewriter.eraseOp(loweredBody->getTerminator());
 
   // Convert the original region types into the new types by adding unrealized
-  // casts in the begginning of the loop. This performs the conversion in place.
+  // casts in the beginning of the loop. This performs the conversion in place.
   if (failed(rewriter.convertRegionTypes(&forOp.getRegion(),
                                          *getTypeConverter(), nullptr))) {
     return rewriter.notifyMatchFailure(forOp, "region types conversion failed");
