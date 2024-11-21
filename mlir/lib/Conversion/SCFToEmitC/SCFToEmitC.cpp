@@ -94,12 +94,9 @@ static LogicalResult lowerYield(Operation *op, ValueRange resultVariables,
   rewriter.setInsertionPoint(yield);
 
   SmallVector<Value> yieldOperands;
-  for (auto originalOperand : yield.getOperands()) {
-    Value remappedValue = rewriter.getRemappedValue(originalOperand);
-    if (!remappedValue) {
-      return rewriter.notifyMatchFailure(op, "failed to lower yield operands");
-    }
-    yieldOperands.push_back(remappedValue);
+  auto result = rewriter.getRemappedValues(yield.getOperands(), yieldOperands);
+  if (failed(result)) {
+    return rewriter.notifyMatchFailure(op, "failed to lower yield operands");
   }
 
   assignValues(yieldOperands, resultVariables, rewriter, loc);
