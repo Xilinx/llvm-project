@@ -117,9 +117,7 @@ func.func @for_yield_index(%arg0 : index, %arg1 : index, %arg2 : index) -> index
 // CHECK:     %[[VAL_4:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.size_t
 // CHECK:     emitc.assign %[[VAL_3]] : !emitc.size_t to %[[VAL_4]] : !emitc.size_t
 // CHECK:     emitc.for %[[VAL_5:.*]] = %[[VAL_2]] to %[[VAL_1]] step %[[VAL_0]] {
-// CHECK:       %[[VAL_6:.*]] = builtin.unrealized_conversion_cast %[[VAL_4]] : !emitc.size_t to index
-// CHECK:       %[[VAL_7:.*]] = builtin.unrealized_conversion_cast %[[VAL_6]] : index to !emitc.size_t
-// CHECK:       emitc.assign %[[VAL_7]] : !emitc.size_t to %[[VAL_4]] : !emitc.size_t
+// CHECK:       emitc.assign %[[VAL_4]] : !emitc.size_t to %[[VAL_4]] : !emitc.size_t
 // CHECK:     }
 // CHECK:     %[[VAL_8:.*]] = builtin.unrealized_conversion_cast %[[VAL_4]] : !emitc.size_t to index
 // CHECK:     return %[[VAL_8]] : index

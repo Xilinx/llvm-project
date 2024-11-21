@@ -21,7 +21,6 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/Value.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/OneToNTypeConversion.h"
 #include "mlir/Transforms/Passes.h"
@@ -81,15 +80,14 @@ createVariablesForResults(T op, const TypeConverter *typeConverter,
 // Create a series of assign ops assigning given values to given variables at
 // the current insertion point of given rewriter.
 static void assignValues(ValueRange values, ValueRange variables,
-                         ConversionPatternRewriter &rewriter, Location loc,
-                         const TypeConverter *typeConverter = nullptr) {
+                         ConversionPatternRewriter &rewriter, Location loc) {
   for (auto [value, var] : llvm::zip(values, variables))
     rewriter.create<emitc::AssignOp>(loc, var, value);
 }
 
-static void lowerYield(ValueRange resultVariables,
-                       ConversionPatternRewriter &rewriter, scf::YieldOp yield,
-                       const TypeConverter *typeConverter) {
+static LogicalResult lowerYield(Operation *op, ValueRange resultVariables,
+                                ConversionPatternRewriter &rewriter,
+                                scf::YieldOp yield) {
   Location loc = yield.getLoc();
 
   OpBuilder::InsertionGuard guard(rewriter);
@@ -97,22 +95,19 @@ static void lowerYield(ValueRange resultVariables,
 
   SmallVector<Value> yieldOperands;
   for (auto originalOperand : yield.getOperands()) {
-    Value operand = originalOperand;
-
-    if (typeConverter && !typeConverter->isLegal(operand.getType())) {
-      Type resultType = typeConverter->convertType(operand.getType());
-      auto castToTarget =
-          rewriter.create<UnrealizedConversionCastOp>(loc, resultType, operand);
-      operand = castToTarget.getResult(0);
+    Value remappedValue = rewriter.getRemappedValue(originalOperand);
+    if (!remappedValue) {
+      return rewriter.notifyMatchFailure(op, "failed to lower yield operands");
     }
-
-    yieldOperands.push_back(operand);
+    yieldOperands.push_back(remappedValue);
   }
 
   assignValues(yieldOperands, resultVariables, rewriter, loc);
 
   rewriter.create<emitc::YieldOp>(loc);
   rewriter.eraseOp(yield);
+
+  return success();
 }
 
 LogicalResult
@@ -153,9 +148,12 @@ ForLowering::matchAndRewrite(ForOp forOp, OpAdaptor adaptor,
   replacingValues.append(resultVariables.begin(), resultVariables.end());
   rewriter.mergeBlocks(scfBody, loweredBody, replacingValues);
 
-  lowerYield(resultVariables, rewriter,
-             cast<scf::YieldOp>(loweredBody->getTerminator()),
-             getTypeConverter());
+  auto result = lowerYield(forOp, resultVariables, rewriter,
+                           cast<scf::YieldOp>(loweredBody->getTerminator()));
+
+  if (failed(result)) {
+    return result;
+  }
 
   rewriter.replaceOp(forOp, resultVariables);
   return success();
@@ -192,11 +190,15 @@ IfLowering::matchAndRewrite(IfOp ifOp, OpAdaptor adaptor,
   // emitc::yield, but also with a sequence of emitc::assign ops that set the
   // yielded values into the result variables.
   auto lowerRegion = [&resultVariables, &rewriter,
-                      this](Region &region, Region &loweredRegion) {
+                      &ifOp](Region &region, Region &loweredRegion) {
     rewriter.inlineRegionBefore(region, loweredRegion, loweredRegion.end());
     Operation *terminator = loweredRegion.back().getTerminator();
-    lowerYield(resultVariables, rewriter, cast<scf::YieldOp>(terminator),
-               getTypeConverter());
+    auto result = lowerYield(ifOp, resultVariables, rewriter,
+                             cast<scf::YieldOp>(terminator));
+    if (failed(result)) {
+      return result;
+    }
+    return success();
   };
 
   Region &thenRegion = adaptor.getThenRegion();
@@ -208,11 +210,17 @@ IfLowering::matchAndRewrite(IfOp ifOp, OpAdaptor adaptor,
       rewriter.create<emitc::IfOp>(loc, adaptor.getCondition(), false, false);
 
   Region &loweredThenRegion = loweredIf.getThenRegion();
-  lowerRegion(thenRegion, loweredThenRegion);
+  auto result = lowerRegion(thenRegion, loweredThenRegion);
+  if (failed(result)) {
+    return result;
+  }
 
   if (hasElseBlock) {
     Region &loweredElseRegion = loweredIf.getElseRegion();
-    lowerRegion(elseRegion, loweredElseRegion);
+    auto result = lowerRegion(elseRegion, loweredElseRegion);
+    if (failed(result)) {
+      return result;
+    }
   }
 
   rewriter.replaceOp(ifOp, resultVariables);

@@ -84,14 +84,14 @@ func.func @test_if_yield_index(%arg0: i1, %arg1: f32) {
 // CHECK: func.func @test_if_yield_index(
 // CHECK-SAME: %[[ARG_0:.*]]: i1, %[[ARG_1:.*]]: f32) {
 // CHECK:   %[[C0:.*]] = arith.constant 0 : index
+// CHECK:   %[[VAL_0:.*]] = builtin.unrealized_conversion_cast %[[C0]] : index to !emitc.size_t
 // CHECK:   %[[C1:.*]] = arith.constant 1 : index
-// CHECK:   %[[VAL_0:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.size_t
+// CHECK:   %[[VAL_1:.*]] = builtin.unrealized_conversion_cast %[[C1]] : index to !emitc.size_t
+// CHECK:   %[[VAL_2:.*]] = "emitc.variable"() <{value = #emitc.opaque<"">}> : () -> !emitc.size_t
 // CHECK:   emitc.if %[[ARG_0]] {
-// CHECK:     %[[VAL_1:.*]] = builtin.unrealized_conversion_cast %[[C0]] : index to !emitc.size_t
-// CHECK:     emitc.assign %[[VAL_1]] : !emitc.size_t to %[[VAL_0]] : !emitc.size_t
+// CHECK:     emitc.assign %[[VAL_0]] : !emitc.size_t to %[[VAL_2]] : !emitc.size_t
 // CHECK:   } else {
-// CHECK:     %[[VAL_2:.*]] = builtin.unrealized_conversion_cast %[[C1]] : index to !emitc.size_t
-// CHECK:     emitc.assign %[[VAL_2]] : !emitc.size_t to %[[VAL_0]] : !emitc.size_t
+// CHECK:     emitc.assign %[[VAL_1]] : !emitc.size_t to %[[VAL_2]] : !emitc.size_t
 // CHECK:   }
 // CHECK:   return
 // CHECK: }
