@@ -79,25 +79,31 @@ createVariablesForResults(T op, const TypeConverter *typeConverter,
 
 // Create a series of assign ops assigning given values to given variables at
 // the current insertion point of given rewriter.
-static void assignValues(ValueRange values, SmallVector<Value> &variables,
+static void assignValues(ValueRange values, ValueRange variables,
                          ConversionPatternRewriter &rewriter, Location loc) {
   for (auto [value, var] : llvm::zip(values, variables))
     rewriter.create<emitc::AssignOp>(loc, var, value);
 }
 
-static void lowerYield(SmallVector<Value> &resultVariables,
-                       ConversionPatternRewriter &rewriter,
-                       scf::YieldOp yield) {
+static LogicalResult lowerYield(Operation *op, ValueRange resultVariables,
+                                ConversionPatternRewriter &rewriter,
+                                scf::YieldOp yield) {
   Location loc = yield.getLoc();
-  ValueRange operands = yield.getOperands();
 
   OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(yield);
 
-  assignValues(operands, resultVariables, rewriter, loc);
+  SmallVector<Value> yieldOperands;
+  if (failed(rewriter.getRemappedValues(yield.getOperands(), yieldOperands))) {
+    return rewriter.notifyMatchFailure(op, "failed to lower yield operands");
+  }
+
+  assignValues(yieldOperands, resultVariables, rewriter, loc);
 
   rewriter.create<emitc::YieldOp>(loc);
   rewriter.eraseOp(yield);
+
+  return success();
 }
 
 LogicalResult
@@ -118,22 +124,32 @@ ForLowering::matchAndRewrite(ForOp forOp, OpAdaptor adaptor,
   emitc::ForOp loweredFor = rewriter.create<emitc::ForOp>(
       loc, adaptor.getLowerBound(), adaptor.getUpperBound(), adaptor.getStep());
 
-  // Propagate any attributes from the ODS forOp to the lowered emitc::for op.
-  loweredFor->setAttrs(forOp->getAttrs());
-
   Block *loweredBody = loweredFor.getBody();
 
   // Erase the auto-generated terminator for the lowered for op.
   rewriter.eraseOp(loweredBody->getTerminator());
 
+  // Convert the original region types into the new types by adding unrealized
+  // casts in the beginning of the loop. This performs the conversion in place.
+  if (failed(rewriter.convertRegionTypes(&forOp.getRegion(),
+                                         *getTypeConverter(), nullptr))) {
+    return rewriter.notifyMatchFailure(forOp, "region types conversion failed");
+  }
+
+  // Register the replacements for the block arguments and inline the body of
+  // the scf.for loop into the body of the emitc::for loop.
+  Block *scfBody = &(forOp.getRegion().front());
   SmallVector<Value> replacingValues;
   replacingValues.push_back(loweredFor.getInductionVar());
   replacingValues.append(resultVariables.begin(), resultVariables.end());
+  rewriter.mergeBlocks(scfBody, loweredBody, replacingValues);
 
-  Block *adaptorBody = &(adaptor.getRegion().front());
-  rewriter.mergeBlocks(adaptorBody, loweredBody, replacingValues);
-  lowerYield(resultVariables, rewriter,
-             cast<scf::YieldOp>(loweredBody->getTerminator()));
+  auto result = lowerYield(forOp, resultVariables, rewriter,
+                           cast<scf::YieldOp>(loweredBody->getTerminator()));
+
+  if (failed(result)) {
+    return result;
+  }
 
   rewriter.replaceOp(forOp, resultVariables);
   return success();
@@ -169,11 +185,16 @@ IfLowering::matchAndRewrite(IfOp ifOp, OpAdaptor adaptor,
   // emitc::if regions, but the scf::yield is replaced not only with an
   // emitc::yield, but also with a sequence of emitc::assign ops that set the
   // yielded values into the result variables.
-  auto lowerRegion = [&resultVariables, &rewriter](Region &region,
-                                                   Region &loweredRegion) {
+  auto lowerRegion = [&resultVariables, &rewriter,
+                      &ifOp](Region &region, Region &loweredRegion) {
     rewriter.inlineRegionBefore(region, loweredRegion, loweredRegion.end());
     Operation *terminator = loweredRegion.back().getTerminator();
-    lowerYield(resultVariables, rewriter, cast<scf::YieldOp>(terminator));
+    auto result = lowerYield(ifOp, resultVariables, rewriter,
+                             cast<scf::YieldOp>(terminator));
+    if (failed(result)) {
+      return result;
+    }
+    return success();
   };
 
   Region &thenRegion = adaptor.getThenRegion();
@@ -185,11 +206,17 @@ IfLowering::matchAndRewrite(IfOp ifOp, OpAdaptor adaptor,
       rewriter.create<emitc::IfOp>(loc, adaptor.getCondition(), false, false);
 
   Region &loweredThenRegion = loweredIf.getThenRegion();
-  lowerRegion(thenRegion, loweredThenRegion);
+  auto result = lowerRegion(thenRegion, loweredThenRegion);
+  if (failed(result)) {
+    return result;
+  }
 
   if (hasElseBlock) {
     Region &loweredElseRegion = loweredIf.getElseRegion();
-    lowerRegion(elseRegion, loweredElseRegion);
+    auto result = lowerRegion(elseRegion, loweredElseRegion);
+    if (failed(result)) {
+      return result;
+    }
   }
 
   rewriter.replaceOp(ifOp, resultVariables);
