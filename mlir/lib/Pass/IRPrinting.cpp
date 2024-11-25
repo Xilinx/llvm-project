@@ -358,7 +358,7 @@ void printAsPassPipeline(RangeT scopes, Pass *pass, raw_ostream &os) {
     os << ")";
 }
 
-/// A pass instrumenation to dump the IR before each pass into
+/// A pass instrumentation to dump the IR before each pass into
 /// numbered files.
 /// It includes a mlir_reproducer info to rerun the pass.
 class ReproducerBeforeAll : public PassInstrumentation {
