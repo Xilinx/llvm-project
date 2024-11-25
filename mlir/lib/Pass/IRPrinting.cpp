@@ -346,6 +346,18 @@ struct FileTreeIRPrinterConfig : public PassManager::IRPrinterConfig {
   llvm::DenseMap<Operation *, unsigned> counters;
 };
 
+/// Print a pass pipeline like `builtin.module(func.func(cse))`
+/// from a list of scopes and the pass.
+template <typename RangeT>
+void printAsPassPipeline(RangeT scopes, Pass *pass, raw_ostream &os) {
+  // Add pass scopes like 'builtin.module(emitc.tu('
+  for (OperationName scope : scopes)
+    os << scope << "(";
+  pass->printAsTextualPipeline(os);
+  for (OperationName _ : scopes)
+    os << ")";
+}
+
 /// A pass instrumenation to dump the IR before each pass into
 /// numbered files.
 /// It includes a mlir_reproducer info to rerun the pass.
@@ -390,12 +402,7 @@ void ReproducerBeforeAll::runBeforePass(Pass *pass, Operation *op) {
 
   std::string pipelineStr;
   llvm::raw_string_ostream passOS(pipelineStr);
-  // Add pass scopes like 'builtin.module(emitc.tu('
-  for (OperationName scope : llvm::reverse(scopes))
-    passOS << scope << "(";
-  pass->printAsTextualPipeline(passOS);
-  for (unsigned i = 0, e = scopes.size(); i < e; ++i)
-    passOS << ")";
+  printAsPassPipeline(llvm::reverse(scopes), pass, passOS);
 
   AsmState state(op);
   state.attachResourcePrinter("mlir_reproducer",
