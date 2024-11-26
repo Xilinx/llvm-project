@@ -282,3 +282,10 @@ func.func @member_access(%arg0: !emitc.opaque<"mystruct">, %arg1: !emitc.opaque<
   %2 = "emitc.member_of_ptr" (%arg2) {member = "a"} : (!emitc.ptr<!emitc.opaque<"mystruct">>) -> i32
   return
 }
+
+func.func @template_args_with_names(%arg0: i32, %arg1: f32) {
+  emitc.call_opaque "kernel1"(%arg0, %arg1)  {template_arg_names = ["N", "P"], template_args = [42 : i32, 56]} : (i32, f32) -> ()
+  emitc.call_opaque "kernel2"(%arg0, %arg1)  {template_arg_names = ["N"], template_args = [42 : i32]} : (i32, f32) -> ()
+  emitc.call_opaque "kernel3"(%arg0, %arg1)  {template_arg_names = [], template_args = [#emitc.opaque<"42">]} : (i32, f32) -> ()
+  return
+}

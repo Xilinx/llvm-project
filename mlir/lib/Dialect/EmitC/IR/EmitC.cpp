@@ -353,6 +353,14 @@ LogicalResult emitc::CallOpaqueOp::verify() {
       if (!llvm::isa<TypeAttr, IntegerAttr, FloatAttr, emitc::OpaqueAttr>(tArg))
         return emitOpError("template argument has invalid type");
     }
+
+    if (std::optional<ArrayAttr> templateArgNames = getTemplateArgNames()) {
+      if ((*templateArgNames).size() &&
+          (*templateArgNames).size() != (*templateArgsAttr).size()) {
+        return emitOpError("number of template argument names must be equal to "
+                           "number of template arguments");
+      }
+    }
   }
 
   if (llvm::any_of(getResultTypes(), llvm::IsaPred<ArrayType>)) {

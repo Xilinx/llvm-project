@@ -659,11 +659,31 @@ static LogicalResult printOperation(CppEmitter &emitter,
     return success();
   };
 
+  auto emitNamedArgs =
+      [&](std::tuple<const Attribute &, const Attribute &> tuple)
+      -> LogicalResult {
+    Attribute attr = std::get<0>(tuple);
+    StringAttr argName = cast<StringAttr>(std::get<1>(tuple));
+
+    os << "/*" << argName.str() << "=*/";
+    return emitArgs(attr);
+  };
+
   if (callOpaqueOp.getTemplateArgs()) {
     os << "<";
-    if (failed(interleaveCommaWithError(*callOpaqueOp.getTemplateArgs(), os,
-                                        emitArgs)))
-      return failure();
+    if (callOpaqueOp.getTemplateArgNames() &&
+        !callOpaqueOp.getTemplateArgNames()->empty()) {
+      if (failed(interleaveCommaWithError(
+              llvm::zip(*callOpaqueOp.getTemplateArgs(),
+                        *callOpaqueOp.getTemplateArgNames()),
+              os, emitNamedArgs))) {
+        return failure();
+      }
+    } else {
+      if (failed(interleaveCommaWithError(*callOpaqueOp.getTemplateArgs(), os,
+                                          emitArgs)))
+        return failure();
+    }
     os << ">";
   }
 

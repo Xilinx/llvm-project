@@ -524,3 +524,19 @@ func.func @test_verbatim(%arg0 : !emitc.ptr<i32>, %arg1 : i32) {
   emitc.verbatim "{a} " args %arg0, %arg1 : !emitc.ptr<i32>, i32
   return
 }
+
+// -----
+
+func.func @template_args_with_names(%arg0: i32) {
+  // expected-error @+1 {{'emitc.call_opaque' op number of template argument names must be equal to number of template arguments}}
+  emitc.call_opaque "kernel1"(%arg0)  {template_arg_names = ["N", "P"], template_args = [42 : i32]} : (i32) -> ()
+  return
+}
+
+// -----
+
+func.func @template_args_with_names2(%arg0: i32) {
+  // expected-error @+1 {{'emitc.call_opaque' op number of template argument names must be equal to number of template arguments}}
+  emitc.call_opaque "kernel1"(%arg0)  {template_arg_names = ["N"], template_args = [42 : i32, 56 : i32]} : (i32) -> ()
+  return
+}
