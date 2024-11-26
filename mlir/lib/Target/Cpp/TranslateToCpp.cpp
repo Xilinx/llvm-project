@@ -116,7 +116,7 @@ namespace {
 /// Emitter that uses dialect specific emitters to emit C++ code.
 struct CppEmitter {
   explicit CppEmitter(raw_ostream &os, bool declareVariablesAtTop,
-                      StringRef onlyTu);
+                      StringRef onlyTu, bool propagateConstants);
 
   /// Emits attribute or returns failure.
   LogicalResult emitAttribute(Location loc, Attribute attr);
@@ -235,6 +235,10 @@ struct CppEmitter {
   /// Returns whether this translation unit should be emitted
   bool shouldEmitTu(TranslationUnitOp tu) { return tu.getId() == onlyTu; }
 
+  /// Returns whether the value of ConstantOps should be emmited directly in
+  /// their usage locations instead of holding them in dedicated variables.
+  bool shouldPropagateConstants() { return propagateConstants; }
+
   /// Get expression currently being emitted.
   ExpressionOp getEmittedExpression() { return emittedExpression; }
 
@@ -264,6 +268,9 @@ private:
 
   /// Only emit translation units whos id matches this value.
   std::string onlyTu;
+
+  /// Emit constants in their usage location instead of declaring variables
+  bool propagateConstants;
 
   /// Map from value to name of C++ variable that contain the name.
   ValueMapper valueMapper;
@@ -365,6 +372,10 @@ static LogicalResult printConstantOp(CppEmitter &emitter, Operation *operation,
 
 static LogicalResult printOperation(CppEmitter &emitter,
                                     emitc::ConstantOp constantOp) {
+  if (emitter.shouldPropagateConstants()) {
+    return success();
+  }
+
   Operation *operation = constantOp.getOperation();
   Attribute value = constantOp.getValue();
 
@@ -1218,9 +1229,9 @@ static LogicalResult printOperation(CppEmitter &emitter,
 }
 
 CppEmitter::CppEmitter(raw_ostream &os, bool declareVariablesAtTop,
-                       StringRef onlyTu)
+                       StringRef onlyTu, bool propagateConstants)
     : os(os), declareVariablesAtTop(declareVariablesAtTop),
-      onlyTu(onlyTu.str()) {
+      onlyTu(onlyTu.str()), propagateConstants(propagateConstants) {
   valueInScopeCount.push(0);
   labelInScopeCount.push(0);
 }
@@ -1425,8 +1436,25 @@ LogicalResult CppEmitter::emitExpression(ExpressionOp expressionOp) {
 }
 
 LogicalResult CppEmitter::emitOperand(Value value) {
+  Operation *def = value.getDefiningOp();
+  if (shouldPropagateConstants()) {
+    if (auto constant = dyn_cast_if_present<ConstantOp>(def)) {
+      os << "((";
+
+      if (failed(emitType(constant.getLoc(), constant.getType()))) {
+        return failure();
+      }
+      os << ") ";
+
+      if (failed(emitAttribute(constant.getLoc(), constant.getValue()))) {
+        return failure();
+      }
+      os << ")";
+      return success();
+    }
+  }
+
   if (isPartOfCurrentExpression(value)) {
-    Operation *def = value.getDefiningOp();
     assert(def && "Expected operand to be defined by an operation");
     FailureOr<int> precedence = getOperatorPrecedence(def);
     if (failed(precedence))
@@ -1452,7 +1480,7 @@ LogicalResult CppEmitter::emitOperand(Value value) {
     return success();
   }
 
-  auto expressionOp = dyn_cast_if_present<ExpressionOp>(value.getDefiningOp());
+  auto expressionOp = dyn_cast_if_present<ExpressionOp>(def);
   if (expressionOp && shouldBeInlined(expressionOp))
     return emitExpression(expressionOp);
 
@@ -1671,7 +1699,13 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
     trailingSemicolon = false;
   }
 
-  os << (trailingSemicolon ? ";\n" : "\n");
+  bool trailingNewline = true;
+  if (shouldPropagateConstants() && isa<emitc::ConstantOp>(op)) {
+    trailingSemicolon = false;
+    trailingNewline = false;
+  }
+
+  os << (trailingSemicolon ? ";" : "") << (trailingNewline ? "\n" : "");
 
   return success();
 }
@@ -1837,7 +1871,7 @@ LogicalResult CppEmitter::emitTupleType(Location loc, ArrayRef<Type> types) {
 
 LogicalResult emitc::translateToCpp(Operation *op, raw_ostream &os,
                                     bool declareVariablesAtTop,
-                                    StringRef onlyTu) {
-  CppEmitter emitter(os, declareVariablesAtTop, onlyTu);
+                                    StringRef onlyTu, bool propagateConstants) {
+  CppEmitter emitter(os, declareVariablesAtTop, onlyTu, propagateConstants);
   return emitter.emitOperation(*op, /*trailingSemicolon=*/false);
 }
