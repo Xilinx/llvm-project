@@ -675,7 +675,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
         !callOpaqueOp.getTemplateArgNames()->empty()) {
       if (failed(interleaveCommaWithError(
               llvm::zip_equal(*callOpaqueOp.getTemplateArgs(),
-                        *callOpaqueOp.getTemplateArgNames()),
+                              *callOpaqueOp.getTemplateArgNames()),
               os, emitNamedArgs))) {
         return failure();
       }
