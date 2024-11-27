@@ -292,6 +292,7 @@ def EmitC_CallOpaqueOp : EmitC_Op<"call_opaque", [CExpression]> {
     Arg<StrAttr, "the C++ function to call">:$callee,
     Arg<OptionalAttr<ArrayAttr>, "the order of operands and further attributes">:$args,
     Arg<OptionalAttr<ArrayAttr>, "template arguments">:$template_args,
+    Arg<OptionalAttr<StrArrayAttr>, "template argument names">:$template_arg_names,
     Variadic<EmitCType>:$operands
   );
   let results = (outs Variadic<EmitCType>);
@@ -302,7 +303,7 @@ def EmitC_CallOpaqueOp : EmitC_Op<"call_opaque", [CExpression]> {
       "::mlir::ValueRange":$operands,
       CArg<"::mlir::ArrayAttr", "{}">:$args,
       CArg<"::mlir::ArrayAttr", "{}">:$template_args), [{
-        build($_builder, $_state, resultTypes, callee, args, template_args,
+        build($_builder, $_state, resultTypes, callee, args, template_args, {},
             operands);
       }]
     >

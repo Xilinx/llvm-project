@@ -355,6 +355,19 @@ LogicalResult emitc::CallOpaqueOp::verify() {
     }
   }
 
+  if (std::optional<ArrayAttr> templateArgNames = getTemplateArgNames()) {
+    if (std::optional<ArrayAttr> templateArgsAttr = getTemplateArgs()) {
+      if ((*templateArgNames).size() &&
+          (*templateArgNames).size() != (*templateArgsAttr).size()) {
+        return emitOpError("number of template argument names must be equal to "
+                           "number of template arguments");
+      }
+    } else {
+      return emitOpError("should not have names for template arguments if it "
+                         "does not have template arguments");
+    }
+  }
+
   if (llvm::any_of(getResultTypes(), llvm::IsaPred<ArrayType>)) {
     return emitOpError() << "cannot return array type";
   }
