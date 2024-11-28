@@ -34,11 +34,10 @@ void registerToCppTranslation() {
       llvm::cl::desc("Only emit the translation unit with the matching id"),
       llvm::cl::init(""));
 
-  static llvm::cl::opt<bool> propagateConstants(
-      "propagate-constants",
-      llvm::cl::desc("Emit constants in their usage location instead of "
-                     "declaring variables"),
-      llvm::cl::init(false));
+  static llvm::cl::opt<bool> constantsAsVariables(
+      "constants-as-variables",
+      llvm::cl::desc("Use variables to hold the constant values"),
+      llvm::cl::init(true));
 
   TranslateFromMLIRRegistration reg(
       "mlir-to-cpp", "translate from mlir to cpp",
@@ -47,7 +46,7 @@ void registerToCppTranslation() {
             op, output,
             /*declareVariablesAtTop=*/declareVariablesAtTop,
             /*onlyTu=*/onlyTu,
-            /*propagateConstants=*/propagateConstants);
+            /*constantsAsVariables=*/constantsAsVariables);
       },
       [](DialectRegistry &registry) {
         // clang-format off

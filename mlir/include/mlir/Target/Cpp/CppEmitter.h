@@ -27,7 +27,7 @@ namespace emitc {
 LogicalResult translateToCpp(Operation *op, raw_ostream &os,
                              bool declareVariablesAtTop = false,
                              StringRef onlyTu = "",
-                             bool propagateConstants = false);
+                             bool constantsAsVariables = true);
 } // namespace emitc
 } // namespace mlir
 

@@ -1,4 +1,4 @@
-// RUN: mlir-translate -mlir-to-cpp -propagate-constants %s | FileCheck %s -check-prefix=CPP-DEFAULT
+// RUN: mlir-translate -mlir-to-cpp -constants-as-variables=false %s | FileCheck %s -check-prefix=CPP-DEFAULT
 
 func.func @test() {
   %start = "emitc.constant"() <{value = 0 : index}> : () -> !emitc.size_t
