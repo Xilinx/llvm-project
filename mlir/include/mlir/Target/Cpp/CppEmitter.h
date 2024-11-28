@@ -26,7 +26,8 @@ namespace emitc {
 /// arguments are declared at the beginning of the function.
 LogicalResult translateToCpp(Operation *op, raw_ostream &os,
                              bool declareVariablesAtTop = false,
-                             StringRef onlyTu = "");
+                             StringRef onlyTu = "",
+                             bool constantsAsVariables = true);
 } // namespace emitc
 } // namespace mlir
 
