@@ -106,6 +106,20 @@ static LogicalResult lowerYield(Operation *op, ValueRange resultVariables,
   return success();
 }
 
+// Lower the contents of an scf::if/scf::index_switch regions to an
+// emitc::if/emitc::switch region. The contents of the lowering region is
+// moved into the respective lowered region, but the scf::yield is replaced not
+// only with an emitc::yield, but also with a sequence of emitc::assign ops that
+// set the yielded values into the result variables.
+static LogicalResult lowerRegion(Operation *op, ValueRange resultVariables,
+                                 ConversionPatternRewriter &rewriter,
+                                 Region &region, Region &loweredRegion) {
+  rewriter.inlineRegionBefore(region, loweredRegion, loweredRegion.end());
+  Operation *terminator = loweredRegion.back().getTerminator();
+  return lowerYield(op, resultVariables, rewriter,
+                    cast<scf::YieldOp>(terminator));
+}
+
 LogicalResult
 ForLowering::matchAndRewrite(ForOp forOp, OpAdaptor adaptor,
                              ConversionPatternRewriter &rewriter) const {
@@ -223,10 +237,58 @@ IfLowering::matchAndRewrite(IfOp ifOp, OpAdaptor adaptor,
   return success();
 }
 
+// Lower scf::index_switch to emitc::switch, implementing result values as
+// emitc::variable's updated within the case and default regions.
+struct IndexSwitchOpLowering : public OpConversionPattern<IndexSwitchOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(IndexSwitchOp indexSwitchOp, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override;
+};
+
+LogicalResult IndexSwitchOpLowering::matchAndRewrite(
+    IndexSwitchOp indexSwitchOp, OpAdaptor adaptor,
+    ConversionPatternRewriter &rewriter) const {
+  Location loc = indexSwitchOp.getLoc();
+
+  // Create an emitc::variable op for each result. These variables will be
+  // assigned to by emitc::assign ops within the case and default regions.
+  SmallVector<Value> resultVariables;
+  if (failed(createVariablesForResults(indexSwitchOp, getTypeConverter(),
+                                       rewriter, resultVariables))) {
+    return rewriter.notifyMatchFailure(indexSwitchOp,
+                                       "create variables for results failed");
+  }
+
+  auto loweredSwitch = rewriter.create<emitc::SwitchOp>(
+      loc, adaptor.getArg(), adaptor.getCases(), indexSwitchOp.getNumCases());
+
+  // Lowering all case regions.
+  for (auto pair :
+       llvm::zip(adaptor.getCaseRegions(), loweredSwitch.getCaseRegions())) {
+    if (failed(lowerRegion(indexSwitchOp, resultVariables, rewriter,
+                           *std::get<0>(pair), std::get<1>(pair)))) {
+      return failure();
+    }
+  }
+
+  // Lowering default region.
+  if (failed(lowerRegion(indexSwitchOp, resultVariables, rewriter,
+                         adaptor.getDefaultRegion(),
+                         loweredSwitch.getDefaultRegion()))) {
+    return failure();
+  }
+
+  rewriter.replaceOp(indexSwitchOp, resultVariables);
+  return success();
+}
+
 void mlir::populateSCFToEmitCConversionPatterns(RewritePatternSet &patterns,
                                                 TypeConverter &typeConverter) {
   patterns.add<ForLowering>(typeConverter, patterns.getContext());
   patterns.add<IfLowering>(typeConverter, patterns.getContext());
+  patterns.add<IndexSwitchOpLowering>(typeConverter, patterns.getContext());
 }
 
 void SCFToEmitCPass::runOnOperation() {
@@ -241,7 +303,7 @@ void SCFToEmitCPass::runOnOperation() {
 
   // Configure conversion to lower out SCF operations.
   ConversionTarget target(getContext());
-  target.addIllegalOp<scf::ForOp, scf::IfOp>();
+  target.addIllegalOp<scf::ForOp, scf::IfOp, scf::IndexSwitchOp>();
   target.markUnknownOpDynamicallyLegal([](Operation *) { return true; });
   if (failed(
           applyPartialConversion(getOperation(), target, std::move(patterns))))

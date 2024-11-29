@@ -283,6 +283,26 @@ func.func @member_access(%arg0: !emitc.opaque<"mystruct">, %arg1: !emitc.opaque<
   return
 }
 
+func.func @switch() {
+  %0 = "emitc.variable"(){value = 1 : index} : () -> !emitc.ptrdiff_t
+
+  emitc.switch %0 : !emitc.ptrdiff_t
+  case 1 {
+    %1 = emitc.call_opaque "func_b" () : () -> i32
+    emitc.yield
+  }
+  case 2 {
+    %2 = emitc.call_opaque "func_a" () : () -> i32
+    emitc.yield
+  }
+  default {
+    %3 = "emitc.variable"(){value = 42.0 : f32} : () -> f32
+    emitc.call_opaque "func2" (%3) : (f32) -> ()
+  }
+
+  return 
+}
+
 func.func @template_args_with_names(%arg0: i32, %arg1: f32) {
   emitc.call_opaque "kernel1"(%arg0, %arg1)  {template_arg_names = ["N", "P"], template_args = [42 : i32, 56]} : (i32, f32) -> ()
   emitc.call_opaque "kernel2"(%arg0, %arg1)  {template_arg_names = ["N"], template_args = [42 : i32]} : (i32, f32) -> ()

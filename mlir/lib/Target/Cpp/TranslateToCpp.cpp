@@ -471,6 +471,43 @@ static LogicalResult printOperation(CppEmitter &emitter, emitc::SubOp subOp) {
   return printBinaryOperation(emitter, operation, "-");
 }
 
+static LogicalResult emitSwitchCase(CppEmitter &emitter,
+                                    raw_indented_ostream &os, Region &region) {
+  for (Region::OpIterator iteratorOp = region.op_begin(), end = region.op_end();
+       std::next(iteratorOp) != end; ++iteratorOp) {
+    if (failed(emitter.emitOperation(*iteratorOp, /*trailingSemicolon=*/true)))
+      return failure();
+  }
+  os << "break;\n";
+  return success();
+}
+
+static LogicalResult printOperation(CppEmitter &emitter,
+                                    emitc::SwitchOp switchOp) {
+  raw_indented_ostream &os = emitter.ostream();
+
+  os << "\nswitch (" << emitter.getOrCreateName(switchOp.getArg()) << ") {";
+
+  for (auto pair : llvm::zip(switchOp.getCases(), switchOp.getCaseRegions())) {
+    os << "\ncase " << std::get<0>(pair) << ": {\n";
+    os.indent();
+
+    if (failed(emitSwitchCase(emitter, os, std::get<1>(pair))))
+      return failure();
+
+    os.unindent() << "}";
+  }
+
+  os << "\ndefault: {\n";
+  os.indent();
+
+  if (failed(emitSwitchCase(emitter, os, switchOp.getDefaultRegion())))
+    return failure();
+
+  os.unindent() << "}";
+  return success();
+}
+
 static LogicalResult printOperation(CppEmitter &emitter, emitc::CmpOp cmpOp) {
   Operation *operation = cmpOp.getOperation();
 
@@ -1650,7 +1687,7 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
                 emitc::GlobalOp, emitc::IfOp, emitc::IncludeOp,
                 emitc::LogicalAndOp, emitc::LogicalNotOp, emitc::LogicalOrOp,
                 emitc::MulOp, emitc::RemOp, emitc::ReturnOp, emitc::SubOp,
-                emitc::TranslationUnitOp, emitc::UnaryMinusOp,
+                emitc::SwitchOp, emitc::TranslationUnitOp, emitc::UnaryMinusOp,
                 emitc::UnaryPlusOp, emitc::VariableOp, emitc::VerbatimOp>(
               [&](auto op) { return printOperation(*this, op); })
           // Func ops.
@@ -1695,7 +1732,7 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
     return success();
 
   if (isa<cf::CondBranchOp, emitc::DeclareFuncOp, emitc::ForOp, emitc::IfOp,
-          emitc::VerbatimOp>(op)) {
+          emitc::SwitchOp, emitc::VerbatimOp>(op)) {
     trailingSemicolon = false;
   }
 
