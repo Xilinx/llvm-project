@@ -119,6 +119,10 @@ bool mlir::emitc::isSupportedFloatType(Type type) {
   return isa<Float32Type, Float64Type>(type);
 }
 
+bool mlir::emitc::isFloatOrOpaqueType(Type type) {
+  return llvm::isa<emitc::OpaqueType>(type) || isSupportedFloatType(type);
+}
+
 bool mlir::emitc::isPointerWideType(Type type) {
   return isa<emitc::SignedSizeTType, emitc::SizeTType, emitc::PtrDiffTType>(
       type);
