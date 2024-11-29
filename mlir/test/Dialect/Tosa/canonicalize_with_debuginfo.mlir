@@ -44,3 +44,44 @@ func.func @canonicalize_optimize_sqrt_reciprocal_bf16(%arg0: tensor<1x5x1x1xbf16
 }
 #loc0 = loc("Pow_B")
 #loc1 = loc("Reciprocal_C")
+
+// -----
+
+// CHECK-LABEL: @reshape_canonicalize_double
+func.func @reshape_canonicalize_double(%arg0: tensor<?x10xf32>) -> tensor<?x5xf32> {
+  // CHECK: %[[VAL_1:.*]] = tosa.reshape %arg0 {new_shape = array<i64: -1, 5>} {{.*}} loc([[LOC:.*]])
+  // CHECK: return %[[VAL_1]]
+  %0 = tosa.reshape %arg0 {new_shape = array<i64: 5, -1>}: (tensor<?x10xf32>) -> tensor<5x?xf32> loc(#loc0)
+  %1 = tosa.reshape %0 {new_shape = array<i64: -1, 5>}: (tensor<5x?xf32>) -> tensor<?x5xf32> loc(#loc1)
+  return %1 : tensor<?x5xf32>
+}
+#loc0 = loc("reshape1")
+#loc1 = loc("reshape2")
+
+// CHECK-DAG: #[[A:.*]] = loc("reshape1")
+// CHECK-DAG: #[[B:.*]] = loc("reshape2")
+// CHECK-DAG: [[LOC]] = loc(fused[#[[A]], #[[B]]])
+
+// -----
+
+// CHECK-LABEL: @reshape_canonicalize_double_fused_locs
+func.func @reshape_canonicalize_double_fused_locs(%arg0: tensor<?x10xf32>) -> tensor<?x5xf32> {
+  // CHECK: %[[VAL_1:.*]] = tosa.reshape %arg0 {new_shape = array<i64: -1, 5>} {{.*}} loc([[LOC:.*]])
+  // CHECK: return %[[VAL_1]]
+  %0 = tosa.reshape %arg0 {new_shape = array<i64: 5, -1>}: (tensor<?x10xf32>) -> tensor<5x?xf32> loc(#fused_loc0)
+  %1 = tosa.reshape %0 {new_shape = array<i64: -1, 5>}: (tensor<5x?xf32>) -> tensor<?x5xf32> loc(#fused_loc1)
+  return %1 : tensor<?x5xf32>
+}
+#loc0 = loc("reshape1_1")
+#loc1 = loc("reshape1_2")
+#loc2 = loc("reshape2_1")
+#loc3 = loc("reshape2_2")
+
+// CHECK-DAG: #[[A:.*]] = loc("reshape1_1")
+// CHECK-DAG: #[[B:.*]] = loc("reshape1_2")
+// CHECK-DAG: #[[C:.*]] = loc("reshape2_1")
+// CHECK-DAG: #[[D:.*]] = loc("reshape2_2")
+// CHECK-DAG: [[LOC]] = loc(fused[#[[A]], #[[B]], #[[C]], #[[D]]])
+
+#fused_loc0 = loc(fused[#loc0, #loc1])
+#fused_loc1 = loc(fused[#loc2, #loc3])
