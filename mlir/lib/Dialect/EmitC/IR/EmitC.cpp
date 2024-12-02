@@ -120,7 +120,7 @@ bool mlir::emitc::isSupportedFloatType(Type type) {
 }
 
 bool mlir::emitc::isFloatOrOpaqueType(Type type) {
-  return llvm::isa<emitc::OpaqueType>(type) || isSupportedFloatType(type);
+  return isa<emitc::OpaqueType>(type) || isSupportedFloatType(type);
 }
 
 bool mlir::emitc::isPointerWideType(Type type) {
