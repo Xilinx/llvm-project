@@ -307,7 +307,7 @@ public:
           "negf currently only supports scalar types, not vectors or tensors");
     }
 
-    if (!emitc::isSupportedFloatType(adaptedOpType)) {
+    if (!emitc::isFloatOrOpaqueType(adaptedOpType)) {
       return rewriter.notifyMatchFailure(
           op.getLoc(), "floating-point type is not supported by EmitC");
     }
@@ -655,7 +655,7 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type operandType = adaptor.getIn().getType();
-    if (!emitc::isSupportedFloatType(operandType))
+    if (!emitc::isFloatOrOpaqueType(operandType))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast source type");
 
@@ -710,7 +710,7 @@ public:
     if (!dstType)
       return rewriter.notifyMatchFailure(castOp, "type conversion failed");
 
-    if (!emitc::isSupportedFloatType(dstType))
+    if (!emitc::isFloatOrOpaqueType(dstType))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
 
@@ -745,7 +745,7 @@ public:
     // attribute that we need to check. For now, the behavior is the default,
     // i.e. truncate.
     Type operandType = adaptor.getIn().getType();
-    if (!emitc::isSupportedFloatType(operandType))
+    if (!emitc::isFloatOrOpaqueType(operandType))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast source type");
 
@@ -753,7 +753,7 @@ public:
     if (!dstType)
       return rewriter.notifyMatchFailure(castOp, "type conversion failed");
 
-    if (!emitc::isSupportedFloatType(dstType))
+    if (!emitc::isFloatOrOpaqueType(dstType))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
 
@@ -775,7 +775,7 @@ public:
   matchAndRewrite(arith::ExtFOp castOp, typename arith::ExtFOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Type operandType = adaptor.getIn().getType();
-    if (!emitc::isSupportedFloatType(operandType))
+    if (!emitc::isFloatOrOpaqueType(operandType))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast source type");
 
@@ -783,7 +783,7 @@ public:
     if (!dstType)
       return rewriter.notifyMatchFailure(castOp, "type conversion failed");
 
-    if (!emitc::isSupportedFloatType(dstType))
+    if (!emitc::isFloatOrOpaqueType(dstType))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
 
