@@ -58,7 +58,8 @@ func.func @unsupported_type_i4() {
   // expected-error@+1 {{failed to legalize operation 'memref.alloca'}}
   %0 = memref.alloca() : memref<4xi4>
   return
-  
+}
+
 // -----
 
 func.func @memref_expand_dyn_shape(%arg: memref<?xi32>, %size: index) -> memref<?x5xi32> {
