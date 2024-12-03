@@ -78,6 +78,11 @@ mlirPassManagerRunOnOp(MlirPassManager passManager, MlirOperation op);
 MLIR_CAPI_EXPORTED void
 mlirPassManagerEnableIRPrinting(MlirPassManager passManager);
 
+/// Enable lir-reproducer-before-all.
+MLIR_CAPI_EXPORTED void
+mlirPassManagerEnableReproducerBeforeAll(MlirPassManager passManager,
+                                         MlirStringRef outputDir);
+
 /// Enable / disable verify-each.
 MLIR_CAPI_EXPORTED void
 mlirPassManagerEnableVerifier(MlirPassManager passManager, bool enable);
