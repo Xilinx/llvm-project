@@ -110,10 +110,10 @@ public:
   /// floordiv, ceildiv, and mod is only allowed w.r.t constants.
   bool isPureAffine() const;
 
-  /// Returns true if this expression is monotonic with respect to the
-  /// AffineDimExpr, i.e. increasing the value of any AffineDimExpr will never
-  /// decrease the value of the result.
-  bool isMonotonic() const;
+  /// Returns true if this expression is monotonicically increasing with respect
+  /// to the AffineDimExprs, i.e. increasing the value of any AffineDimExpr will
+  /// never decrease the value of the result.
+  bool isMonotonicallyIncreasing() const;
 
   /// Returns the greatest known integral divisor of this affine expression. The
   /// result is always positive.

@@ -628,8 +628,9 @@ bool AffineMap::isPermutation() const {
   return isProjectedPermutation();
 }
 
-bool AffineMap::isMonotonic() const {
-  return all_of(getResults(), [](auto expr) { return expr.isMonotonic(); });
+bool AffineMap::isComponentWiseMonotonicallyIncreasing() const {
+  return all_of(getResults(),
+                [](auto expr) { return expr.isMonotonicallyIncreasing(); });
 }
 
 AffineMap AffineMap::getSubMap(ArrayRef<unsigned> resultPos) const {

@@ -620,7 +620,7 @@ computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
     // The offset & size computation below only handles the case when
     // the map is monotonic, i.e. the min and max values are attained at the
     // lower and upper bounds of the iteration domain.
-    if (!isTiled(m, tileSizes) || !m.isMonotonic()) {
+    if (!isTiled(m, tileSizes) || !m.isComponentWiseMonotonicallyIncreasing()) {
       sliceParams.offsets.push_back(builder.getIndexAttr(0));
       OpFoldResult dim = createFoldedDimOp(builder, loc, valueToTile, r);
       sliceParams.sizes.push_back(dim);

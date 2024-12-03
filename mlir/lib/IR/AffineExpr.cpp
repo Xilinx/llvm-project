@@ -244,7 +244,7 @@ static bool isNonNegativeConstant(AffineExpr expr) {
   return constant && constant.getValue() >= 0;
 }
 
-bool AffineExpr::isMonotonic() const {
+bool AffineExpr::isMonotonicallyIncreasing() const {
   switch (getKind()) {
   case AffineExprKind::SymbolId:
   case AffineExprKind::DimId:
@@ -252,19 +252,22 @@ bool AffineExpr::isMonotonic() const {
     return true;
   case AffineExprKind::Add: {
     auto op = llvm::cast<AffineBinaryOpExpr>(*this);
-    return op.getLHS().isMonotonic() && op.getRHS().isMonotonic();
+    return op.getLHS().isMonotonicallyIncreasing() &&
+           op.getRHS().isMonotonicallyIncreasing();
   }
   case AffineExprKind::Mul: {
     // One operand must be a non-negative constant.
     auto op = llvm::cast<AffineBinaryOpExpr>(*this);
-    return op.getLHS().isMonotonic() && op.getRHS().isMonotonic() &&
+    return op.getLHS().isMonotonicallyIncreasing() &&
+           op.getRHS().isMonotonicallyIncreasing() &&
            (isNonNegativeConstant(op.getLHS()) ||
             isNonNegativeConstant(op.getRHS()));
   }
   case AffineExprKind::FloorDiv:
   case AffineExprKind::CeilDiv: {
     auto op = llvm::cast<AffineBinaryOpExpr>(*this);
-    return op.getLHS().isMonotonic() && isNonNegativeConstant(op.getRHS());
+    return op.getLHS().isMonotonicallyIncreasing() &&
+           isNonNegativeConstant(op.getRHS());
   }
   case AffineExprKind::Mod:
     return false;
