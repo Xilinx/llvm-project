@@ -628,6 +628,10 @@ bool AffineMap::isPermutation() const {
   return isProjectedPermutation();
 }
 
+bool AffineMap::isMonotonic() const {
+  return all_of(getResults(), [](auto expr) { return expr.isMonotonic(); });
+}
+
 AffineMap AffineMap::getSubMap(ArrayRef<unsigned> resultPos) const {
   SmallVector<AffineExpr, 4> exprs;
   exprs.reserve(resultPos.size());
