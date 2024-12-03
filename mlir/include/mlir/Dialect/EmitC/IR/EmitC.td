@@ -302,8 +302,9 @@ def EmitC_CallOpaqueOp : EmitC_Op<"call_opaque", [CExpression]> {
       "::llvm::StringRef":$callee,
       "::mlir::ValueRange":$operands,
       CArg<"::mlir::ArrayAttr", "{}">:$args,
-      CArg<"::mlir::ArrayAttr", "{}">:$template_args), [{
-        build($_builder, $_state, resultTypes, callee, args, template_args, {},
+      CArg<"::mlir::ArrayAttr", "{}">:$template_args,
+      CArg<"::mlir::ArrayAttr", "{}">:$template_arg_names), [{
+        build($_builder, $_state, resultTypes, callee, args, template_args, template_arg_names,
             operands);
       }]
     >
