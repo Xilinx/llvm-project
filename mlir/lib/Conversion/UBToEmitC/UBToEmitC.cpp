@@ -52,7 +52,8 @@ public:
     Attribute value;
     if (noInitialization) {
       value = emitc::OpaqueAttr::get(op->getContext(), "");
-      auto var = rewriter.create<emitc::VariableOp>(op.getLoc(), emitc::LValueType::get(convertedType), value);
+      auto var = rewriter.create<emitc::VariableOp>(
+          op.getLoc(), emitc::LValueType::get(convertedType), value);
       rewriter.replaceOpWithNewOp<emitc::LoadOp>(op, convertedType, var);
       return success();
     }
@@ -67,7 +68,7 @@ public:
       value = FloatAttr::get(convertedType, 42.0f);
     }
     rewriter.replaceOpWithNewOp<emitc::ConstantOp>(op, convertedType, value);
-    
+
     return success();
   }
 };
