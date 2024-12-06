@@ -79,6 +79,14 @@ void mlir::python::populatePassManagerSubmodule(py::module &m) {
           },
           "Enable mlir-print-ir-after-all.")
       .def(
+          "enable_reproducer_before_all",
+          [](PyPassManager &passManager, const std::string &outputDir) {
+            mlirPassManagerEnableReproducerBeforeAll(
+                passManager.get(),
+                mlirStringRefCreate(outputDir.data(), outputDir.size()));
+          },
+          "Enable mlir-reproducer-before-all.")
+      .def(
           "enable_verifier",
           [](PyPassManager &passManager, bool enable) {
             mlirPassManagerEnableVerifier(passManager.get(), enable);

@@ -39,6 +39,11 @@ func.func @cast(%arg0: i32) {
   return
 }
 
+func.func @cast_array(%arg : !emitc.array<4xf32>) {
+    %1 = emitc.cast %arg: !emitc.array<4xf32> to !emitc.array<4xf32> ref
+    return
+}
+
 func.func @c() {
   %1 = "emitc.constant"(){value = 42 : i32} : () -> i32
   %2 = "emitc.constant"(){value = 42 : index} : () -> !emitc.size_t
@@ -238,6 +243,21 @@ emitc.verbatim "#endif  // __cplusplus"
 emitc.verbatim "typedef int32_t i32;"
 emitc.verbatim "typedef float f32;"
 
+// The value is not interpreted as format string if there are no operands.
+emitc.verbatim "{} {  }"
+
+func.func @test_verbatim(%arg0 : !emitc.ptr<i32>, %arg1 : i32) {
+  emitc.verbatim "{} + {};" args %arg0, %arg1 : !emitc.ptr<i32>, i32
+
+  // Trailing '{' are ok and don't start a placeholder.
+  emitc.verbatim "{} + {} {" args %arg0, %arg1 : !emitc.ptr<i32>, i32
+
+  // Check there is no ambiguity whether %a is the argument to the emitc.verbatim op.
+  emitc.verbatim "a"
+  %a = "emitc.constant"(){value = 42 : i32} : () -> i32
+
+  return
+}
 
 emitc.global @uninit : i32
 emitc.global @myglobal_int : i32 = 4
@@ -245,6 +265,7 @@ emitc.global extern @external_linkage : i32
 emitc.global static @internal_linkage : i32
 emitc.global @myglobal : !emitc.array<2xf32> = dense<4.000000e+00>
 emitc.global const @myconstant : !emitc.array<2xi16> = dense<2>
+emitc.global const @myref : !emitc.array<2xi16> = #emitc.opaque<"myconstant"> ref
 
 func.func @use_global(%i: index) -> f32 {
   %0 = emitc.get_global @myglobal : !emitc.array<2xf32>
@@ -284,4 +305,11 @@ func.func @switch() {
   }
 
   return 
+}
+
+func.func @template_args_with_names(%arg0: i32, %arg1: f32) {
+  emitc.call_opaque "kernel1"(%arg0, %arg1)  {template_arg_names = ["N", "P"], template_args = [42 : i32, 56]} : (i32, f32) -> ()
+  emitc.call_opaque "kernel2"(%arg0, %arg1)  {template_arg_names = ["N"], template_args = [42 : i32]} : (i32, f32) -> ()
+  emitc.call_opaque "kernel3"(%arg0, %arg1)  {template_arg_names = [], template_args = [#emitc.opaque<"42">]} : (i32, f32) -> ()
+  return
 }
