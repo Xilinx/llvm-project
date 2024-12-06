@@ -565,9 +565,9 @@ void GenerateLoopNest<scf::ParallelOp>::doit(
   assert(ivs.size() == iteratorTypes.size() && "did not generate enough loops");
 }
 
-static Value materializeTiledShape(OpBuilder &builder, Location loc,
-                                   Value valueToTile,
-                                   const SliceParameters &sliceParams) {
+static Operation *materializeTiledShape(OpBuilder &builder, Location loc,
+                                        Value valueToTile,
+                                        const SliceParameters &sliceParams) {
   auto shapedType = dyn_cast<ShapedType>(valueToTile.getType());
   auto *sliceOp = TypeSwitch<ShapedType, Operation *>(shapedType)
                       .Case([&](MemRefType) {
@@ -583,14 +583,15 @@ static Value materializeTiledShape(OpBuilder &builder, Location loc,
                       .Default([](ShapedType) -> Operation * {
                         llvm_unreachable("Unexpected shaped type");
                       });
-  return sliceOp->getResult(0);
+  return sliceOp;
 }
 
-Value makeTiledShape(OpBuilder &builder, Location loc, Value valueToTile,
-                     ArrayRef<OpFoldResult> tileSizes, AffineMap map,
-                     ArrayRef<OpFoldResult> lbs, ArrayRef<OpFoldResult> ubs,
-                     ArrayRef<OpFoldResult> subShapeSizes,
-                     bool omitPartialTileCheck) {
+Operation *makeTiledShape(OpBuilder &builder, Location loc, Value valueToTile,
+                          ArrayRef<OpFoldResult> tileSizes, AffineMap map,
+                          ArrayRef<OpFoldResult> lbs,
+                          ArrayRef<OpFoldResult> ubs,
+                          ArrayRef<OpFoldResult> subShapeSizes,
+                          bool omitPartialTileCheck) {
   SliceParameters sliceParams =
       computeSliceParameters(builder, loc, valueToTile, tileSizes, map, lbs,
                              ubs, subShapeSizes, omitPartialTileCheck);
@@ -615,7 +616,11 @@ computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
   sliceParams.strides.reserve(rank);
   for (unsigned r = 0; r < rank; ++r) {
     LLVM_DEBUG(llvm::dbgs() << "computeSliceParameters: for dim#" << r);
-    if (!isTiled(map.getSubMap({r}), tileSizes)) {
+    auto m = map.getSubMap({r});
+    // The offset & size computation below only handles the case when
+    // the map is monotonically increasing, i.e. the min and max values are
+    // attained at the lower and upper bounds of the iteration domain.
+    if (!isTiled(m, tileSizes) || !m.isComponentWiseMonotonicallyIncreasing()) {
       sliceParams.offsets.push_back(builder.getIndexAttr(0));
       OpFoldResult dim = createFoldedDimOp(builder, loc, valueToTile, r);
       sliceParams.sizes.push_back(dim);
@@ -627,7 +632,6 @@ computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
 
     // Tiling creates a new slice at the proper index, the slice step is 1
     // (i.e. the op does not subsample, stepping occurs in the loop).
-    auto m = map.getSubMap({r});
     LLVM_DEBUG(llvm::dbgs() << "computeSliceParameters: submap: " << m << "\n");
     IRRewriter rewriter(builder);
     OpFoldResult offset = makeComposedFoldedAffineApply(rewriter, loc, m, lbs);
@@ -841,6 +845,7 @@ SmallVector<Value> makeTiledShapes(OpBuilder &builder, Location loc,
     tiledShapes.push_back(
         sliceParams.has_value()
             ? materializeTiledShape(builder, loc, valueToTile, *sliceParams)
+                  ->getResult(0)
             : valueToTile);
   }
   return tiledShapes;
