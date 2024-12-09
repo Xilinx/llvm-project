@@ -47,8 +47,8 @@ createConstFromIntAttribute(Operation *op, const std::string &attrName,
 }
 
 static Value createLinalgBodyCalculationForElementwiseOp(
-    Operation *op, ValueRange args, ArrayRef<Type> resultTypes,
-    ConversionPatternRewriter &rewriter) {
+    Operation *op, const TypeConverter &converter, ValueRange args,
+    ArrayRef<Type> resultTypes, ConversionPatternRewriter &rewriter) {
   Location loc = op->getLoc();
   auto elementTy =
       cast<ShapedType>(op->getOperand(0).getType()).getElementType();
@@ -61,7 +61,7 @@ static Value createLinalgBodyCalculationForElementwiseOp(
 
   if (isa<tosa::AbsOp>(op) && isa<IntegerType>(elementTy)) {
     auto zero = rewriter.create<arith::ConstantOp>(
-        loc, rewriter.getZeroAttr(elementTy));
+        loc, rewriter.getZeroAttr(converter.convertType(elementTy)));
     auto neg = rewriter.create<arith::SubIOp>(loc, zero, args[0]);
     return rewriter.create<arith::MaxSIOp>(loc, args[0], neg);
   }
@@ -416,17 +416,19 @@ static Value createLinalgBodyCalculationForElementwiseOp(
     if (intTy.isUnsignedInteger()) {
       minRepresentable = 0;
       if (intTy.getIntOrFloatBitWidth() <= 63) {
-        maxRepresentable = (int64_t)APInt::getMaxValue(intTy.getIntOrFloatBitWidth())
-                          .getZExtValue();
+        maxRepresentable =
+            (int64_t)APInt::getMaxValue(intTy.getIntOrFloatBitWidth())
+                .getZExtValue();
       }
-    } else if(intTy.getIntOrFloatBitWidth() <= 64) {
+    } else if (intTy.getIntOrFloatBitWidth() <= 64) {
       // Ensure that min & max fit into signed n-bit constants.
       minRepresentable = APInt::getSignedMinValue(intTy.getIntOrFloatBitWidth())
-                            .getSExtValue();
+                             .getSExtValue();
       maxRepresentable = APInt::getSignedMaxValue(intTy.getIntOrFloatBitWidth())
-                            .getSExtValue();
+                             .getSExtValue();
     }
-    // Ensure that the bounds are representable as n-bit signed/unsigned integers.
+    // Ensure that the bounds are representable as n-bit signed/unsigned
+    // integers.
     min = std::max(min, minRepresentable);
     max = std::max(max, minRepresentable);
     min = std::min(min, maxRepresentable);
@@ -946,7 +948,8 @@ emitElementwiseComputation(ConversionPatternRewriter &rewriter, Location loc,
       getNParallelLoopsAttrs(rank),
       [&](OpBuilder &opBuilder, Location loc, ValueRange blockArgs) {
         Value opResult = createLinalgBodyCalculationForElementwiseOp(
-            operation, blockArgs.take_front(operation->getNumOperands()),
+            operation, converter,
+            blockArgs.take_front(operation->getNumOperands()),
             {resultType.getElementType()}, rewriter);
         if (!opResult) {
           encounteredError = true;

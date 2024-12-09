@@ -2010,3 +2010,12 @@ func.func @test_dynamic_fft2d(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>
   %output_real, %output_imag = "tosa.fft2d"(%arg0, %arg1) {inverse = true} : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> (tensor<?x?x?xf32>, tensor<?x?x?xf32>)
   return %output_real, %output_imag : tensor<?x?x?xf32>, tensor<?x?x?xf32>
 }
+
+// -----
+// CHECK-LABEL: @test_abs_conversion
+// CHECK: linalg.generic
+// CHECK: arith.constant 0 : i64
+func.func @test_abs_conversion(%arg0: tensor<9xui64> {func.orig_type = tensor<9xui64>, onnx.name = "in0"}) -> (tensor<9xui64> {func.orig_type = tensor<9xui64>, onnx.name = "out0"}) {
+  %0 = tosa.abs %arg0 : (tensor<9xui64>) -> tensor<9xui64>
+  return %0 : tensor<9xui64>
+}
