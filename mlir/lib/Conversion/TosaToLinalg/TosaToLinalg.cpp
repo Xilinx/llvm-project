@@ -61,7 +61,7 @@ static Value createLinalgBodyCalculationForElementwiseOp(
 
   if (isa<tosa::AbsOp>(op) && isa<IntegerType>(elementTy)) {
     auto zero = rewriter.create<arith::ConstantOp>(
-        loc, rewriter.getZeroAttr(elementTy));
+        loc, rewriter.getZeroAttr(convertedElementTy));
     auto neg = rewriter.create<arith::SubIOp>(loc, zero, args[0]);
     return rewriter.create<arith::MaxSIOp>(loc, args[0], neg);
   }
