@@ -31,36 +31,35 @@ func.func @arith_cast_vector(%arg0: vector<5xf32>) -> vector<5xi32> {
 }
 
 // -----
-
-func.func @arith_cast_bf16(%arg0: bf16) -> i32 {
+func.func @arith_cast_f80(%arg0: f80) -> i32 {
   // expected-error @+1 {{failed to legalize operation 'arith.fptosi'}}
-  %t = arith.fptosi %arg0 : bf16 to i32
+  %t = arith.fptosi %arg0 : f80 to i32
   return %t: i32
 }
 
 // -----
 
-func.func @arith_cast_f16(%arg0: f16) -> i32 {
+func.func @arith_cast_f128(%arg0: f128) -> i32 {
   // expected-error @+1 {{failed to legalize operation 'arith.fptosi'}}
-  %t = arith.fptosi %arg0 : f16 to i32
+  %t = arith.fptosi %arg0 : f128 to i32
   return %t: i32
 }
 
 
 // -----
 
-func.func @arith_cast_to_bf16(%arg0: i32) -> bf16 {
+func.func @arith_cast_to_f80(%arg0: i32) -> f80 {
   // expected-error @+1 {{failed to legalize operation 'arith.sitofp'}}
-  %t = arith.sitofp %arg0 : i32 to bf16
-  return %t: bf16
+  %t = arith.sitofp %arg0 : i32 to f80
+  return %t: f80
 }
 
 // -----
 
-func.func @arith_cast_to_f16(%arg0: i32) -> f16 {
+func.func @arith_cast_to_f128(%arg0: i32) -> f128 {
   // expected-error @+1 {{failed to legalize operation 'arith.sitofp'}}
-  %t = arith.sitofp %arg0 : i32 to f16
-  return %t: f16
+  %t = arith.sitofp %arg0 : i32 to f128
+  return %t: f128
 }
 
 // -----
@@ -145,23 +144,6 @@ func.func @arith_remui_vector(%arg0: vector<5xi32>, %arg1: vector<5xi32>) -> vec
 
 // -----
 
-func.func @arith_extf_to_bf16(%arg0: f8E4M3FN) {
-  // expected-error @+1 {{failed to legalize operation 'arith.extf'}}
-  %ext = arith.extf %arg0 : f8E4M3FN to bf16
-  return
-}
-
-// -----
-
-func.func @arith_extf_to_f16(%arg0: f8E4M3FN) {
-  // expected-error @+1 {{failed to legalize operation 'arith.extf'}}
-  %ext = arith.extf %arg0 : f8E4M3FN to f16
-  return
-}
-
-
-// -----
-
 func.func @arith_extf_to_tf32(%arg0: f8E4M3FN) {
   // expected-error @+1 {{failed to legalize operation 'arith.extf'}}
   %ext = arith.extf %arg0 : f8E4M3FN to tf32
@@ -197,22 +179,6 @@ func.func @arith_truncf_to_f80(%arg0: f128) {
 func.func @arith_truncf_to_tf32(%arg0: f64) {
   // expected-error @+1 {{failed to legalize operation 'arith.truncf'}}
   %trunc = arith.truncf %arg0 : f64 to tf32
-  return
-}
-
-// -----
-
-func.func @arith_truncf_to_f16(%arg0: f64) {
-  // expected-error @+1 {{failed to legalize operation 'arith.truncf'}}
-  %trunc = arith.truncf %arg0 : f64 to f16
-  return
-}
-
-// -----
-
-func.func @arith_truncf_to_bf16(%arg0: f64) {
-  // expected-error @+1 {{failed to legalize operation 'arith.truncf'}}
-  %trunc = arith.truncf %arg0 : f64 to bf16
   return
 }
 
