@@ -73,7 +73,8 @@ void EmitClangAttrNodeTraverse(llvm::RecordKeeper &Records,
                                llvm::raw_ostream &OS);
 void EmitClangAttrDocTable(llvm::RecordKeeper &Records, llvm::raw_ostream &OS);
 
-void EmitClangBuiltins(llvm::RecordKeeper &Records, llvm::raw_ostream &OS);
+void EmitClangBuiltins(const llvm::RecordKeeper &Records,
+                       llvm::raw_ostream &OS);
 
 void EmitClangDiagsDefs(llvm::RecordKeeper &Records, llvm::raw_ostream &OS,
                         const std::string &Component);
@@ -108,6 +109,7 @@ void EmitNeonSema(llvm::RecordKeeper &Records, llvm::raw_ostream &OS);
 void EmitVectorTypes(llvm::RecordKeeper &Records, llvm::raw_ostream &OS);
 void EmitNeonTest(llvm::RecordKeeper &Records, llvm::raw_ostream &OS);
 
+void EmitImmCheckTypes(llvm::RecordKeeper &Records, llvm::raw_ostream &OS);
 void EmitSveHeader(llvm::RecordKeeper &Records, llvm::raw_ostream &OS);
 void EmitSveBuiltins(llvm::RecordKeeper &Records, llvm::raw_ostream &OS);
 void EmitSveBuiltinCG(llvm::RecordKeeper &Records, llvm::raw_ostream &OS);
