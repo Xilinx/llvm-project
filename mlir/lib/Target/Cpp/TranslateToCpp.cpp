@@ -297,6 +297,9 @@ private:
       return lowestPrecedence();
     return emittedExpressionPrecedence.back();
   }
+
+  LogicalResult emitAttributeToArbitraryStream(Location loc, Attribute attr,
+                                               raw_ostream &ss);
 };
 } // namespace
 
@@ -1290,7 +1293,15 @@ std::string CppEmitter::getSubscriptName(emitc::SubscriptOp op) {
   llvm::raw_string_ostream ss(out);
   ss << getOrCreateName(op.getValue());
   for (auto index : op.getIndices()) {
-    ss << "[" << getOrCreateName(index) << "]";
+    ss << "[";
+    if (auto constant = dyn_cast_if_present<ConstantOp>(index.getDefiningOp());
+        constant && !shouldUseConstantsAsVariables()) {
+      assert(llvm::succeeded(emitAttributeToArbitraryStream(
+          op->getLoc(), constant.getValue(), ss)));
+    } else {
+      ss << getOrCreateName(index);
+    }
+    ss << "]";
   }
   return out;
 }
@@ -1353,16 +1364,22 @@ bool CppEmitter::hasBlockLabel(Block &block) {
 }
 
 LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
+  return CppEmitter::emitAttributeToArbitraryStream(loc, attr, os);
+}
+
+LogicalResult CppEmitter::emitAttributeToArbitraryStream(Location loc,
+                                                         Attribute attr,
+                                                         raw_ostream &ss) {
   auto printInt = [&](const APInt &val, bool isUnsigned) {
     if (val.getBitWidth() == 1) {
       if (val.getBoolValue())
-        os << "true";
+        ss << "true";
       else
-        os << "false";
+        ss << "false";
     } else {
       SmallString<128> strValue;
       val.toString(strValue, 10, !isUnsigned, false);
-      os << strValue;
+      ss << strValue;
     }
   };
 
@@ -1371,16 +1388,16 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
       SmallString<128> strValue;
       // Use default values of toString except don't truncate zeros.
       val.toString(strValue, 0, 0, false);
-      os << strValue;
+      ss << strValue;
       switch (llvm::APFloatBase::SemanticsToEnum(val.getSemantics())) {
       case llvm::APFloatBase::S_IEEEhalf:
-        os << "f16";
+        ss << "f16";
         break;
       case llvm::APFloatBase::S_BFloat:
-        os << "bf16";
+        ss << "bf16";
         break;
       case llvm::APFloatBase::S_IEEEsingle:
-        os << "f";
+        ss << "f";
         break;
       case llvm::APFloatBase::S_IEEEdouble:
         break;
@@ -1388,11 +1405,11 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
         llvm_unreachable("unsupported floating point type");
       };
     } else if (val.isNaN()) {
-      os << "NAN";
+      ss << "NAN";
     } else if (val.isInfinity()) {
       if (val.isNegative())
-        os << "-";
-      os << "INFINITY";
+        ss << "-";
+      ss << "INFINITY";
     }
   };
 
@@ -1412,9 +1429,9 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
       return emitError(
           loc, "expected floating point attribute to be f16, bf16, f32 or f64");
     }
-    os << '{';
-    interleaveComma(dense, os, [&](const APFloat &val) { printFloat(val); });
-    os << '}';
+    ss << '{';
+    interleaveComma(dense, ss, [&](const APFloat &val) { printFloat(val); });
+    ss << '}';
     return success();
   }
 
@@ -1432,26 +1449,26 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
   if (auto dense = dyn_cast<DenseIntElementsAttr>(attr)) {
     if (auto iType = dyn_cast<IntegerType>(
             cast<TensorType>(dense.getType()).getElementType())) {
-      os << '{';
-      interleaveComma(dense, os, [&](const APInt &val) {
+      ss << '{';
+      interleaveComma(dense, ss, [&](const APInt &val) {
         printInt(val, shouldMapToUnsigned(iType.getSignedness()));
       });
-      os << '}';
+      ss << '}';
       return success();
     }
     if (auto iType = dyn_cast<IndexType>(
             cast<TensorType>(dense.getType()).getElementType())) {
-      os << '{';
-      interleaveComma(dense, os,
+      ss << '{';
+      interleaveComma(dense, ss,
                       [&](const APInt &val) { printInt(val, false); });
-      os << '}';
+      ss << '}';
       return success();
     }
   }
 
   // Print opaque attributes.
   if (auto oAttr = dyn_cast<emitc::OpaqueAttr>(attr)) {
-    os << oAttr.getValue();
+    ss << oAttr.getValue();
     return success();
   }
 
@@ -1459,7 +1476,7 @@ LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
   if (auto sAttr = dyn_cast<SymbolRefAttr>(attr)) {
     if (sAttr.getNestedReferences().size() > 1)
       return emitError(loc, "attribute has more than 1 nested reference");
-    os << sAttr.getRootReference().getValue();
+    ss << sAttr.getRootReference().getValue();
     return success();
   }
 
@@ -1494,21 +1511,21 @@ LogicalResult CppEmitter::emitExpression(ExpressionOp expressionOp) {
 
 LogicalResult CppEmitter::emitOperand(Value value) {
   Operation *def = value.getDefiningOp();
-  if (!shouldUseConstantsAsVariables()) {
-    if (auto constant = dyn_cast_if_present<ConstantOp>(def)) {
-      os << "((";
 
-      if (failed(emitType(constant.getLoc(), constant.getType()))) {
-        return failure();
-      }
-      os << ") ";
+  if (auto constant = dyn_cast_if_present<ConstantOp>(def);
+      constant && !shouldUseConstantsAsVariables()) {
+    os << "((";
 
-      if (failed(emitAttribute(constant.getLoc(), constant.getValue()))) {
-        return failure();
-      }
-      os << ")";
-      return success();
+    if (failed(emitType(constant.getLoc(), constant.getType()))) {
+      return failure();
     }
+    os << ") ";
+
+    if (failed(emitAttribute(constant.getLoc(), constant.getValue()))) {
+      return failure();
+    }
+    os << ")";
+    return success();
   }
 
   if (isPartOfCurrentExpression(value)) {
