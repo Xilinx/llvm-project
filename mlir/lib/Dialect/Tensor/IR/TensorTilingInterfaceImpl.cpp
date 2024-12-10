@@ -289,7 +289,7 @@ struct PackOpTiling
     SmallVector<OpFoldResult> outerDimOffsets, outerDimSizes;
     DenseMap<int64_t, OpFoldResult> dimAndTileMapping =
         packOp.getDimAndTileMapping();
-    for (auto dim : packOp.getOuterDimsPerm()) {
+    for (auto dim : llvm::seq<int64_t>(packOp.getSourceRank())) {
       if (dimAndTileMapping.count(dim)) {
         FailureOr<int64_t> cstSize =
             ValueBoundsConstraintSet::computeConstantBound(
@@ -330,7 +330,7 @@ struct PackOpTiling
         outerDimSizes.push_back(sizes[dim]);
       }
     }
-
+    applyPermToRange(outerDimOffsets, outerDimSizes, packOp.getOuterDimsPerm());
     resultOffsets = outerDimOffsets;
     resultSizes = outerDimSizes;
     return success();
