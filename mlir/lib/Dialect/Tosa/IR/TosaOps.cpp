@@ -800,8 +800,6 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
     MLIRContext *context, ::std::optional<Location> location,
     PadOp::Adaptor adaptor,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
-
-  Type inputType = getElementTypeOrSelf(adaptor.getInput1());
   ShapeAdaptor inputShape(adaptor.getInput1().getType());
   ShapeAdaptor paddingShape(adaptor.getPadding().getType());
   SmallVector<int64_t> outputShape;
@@ -822,8 +820,7 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
     }
 
     outputShape.resize(paddingShape.getDimSize(0), ShapedType::kDynamic);
-    inferredReturnShapes.push_back(
-        ShapedTypeComponents(outputShape, inputType));
+    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
     return success();
   }
 
@@ -831,8 +828,7 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
   // If the paddings value is not a constant, all dimensions must be dynamic.
   if (!matchPattern(adaptor.getPadding(), m_Constant(&paddings))) {
     outputShape.resize(inputShape.getRank(), ShapedType::kDynamic);
-    inferredReturnShapes.push_back(
-        ShapedTypeComponents(outputShape, inputType));
+    inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
     return success();
   }
 
@@ -852,39 +848,21 @@ LogicalResult tosa::PadOp::inferReturnTypeComponents(
                           paddingValues[i * 2 + 1]);
   }
 
-  inferredReturnShapes.push_back(ShapedTypeComponents(outputShape, inputType));
+  inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
   return success();
 }
 
-LogicalResult PadOp::verify() {
-  ShapedType inputType = llvm::cast<ShapedType>(getInput1().getType());
-  if (inputType.hasRank() && inputType.getRank() == 0) {
-    return emitOpError() << "input tensor rank must not be 0";
-  }
+LogicalResult tosa::PadOp::verify() {
+  RankedTensorType inputType = getInput1().getType();
+  RankedTensorType outputType = getOutput().getType();
+  TensorType paddingType = getPadding().getType();
 
-  ShapedType paddingType = llvm::cast<ShapedType>(getPadding().getType());
-  if (paddingType.hasRank()) {
-    if (paddingType.getRank() != 2) {
-      return emitOpError() << "paddings must be a tensor of rank 2";
-    }
-    if (inputType.hasRank() && !paddingType.isDynamicDim(0) &&
-        inputType.getRank() != paddingType.getDimSize(0)) {
-      return emitOpError() << "paddings must be a tensor of shape ["
-                           << inputType.getRank() << ", 2]";
-    }
-    if (!paddingType.isDynamicDim(1) && paddingType.getDimSize(1) != 2) {
-      return emitOpError() << "paddings must be a tensor of shape ["
-                           << inputType.getRank() << ", 2]";
-    }
+  if (inputType.getRank() != outputType.getRank())
+    return emitOpError() << "expect same input and output tensor rank.";
 
-    DenseIntElementsAttr paddings;
-    if (matchPattern(getPadding(), m_Constant(&paddings))) {
-      if (llvm::any_of(paddings,
-                       [](auto val) { return val.getSExtValue() < 0; })) {
-        return emitOpError() << "number of pad elements must be positive";
-      }
-    }
-  }
+  if (paddingType.hasRank() && paddingType.getRank() != 2)
+    return emitOpError() << "expect 'padding' tensor rank equal to 2.";
+
   return success();
 }
 
@@ -1441,7 +1419,6 @@ REDUCE_SHAPE_INFER(tosa::ReduceProdOp)
 REDUCE_SHAPE_INFER(tosa::ReduceSumOp)
 #undef REDUCE_SHAPE_INFER
 COMPATIBLE_RETURN_TYPES(tosa::ConcatOp)
-COMPATIBLE_RETURN_TYPES(tosa::PadOp)
 #undef COMPATIBLE_RETURN_TYPES
 
 template <typename T>
