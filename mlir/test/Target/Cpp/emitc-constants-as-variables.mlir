@@ -12,7 +12,7 @@ func.func @test() {
   return
 }
 // CPP-DEFAULT-LABEL: void test() {
-// CPP-DEFAULT-NEXT:   for (size_t v1 = ((size_t) 0); v1 < ((size_t) 10); v1 += ((size_t) 1)) {
+// CPP-DEFAULT-NEXT:   for (size_t v1 = (size_t) 0; v1 < (size_t) 10; v1 += (size_t) 1) {
 // CPP-DEFAULT-NEXT:   }
 // CPP-DEFAULT-NEXT:   return;
 // CPP-DEFAULT-NEXT: }
@@ -25,7 +25,7 @@ func.func @test_subscript(%arg0: !emitc.array<4xf32>) -> (!emitc.lvalue<f32>) {
   return %0 : !emitc.lvalue<f32>
 }
 // CPP-DEFAULT-LABEL: float test_subscript(float v1[4]) {
-// CPP-DEFAULT-NEXT:  return v1[0];
+// CPP-DEFAULT-NEXT:  return v1[(size_t) 0];
 // CPP-DEFAULT-NEXT: }
 
 // -----
@@ -49,7 +49,7 @@ func.func @emitc_switch_ui64() {
   return
 }
 // CPP-DEFAULT-LABEL: void emitc_switch_ui64() {
-// CPP-DEFAULT:   switch (1) {
+// CPP-DEFAULT:   switch ((uint64_t) 1) {
 // CPP-DEFAULT-NEXT:   case 2: {
 // CPP-DEFAULT-NEXT:     int32_t v1 = func_b();
 // CPP-DEFAULT-NEXT:     break;
@@ -59,8 +59,23 @@ func.func @emitc_switch_ui64() {
 // CPP-DEFAULT-NEXT:     break;
 // CPP-DEFAULT-NEXT:   }
 // CPP-DEFAULT-NEXT:   default: {
-// CPP-DEFAULT-NEXT:     func2(((uint64_t) 1));
+// CPP-DEFAULT-NEXT:     func2((uint64_t) 1);
 // CPP-DEFAULT-NEXT:     break;
 // CPP-DEFAULT-NEXT:   }
+// CPP-DEFAULT-NEXT:   return;
+// CPP-DEFAULT-NEXT: }
+
+// -----
+
+func.func @negative_values() {
+  %1 = "emitc.constant"() <{value = 10 : index}> : () -> !emitc.size_t
+  %2 = "emitc.constant"() <{value = -3000000000 : index}> : () -> !emitc.size_t
+
+  %3 = emitc.add %1, %2 : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
+
+  return
+}
+// CPP-DEFAULT-LABEL: void negative_values() {
+// CPP-DEFAULT-NEXT:   size_t v1 = (size_t) 10 + (size_t) -3000000000;
 // CPP-DEFAULT-NEXT:   return;
 // CPP-DEFAULT-NEXT: }

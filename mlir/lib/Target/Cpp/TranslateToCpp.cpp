@@ -298,7 +298,16 @@ private:
     return emittedExpressionPrecedence.back();
   }
 
+  /// Emits attribute to the specified stream or returns failure.
   LogicalResult emitAttributeToStream(Location loc, Attribute attr,
+                                      raw_ostream &ss);
+
+  /// Emits type 'type' to the specified stream or returns failure.
+  LogicalResult emitTypeToStream(Location loc, Type type, raw_ostream &ss);
+
+  /// Emits array of types as a std::tuple of the emitted types independently of
+  /// the array size to the specified stream.
+  LogicalResult emitTupleTypeToStream(Location loc, ArrayRef<Type> types,
                                       raw_ostream &ss);
 };
 } // namespace
@@ -1326,9 +1335,17 @@ StringRef CppEmitter::getOrCreateName(Value val) {
         constant && !shouldUseConstantsAsVariables()) {
       std::string constantValueString;
       llvm::raw_string_ostream ss(constantValueString);
-      bool success = llvm::succeeded(
+
+      ss << "(";
+      bool success =
+          succeeded(emitTypeToStream(val.getLoc(), constant.getType(), ss));
+      assert(success);
+      ss << ") ";
+
+      success = succeeded(
           emitAttributeToStream(val.getLoc(), constant.getValue(), ss));
       assert(success);
+
       valueMapper.insert(val, constantValueString);
     } else {
       assert(!hasDeferredEmission(val.getDefiningOp()) &&
@@ -1512,22 +1529,6 @@ LogicalResult CppEmitter::emitExpression(ExpressionOp expressionOp) {
 
 LogicalResult CppEmitter::emitOperand(Value value) {
   Operation *def = value.getDefiningOp();
-
-  if (auto constant = dyn_cast_if_present<ConstantOp>(def);
-      constant && !shouldUseConstantsAsVariables()) {
-    os << "((";
-
-    if (failed(emitType(constant.getLoc(), constant.getType()))) {
-      return failure();
-    }
-    os << ") ";
-
-    if (failed(emitAttribute(constant.getLoc(), constant.getValue()))) {
-      return failure();
-    }
-    os << ")";
-    return success();
-  }
 
   if (isPartOfCurrentExpression(value)) {
     assert(def && "Expected operand to be defined by an operation");
@@ -1827,18 +1828,23 @@ LogicalResult CppEmitter::emitReferenceToType(Location loc, Type type) {
 }
 
 LogicalResult CppEmitter::emitType(Location loc, Type type) {
+  return emitTypeToStream(loc, type, os);
+}
+
+LogicalResult CppEmitter::emitTypeToStream(Location loc, Type type,
+                                           raw_ostream &ss) {
   if (auto iType = dyn_cast<IntegerType>(type)) {
     switch (iType.getWidth()) {
     case 1:
-      return (os << "bool"), success();
+      return (ss << "bool"), success();
     case 8:
     case 16:
     case 32:
     case 64:
       if (shouldMapToUnsigned(iType.getSignedness()))
-        return (os << "uint" << iType.getWidth() << "_t"), success();
+        return (ss << "uint" << iType.getWidth() << "_t"), success();
       else
-        return (os << "int" << iType.getWidth() << "_t"), success();
+        return (ss << "int" << iType.getWidth() << "_t"), success();
     default:
       return emitError(loc, "cannot emit integer type ") << type;
     }
@@ -1847,48 +1853,48 @@ LogicalResult CppEmitter::emitType(Location loc, Type type) {
     switch (fType.getWidth()) {
     case 16: {
       if (llvm::isa<Float16Type>(type))
-        return (os << "_Float16"), success();
+        return (ss << "_Float16"), success();
       else if (llvm::isa<BFloat16Type>(type))
-        return (os << "__bf16"), success();
+        return (ss << "__bf16"), success();
       else
         return emitError(loc, "cannot emit float type ") << type;
     }
     case 32:
-      return (os << "float"), success();
+      return (ss << "float"), success();
     case 64:
-      return (os << "double"), success();
+      return (ss << "double"), success();
     default:
       return emitError(loc, "cannot emit float type ") << type;
     }
   }
   if (auto iType = dyn_cast<IndexType>(type))
-    return (os << "size_t"), success();
+    return (ss << "size_t"), success();
   if (auto sType = dyn_cast<emitc::SizeTType>(type))
-    return (os << "size_t"), success();
+    return (ss << "size_t"), success();
   if (auto sType = dyn_cast<emitc::SignedSizeTType>(type))
-    return (os << "ssize_t"), success();
+    return (ss << "ssize_t"), success();
   if (auto pType = dyn_cast<emitc::PtrDiffTType>(type))
-    return (os << "ptrdiff_t"), success();
+    return (ss << "ptrdiff_t"), success();
   if (auto tType = dyn_cast<TensorType>(type)) {
     if (!tType.hasRank())
       return emitError(loc, "cannot emit unranked tensor type");
     if (!tType.hasStaticShape())
       return emitError(loc, "cannot emit tensor type with non static shape");
-    os << "Tensor<";
+    ss << "Tensor<";
     if (isa<ArrayType>(tType.getElementType()))
       return emitError(loc, "cannot emit tensor of array type ") << type;
-    if (failed(emitType(loc, tType.getElementType())))
+    if (failed(emitTypeToStream(loc, tType.getElementType(), ss)))
       return failure();
     auto shape = tType.getShape();
     for (auto dimSize : shape) {
-      os << ", ";
-      os << dimSize;
+      ss << ", ";
+      ss << dimSize;
     }
-    os << ">";
+    ss << ">";
     return success();
   }
   if (auto tType = dyn_cast<TupleType>(type))
-    return emitTupleType(loc, tType.getTypes());
+    return emitTupleTypeToStream(loc, tType.getTypes(), ss);
   if (auto oType = dyn_cast<emitc::OpaqueType>(type)) {
     FailureOr<SmallVector<ReplacementItem>> items = oType.parseFormatString();
     if (failed(items))
@@ -1897,9 +1903,9 @@ LogicalResult CppEmitter::emitType(Location loc, Type type) {
     auto fmtArg = oType.getFmtArgs().begin();
     for (ReplacementItem &item : *items) {
       if (auto *str = std::get_if<StringRef>(&item)) {
-        os << *str;
+        ss << *str;
       } else {
-        if (failed(emitType(loc, *fmtArg++))) {
+        if (failed(emitTypeToStream(loc, *fmtArg++, ss))) {
           return failure();
         }
       }
@@ -1907,24 +1913,24 @@ LogicalResult CppEmitter::emitType(Location loc, Type type) {
 
     return success();
 
-    os << oType.getValue();
+    ss << oType.getValue();
     return success();
   }
   if (auto aType = dyn_cast<emitc::ArrayType>(type)) {
-    if (failed(emitType(loc, aType.getElementType())))
+    if (failed(emitTypeToStream(loc, aType.getElementType(), ss)))
       return failure();
     for (auto dim : aType.getShape())
-      os << "[" << dim << "]";
+      ss << "[" << dim << "]";
     return success();
   }
   if (auto lType = dyn_cast<emitc::LValueType>(type))
-    return emitType(loc, lType.getValueType());
+    return emitTypeToStream(loc, lType.getValueType(), ss);
   if (auto pType = dyn_cast<emitc::PointerType>(type)) {
     if (isa<ArrayType>(pType.getPointee()))
       return emitError(loc, "cannot emit pointer to array type ") << type;
-    if (failed(emitType(loc, pType.getPointee())))
+    if (failed(emitTypeToStream(loc, pType.getPointee(), ss)))
       return failure();
-    os << "*";
+    ss << "*";
     return success();
   }
   return emitError(loc, "cannot emit type ") << type;
@@ -1943,14 +1949,19 @@ LogicalResult CppEmitter::emitTypes(Location loc, ArrayRef<Type> types) {
 }
 
 LogicalResult CppEmitter::emitTupleType(Location loc, ArrayRef<Type> types) {
+  return emitTupleTypeToStream(loc, types, os);
+}
+LogicalResult CppEmitter::emitTupleTypeToStream(Location loc,
+                                                ArrayRef<Type> types,
+                                                raw_ostream &ss) {
   if (llvm::any_of(types, llvm::IsaPred<ArrayType>)) {
     return emitError(loc, "cannot emit tuple of array type");
   }
-  os << "std::tuple<";
+  ss << "std::tuple<";
   if (failed(interleaveCommaWithError(
-          types, os, [&](Type type) { return emitType(loc, type); })))
+          types, ss, [&](Type type) { return emitType(loc, type); })))
     return failure();
-  os << ">";
+  ss << ">";
   return success();
 }
 
