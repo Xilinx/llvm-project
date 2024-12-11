@@ -250,6 +250,26 @@ func.func @test_add_1d_broadcast_static_to_static(%arg0: tensor<1xf32>, %arg1: t
 
 // -----
 
+// CHECK: #[[$MAP:.+]] = affine_map<(d0) -> (d0)>
+// CHECK-LABEL: @test_add_1d_matching_no_broadcast
+// CHECK-SAME: %[[ARG0:[0-9a-zA-Z_]*]]:
+// CHECK-SAME: %[[ARG1:[0-9a-zA-Z_]*]]:
+func.func @test_add_1d_matching_no_broadcast(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+
+  // CHECK: %[[VAL_0:.*]] = tensor.empty() : tensor<1xf32>
+  // CHECK: %[[RESULT:.*]] = linalg.generic {indexing_maps = [#[[$MAP]], #[[$MAP]], #[[$MAP]]], iterator_types = ["parallel"]} ins(%[[ARG0]], %[[ARG1]] : tensor<1xf32>, tensor<1xf32>) outs(%[[VAL_0]] : tensor<1xf32>) {
+  // CHECK: ^bb0(%[[VAL_1:.*]]: f32, %[[VAL_2:.*]]: f32, %[[VAL_3:.*]]: f32):
+  // CHECK:   %[[VAL_4:.*]] = arith.addf %[[VAL_1]], %[[VAL_2]] : f32
+  // CHECK:   linalg.yield %[[VAL_4]] : f32
+  // CHECK: } -> tensor<1xf32>
+  %0 = tosa.add %arg0, %arg1 : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+
+  // CHECK: return %[[RESULT]] : tensor<1xf32>
+  return %0 : tensor<1xf32>
+}
+
+// -----
+
 // CHECK: #[[$MAP0:.+]] = affine_map<(d0) -> (d0)>
 // CHECK-LABEL: @test_add_1d_matching_static
 // CHECK-SAME: %[[ARG0:[0-9a-zA-Z_]*]]:
@@ -1996,4 +2016,13 @@ func.func @test_static_fft2d(%arg0: tensor<8x8x8xf32>, %arg1: tensor<8x8x8xf32>)
 func.func @test_dynamic_fft2d(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) -> (tensor<?x?x?xf32>, tensor<?x?x?xf32>) {
   %output_real, %output_imag = "tosa.fft2d"(%arg0, %arg1) {inverse = true} : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> (tensor<?x?x?xf32>, tensor<?x?x?xf32>)
   return %output_real, %output_imag : tensor<?x?x?xf32>, tensor<?x?x?xf32>
+}
+
+// -----
+// CHECK-LABEL: @test_abs_conversion
+// CHECK: linalg.generic
+// CHECK: arith.constant 0 : i64
+func.func @test_abs_conversion(%arg0: tensor<9xui64> {func.orig_type = tensor<9xui64>, onnx.name = "in0"}) -> (tensor<9xui64> {func.orig_type = tensor<9xui64>, onnx.name = "out0"}) {
+  %0 = tosa.abs %arg0 : (tensor<9xui64>) -> tensor<9xui64>
+  return %0 : tensor<9xui64>
 }

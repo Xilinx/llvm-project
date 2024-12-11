@@ -96,8 +96,8 @@ func.func @affine_for_upper_bound_invalid_sym() {
 func.func @affine_if_invalid_dim(%arg : index) {
   affine.for %n0 = 0 to 7 {
     %dim = arith.addi %arg, %arg : index
-
-    // expected-error@+1 {{operand cannot be used as a dimension id}}
+    // Non-affine operand %dim has been made legal as input to affine.if.
+    // expected-error@+1 {{operand cannot be used as a symbol}}
     affine.if #set0(%dim)[%n0] {}
   }
   return

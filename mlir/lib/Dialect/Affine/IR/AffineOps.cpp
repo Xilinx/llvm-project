@@ -499,11 +499,13 @@ ParseResult mlir::affine::parseDimAndSymbolList(
 template <typename OpTy>
 static LogicalResult
 verifyDimAndSymbolIdentifiers(OpTy &op, Operation::operand_range operands,
-                              unsigned numDims) {
+                              unsigned numDims,
+                              bool allowNonAffineDimOperands = false) {
   unsigned opIt = 0;
   for (auto operand : operands) {
     if (opIt++ < numDims) {
-      if (!isValidDim(operand, getAffineScope(op)))
+      if (!isValidDim(operand, getAffineScope(op)) &&
+          !(allowNonAffineDimOperands && operand.getType().isIndex()))
         return op.emitOpError("operand cannot be used as a dimension id");
     } else if (!isValidSymbol(operand, getAffineScope(op))) {
       return op.emitOpError("operand cannot be used as a symbol");
@@ -2763,6 +2765,13 @@ struct AlwaysTrueOrFalseIf : public OpRewritePattern<AffineIfOp> {
 };
 } // namespace
 
+void AffineIfOp::getRegionInvocationBounds(
+    ArrayRef<Attribute> operands,
+    SmallVectorImpl<InvocationBounds> &invocationBounds) {
+  // Non-constant condition. Each region may be executed 0 or 1 times.
+  invocationBounds.assign(getNumRegions(), {0, 1});
+}
+
 /// AffineIfOp has two regions -- `then` and `else`. The flow of data should be
 /// as follows: AffineIfOp -> `then`/`else` -> AffineIfOp
 void AffineIfOp::getSuccessorRegions(
@@ -2804,7 +2813,8 @@ LogicalResult AffineIfOp::verify() {
 
   // Verify that the operands are valid dimension/symbols.
   if (failed(verifyDimAndSymbolIdentifiers(*this, getOperands(),
-                                           condition.getNumDims())))
+                                           condition.getNumDims(),
+                                           /*allowNonAffineDimOperands=*/true)))
     return failure();
 
   return success();

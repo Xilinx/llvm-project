@@ -61,7 +61,7 @@ static Value createLinalgBodyCalculationForElementwiseOp(
 
   if (isa<tosa::AbsOp>(op) && isa<IntegerType>(elementTy)) {
     auto zero = rewriter.create<arith::ConstantOp>(
-        loc, rewriter.getZeroAttr(elementTy));
+        loc, rewriter.getZeroAttr(convertedElementTy));
     auto neg = rewriter.create<arith::SubIOp>(loc, zero, args[0]);
     return rewriter.create<arith::MaxSIOp>(loc, args[0], neg);
   }
@@ -930,8 +930,14 @@ emitElementwiseComputation(ConversionPatternRewriter &rewriter, Location loc,
     auto shape = cast<ShapedType>(operand.getType()).getShape();
     SmallVector<AffineExpr> affineExprs;
     for (auto it : llvm::enumerate(shape)) {
-      auto affineExpr = it.value() == 1 ? rewriter.getAffineConstantExpr(0)
-                                        : rewriter.getAffineDimExpr(it.index());
+      // Prefer producting identity maps whenever possible (i.e. no broadcasting
+      // needed) because some transforms (like reshape folding)
+      // do not support affine constant exprs.
+      bool requiresBroadcast =
+          (it.value() == 1 && resultType.getDimSize(it.index()) != 1);
+      auto affineExpr = requiresBroadcast
+                            ? rewriter.getAffineConstantExpr(0)
+                            : rewriter.getAffineDimExpr(it.index());
       affineExprs.push_back(affineExpr);
     }
     return AffineMap::get(rank, 0, affineExprs, rewriter.getContext());
