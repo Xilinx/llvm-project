@@ -56,9 +56,9 @@ func.func @cast_fold_double(%arg0: tensor<?x1xf32>) -> tensor<?x1xi8> {
 }
 
 // CHECK-LABEL: @cast_fold_double
-func.func @cast_fold_double2(%arg0: tensor<?x1xf16>) -> tensor<?x1xbf16> {
-  // CHECK: tosa.cast{{.*}} (tensor<?x1xf16>) -> tensor<?x1xbf16>
-  %0 = tosa.cast %arg0 : (tensor<?x1xf16>) -> tensor<?x1xf32>
+func.func @cast_fold_double2(%arg0: tensor<?x1xbf16>) -> tensor<?x1xbf16> {
+  // CHECK: return %arg0
+  %0 = tosa.cast %arg0 : (tensor<?x1xbf16>) -> tensor<?x1xf32>
   %1 = tosa.cast %0 : (tensor<?x1xf32>) -> tensor<?x1xbf16>
   return %1 : tensor<?x1xbf16>
 }

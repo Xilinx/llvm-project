@@ -1008,11 +1008,13 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
     }
   }
 
-  // cast-to-bf16(cast-to-f32(x)) -> cast-to-bf16(x)
+  // Fold cast from bf16 -> f32 -> bf16 into no-op.
   if (auto cast = getInput().getDefiningOp<CastOp>()) {
+    auto sourceElTy = cast.getInput().getType().getElementType();
     auto intermediateElTy = cast.getType().getElementType();
     auto finalElTy = getType().getElementType();
-    if (isa<Float32Type>(intermediateElTy) && isa<BFloat16Type>(finalElTy)) {
+    if (isa<BFloat16Type>(sourceElTy) && isa<Float32Type>(intermediateElTy) &&
+        isa<BFloat16Type>(finalElTy)) {
       getInputMutable().assign(cast.getInput());
       return getResult();
     }
