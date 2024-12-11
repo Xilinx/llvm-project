@@ -247,10 +247,10 @@ LogicalResult replaceAllMemRefUsesWith(Value oldMemRef, Value newMemRef,
 /// and updates all its indexing uses. Returns failure if any of its uses
 /// escape (while leaving the IR in a valid state).
 template <typename AllocLikeOp>
-LogicalResult normalizeMemRef(AllocLikeOp *op);
-extern template LogicalResult
+FailureOr<AllocLikeOp> normalizeMemRef(AllocLikeOp *op);
+extern template FailureOr<memref::AllocaOp>
 normalizeMemRef<memref::AllocaOp>(memref::AllocaOp *op);
-extern template LogicalResult
+extern template FailureOr<memref::AllocOp>
 normalizeMemRef<memref::AllocOp>(memref::AllocOp *op);
 
 /// Normalizes `memrefType` so that the affine layout map of the memref is

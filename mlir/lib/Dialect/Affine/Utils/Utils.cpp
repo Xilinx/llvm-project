@@ -1689,7 +1689,7 @@ static void createNewDynamicSizes(MemRefType oldMemRefType,
 
 // TODO: Currently works for static memrefs with a single layout map.
 template <typename AllocLikeOp>
-LogicalResult mlir::affine::normalizeMemRef(AllocLikeOp *allocOp) {
+FailureOr<AllocLikeOp> mlir::affine::normalizeMemRef(AllocLikeOp *allocOp) {
   MemRefType memrefType = allocOp->getType();
   OpBuilder b(*allocOp);
 
@@ -1743,12 +1743,12 @@ LogicalResult mlir::affine::normalizeMemRef(AllocLikeOp *allocOp) {
   }));
   oldMemRef.replaceAllUsesWith(newAlloc);
   allocOp->erase();
-  return success();
+  return newAlloc;
 }
 
-template LogicalResult
+template FailureOr<memref::AllocaOp>
 mlir::affine::normalizeMemRef<memref::AllocaOp>(memref::AllocaOp *op);
-template LogicalResult
+template FailureOr<memref::AllocOp>
 mlir::affine::normalizeMemRef<memref::AllocOp>(memref::AllocOp *op);
 
 MemRefType mlir::affine::normalizeMemRefType(MemRefType memrefType) {
