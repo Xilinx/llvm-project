@@ -1348,10 +1348,10 @@ void CppEmitter::cacheDeferredOpResult(Value value, StringRef str) {
 /// Return the existing or a new name for a Value.
 StringRef CppEmitter::getOrCreateName(Value val) {
   if (!valueMapper.count(val)) {
-      assert(!hasDeferredEmission(val.getDefiningOp()) &&
-             "cacheDeferredOpResult should have been called on this value, "
-             "update the emitOperation function.");
-      valueMapper.insert(val, formatv("v{0}", ++valueInScopeCount.top()));
+    assert(!hasDeferredEmission(val.getDefiningOp()) &&
+           "cacheDeferredOpResult should have been called on this value, "
+           "update the emitOperation function.");
+    valueMapper.insert(val, formatv("v{0}", ++valueInScopeCount.top()));
   }
   return *valueMapper.begin(val);
 }
@@ -1752,11 +1752,7 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
             cacheDeferredOpResult(op.getResult(), op.getValue());
             return success();
           })
-          .Case<emitc::MemberOp>([&](auto op) {
-            cacheDeferredOpResult(op.getResult(), createMemberAccess(op));
-            return success();
-          })
-          .Case<emitc::MemberOfPtrOp>([&](auto op) {
+          .Case<emitc::MemberOp, emitc::MemberOfPtrOp>([&](auto op) {
             cacheDeferredOpResult(op.getResult(), createMemberAccess(op));
             return success();
           })
