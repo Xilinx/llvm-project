@@ -1008,6 +1008,18 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
     }
   }
 
+  // Fold cast from bf16 -> f32 -> bf16 into no-op.
+  if (auto cast = getInput().getDefiningOp<CastOp>()) {
+    auto sourceElTy = cast.getInput().getType().getElementType();
+    auto intermediateElTy = cast.getType().getElementType();
+    auto finalElTy = getType().getElementType();
+    if (isa<BFloat16Type>(sourceElTy) && isa<Float32Type>(intermediateElTy) &&
+        isa<BFloat16Type>(finalElTy)) {
+      getInputMutable().assign(cast.getInput());
+      return getResult();
+    }
+  }
+
   auto operand = llvm::dyn_cast_if_present<ElementsAttr>(adaptor.getInput());
   if (!operand)
     return {};
