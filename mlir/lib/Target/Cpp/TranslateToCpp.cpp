@@ -298,8 +298,8 @@ private:
     return emittedExpressionPrecedence.back();
   }
 
-  LogicalResult emitAttributeToArbitraryStream(Location loc, Attribute attr,
-                                               raw_ostream &ss);
+  LogicalResult emitAttributeToStream(Location loc, Attribute attr,
+                                      raw_ostream &ss);
 };
 } // namespace
 
@@ -1293,15 +1293,7 @@ std::string CppEmitter::getSubscriptName(emitc::SubscriptOp op) {
   llvm::raw_string_ostream ss(out);
   ss << getOrCreateName(op.getValue());
   for (auto index : op.getIndices()) {
-    ss << "[";
-    if (auto constant = dyn_cast_if_present<ConstantOp>(index.getDefiningOp());
-        constant && !shouldUseConstantsAsVariables()) {
-      assert(llvm::succeeded(emitAttributeToArbitraryStream(
-          op->getLoc(), constant.getValue(), ss)));
-    } else {
-      ss << getOrCreateName(index);
-    }
-    ss << "]";
+    ss << "[" << getOrCreateName(index) << "]";
   }
   return out;
 }
@@ -1330,10 +1322,20 @@ void CppEmitter::cacheDeferredOpResult(Value value, StringRef str) {
 /// Return the existing or a new name for a Value.
 StringRef CppEmitter::getOrCreateName(Value val) {
   if (!valueMapper.count(val)) {
-    assert(!hasDeferredEmission(val.getDefiningOp()) &&
-           "cacheDeferredOpResult should have been called on this value, "
-           "update the emitOperation function.");
-    valueMapper.insert(val, formatv("v{0}", ++valueInScopeCount.top()));
+    if (auto constant = dyn_cast_if_present<ConstantOp>(val.getDefiningOp());
+        constant && !shouldUseConstantsAsVariables()) {
+      std::string constantValueString;
+      llvm::raw_string_ostream ss(constantValueString);
+      bool success = llvm::succeeded(
+          emitAttributeToStream(val.getLoc(), constant.getValue(), ss));
+      assert(success);
+      valueMapper.insert(val, constantValueString);
+    } else {
+      assert(!hasDeferredEmission(val.getDefiningOp()) &&
+             "cacheDeferredOpResult should have been called on this value, "
+             "update the emitOperation function.");
+      valueMapper.insert(val, formatv("v{0}", ++valueInScopeCount.top()));
+    }
   }
   return *valueMapper.begin(val);
 }
@@ -1364,12 +1366,11 @@ bool CppEmitter::hasBlockLabel(Block &block) {
 }
 
 LogicalResult CppEmitter::emitAttribute(Location loc, Attribute attr) {
-  return CppEmitter::emitAttributeToArbitraryStream(loc, attr, os);
+  return CppEmitter::emitAttributeToStream(loc, attr, os);
 }
 
-LogicalResult CppEmitter::emitAttributeToArbitraryStream(Location loc,
-                                                         Attribute attr,
-                                                         raw_ostream &ss) {
+LogicalResult CppEmitter::emitAttributeToStream(Location loc, Attribute attr,
+                                                raw_ostream &ss) {
   auto printInt = [&](const APInt &val, bool isUnsigned) {
     if (val.getBitWidth() == 1) {
       if (val.getBoolValue())
