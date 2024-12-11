@@ -298,6 +298,9 @@ private:
     return emittedExpressionPrecedence.back();
   }
 
+  /// Emits value as an operands of an operation to the specified stream.
+  LogicalResult emitOperandToStream(Value value, raw_ostream &ss);
+
   /// Emits attribute to the specified stream or returns failure.
   LogicalResult emitAttributeToStream(Location loc, Attribute attr,
                                       raw_ostream &ss);
@@ -1319,7 +1322,9 @@ std::string CppEmitter::getSubscriptName(emitc::SubscriptOp op) {
   llvm::raw_string_ostream ss(out);
   ss << getOrCreateName(op.getValue());
   for (auto index : op.getIndices()) {
-    ss << "[" << getOrCreateName(index) << "]";
+    ss << "[";
+    emitOperandToStream(index, ss);
+    ss << "]";
   }
   return out;
 }
@@ -1527,16 +1532,20 @@ LogicalResult CppEmitter::emitExpression(ExpressionOp expressionOp) {
 }
 
 LogicalResult CppEmitter::emitOperand(Value value) {
+  return emitOperandToStream(value, os);
+}
+
+LogicalResult CppEmitter::emitOperandToStream(Value value, raw_ostream &ss) {
   Operation *def = value.getDefiningOp();
 
   if (auto constant = dyn_cast_if_present<ConstantOp>(def);
       constant && !shouldUseConstantsAsVariables()) {
-    os << "(";
-    if (failed(emitType(value.getLoc(), constant.getType())))
+    ss << "(";
+    if (failed(emitTypeToStream(value.getLoc(), constant.getType(), ss)))
       return failure();
-    os << ") ";
+    ss << ") ";
 
-    if (failed(emitAttribute(value.getLoc(), constant.getValue())))
+    if (failed(emitAttributeToStream(value.getLoc(), constant.getValue(), ss)))
       return failure();
 
     return success();
@@ -1572,7 +1581,7 @@ LogicalResult CppEmitter::emitOperand(Value value) {
   if (expressionOp && shouldBeInlined(expressionOp))
     return emitExpression(expressionOp);
 
-  os << getOrCreateName(value);
+  ss << getOrCreateName(value);
   return success();
 }
 
