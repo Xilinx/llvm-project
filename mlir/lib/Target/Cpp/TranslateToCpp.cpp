@@ -505,7 +505,11 @@ static LogicalResult printOperation(CppEmitter &emitter,
                                     emitc::SwitchOp switchOp) {
   raw_indented_ostream &os = emitter.ostream();
 
-  os << "\nswitch (" << emitter.getOrCreateName(switchOp.getArg()) << ") {";
+  os << "\nswitch (";
+  if (failed(emitter.emitOperand(switchOp.getArg()))) {
+    return failure();
+  }
+  os << ") {";
 
   for (auto pair : llvm::zip(switchOp.getCases(), switchOp.getCaseRegions())) {
     os << "\ncase " << std::get<0>(pair) << ": {\n";
@@ -614,8 +618,10 @@ static LogicalResult printOperation(CppEmitter &emitter,
        llvm::zip(branchOp.getOperands(), successor.getArguments())) {
     Value &operand = std::get<0>(pair);
     BlockArgument &argument = std::get<1>(pair);
-    os << emitter.getOrCreateName(argument) << " = "
-       << emitter.getOrCreateName(operand) << ";\n";
+    os << emitter.getOrCreateName(argument) << " = ";
+    if (failed(emitter.emitOperand(operand)))
+      return failure();
+    os << ";\n";
   }
 
   os << "goto ";
@@ -631,8 +637,10 @@ static LogicalResult printOperation(CppEmitter &emitter,
   Block &trueSuccessor = *condBranchOp.getTrueDest();
   Block &falseSuccessor = *condBranchOp.getFalseDest();
 
-  os << "if (" << emitter.getOrCreateName(condBranchOp.getCondition())
-     << ") {\n";
+  os << "if (";
+  if (failed(emitter.emitOperand(condBranchOp.getCondition())))
+    return failure();
+  os << ") {\n";
 
   os.indent();
 
@@ -641,8 +649,10 @@ static LogicalResult printOperation(CppEmitter &emitter,
                              trueSuccessor.getArguments())) {
     Value &operand = std::get<0>(pair);
     BlockArgument &argument = std::get<1>(pair);
-    os << emitter.getOrCreateName(argument) << " = "
-       << emitter.getOrCreateName(operand) << ";\n";
+    os << emitter.getOrCreateName(argument) << " = ";
+    if (failed(emitter.emitOperand(operand)))
+      return failure();
+    os << ";\n";
   }
 
   os << "goto ";
@@ -657,8 +667,10 @@ static LogicalResult printOperation(CppEmitter &emitter,
                              falseSuccessor.getArguments())) {
     Value &operand = std::get<0>(pair);
     BlockArgument &argument = std::get<1>(pair);
-    os << emitter.getOrCreateName(argument) << " = "
-       << emitter.getOrCreateName(operand) << ";\n";
+    os << emitter.getOrCreateName(argument) << " = ";
+    if (failed(emitter.emitOperand(operand)))
+      return failure();
+    os << ";\n";
   }
 
   os << "goto ";
@@ -716,7 +728,8 @@ static LogicalResult printOperation(CppEmitter &emitter,
         if (!emitter.hasValueInScope(operand))
           return op.emitOpError("operand ")
                  << idx << "'s value not defined in scope";
-        os << emitter.getOrCreateName(operand);
+        if (failed(emitter.emitOperand(operand)))
+          return failure();
         return success();
       }
     }
@@ -774,7 +787,8 @@ static LogicalResult printOperation(CppEmitter &emitter,
   if (failed(emitter.emitAssignPrefix(op)))
     return failure();
   os << applyOp.getApplicableOperator();
-  os << emitter.getOrCreateName(applyOp.getOperand());
+  if (failed(emitter.emitOperand(applyOp.getOperand())))
+    return failure();
 
   return success();
 }
@@ -1159,7 +1173,10 @@ static LogicalResult printFunctionBody(CppEmitter &emitter,
               emitter.emitType(block.getParentOp()->getLoc(), arg.getType()))) {
         return failure();
       }
-      os << " " << emitter.getOrCreateName(arg) << ";\n";
+      os << " ";
+      if (failed(emitter.emitOperand(arg)))
+        return failure();
+      os << ";\n";
     }
   }
 
@@ -1331,28 +1348,10 @@ void CppEmitter::cacheDeferredOpResult(Value value, StringRef str) {
 /// Return the existing or a new name for a Value.
 StringRef CppEmitter::getOrCreateName(Value val) {
   if (!valueMapper.count(val)) {
-    if (auto constant = dyn_cast_if_present<ConstantOp>(val.getDefiningOp());
-        constant && !shouldUseConstantsAsVariables()) {
-      std::string constantValueString;
-      llvm::raw_string_ostream ss(constantValueString);
-
-      ss << "(";
-      bool success =
-          succeeded(emitTypeToStream(val.getLoc(), constant.getType(), ss));
-      assert(success);
-      ss << ") ";
-
-      success = succeeded(
-          emitAttributeToStream(val.getLoc(), constant.getValue(), ss));
-      assert(success);
-
-      valueMapper.insert(val, constantValueString);
-    } else {
       assert(!hasDeferredEmission(val.getDefiningOp()) &&
              "cacheDeferredOpResult should have been called on this value, "
              "update the emitOperation function.");
       valueMapper.insert(val, formatv("v{0}", ++valueInScopeCount.top()));
-    }
   }
   return *valueMapper.begin(val);
 }
@@ -1529,6 +1528,19 @@ LogicalResult CppEmitter::emitExpression(ExpressionOp expressionOp) {
 
 LogicalResult CppEmitter::emitOperand(Value value) {
   Operation *def = value.getDefiningOp();
+
+  if (auto constant = dyn_cast_if_present<ConstantOp>(def);
+      constant && !shouldUseConstantsAsVariables()) {
+    os << "(";
+    if (failed(emitType(value.getLoc(), constant.getType())))
+      return failure();
+    os << ") ";
+
+    if (failed(emitAttribute(value.getLoc(), constant.getValue())))
+      return failure();
+
+    return success();
+  }
 
   if (isPartOfCurrentExpression(value)) {
     assert(def && "Expected operand to be defined by an operation");
