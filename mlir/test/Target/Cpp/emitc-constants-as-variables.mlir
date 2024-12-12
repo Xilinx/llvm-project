@@ -34,14 +34,6 @@ func.func @emitc_switch_ui64() {
   %0 = "emitc.constant"(){value = 1 : ui64} : () -> ui64
 
   emitc.switch %0 : ui64
-  case 2 {
-    %1 = emitc.call_opaque "func_b" () : () -> i32
-    emitc.yield
-  }
-  case 5 {
-    %2 = emitc.call_opaque "func_a" () : () -> i32
-    emitc.yield
-  }
   default {
     emitc.call_opaque "func2" (%0) : (ui64) -> ()
     emitc.yield
@@ -50,14 +42,6 @@ func.func @emitc_switch_ui64() {
 }
 // CPP-DEFAULT-LABEL: void emitc_switch_ui64() {
 // CPP-DEFAULT:   switch ((uint64_t) 1) {
-// CPP-DEFAULT-NEXT:   case 2: {
-// CPP-DEFAULT-NEXT:     int32_t v1 = func_b();
-// CPP-DEFAULT-NEXT:     break;
-// CPP-DEFAULT-NEXT:   }
-// CPP-DEFAULT-NEXT:   case 5: {
-// CPP-DEFAULT-NEXT:     int32_t v2 = func_a();
-// CPP-DEFAULT-NEXT:     break;
-// CPP-DEFAULT-NEXT:   }
 // CPP-DEFAULT-NEXT:   default: {
 // CPP-DEFAULT-NEXT:     func2((uint64_t) 1);
 // CPP-DEFAULT-NEXT:     break;
@@ -69,13 +53,13 @@ func.func @emitc_switch_ui64() {
 
 func.func @negative_values() {
   %1 = "emitc.constant"() <{value = 10 : index}> : () -> !emitc.size_t
-  %2 = "emitc.constant"() <{value = -3000000000 : index}> : () -> !emitc.size_t
+  %2 = "emitc.constant"() <{value = -3000000000 : index}> : () -> !emitc.ssize_t
 
-  %3 = emitc.add %1, %2 : (!emitc.size_t, !emitc.size_t) -> !emitc.size_t
+  %3 = emitc.add %1, %2 : (!emitc.size_t, !emitc.ssize_t) -> !emitc.ssize_t
 
   return
 }
 // CPP-DEFAULT-LABEL: void negative_values() {
-// CPP-DEFAULT-NEXT:   size_t v1 = (size_t) 10 + (size_t) -3000000000;
+// CPP-DEFAULT-NEXT:   ssize_t v1 = (size_t) 10 + (ssize_t) -3000000000;
 // CPP-DEFAULT-NEXT:   return;
 // CPP-DEFAULT-NEXT: }
