@@ -554,7 +554,7 @@ void NVPTXLowerArgs::handleByValParam(const NVPTXTargetMachine &TM,
 
   ArgUseChecker AUC(DL, IsGridConstant);
   ArgUseChecker::PtrInfo PI = AUC.visitArgPtr(*Arg);
-  bool ArgUseIsReadOnly  = !(PI.isEscaped() || PI.isAborted());
+  bool ArgUseIsReadOnly = !(PI.isEscaped() || PI.isAborted());
   // Easy case, accessing parameter directly is fine.
   if (ArgUseIsReadOnly && AUC.Conditionals.empty()) {
     // Convert all loads and intermediate operations to use parameter AS and

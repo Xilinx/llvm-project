@@ -29936,8 +29936,10 @@ static SDValue LowerShift(SDValue Op, const X86Subtarget &Subtarget,
           SDValue Splat8 = DAG.getSplat(VT16, dl, Cst8);
           // Thie mask for the high bits is the same as the mask for the low
           // bits but shifted up by 8.
-          SDValue MaskHighBits = DAG.getNode(ISD::SHL, dl, VT16, MaskLowBits, Splat8);
-          SDValue Mask = DAG.getNode(ISD::OR, dl, VT16, MaskLowBits, MaskHighBits);
+          SDValue MaskHighBits =
+              DAG.getNode(ISD::SHL, dl, VT16, MaskLowBits, Splat8);
+          SDValue Mask =
+              DAG.getNode(ISD::OR, dl, VT16, MaskLowBits, MaskHighBits);
           // Finally, we mask the shifted vector with the SWAR mask.
           SDValue Masked = DAG.getNode(ISD::AND, dl, VT16, ShiftedR, Mask);
           return DAG.getBitcast(VT, Masked);
