@@ -508,11 +508,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
                                     emitc::SwitchOp switchOp) {
   raw_indented_ostream &os = emitter.ostream();
 
-  os << "\nswitch (";
-  if (failed(emitter.emitOperand(switchOp.getArg()))) {
-    return failure();
-  }
-  os << ") {";
+  os << "\nswitch (" << emitter.getOrCreateName(switchOp.getArg()) << ") {";
 
   for (auto pair : llvm::zip(switchOp.getCases(), switchOp.getCaseRegions())) {
     os << "\ncase " << std::get<0>(pair) << ": {\n";
@@ -621,10 +617,8 @@ static LogicalResult printOperation(CppEmitter &emitter,
        llvm::zip(branchOp.getOperands(), successor.getArguments())) {
     Value &operand = std::get<0>(pair);
     BlockArgument &argument = std::get<1>(pair);
-    os << emitter.getOrCreateName(argument) << " = ";
-    if (failed(emitter.emitOperand(operand)))
-      return failure();
-    os << ";\n";
+    os << emitter.getOrCreateName(argument) << " = "
+       << emitter.getOrCreateName(operand) << ";\n";
   }
 
   os << "goto ";
@@ -640,10 +634,8 @@ static LogicalResult printOperation(CppEmitter &emitter,
   Block &trueSuccessor = *condBranchOp.getTrueDest();
   Block &falseSuccessor = *condBranchOp.getFalseDest();
 
-  os << "if (";
-  if (failed(emitter.emitOperand(condBranchOp.getCondition())))
-    return failure();
-  os << ") {\n";
+  os << "if (" << emitter.getOrCreateName(condBranchOp.getCondition())
+     << ") {\n";
 
   os.indent();
 
@@ -652,10 +644,8 @@ static LogicalResult printOperation(CppEmitter &emitter,
                              trueSuccessor.getArguments())) {
     Value &operand = std::get<0>(pair);
     BlockArgument &argument = std::get<1>(pair);
-    os << emitter.getOrCreateName(argument) << " = ";
-    if (failed(emitter.emitOperand(operand)))
-      return failure();
-    os << ";\n";
+    os << emitter.getOrCreateName(argument) << " = "
+       << emitter.getOrCreateName(operand) << ";\n";
   }
 
   os << "goto ";
@@ -670,10 +660,8 @@ static LogicalResult printOperation(CppEmitter &emitter,
                              falseSuccessor.getArguments())) {
     Value &operand = std::get<0>(pair);
     BlockArgument &argument = std::get<1>(pair);
-    os << emitter.getOrCreateName(argument) << " = ";
-    if (failed(emitter.emitOperand(operand)))
-      return failure();
-    os << ";\n";
+    os << emitter.getOrCreateName(argument) << " = "
+       << emitter.getOrCreateName(operand) << ";\n";
   }
 
   os << "goto ";
@@ -731,8 +719,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
         if (!emitter.hasValueInScope(operand))
           return op.emitOpError("operand ")
                  << idx << "'s value not defined in scope";
-        if (failed(emitter.emitOperand(operand)))
-          return failure();
+        os << emitter.getOrCreateName(operand);
         return success();
       }
     }
@@ -790,8 +777,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
   if (failed(emitter.emitAssignPrefix(op)))
     return failure();
   os << applyOp.getApplicableOperator();
-  if (failed(emitter.emitOperand(applyOp.getOperand())))
-    return failure();
+  os << emitter.getOrCreateName(applyOp.getOperand());
 
   return success();
 }
@@ -1176,10 +1162,7 @@ static LogicalResult printFunctionBody(CppEmitter &emitter,
               emitter.emitType(block.getParentOp()->getLoc(), arg.getType()))) {
         return failure();
       }
-      os << " ";
-      if (failed(emitter.emitOperand(arg)))
-        return failure();
-      os << ";\n";
+      os << " " << emitter.getOrCreateName(arg) << ";\n";
     }
   }
 
