@@ -6690,20 +6690,6 @@ When the Owner's lifetime ends, it will consider the Pointer to be dangling.
     P.getInt(); // P is dangling
   }
 
-If a template class is annotated with ``[[gsl::Owner]]``, and the first
-instantiated template argument is a pointer type (raw pointer, or ``[[gsl::Pointer]]``),
-the analysis will consider the instantiated class as a container of the pointer.
-When constructing such an object from a GSL owner object, the analysis will
-assume that the container holds a pointer to the owner object. Consequently,
-when the owner object is destroyed, the pointer will be considered dangling.
-
-.. code-block:: c++
-
-   int f() {
-     std::vector<std::string_view> v = {std::string()}; // v holds a dangling pointer.
-     std::optional<std::string_view> o = std::string(); // o holds a dangling pointer.
-   }
-
 }];
 }
 
@@ -6863,7 +6849,7 @@ def UnsafeBufferUsageDocs : Documentation {
 The attribute ``[[clang::unsafe_buffer_usage]]`` should be placed on functions
 that need to be avoided as they are prone to buffer overflows or unsafe buffer
 struct fields. It is designed to work together with the off-by-default compiler
-warning ``-Wunsafe-buffer-usage``to help codebases transition away from raw pointer
+warning ``-Wunsafe-buffer-usage`` to help codebases transition away from raw pointer
 based buffer management, in favor of safer abstractions such as C++20 ``std::span``.
 The attribute causes ``-Wunsafe-buffer-usage`` to warn on every use of the function or
 the field it is attached to, and it may also lead to emission of automatic fix-it
