@@ -598,6 +598,167 @@ Operation *makeTiledShape(OpBuilder &builder, Location loc, Value valueToTile,
   return materializeTiledShape(builder, loc, valueToTile, sliceParams);
 }
 
+struct Bounds {
+  OpFoldResult lower;
+  OpFoldResult upper; // largestIndex
+};
+
+struct AffineExprBounds
+    : public AffineExprVisitor<AffineExprBounds, LogicalResult> {
+
+  DenseMap<AffineExpr, Bounds> bounds;
+  IRRewriter &rewriter;
+  Location loc;
+
+  LogicalResult visitAffineBinaryOpExpr(AffineBinaryOpExpr expr) {
+    Bounds lhsBounds = bounds.at(expr.getLHS());
+    Bounds rhsBounds = bounds.at(expr.getRHS());
+
+    auto local =
+        getAffineBinaryOpExpr(expr.getKind(), rewriter.getAffineDimExpr(0),
+                              rewriter.getAffineDimExpr(1));
+
+    bounds[expr] =
+        Bounds{makeComposedFoldedAffineApply(
+                   rewriter, loc, local, {lhsBounds.lower, rhsBounds.lower}),
+               makeComposedFoldedAffineApply(
+                   rewriter, loc, local, {lhsBounds.upper, rhsBounds.upper})};
+    return success();
+  }
+  LogicalResult visitMulExpr(AffineBinaryOpExpr expr) {
+    Bounds lhsBounds = bounds.at(expr.getLHS());
+    Bounds rhsBounds = bounds.at(expr.getRHS());
+
+    auto rhs = dyn_cast<AffineConstantExpr>(expr.getRHS());
+    if (!rhs)
+      return failure();
+
+    if (rhs.getValue() < 0) {
+      return failure();
+    }
+
+    auto local = rewriter.getAffineDimExpr(0) * rewriter.getAffineDimExpr(1);
+
+    bounds[expr] =
+        Bounds{makeComposedFoldedAffineApply(
+                   rewriter, loc, local, {lhsBounds.lower, rhsBounds.lower}),
+               makeComposedFoldedAffineApply(
+                   rewriter, loc, local, {lhsBounds.upper, rhsBounds.upper})};
+    return success();
+  }
+  LogicalResult visitModExpr(AffineBinaryOpExpr expr) {
+    auto rhs = dyn_cast<AffineConstantExpr>(expr.getRHS());
+    if (!rhs) {
+      llvm_unreachable("visitModExpr oops");
+      return failure();
+    }
+
+    Bounds lhsBounds = bounds.at(expr.getLHS());
+
+    auto n = rhs.getValue();
+
+    auto local = rewriter.getAffineDimExpr(0) % rhs;
+
+    auto modAtLower =
+        makeComposedFoldedAffineApply(rewriter, loc, local, {lhsBounds.lower});
+    auto modAtUpper =
+        makeComposedFoldedAffineApply(rewriter, loc, local, {lhsBounds.upper});
+
+    /*auto constLower = getConstantIntValue(lhsBounds.lower);
+    auto constUpper = getConstantIntValue(lhsBounds.upper);
+    if(!constLower || !constUpper){
+      llvm_unreachable("not const oops");
+      return failure();
+    }*/
+
+    // lower = 3, n = 5, upper = 5
+
+    // auto diff = makeComposedFoldedAffineApply(rewriter, loc,
+    // rewriter.getAffineDimExpr(0) - rewriter.getAffineDimExpr(1),
+    // {lhsBounds.upper, lhsBounds.lower}); llvm::errs() << "diff:\n";
+    // diff.dump();
+    auto diffVal = getConstantIntValue(lhsBounds.upper);
+    if (!diffVal) {
+      llvm_unreachable("not const oops");
+      return failure();
+    }
+    // bool hasWrapAround = (*constUpper - *constLower) >= n || modAtLower >
+    // modAtUpper;
+
+    if (*diffVal >= n) {
+      LLVM_DEBUG(llvm::dbgs() << "mod: wrapping around\n");
+      bounds[expr] =
+          Bounds{rewriter.getIndexAttr(0), rewriter.getIndexAttr(n - 1)};
+    } else {
+      LLVM_DEBUG(llvm::dbgs() << "mod: nothing\n");
+      bounds[expr] = Bounds{lhsBounds.lower, lhsBounds.upper};
+    }
+
+    return success();
+  }
+  LogicalResult visitConstantExpr(AffineConstantExpr expr) {
+    auto val = rewriter.getIndexAttr(expr.getValue());
+    bounds[expr] = Bounds{val, val};
+    return success();
+  }
+  LogicalResult visitDimExpr(AffineDimExpr) { return success(); }
+  LogicalResult visitSymbolExpr(AffineSymbolExpr expr) { return failure(); }
+
+public:
+  AffineExprBounds(IRRewriter &rewriter, Location loc,
+                   ArrayRef<OpFoldResult> lbs, ArrayRef<OpFoldResult> sizes)
+      : rewriter(rewriter), loc(loc) {
+    for (auto [dim, bnd] : enumerate(zip(lbs, sizes))) {
+      bounds[rewriter.getAffineDimExpr(dim)] = Bounds{
+          get<0>(bnd),
+
+          makeComposedFoldedAffineApply(
+              rewriter, loc, rewriter.getAffineDimExpr(0) - 1, {get<1>(bnd)})};
+    }
+  }
+  FailureOr<Bounds> computeBounds(AffineExpr root) {
+    if (failed(walkPostOrder(root))) {
+      llvm::errs() << "root: " << root << "\n";
+      llvm_unreachable("failed oops");
+      return failure();
+    }
+    for(auto& [expr, bnds] : bounds) {
+       LLVM_DEBUG(llvm::dbgs() << "bounds for " << expr << "\n");
+       LLVM_DEBUG(llvm::dbgs() << "  lower: " << bnds.lower << "\n");
+       LLVM_DEBUG(llvm::dbgs() << "  upper: " << bnds.upper << "\n");
+    }
+
+    auto i = bounds.find(root);
+    if (i != bounds.end()) {
+      return i->second;
+    }
+    llvm::errs() << "available bounds:"
+                 << "\n";
+    for (auto [e, b] : bounds) {
+      llvm::errs() << "  " << e << b.lower << " - " << b.upper << "\n";
+    }
+    llvm::errs() << "root: " << root << "\n";
+    llvm_unreachable("not found oops");
+    return failure();
+  }
+};
+
+FailureOr<SmallVector<Bounds>> computeBounds(IRRewriter &rewriter, Location loc,
+                                             AffineMap map,
+                                             ArrayRef<OpFoldResult> lbs,
+                                             ArrayRef<OpFoldResult> sizes) {
+  AffineExprBounds visitor(rewriter, loc, lbs, sizes);
+  SmallVector<Bounds> bounds;
+  bounds.reserve(map.getNumResults());
+  for (AffineExpr result : map.getResults()) {
+    FailureOr<Bounds> res = visitor.computeBounds(result);
+    if (failed(res))
+      return failure();
+    bounds.push_back(*res);
+  }
+  return bounds;
+}
+
 SliceParameters
 computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
                        ArrayRef<OpFoldResult> tileSizes, AffineMap map,
@@ -615,12 +776,40 @@ computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
   sliceParams.sizes.reserve(rank);
   sliceParams.strides.reserve(rank);
   for (unsigned r = 0; r < rank; ++r) {
-    LLVM_DEBUG(llvm::dbgs() << "computeSliceParameters: for dim#" << r);
     auto m = map.getSubMap({r});
+    // Tiling creates a new slice at the proper index, the slice step is 1
+    // (i.e. the op does not subsample, stepping occurs in the loop).
+    LLVM_DEBUG(llvm::dbgs() << "computeSliceParameters: submap: " << m << "\n");
+
     // The offset & size computation below only handles the case when
     // the map is monotonically increasing, i.e. the min and max values are
     // attained at the lower and upper bounds of the iteration domain.
-    if (!isTiled(m, tileSizes) || !m.isComponentWiseMonotonicallyIncreasing()) {
+    IRRewriter rewriter(builder);
+
+    AffineExpr d0, d1;
+    MLIRContext *context = builder.getContext();
+    bindDims(context, d0, d1);
+    // Compute upper bound (exclusive) of iteration domains.
+    /*SmallVector<OpFoldResult> upperBounds; //ubs is sometimes empty
+    for(auto [lb, size] : zip(lbs, subShapeSizes)) {
+      upperBounds.push_back(makeComposedFoldedAffineApply(rewriter, loc, d0 +
+    d1, {lb, size}));
+    }*/
+    LLVM_DEBUG(llvm::dbgs() << "tileSizes:");
+    for (auto s : tileSizes)
+      LLVM_DEBUG(llvm::dbgs() << " " << s);
+    LLVM_DEBUG(llvm::dbgs() << "\n");
+
+    LLVM_DEBUG(llvm::dbgs() << "subShapeSizes:");
+    for (auto s : tileSizes)
+      LLVM_DEBUG(llvm::dbgs() << " " << s);
+    LLVM_DEBUG(llvm::dbgs() << "\n");
+
+    SmallVector<OpFoldResult> zeros(lbs.size(), rewriter.getIndexAttr(0));
+    FailureOr<SmallVector<Bounds>> bounds =
+        computeBounds(rewriter, loc, m, zeros, tileSizes);
+
+    if (!isTiled(m, tileSizes) || failed(bounds)) {
       sliceParams.offsets.push_back(builder.getIndexAttr(0));
       OpFoldResult dim = createFoldedDimOp(builder, loc, valueToTile, r);
       sliceParams.sizes.push_back(dim);
@@ -630,18 +819,84 @@ computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
     }
     LLVM_DEBUG(llvm::dbgs() << ": tiled: figure out subsize...\n");
 
-    // Tiling creates a new slice at the proper index, the slice step is 1
-    // (i.e. the op does not subsample, stepping occurs in the loop).
-    LLVM_DEBUG(llvm::dbgs() << "computeSliceParameters: submap: " << m << "\n");
-    IRRewriter rewriter(builder);
-    OpFoldResult offset = makeComposedFoldedAffineApply(rewriter, loc, m, lbs);
+    
+    
+    OpFoldResult atZero = makeComposedFoldedAffineApply(rewriter, loc, m, zeros);
+    auto atZeroInt = getConstantIntValue(atZero);
+    assert(atZeroInt);
+    OpFoldResult offset = makeComposedFoldedAffineApply(rewriter, loc, m.getResult(0) - *atZeroInt, lbs);
     sliceParams.offsets.push_back(offset);
-    OpFoldResult closedIntSize =
-        makeComposedFoldedAffineApply(rewriter, loc, m, subShapeSizes);
-    // Resulting size needs to be made half open interval again.
-    AffineExpr s0 = getAffineSymbolExpr(0, builder.getContext());
-    OpFoldResult size =
-        makeComposedFoldedAffineApply(rewriter, loc, s0 + 1, closedIntSize);
+    OpFoldResult size;
+    if (true) {
+      LLVM_DEBUG(llvm::dbgs() << "computeSliceParameters: non-monotonic\n");
+
+#if 0
+      SmallVector<AffineExpr> exprs;
+      SmallVector<AffineExpr> ks;
+      SmallVector<AffineExpr> floorDiv;
+      SmallVector<AffineExpr> syms;
+      for(auto [idx, ts] : enumerate(tileSizes)) {
+        auto cI = getConstantIntValue(ts);
+        if(!cI) {
+          llvm_unreachable("cannot tile");
+        }
+        exprs.push_back(rewriter.getAffineDimExpr(idx) * *cI);
+        floorDiv.push_back(rewriter.getAffineDimExpr(idx).floorDiv(*cI));
+        ks.push_back(exprs.back() + rewriter.getAffineSymbolExpr(idx));
+        syms.push_back(rewriter.getAffineSymbolExpr(idx));
+      }
+      auto mWithSyms = m.replaceDimsAndSymbols(syms, {}, 0, tileSizes.size());
+      //AffineMap tileSizeTimesD = AffineMap::get(tileSizes.size(), 0, exprs, context);
+      AffineMap tileSizeTimesDplusK = AffineMap::get(tileSizes.size(), tileSizes.size(), ks, context);
+
+      AffineMap floorDivMap = AffineMap::get(tileSizes.size(), 0, floorDiv, context);
+
+      auto fTiPlusK = m.compose(tileSizeTimesDplusK);
+      LLVM_DEBUG(llvm::dbgs() << "f(iT + k): " << fTiPlusK <<  "\n");
+
+      SmallVector<AffineExpr> expr2;
+      for(auto [a, b, ts] : zip(fTiPlusK.getResults(), mWithSyms.getResults(), tileSizes)) {
+        auto cI = getConstantIntValue(ts);
+        if(!cI) {
+          llvm_unreachable("cannot tile");
+        }
+        expr2.push_back((a - b));
+      }
+      AffineMap offsetMap = AffineMap::get(tileSizes.size(), tileSizes.size(), expr2, context);
+
+      LLVM_DEBUG(llvm::dbgs() << "(f(iT + k) - f(k)) = " << offsetMap <<  "\n");
+
+      offsetMap = compressUnusedSymbols(simplifyAffineMap(offsetMap));
+      LLVM_DEBUG(llvm::dbgs() << "simplified: (f(iT + k) - f(k)) = " << offsetMap <<  "\n");
+
+      //for(size_t idx = 0; idx < tileSizes.size(); ++idx) {
+//        if(offsetMap.isFunctionOfSymbol(idx)) {
+  //        llvm_unreachable("Still depends on symbol");
+    //    }
+    //}
+
+
+      assert(offsetMap.getNumSymbols() == 0 && "symbols didn't simplify away");
+        assert(offsetMap.getNumDims() == lbs.size());
+      offset =  makeComposedFoldedAffineApply(rewriter, loc, offsetMap.compose(floorDivMap),
+                                           lbs);
+
+  
+      LLVM_DEBUG(llvm::dbgs()
+                 << "computeSliceParameters: bounds: " << (*bounds)[0].lower
+                 << " - " << (*bounds)[0].upper << "\n");
+#endif
+      // size = (*bounds)[0].upper;
+      size = makeComposedFoldedAffineApply(rewriter, loc, d0 + 1,
+                                           {(*bounds)[0].upper});
+    } else {
+      OpFoldResult closedIntSize =
+          makeComposedFoldedAffineApply(rewriter, loc, m, subShapeSizes);
+      // Resulting size needs to be made half open interval again.
+      AffineExpr s0 = getAffineSymbolExpr(0, builder.getContext());
+      size =
+          makeComposedFoldedAffineApply(rewriter, loc, s0 + 1, closedIntSize);
+    }
     LLVM_DEBUG(llvm::dbgs()
                << "computeSliceParameters: raw size: " << size << "\n");
     LLVM_DEBUG(llvm::dbgs()
@@ -667,6 +922,7 @@ computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
     auto dividesEvenly = sizeCst && !ShapedType::isDynamic(shapeSize) &&
                          ((shapeSize % *sizeCst) == 0);
     if (!hasTileSizeOne && !dividesEvenly) {
+      assert(m.isComponentWiseMonotonicallyIncreasing());
       LLVM_DEBUG(llvm::dbgs() << "makeTiledShape: shapeSize=" << shapeSize
                               << ", size: " << size
                               << ": make sure in bound with affine.min\n");
