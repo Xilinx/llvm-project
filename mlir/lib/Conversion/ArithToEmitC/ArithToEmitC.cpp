@@ -757,7 +757,9 @@ public:
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
 
-    if (!castOp.areCastCompatible(operandType, dstType))
+    if (!isa<emitc::OpaqueType>(dstType) &&
+        !isa<emitc::OpaqueType>(operandType) &&
+        !castOp.areCastCompatible(operandType, dstType))
       return rewriter.notifyMatchFailure(castOp, "cast-incompatible types");
 
     rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType,
@@ -787,7 +789,9 @@ public:
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
 
-    if (!castOp.areCastCompatible(operandType, dstType))
+    if (!isa<emitc::OpaqueType>(dstType) &&
+        !isa<emitc::OpaqueType>(operandType) &&
+        !castOp.areCastCompatible(operandType, dstType))
       return rewriter.notifyMatchFailure(castOp, "cast-incompatible types");
 
     rewriter.replaceOpWithNewOp<emitc::CastOp>(castOp, dstType,
