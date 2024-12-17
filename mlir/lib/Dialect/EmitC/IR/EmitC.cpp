@@ -313,6 +313,10 @@ LogicalResult emitc::AssignOp::verify() {
 bool CastOp::areCastCompatible(TypeRange inputs, TypeRange outputs) {
   Type input = inputs.front(), output = outputs.front();
 
+  // Opaque types are always allowed
+  if (isa<emitc::OpaqueType>(input) || isa<emitc::OpaqueType>(output))
+    return true;
+
   // Cast to array is only possible from an array
   if (isa<emitc::ArrayType>(input) != isa<emitc::ArrayType>(output))
     return false;
