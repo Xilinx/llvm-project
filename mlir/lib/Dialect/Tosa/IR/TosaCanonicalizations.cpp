@@ -1349,19 +1349,13 @@ OpFoldResult tosa::AbsOp::fold(FoldAdaptor adaptor) {
   return {};
 }
 
-static bool hasZeroSize(Type ty) {
-  auto ranked = dyn_cast<RankedTensorType>(ty);
-  if (!ranked)
-    return false;
-  return any_of(ranked.getShape(), [](auto d) { return d == 0; });
-}
-
 OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
   /// Remove operands that have zero elements.
   bool changed = false;
   for (size_t i = 0; i < getInput1().size(); ) {
-    auto input = getInput1()[i];
-    if (hasZeroSize(input.getType())) {
+    auto input = cast<RankedTensorType>(getInput1()[i].getType());
+    // Ensure that we have at least one operand left.
+    if (input.getDimSize(getAxis()) == 0 && getInput1().size() > 1) {
       getInput1Mutable().erase(i);
       changed = true;
     } else {
