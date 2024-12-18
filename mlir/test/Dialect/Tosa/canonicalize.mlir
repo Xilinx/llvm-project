@@ -204,6 +204,32 @@ func.func @concat_fold_zero(%arg0: tensor<?x0xf32>, %arg1: tensor<?x1xf32>, %arg
   %0 = tosa.concat %arg0, %arg1, %arg2 {axis = 1 : i32}: (tensor<?x0xf32>, tensor<?x1xf32>, tensor<?x2xf32>) -> tensor<?x3xf32>
   return %0 : tensor<?x3xf32>
 }
+// -----
+
+// CHECK-LABEL: @concat_fold_zero
+func.func @concat_fold_zero_all(%arg0: tensor<?x0xf32>, %arg1: tensor<?x0xf32>) -> tensor<?x0xf32> {
+  // CHECK: return %arg1
+  %0 = tosa.concat %arg0, %arg1 {axis = 1 : i32}: (tensor<?x0xf32>, tensor<?x0xf32>) -> tensor<?x0xf32>
+  return %0 : tensor<?x0xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @concat_fold_zero
+func.func @concat_fold_zero_different_axis(%arg0: tensor<0x2xf32>, %arg1: tensor<0x4xf32>) -> tensor<0x6xf32> {
+  // CHECK: tosa.concat %arg0, %arg1
+  %0 = tosa.concat %arg0, %arg1 {axis = 1 : i32}: (tensor<0x2xf32>, tensor<0x4xf32>) -> tensor<0x6xf32>
+  return %0 : tensor<0x6xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @concat_fold_zero_size
+func.func @concat_fold_zero_size(%arg0: tensor<?x0xf32>, %arg1: tensor<?x1xf32>, %arg2: tensor<?x2xf32>) -> tensor<?x3xf32> {
+  // CHECK: tosa.concat %arg1, %arg2 {axis = 1 : i32}
+  %0 = tosa.concat %arg0, %arg1, %arg2 {axis = 1 : i32}: (tensor<?x0xf32>, tensor<?x1xf32>, tensor<?x2xf32>) -> tensor<?x3xf32>
+  return %0 : tensor<?x3xf32>
+}
 
 // -----
 

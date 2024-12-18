@@ -36,11 +36,15 @@ emitc.func private @extern(i32) attributes {specifiers = ["extern"]}
 
 func.func @cast(%arg0: i32) {
   %1 = emitc.cast %arg0: i32 to f32
+  %2 = emitc.cast %1: f32 to !emitc.opaque<"some type">
+  %3 = emitc.cast %2: !emitc.opaque<"some type"> to !emitc.size_t
   return
 }
 
 func.func @cast_array(%arg : !emitc.array<4xf32>) {
     %1 = emitc.cast %arg: !emitc.array<4xf32> to !emitc.array<4xf32> ref
+    %2 = emitc.cast %arg: !emitc.array<4xf32> to !emitc.opaque<"some type">
+    %3 = emitc.cast %2: !emitc.opaque<"some type"> to !emitc.array<4xf32> ref
     return
 }
 
