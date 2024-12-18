@@ -57,6 +57,11 @@ public:
       return success();
     }
 
+    if (isa<emitc::OpaqueType>(convertedType)) {
+      return rewriter.notifyMatchFailure(op->getLoc(),
+                                         "cannot initialize opaque types.");
+    }
+
     // Any constant will be fine to lower a poison op
     if (emitc::isIntegerIndexOrOpaqueType(convertedType)) {
       value = IntegerAttr::get((emitc::isPointerWideType(convertedType))
