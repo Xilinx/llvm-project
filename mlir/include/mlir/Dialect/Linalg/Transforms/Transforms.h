@@ -1702,7 +1702,7 @@ using ControlFusionFn = std::function<bool(OpOperand *fusedOperand)>;
 void populateElementwiseOpsFusionPatterns(
     RewritePatternSet &patterns,
     const ControlFusionFn &controlElementwiseOpFusion,
-    bool introduceTensorEmpty = true);
+    bool replaceOutsDependency = true);
 
 /// Function type which is used to control propagation of tensor.pack/unpack
 /// ops.
