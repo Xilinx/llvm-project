@@ -2189,14 +2189,16 @@ struct LinalgElementwiseOpFusionPass
 
     // General canonicalization patterns.
     affine::AffineApplyOp::getCanonicalizationPatterns(patterns, context);
-    GenericOp::getCanonicalizationPatterns(patterns, context);
+    if (removeOutsDependency)
+      GenericOp::getCanonicalizationPatterns(patterns, context);
     tensor::ExpandShapeOp::getCanonicalizationPatterns(patterns, context);
     tensor::CollapseShapeOp::getCanonicalizationPatterns(patterns, context);
     context->getLoadedDialect<LinalgDialect>()->getCanonicalizationPatterns(
         patterns);
 
     // Add constant folding patterns.
-    populateConstantFoldLinalgOperations(patterns, defaultControlFn);
+    if (removeOutsDependency)
+      populateConstantFoldLinalgOperations(patterns, defaultControlFn);
 
     // Use TopDownTraversal for compile time reasons
     GreedyRewriteConfig grc;
