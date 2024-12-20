@@ -39,8 +39,14 @@ public:
     Type newTy = this->getTypeConverter()->convertType(arithConst.getType());
     if (!newTy)
       return rewriter.notifyMatchFailure(arithConst, "type conversion failed");
-    rewriter.replaceOpWithNewOp<emitc::ConstantOp>(arithConst, newTy,
-                                                   adaptor.getValue());
+    Attribute attr = adaptor.getValue();
+
+    if (arithConst.getType().isBF16()) {
+      SmallVector<char> str;
+      cast<FloatAttr>(attr).getValue().toString(str);
+      attr = emitc::OpaqueAttr::get(getContext(), StringRef(str.begin()));
+    }
+    rewriter.replaceOpWithNewOp<emitc::ConstantOp>(arithConst, newTy, attr);
     return success();
   }
 };
