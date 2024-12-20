@@ -722,10 +722,10 @@ public:
       llvm_unreachable("failed oops");
       return failure();
     }
-    for(auto& [expr, bnds] : bounds) {
-       LLVM_DEBUG(llvm::dbgs() << "bounds for " << expr << "\n");
-       LLVM_DEBUG(llvm::dbgs() << "  lower: " << bnds.lower << "\n");
-       LLVM_DEBUG(llvm::dbgs() << "  upper: " << bnds.upper << "\n");
+    for (auto &[expr, bnds] : bounds) {
+      LLVM_DEBUG(llvm::dbgs() << "bounds for " << expr << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "  lower: " << bnds.lower << "\n");
+      LLVM_DEBUG(llvm::dbgs() << "  upper: " << bnds.upper << "\n");
     }
 
     auto i = bounds.find(root);
@@ -819,12 +819,12 @@ computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
     }
     LLVM_DEBUG(llvm::dbgs() << ": tiled: figure out subsize...\n");
 
-    
-    
-    OpFoldResult atZero = makeComposedFoldedAffineApply(rewriter, loc, m, zeros);
+    OpFoldResult atZero =
+        makeComposedFoldedAffineApply(rewriter, loc, m, zeros);
     auto atZeroInt = getConstantIntValue(atZero);
     assert(atZeroInt);
-    OpFoldResult offset = makeComposedFoldedAffineApply(rewriter, loc, m.getResult(0) - *atZeroInt, lbs);
+    OpFoldResult offset = makeComposedFoldedAffineApply(
+        rewriter, loc, m.getResult(0) - *atZeroInt, lbs);
     sliceParams.offsets.push_back(offset);
     OpFoldResult size;
     if (true) {
