@@ -254,6 +254,16 @@ struct CppEmitter {
     return operandExpression == emittedExpression;
   };
 
+  /// Determine whether expression \p expressionOp should be emitted inline,
+  /// i.e. as part of its user. This function recommends inlining of any
+  /// expressions that can be inlined unless it is used by another expression,
+  /// under the assumption that  any expression fusion/re-materialization was
+  /// taken care of by transformations run by the backend.
+  bool shouldBeInlined(ExpressionOp expressionOp);
+
+  /// This emitter will only emit translation units whos id matches this value.
+  StringRef willOnlyEmitTu() { return onlyTu; }
+
 private:
   using ValueMapper = llvm::ScopedHashTable<Value, std::string>;
   using BlockMapper = llvm::ScopedHashTable<Block *, std::string>;
@@ -297,21 +307,22 @@ private:
       return lowestPrecedence();
     return emittedExpressionPrecedence.back();
   }
+
+  /// Determine whether expression \p op should be emitted in a deferred way.
+  bool hasDeferredEmission(Operation *op);
 };
 } // namespace
 
-/// Determine whether expression \p op should be emitted in a deferred way.
-static bool hasDeferredEmission(Operation *op) {
+bool CppEmitter::hasDeferredEmission(Operation *op) {
+  if (llvm::isa_and_nonnull<emitc::ConstantOp>(op)) {
+    return !shouldUseConstantsAsVariables();
+  }
+
   return isa_and_nonnull<emitc::GetGlobalOp, emitc::LiteralOp, emitc::MemberOp,
                          emitc::MemberOfPtrOp, emitc::SubscriptOp>(op);
 }
 
-/// Determine whether expression \p expressionOp should be emitted inline, i.e.
-/// as part of its user. This function recommends inlining of any expressions
-/// that can be inlined unless it is used by another expression, under the
-/// assumption that  any expression fusion/re-materialization was taken care of
-/// by transformations run by the backend.
-static bool shouldBeInlined(ExpressionOp expressionOp) {
+bool CppEmitter::shouldBeInlined(ExpressionOp expressionOp) {
   // Do not inline if expression is marked as such.
   if (expressionOp.getDoNotInline())
     return false;
@@ -373,6 +384,25 @@ static LogicalResult printConstantOp(CppEmitter &emitter, Operation *operation,
 static LogicalResult printOperation(CppEmitter &emitter,
                                     emitc::ConstantOp constantOp) {
   if (!emitter.shouldUseConstantsAsVariables()) {
+    std::string out;
+    llvm::raw_string_ostream ss(out);
+
+    /// Temporary emitter object that writes to our stream instead of the output
+    /// allowing for the capture and caching of the produced string.
+    CppEmitter sniffer = CppEmitter(ss, emitter.shouldDeclareVariablesAtTop(),
+                                    emitter.willOnlyEmitTu(),
+                                    emitter.shouldUseConstantsAsVariables());
+
+    ss << "(";
+    if (failed(sniffer.emitType(constantOp.getLoc(), constantOp.getType())))
+      return failure();
+    ss << ") ";
+
+    if (failed(
+            sniffer.emitAttribute(constantOp.getLoc(), constantOp.getValue())))
+      return failure();
+
+    emitter.cacheDeferredOpResult(constantOp.getResult(), out);
     return success();
   }
 
@@ -838,7 +868,7 @@ static LogicalResult printOperation(CppEmitter &emitter, emitc::CastOp castOp) {
 
 static LogicalResult printOperation(CppEmitter &emitter,
                                     emitc::ExpressionOp expressionOp) {
-  if (shouldBeInlined(expressionOp))
+  if (emitter.shouldBeInlined(expressionOp))
     return success();
 
   Operation &op = *expressionOp.getOperation();
@@ -892,7 +922,7 @@ static LogicalResult printOperation(CppEmitter &emitter, emitc::ForOp forOp) {
         dyn_cast_if_present<ExpressionOp>(value.getDefiningOp());
     if (!expressionOp)
       return false;
-    return shouldBeInlined(expressionOp);
+    return emitter.shouldBeInlined(expressionOp);
   };
 
   os << "for (";
@@ -1114,7 +1144,7 @@ static LogicalResult printFunctionBody(CppEmitter &emitter,
         functionOp->walk<WalkOrder::PreOrder>([&](Operation *op) -> WalkResult {
           if (isa<emitc::ExpressionOp>(op->getParentOp()) ||
               (isa<emitc::ExpressionOp>(op) &&
-               shouldBeInlined(cast<emitc::ExpressionOp>(op))))
+               emitter.shouldBeInlined(cast<emitc::ExpressionOp>(op))))
             return WalkResult::skip();
           for (OpResult result : op->getResults()) {
             if (failed(emitter.emitVariableDeclaration(
@@ -1494,22 +1524,6 @@ LogicalResult CppEmitter::emitExpression(ExpressionOp expressionOp) {
 
 LogicalResult CppEmitter::emitOperand(Value value) {
   Operation *def = value.getDefiningOp();
-  if (!shouldUseConstantsAsVariables()) {
-    if (auto constant = dyn_cast_if_present<ConstantOp>(def)) {
-      os << "((";
-
-      if (failed(emitType(constant.getLoc(), constant.getType()))) {
-        return failure();
-      }
-      os << ") ";
-
-      if (failed(emitAttribute(constant.getLoc(), constant.getValue()))) {
-        return failure();
-      }
-      os << ")";
-      return success();
-    }
-  }
 
   if (isPartOfCurrentExpression(value)) {
     assert(def && "Expected operand to be defined by an operation");
@@ -1721,11 +1735,7 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
             cacheDeferredOpResult(op.getResult(), op.getValue());
             return success();
           })
-          .Case<emitc::MemberOp>([&](auto op) {
-            cacheDeferredOpResult(op.getResult(), createMemberAccess(op));
-            return success();
-          })
-          .Case<emitc::MemberOfPtrOp>([&](auto op) {
+          .Case<emitc::MemberOp, emitc::MemberOfPtrOp>([&](auto op) {
             cacheDeferredOpResult(op.getResult(), createMemberAccess(op));
             return success();
           })
