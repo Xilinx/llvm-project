@@ -3906,7 +3906,10 @@ Target::StopHookScripted::HandleStop(ExecutionContext &exc_ctx,
   if (!m_interface_sp)
     return StopHookResult::KeepStopped;
 
-  auto should_stop_or_err = m_interface_sp->HandleStop(exc_ctx, output_sp);
+  lldb::StreamSP stream = std::make_shared<lldb_private::StreamString>();
+  auto should_stop_or_err = m_interface_sp->HandleStop(exc_ctx, stream);
+  output_sp->PutCString(
+      reinterpret_cast<StreamString *>(stream.get())->GetData());
   if (!should_stop_or_err)
     return StopHookResult::KeepStopped;
 
