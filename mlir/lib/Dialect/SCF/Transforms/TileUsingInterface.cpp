@@ -1536,6 +1536,12 @@ mlir::scf::tileConsumerAndFuseProducersUsingSCF(
       tiledAndFusedOps.insert(tiledAndFusedOp);
     }
 
+    // Drop the extract_slice if it has been replaced by the tiled producer, and
+    // is no longer used.
+    if(worklistItem.candidateSlice->use_empty()) {
+      rewriter.eraseOp(worklistItem.candidateSlice);
+    }
+
     if (failed(sliceTracker.insertAndApplyPatterns(worklistCandidates))) {
       return rewriter.notifyMatchFailure(consumer, "cleanup patterns failed");
     }
