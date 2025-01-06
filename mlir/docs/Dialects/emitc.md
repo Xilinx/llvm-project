@@ -18,6 +18,8 @@ The following convention is followed:
     floating types.
 *   If `__bf16` is used, the code requires a compiler that supports it, such as 
     GCC or Clang.
+*   If `ub.posion` values should be initialized and have an opaque type,
+    C++ is generated.
 *   Else the generated code is compatible with C99.
 
 These restrictions are neither inherent to the EmitC dialect itself nor to the
