@@ -661,7 +661,6 @@ module {
 // CHECK-SAME:    %[[TA:[0-9a-z]+]]: tensor<10x10xf32>) -> tensor<10x10xf32> {
 func.func @tile_fuse_drop_dead_producer(%arg0: tensor<10x10xf32>) -> tensor<10x10xf32> {
   %c2f = arith.constant 2.0 : f32
-  %c3f = arith.constant 3.0 : f32
 
   // CHECK-NOT: linalg.generic {{{[^\}]*}}} ins(%[[TA]] : tensor<10x10xf32>) outs(%{{.*}} : tensor<10x10xf32>) {
   %empty = tensor.empty() : tensor<10x10xf32>
