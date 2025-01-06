@@ -92,9 +92,14 @@ struct ConvertGlobal final : public OpConversionPattern<memref::GlobalOp> {
     if (isa_and_present<UnitAttr>(initialValue))
       initialValue = {};
 
+    auto convertedInitialValue =
+        getTypeConverter()->convertTypeAttribute(resultTy, initialValue);
+
     rewriter.replaceOpWithNewOp<emitc::GlobalOp>(
-        op, operands.getSymName(), resultTy, initialValue, externSpecifier,
-        staticSpecifier, operands.getConstant());
+        op, operands.getSymName(), resultTy,
+        convertedInitialValue.has_value() ? convertedInitialValue.value()
+                                          : initialValue,
+        externSpecifier, staticSpecifier, operands.getConstant());
     return success();
   }
 };
