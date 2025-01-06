@@ -39,8 +39,14 @@ public:
     Type newTy = this->getTypeConverter()->convertType(arithConst.getType());
     if (!newTy)
       return rewriter.notifyMatchFailure(arithConst, "type conversion failed");
-    rewriter.replaceOpWithNewOp<emitc::ConstantOp>(arithConst, newTy,
-                                                   adaptor.getValue());
+
+    auto newValueAttr =
+        getTypeConverter()->convertTypeAttribute(newTy, adaptor.getValueAttr());
+
+    rewriter.replaceOpWithNewOp<emitc::ConstantOp>(
+        arithConst, newTy,
+        newValueAttr.has_value() ? newValueAttr.value() : adaptor.getValue());
+
     return success();
   }
 };
