@@ -1255,7 +1255,7 @@ def ConvertUBToEmitC : Pass<"convert-ub-to-emitc"> {
   let summary = "Convert UB dialect to EmitC dialect";
   let description = [{
     This pass converts supported UB ops to EmitC dialect.
-    When the initialization values is enabled and some types are opaque, the
+    When the initialization of values is enabled and some types are opaque, the
     generated code is C++.
   }];
   let dependentDialects = ["emitc::EmitCDialect"];
