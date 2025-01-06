@@ -22,7 +22,7 @@ jobs:
   # run this on the self-hosted runners and don't have to do it this way to
   # avoid timeouts.
   build-ci-container-stage1:
-    if: github.repository_owner == 'llvm'
+    if: github.repository_owner == 'xilinx'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout LLVM
@@ -50,7 +50,7 @@ jobs:
           path: stage1-toolchain.tar
           retention-days: 1
   build-ci-container-stage2:
-    if: github.repository_owner == 'llvm'
+    if: github.repository_owner == 'xilinx'
     runs-on: ubuntu-latest
     needs: build-ci-container-stage1
     permissions:
