@@ -271,7 +271,7 @@ Value *VPTransformState::get(VPValue *Def, unsigned Part, bool NeedsScalar) {
     return Data.PerPartOutput[Def][Part];
 
   auto GetBroadcastInstrs = [this, Def](Value *V) {
-    bool SafeToHoist = Def->isDefinedOutsideVectorRegions();
+    bool SafeToHoist = Def->isDefinedOutsideLoopRegions();
     if (VF.isScalar())
       return V;
     // Place the code for broadcasting invariant variables in the new preheader.
@@ -576,14 +576,23 @@ VPBasicBlock *VPBasicBlock::splitAt(iterator SplitAt) {
   return SplitBlock;
 }
 
-VPRegionBlock *VPBasicBlock::getEnclosingLoopRegion() {
-  VPRegionBlock *P = getParent();
+/// Return the enclosing loop region for region \p P. The templated version is
+/// used to support both const and non-const block arguments.
+template <typename T> static T *getEnclosingLoopRegionForRegion(T *P) {
   if (P && P->isReplicator()) {
     P = P->getParent();
     assert(!cast<VPRegionBlock>(P)->isReplicator() &&
            "unexpected nested replicate regions");
   }
   return P;
+}
+
+VPRegionBlock *VPBasicBlock::getEnclosingLoopRegion() {
+  return getEnclosingLoopRegionForRegion(getParent());
+}
+
+const VPRegionBlock *VPBasicBlock::getEnclosingLoopRegion() const {
+  return getEnclosingLoopRegionForRegion(getParent());
 }
 
 static bool hasConditionalTerminator(const VPBasicBlock *VPBB) {
@@ -869,14 +878,23 @@ static VPIRBasicBlock *createVPIRBasicBlockFor(BasicBlock *BB) {
   return VPIRBB;
 }
 
-VPlanPtr VPlan::createInitialVPlan(const SCEV *TripCount, ScalarEvolution &SE,
+VPlanPtr VPlan::createInitialVPlan(Type *InductionTy,
+                                   PredicatedScalarEvolution &PSE,
                                    bool RequiresScalarEpilogueCheck,
                                    bool TailFolded, Loop *TheLoop) {
   VPIRBasicBlock *Entry = createVPIRBasicBlockFor(TheLoop->getLoopPreheader());
   VPBasicBlock *VecPreheader = new VPBasicBlock("vector.ph");
   auto Plan = std::make_unique<VPlan>(Entry, VecPreheader);
+
+  // Create SCEV and VPValue for the trip count.
+  const SCEV *BackedgeTakenCount = PSE.getBackedgeTakenCount();
+  assert(!isa<SCEVCouldNotCompute>(BackedgeTakenCount) && "Invalid loop count");
+  ScalarEvolution &SE = *PSE.getSE();
+  const SCEV *TripCount =
+      SE.getTripCountFromExitCount(BackedgeTakenCount, InductionTy, TheLoop);
   Plan->TripCount =
       vputils::getOrCreateVPValueForSCEVExpr(*Plan, TripCount, SE);
+
   // Create VPRegionBlock, with empty header and latch blocks, to be filled
   // during processing later.
   VPBasicBlock *HeaderVPBB = new VPBasicBlock("vector.body");
@@ -1448,6 +1466,11 @@ void VPlanIngredient::print(raw_ostream &O) const {
 }
 
 #endif
+
+bool VPValue::isDefinedOutsideLoopRegions() const {
+  return !hasDefiningRecipe() ||
+         !getDefiningRecipe()->getParent()->getEnclosingLoopRegion();
+}
 
 void VPValue::replaceAllUsesWith(VPValue *New) {
   replaceUsesWithIf(New, [](VPUser &, unsigned) { return true; });

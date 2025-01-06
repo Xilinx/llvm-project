@@ -30,6 +30,8 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/TypeSwitch.h"
 
+#include <numeric>
+
 using namespace mlir;
 using namespace mlir::tosa;
 
@@ -888,7 +890,7 @@ LogicalResult tosa::SliceOp::verify() {
   if (!inputType || !outputType)
     return success();
 
- if (inputType.getRank() != outputType.getRank()) {
+  if (inputType.getRank() != outputType.getRank()) {
     return emitOpError() << "rank of input (" << inputType.getRank()
                          << ") and output (" << outputType.getRank()
                          << ") must match";
@@ -1077,28 +1079,42 @@ llvm::LogicalResult tosa::ReshapeOp::verify() {
                            << newShapeDim;
   }
 
-  if (inputType.hasStaticShape() && outputType.hasStaticShape()) {
+  if (inputType.hasStaticShape()) {
     int64_t inputElementsNum = inputType.getNumElements();
-    int64_t outputElementsNum = outputType.getNumElements();
-    if (inputElementsNum != outputElementsNum) {
-      return emitOpError() << "cannot reshape " << inputElementsNum
-                           << " elements into " << outputElementsNum;
-    }
-
-    if ((int64_t)getNewShape().size() != outputType.getRank()) {
-      return emitOpError() << "rank of newShape (" << getNewShape().size()
-                           << ") and output (" << outputType.getRank()
-                           << ") must match";
-    }
-
-    for (int64_t dim = 0; dim < outputType.getRank(); ++dim) {
-      if (getNewShape()[dim] != -1 &&
-          getNewShape()[dim] != outputType.getShape()[dim]) {
-        return emitOpError()
-               << "newShape attribute (" << getNewShape()[dim]
-               << ") does not match output type (" << outputType.getShape()[dim]
-               << ") in dimension " << dim;
+    if (outputType.hasStaticShape()) {
+      int64_t outputElementsNum = outputType.getNumElements();
+      if (inputElementsNum != outputElementsNum) {
+        return emitOpError() << "cannot reshape " << inputElementsNum
+                             << " elements into " << outputElementsNum;
       }
+      
+      if ((int64_t)getNewShape().size() != outputType.getRank()) {
+        return emitOpError()
+               << "rank of newShape (" << getNewShape().size()
+               << ") and output (" << outputType.getRank() << ") must match";
+      }
+
+      for (int64_t dim = 0; dim < outputType.getRank(); ++dim) {
+        if (getNewShape()[dim] != -1 &&
+            getNewShape()[dim] != outputType.getShape()[dim]) {
+          return emitOpError()
+                 << "newShape attribute (" << getNewShape()[dim]
+                 << ") does not match output type ("
+                 << outputType.getShape()[dim] << ") in dimension " << dim;
+        }
+      }
+    }
+
+    // AMD: Switched checks with > to >= to allow zero dimensions
+    int64_t newShapeElementsNum = std::accumulate(
+        getNewShape().begin(), getNewShape().end(), 1LL,
+        [](int64_t acc, int64_t dim) { return (dim >= 0) ? acc * dim : acc; });
+    bool isStaticNewShape =
+        llvm::all_of(getNewShape(), [](int64_t s) { return s >= 0; });
+    if ((isStaticNewShape && inputElementsNum != newShapeElementsNum) ||
+        (!isStaticNewShape && newShapeElementsNum > inputElementsNum)) {
+      return emitOpError() << "cannot reshape " << inputElementsNum
+                           << " elements into " << newShapeElementsNum;
     }
   }
 
