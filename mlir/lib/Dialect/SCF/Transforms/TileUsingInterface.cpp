@@ -1538,7 +1538,7 @@ mlir::scf::tileConsumerAndFuseProducersUsingSCF(
 
     // Drop the extract_slice if it has been replaced by the tiled producer, and
     // is no longer used.
-    if(worklistItem.candidateSlice->use_empty()) {
+    if (worklistItem.candidateSlice->use_empty()) {
       rewriter.eraseOp(worklistItem.candidateSlice);
     }
 
