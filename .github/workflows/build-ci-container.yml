@@ -16,6 +16,7 @@ on:
     paths:
       - .github/workflows/build-ci-container.yml
       - '.github/workflows/containers/github-action-ci/**'
+  workflow_dispatch:
 
 jobs:
   # TODO(boomanaiden154): Switch this back to a single stage build when we can
