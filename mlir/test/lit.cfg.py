@@ -71,6 +71,22 @@ def find_runtime(name):
     return path
 
 
+# Find path to the ASan runtime required for the Python interpreter.
+def find_asan_runtime():
+    if not "asan" in config.available_features or not "Linux" in config.host_os:
+        return ""
+    # Find the asan rt lib
+    return (
+        subprocess.check_output(
+            [
+                config.host_cxx.strip(),
+                f"-print-file-name=libclang_rt.asan-{config.host_arch}.so",
+            ]
+        )
+        .decode("utf-8")
+        .strip()
+    )
+
 # Searches for a runtime library with the given name and returns a tool
 # substitution of the same name and the found path.
 def add_runtime(name):
@@ -177,7 +193,8 @@ python_executable = config.python_executable
 # Python configuration with sanitizer requires some magic preloading. This will only work on clang/linux.
 # TODO: detect Darwin/Windows situation (or mark these tests as unsupported on these platforms).
 if "asan" in config.available_features and "Linux" in config.host_os:
-    python_executable = f"LD_PRELOAD=$({config.host_cxx} -print-file-name=libclang_rt.asan-{config.host_arch}.so) {config.python_executable}"
+    _asan_rt = find_asan_runtime()
+    python_executable = f"env LD_PRELOAD={_asan_rt} {config.python_executable}"
 # On Windows the path to python could contains spaces in which case it needs to be provided in quotes.
 # This is the equivalent of how %python is setup in llvm/utils/lit/lit/llvm/config.py.
 elif "Windows" in config.host_os:
