@@ -1957,7 +1957,7 @@ public:
   matchAndRewrite(tosa::ReverseOp op, OpAdaptor operands,
                   ConversionPatternRewriter &rewriter) const final {
     auto loc = op.getLoc();
-    Value input = operands.getInput();
+    Value input = operands.getInput1();
     auto inputTy = cast<ShapedType>(input.getType());
     auto resultTy =
         cast_or_null<ShapedType>(getTypeConverter()->convertType(op.getType()));
@@ -2300,7 +2300,7 @@ public:
   matchAndRewrite(tosa::TableOp op, OpAdaptor operands,
                   ConversionPatternRewriter &rewriter) const final {
     auto loc = op.getLoc();
-    Value input = operands.getInput();
+    Value input = operands.getInput1();
     Value table = operands.getTable();
     auto inputTy = cast<ShapedType>(input.getType());
     auto tableTy = cast<ShapedType>(table.getType());

@@ -1798,7 +1798,7 @@ struct TosaFoldConstantSlice : public TosaFoldConstantBase<tosa::SliceOp> {
       return failure();
 
     auto start = op.getStart();
-    auto input = op.getInput();
+    auto input = op.getInput1();
     ElementsAttr inputValues;
     if (!matchPattern(input, m_Constant(&inputValues)))
       return failure();
