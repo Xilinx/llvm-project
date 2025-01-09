@@ -52,22 +52,30 @@ public:
     Attribute value;
     if (noInitialization) {
       value = emitc::OpaqueAttr::get(op->getContext(), "");
-      auto var = rewriter.create<emitc::VariableOp>(op.getLoc(), emitc::LValueType::get(convertedType), value);
+      auto var = rewriter.create<emitc::VariableOp>(
+          op.getLoc(), emitc::LValueType::get(convertedType), value);
       rewriter.replaceOpWithNewOp<emitc::LoadOp>(op, convertedType, var);
       return success();
     }
 
     // Any constant will be fine to lower a poison op
     if (emitc::isIntegerIndexOrOpaqueType(convertedType)) {
-      value = IntegerAttr::get((emitc::isPointerWideType(convertedType))
-                                   ? IndexType::get(op.getContext())
-                                   : convertedType,
-                               42);
+      if (auto opaqueType = dyn_cast<emitc::OpaqueType>(convertedType)) {
+        // Use brace-initialization for opaque types; there is no universally
+        // valid constant we can use for opaque types otherwise. Generated EmitC
+        // will be C++.
+        value = emitc::OpaqueAttr::get(op->getContext(), "{}");
+      } else {
+        value = IntegerAttr::get((emitc::isPointerWideType(convertedType))
+                                     ? IndexType::get(op.getContext())
+                                     : convertedType,
+                                 42);
+      }
     } else if (emitc::isSupportedFloatType(convertedType)) {
       value = FloatAttr::get(convertedType, 42.0f);
     }
     rewriter.replaceOpWithNewOp<emitc::ConstantOp>(op, convertedType, value);
-    
+
     return success();
   }
 };
