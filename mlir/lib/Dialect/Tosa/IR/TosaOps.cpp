@@ -885,7 +885,7 @@ LogicalResult tosa::SliceOp::inferReturnTypeComponents(
 }
 
 LogicalResult tosa::SliceOp::verify() {
-  auto inputType = llvm::dyn_cast<RankedTensorType>(getInput().getType());
+  auto inputType = llvm::dyn_cast<RankedTensorType>(getInput1().getType());
   auto outputType = llvm::dyn_cast<RankedTensorType>(getType());
   if (!inputType || !outputType)
     return success();
@@ -931,7 +931,7 @@ LogicalResult tosa::TableOp::inferReturnTypeComponents(
     MLIRContext *context, ::std::optional<Location> location,
     TableOp::Adaptor adaptor,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
-  ShapeAdaptor inputShape(adaptor.getInput().getType());
+  ShapeAdaptor inputShape(adaptor.getInput1().getType());
 
   if (!inputShape.hasRank()) {
     inferredReturnShapes.push_back(ShapedTypeComponents());
@@ -944,7 +944,7 @@ LogicalResult tosa::TableOp::inferReturnTypeComponents(
 }
 
 LogicalResult tosa::TableOp::verify() {
-  TensorType inputType = getInput().getType();
+  TensorType inputType = getInput1().getType();
   TensorType outputType = getOutput().getType();
 
   if (inputType.hasRank() && outputType.hasRank() &&
@@ -2052,7 +2052,7 @@ void IfOp::print(OpAsmPrinter &p) {
 }
 
 LogicalResult ReverseOp::verify() {
-  TensorType inputType = getInput().getType();
+  TensorType inputType = getInput1().getType();
   TensorType outputType = getOutput().getType();
   int32_t reverseAxis = getAxis();
 
