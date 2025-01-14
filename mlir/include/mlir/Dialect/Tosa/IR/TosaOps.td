@@ -815,6 +815,7 @@ def Tosa_MulOp : Tosa_ElementwiseOp<"mul", [
   );
 
   let hasFolder = 1;
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
