@@ -26,6 +26,7 @@
 #include "flang/Common/idioms.h"
 #include "flang/Common/indirection.h"
 #include "llvm/Frontend/OpenACC/ACC.h.inc"
+#include "llvm/Frontend/OpenMP/OMP.h"
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
 #include <cinttypes>
 #include <list>
@@ -3454,7 +3455,7 @@ WRAPPER_CLASS(OmpObjectList, std::list<OmpObject>);
 // map-type-modifier -> ALWAYS | CLOSE | PRESENT | OMPX_HOLD
 // map-type -> TO | FROM | TOFROM | ALLOC | RELEASE | DELETE
 struct OmpMapClause {
-  ENUM_CLASS(TypeModifier, Always, Close, Present, OmpxHold);
+  ENUM_CLASS(TypeModifier, Always, Close, Present, Ompx_Hold);
   ENUM_CLASS(Type, To, From, Tofrom, Alloc, Release, Delete)
   TUPLE_CLASS_BOILERPLATE(OmpMapClause);
   std::tuple<std::optional<std::list<TypeModifier>>, std::optional<Type>,
@@ -3660,6 +3661,7 @@ struct OmpLastprivateClause {
 // OpenMP Clauses
 struct OmpClause {
   UNION_CLASS_BOILERPLATE(OmpClause);
+  llvm::omp::Clause Id() const;
 
 #define GEN_FLANG_CLAUSE_PARSER_CLASSES
 #include "llvm/Frontend/OpenMP/OMP.inc"

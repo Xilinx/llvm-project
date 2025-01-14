@@ -119,7 +119,25 @@ def PrivateClauseOp : OpenMP_Op<"private", [IsolatedFromAbove, RecipeInterface]>
                    CArg<"TypeAttr">:$type)>
   ];
 
-  let hasVerifier = 1;
+  let extraClassDeclaration = [{
+    BlockArgument getAllocMoldArg() {
+      return getAllocRegion().getArgument(0);
+    }
+    BlockArgument getCopyMoldArg() {
+      auto &region = getCopyRegion();
+      return region.empty() ? nullptr : region.getArgument(0);
+    }
+    BlockArgument getCopyPrivateArg() {
+      auto &region = getCopyRegion();
+      return region.empty() ? nullptr : region.getArgument(1);
+    }
+    BlockArgument getDeallocMoldArg() {
+      auto &region = getDeallocRegion();
+      return region.empty() ? nullptr : region.getArgument(0);
+    }
+  }];
+
+  let hasRegionVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -157,6 +175,7 @@ def ParallelOp : OpenMP_Op<"parallel", traits = [
   }];
 
   let hasVerifier = 1;
+  let hasRegionVerifier = 1;
 }
 
 def TerminatorOp : OpenMP_Op<"terminator", [Terminator, Pure]> {
@@ -408,6 +427,7 @@ def WsloopOp : OpenMP_Op<"wsloop", traits = [
   }];
 
   let hasVerifier = 1;
+  let hasRegionVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -461,6 +481,7 @@ def SimdOp : OpenMP_Op<"simd", traits = [
   }];
 
   let hasVerifier = 1;
+  let hasRegionVerifier = 1;
 }
 
 
@@ -538,6 +559,7 @@ def DistributeOp : OpenMP_Op<"distribute", traits = [
   }];
 
   let hasVerifier = 1;
+  let hasRegionVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -675,6 +697,7 @@ def TaskloopOp : OpenMP_Op<"taskloop", traits = [
   }] # clausesExtraClassDeclaration;
 
   let hasVerifier = 1;
+  let hasRegionVerifier = 1;
 }
 
 def TaskgroupOp : OpenMP_Op<"taskgroup", traits = [
@@ -925,7 +948,7 @@ def MapInfoOp : OpenMP_Op<"map.info", [AttrSizedOperandSegments]> {
        objects (e.g. derived types or classes), indicates the bounds to be copied
        of the variable. When it's an array slice it is in rank order where rank 0
        is the inner-most dimension.
-    - 'map_clauses': OpenMP map type for this map capture, for example: from, to and
+    - 'map_type': OpenMP map type for this map capture, for example: from, to and
        always. It's a bitfield composed of the OpenMP runtime flags stored in
        OpenMPOffloadMappingFlags.
     - 'map_capture_type': Capture type for the variable e.g. this, byref, byvalue, byvla
@@ -1601,22 +1624,41 @@ def DeclareReductionOp : OpenMP_Op<"declare_reduction", [IsolatedFromAbove,
                        "( `cleanup` $cleanupRegion^ )? ";
 
   let extraClassDeclaration = [{
+    BlockArgument getAllocMoldArg() {
+      auto &region = getAllocRegion();
+      return region.empty() ? nullptr : region.getArgument(0);
+    }
+    BlockArgument getInitializerMoldArg() {
+      return getInitializerRegion().getArgument(0);
+    }
+    BlockArgument getInitializerAllocArg() {
+      return getAllocRegion().empty() ?
+          nullptr : getInitializerRegion().getArgument(1);
+    }
+    BlockArgument getReductionLhsArg() {
+      return getReductionRegion().getArgument(0);
+    }
+    BlockArgument getReductionRhsArg() {
+      return getReductionRegion().getArgument(1);
+    }
+    BlockArgument getAtomicReductionLhsArg() {
+      auto &region = getAtomicReductionRegion();
+      return region.empty() ? nullptr : region.getArgument(0);
+    }
+    BlockArgument getAtomicReductionRhsArg() {
+      auto &region = getAtomicReductionRegion();
+      return region.empty() ? nullptr : region.getArgument(1);
+    }
+    BlockArgument getCleanupAllocArg() {
+      auto &region = getCleanupRegion();
+      return region.empty() ? nullptr : region.getArgument(0);
+    }
+
     PointerLikeType getAccumulatorType() {
       if (getAtomicReductionRegion().empty())
         return {};
 
-      return cast<PointerLikeType>(getAtomicReductionRegion().front().getArgument(0).getType());
-    }
-
-    Value getInitializerMoldArg() {
-      return getInitializerRegion().front().getArgument(0);
-    }
-
-    Value getInitializerAllocArg() {
-      if (getAllocRegion().empty() ||
-          getInitializerRegion().front().getNumArguments() != 2)
-        return {nullptr};
-      return getInitializerRegion().front().getArgument(1);
+      return cast<PointerLikeType>(getAtomicReductionLhsArg().getType());
     }
   }];
   let hasRegionVerifier = 1;
