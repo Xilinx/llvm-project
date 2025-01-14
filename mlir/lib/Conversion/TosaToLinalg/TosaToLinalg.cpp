@@ -87,7 +87,7 @@ static Value createLinalgBodyCalculationForElementwiseOp(
     else
       return rewriter.create<arith::DivUIOp>(loc, resultTypes, args);
   }
-  
+
   // tosa::IntDivOp
   if (isa<tosa::IntDivOp>(op) && isa<IntegerType>(elementTy))
     return rewriter.create<arith::DivSIOp>(loc, resultTypes, args);
@@ -2826,18 +2826,18 @@ void mlir::tosa::populateTosaToLinalgTypeConversion(TypeConverter &converter) {
   });
   converter.addSourceMaterialization([&](OpBuilder &builder, Type resultType,
                                          ValueRange inputs,
-                                         Location loc) -> std::optional<Value> {
+                                         Location loc) -> Value {
     if (inputs.size() != 1)
-      return std::nullopt;
+      return Value();
 
     return builder.create<UnrealizedConversionCastOp>(loc, resultType, inputs)
         .getResult(0);
   });
   converter.addTargetMaterialization([&](OpBuilder &builder, Type resultType,
                                          ValueRange inputs,
-                                         Location loc) -> std::optional<Value> {
+                                         Location loc) -> Value {
     if (inputs.size() != 1)
-      return std::nullopt;
+      return Value();
 
     return builder.create<UnrealizedConversionCastOp>(loc, resultType, inputs)
         .getResult(0);
