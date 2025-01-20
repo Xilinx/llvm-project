@@ -248,8 +248,8 @@ void mlir::populateMemRefToEmitCTypeConversion(TypeConverter &typeConverter) {
       });
 }
 
-void mlir::populateMemRefToEmitCConversionPatterns(RewritePatternSet &patterns,
-                                                   TypeConverter &converter) {
+void mlir::populateMemRefToEmitCConversionPatterns(
+    RewritePatternSet &patterns, const TypeConverter &converter) {
   patterns.add<ConvertAlloca, ConvertGlobal, ConvertGetGlobal, ConvertLoad,
                ConvertStore, ConvertCollapseShape, ConvertExpandShape>(
       converter, patterns.getContext());
