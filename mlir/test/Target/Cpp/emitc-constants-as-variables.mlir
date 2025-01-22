@@ -46,6 +46,7 @@ func.func @emitc_switch_ui64() {
 // CPP-DEFAULT-NEXT:     func2((uint64_t) 1);
 // CPP-DEFAULT-NEXT:     break;
 // CPP-DEFAULT-NEXT:   }
+// CPP-DEFAULT-NEXT:   }
 // CPP-DEFAULT-NEXT:   return;
 // CPP-DEFAULT-NEXT: }
 
