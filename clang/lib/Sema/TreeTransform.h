@@ -8385,14 +8385,19 @@ TreeTransform<Derived>::TransformDeclStmt(DeclStmt *S) {
     if (Transformed != D)
       DeclChanged = true;
 
-    if (LSI && isa<TypeDecl>(Transformed))
-      LSI->ContainsUnexpandedParameterPack |=
-          getSema()
-              .getASTContext()
-              .getTypeDeclType(cast<TypeDecl>(Transformed))
-              .getCanonicalType()
-              .getTypePtr()
-              ->containsUnexpandedParameterPack();
+    if (LSI) {
+      if (auto *TD = dyn_cast<TypeDecl>(Transformed))
+        LSI->ContainsUnexpandedParameterPack |=
+            getSema()
+                .getASTContext()
+                .getTypeDeclType(TD)
+                .getCanonicalType()
+                ->containsUnexpandedParameterPack();
+
+      if (auto *VD = dyn_cast<VarDecl>(Transformed))
+        LSI->ContainsUnexpandedParameterPack |=
+            VD->getType()->containsUnexpandedParameterPack();
+    }
 
     Decls.push_back(Transformed);
   }
@@ -11808,6 +11813,33 @@ void OpenACCClauseTransform<Derived>::VisitWorkerClause(
   }
 
   NewClause = OpenACCWorkerClause::Create(
+      Self.getSema().getASTContext(), ParsedClause.getBeginLoc(),
+      ParsedClause.getLParenLoc(),
+      ParsedClause.getNumIntExprs() != 0 ? ParsedClause.getIntExprs()[0]
+                                         : nullptr,
+      ParsedClause.getEndLoc());
+}
+
+template <typename Derived>
+void OpenACCClauseTransform<Derived>::VisitVectorClause(
+    const OpenACCVectorClause &C) {
+  if (C.hasIntExpr()) {
+    // restrictions on this expression are all "does it exist in certain
+    // situations" that are not possible to be dependent, so the only check we
+    // have is that it transforms, and is an int expression.
+    ExprResult Res = Self.TransformExpr(const_cast<Expr *>(C.getIntExpr()));
+    if (!Res.isUsable())
+      return;
+
+    Res = Self.getSema().OpenACC().ActOnIntExpr(OpenACCDirectiveKind::Invalid,
+                                                C.getClauseKind(),
+                                                C.getBeginLoc(), Res.get());
+    if (!Res.isUsable())
+      return;
+    ParsedClause.setIntExprDetails(Res.get());
+  }
+
+  NewClause = OpenACCVectorClause::Create(
       Self.getSema().getASTContext(), ParsedClause.getBeginLoc(),
       ParsedClause.getLParenLoc(),
       ParsedClause.getNumIntExprs() != 0 ? ParsedClause.getIntExprs()[0]
