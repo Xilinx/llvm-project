@@ -80,16 +80,6 @@ static Value createLinalgBodyCalculationForElementwiseOp(
   if (isa<tosa::SubOp>(op) && isa<IntegerType>(elementTy))
     return rewriter.create<arith::SubIOp>(loc, resultTypes, args);
 
-  // tosa::MulOp
-  if (isa<tosa::MulOp>(op) && isa<FloatType>(elementTy)) {
-    if (dyn_cast<tosa::MulOp>(op).getShift() != 0) {
-      (void)rewriter.notifyMatchFailure(op,
-                                        "Cannot have shift value for float");
-      return nullptr;
-    }
-    return rewriter.create<arith::MulFOp>(loc, resultTypes, args);
-  }
-
   // tosa::DivOp
   if (isa<tosa::IntDivOp>(op)) {
     if (elementTy.isSignlessInteger())
@@ -98,12 +88,20 @@ static Value createLinalgBodyCalculationForElementwiseOp(
       return rewriter.create<arith::DivUIOp>(loc, resultTypes, args);
   }
 
+  // tosa::IntDivOp
+  if (isa<tosa::IntDivOp>(op) && isa<IntegerType>(elementTy))
+    return rewriter.create<arith::DivSIOp>(loc, resultTypes, args);
+
   // tosa::ReciprocalOp
   if (isa<tosa::ReciprocalOp>(op) && isa<FloatType>(elementTy)) {
     auto one =
         rewriter.create<arith::ConstantOp>(loc, FloatAttr::get(elementTy, 1));
     return rewriter.create<arith::DivFOp>(loc, resultTypes, one, args[0]);
   }
+
+  // tosa::MulOp
+  if (isa<tosa::MulOp>(op) && isa<FloatType>(elementTy))
+    return rewriter.create<arith::MulFOp>(loc, resultTypes, args);
 
   if (isa<tosa::MulOp>(op) && isa<IntegerType>(elementTy)) {
     Value a = args[0];
@@ -2828,18 +2826,18 @@ void mlir::tosa::populateTosaToLinalgTypeConversion(TypeConverter &converter) {
   });
   converter.addSourceMaterialization([&](OpBuilder &builder, Type resultType,
                                          ValueRange inputs,
-                                         Location loc) -> std::optional<Value> {
+                                         Location loc) -> Value {
     if (inputs.size() != 1)
-      return std::nullopt;
+      return Value();
 
     return builder.create<UnrealizedConversionCastOp>(loc, resultType, inputs)
         .getResult(0);
   });
   converter.addTargetMaterialization([&](OpBuilder &builder, Type resultType,
                                          ValueRange inputs,
-                                         Location loc) -> std::optional<Value> {
+                                         Location loc) -> Value {
     if (inputs.size() != 1)
-      return std::nullopt;
+      return Value();
 
     return builder.create<UnrealizedConversionCastOp>(loc, resultType, inputs)
         .getResult(0);
