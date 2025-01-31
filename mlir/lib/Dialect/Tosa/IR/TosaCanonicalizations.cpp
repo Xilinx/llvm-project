@@ -155,18 +155,43 @@ struct SelectToClampOptimization : public OpRewritePattern<tosa::SelectOp> {
       return rewriter.notifyMatchFailure(
           op, "RHS of predicate GreaterEqualOp is not a constant");
     }
+
     auto isCompatibleSplat = [](DenseElementsAttr a,
                                 DenseElementsAttr b) -> bool {
       if (!a.isSplat() || !b.isSplat()) {
         return false;
       }
-      if (llvm::isa<IntegerType>(a.getElementType())) {
-        return a.getSplatValue<APInt>() == b.getSplatValue<APInt>();
+
+      auto aAsIntegerType = dyn_cast<IntegerType>(a.getElementType());
+      auto bAsIntegerType = dyn_cast<IntegerType>(b.getElementType());
+      if (aAsIntegerType && bAsIntegerType) {
+        if (aAsIntegerType.getSignedness() != bAsIntegerType.getSignedness()) {
+          return false;
+        }
+
+        auto aAsAPInt = a.getSplatValue<APInt>();
+        auto bAsAPInt = b.getSplatValue<APInt>();
+
+        const size_t aBitWidth = aAsAPInt.getBitWidth();
+        const size_t bBitWidth = bAsAPInt.getBitWidth();
+
+        if (aBitWidth >= bBitWidth) {
+          return aAsAPInt == (bAsIntegerType.isUnsigned()
+                                  ? bAsAPInt.zext(aBitWidth)
+                                  : bAsAPInt.sext(aBitWidth));
+        }
+        return (aAsIntegerType.isUnsigned()
+                    ? aAsAPInt.zext(bBitWidth)
+                    : aAsAPInt.sext(bBitWidth)) == bAsAPInt;
       }
-      if (llvm::isa<FloatType>(a.getElementType())) {
-        return a.getSplatValue<APFloat>() == b.getSplatValue<APFloat>();
+
+      auto aAsFloatType = dyn_cast<FloatType>(a.getElementType());
+      auto bAsFloatType = dyn_cast<FloatType>(b.getElementType());
+      if (!aAsFloatType || aAsFloatType != bAsFloatType) {
+        return false;
       }
-      return false; // Only int and float types are supported
+
+      return a.getSplatValue<APFloat>() == b.getSplatValue<APFloat>();
     };
 
     auto onFalse = op.getOnFalse();
@@ -237,10 +262,25 @@ struct SelectToClampOptimization : public OpRewritePattern<tosa::SelectOp> {
         clampFloatMax = rewriter.getFloatAttr(inputElementType, splatValue);
       }
     }
+
+    Value input = geq.getInput1();
+
+    // In case they do not have same bit width, insert a cast to still be able
+    // to do this canonicalization
+    const size_t geqBitWidth =
+        geq.getInput1().getType().getElementTypeBitWidth();
+    const size_t selectBitWidth = op.getType().getElementTypeBitWidth();
+    if (geqBitWidth != selectBitWidth) {
+      input = rewriter.create<tosa::CastOp>(
+          op->getLoc(),
+          geq.getInput1().getType().clone(op.getType().getElementType()),
+          input);
+    }
+
     rewriter.replaceOpWithNewOp<tosa::ClampOp>(
-        op, op.getType(), geq.getInput1(),
-        rewriter.getI64IntegerAttr(clampIntMin),
+        op, op.getType(), input, rewriter.getI64IntegerAttr(clampIntMin),
         rewriter.getI64IntegerAttr(clampIntMax), clampFloatMin, clampFloatMax);
+
     return success();
   }
 };
