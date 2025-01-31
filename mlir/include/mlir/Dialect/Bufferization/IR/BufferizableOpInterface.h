@@ -359,14 +359,6 @@ struct BufferizationOptions {
   /// If `bufferizeFunctionBoundaries` is not set, this flag has no effect.
   bool inferFunctionResultLayout = true;
 
-  /// If true, bufferize results of bodiless functions using the
-  /// `functionArgTypeConverterFn`.
-  /// Otherwise, bufferization fails when encountering bodiless functions that
-  /// have tensor results.
-  ///
-  /// If `bufferizeFunctionBoundaries` is not set, this flag has no effect.
-  bool bufferizeBodilessFunctionResults = false;
-
   /// Type converter from tensors to memrefs. This type converter is used if no
   /// memref type could be inferred during bufferization. By default, a type
   /// converter that returns a memref type with a fully dynamic layout map is

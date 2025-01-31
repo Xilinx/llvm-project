@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -one-shot-bufferize="bufferize-function-boundaries=1 bufferize-bodiless-function-results=1" -split-input-file | FileCheck %s
+// RUN: mlir-opt %s -one-shot-bufferize="bufferize-function-boundaries=1" -split-input-file | FileCheck %s
 
 func.func private @foo() -> tensor<?xf32>
 // CHECK: func.func private @foo() -> memref<?xf32, strided<[?], offset: ?>>
