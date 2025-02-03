@@ -63,7 +63,8 @@ LogicalResult static unaryOp(PatternRewriter &rewriter, PDLResultList &results,
               ? std::pow(2, operandIntAttr.getValue().getZExtValue())
               : std::pow(2, operandIntAttr.getValue().getSExtValue());
 
-      APInt resultInt(bitWidth, resultVal, integerType.isSigned());
+      APInt resultInt(bitWidth, resultVal, integerType.isSigned(),
+                      /*implicitTrunc*/ true);
 
       bool isOverflow = integerType.isSigned()
                             ? resultInt.slt(operandIntAttr.getValue())
