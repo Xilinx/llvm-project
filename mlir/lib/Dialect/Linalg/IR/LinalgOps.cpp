@@ -2233,7 +2233,7 @@ LogicalResult linalg::YieldOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult IndexOp::verify() {
-  auto linalgOp = dyn_cast<LinalgOp>((*this)->getParentOp());
+  auto linalgOp = (*this)->getParentOfType<LinalgOp>();
   if (!linalgOp)
     return emitOpError("expected parent op with LinalgOp interface");
   if (linalgOp.getNumLoops() <= getDim())

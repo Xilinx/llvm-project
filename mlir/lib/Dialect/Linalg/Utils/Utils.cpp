@@ -836,9 +836,9 @@ void offsetIndices(RewriterBase &b, LinalgOp linalgOp,
   if (!linalgOp.hasIndexSemantics())
     return;
 
-  for (IndexOp indexOp : linalgOp.getBlock()->getOps<IndexOp>()) {
+  linalgOp.walk([&](IndexOp indexOp) {
     if (indexOp.getDim() >= offsets.size() || !offsets[indexOp.getDim()])
-      continue;
+      return;
     OpBuilder::InsertionGuard guard(b);
     b.setInsertionPointAfter(indexOp);
     AffineExpr index, offset;
@@ -851,7 +851,7 @@ void offsetIndices(RewriterBase &b, LinalgOp linalgOp,
     b.replaceUsesWithIf(indexOp, materialized, [&](OpOperand &use) {
       return use.getOwner() != materialized.getDefiningOp();
     });
-  }
+  });
 }
 
 /// Get the reassociation maps to fold the result of a extract_slice (or source
