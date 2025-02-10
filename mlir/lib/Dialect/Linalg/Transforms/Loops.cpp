@@ -199,9 +199,11 @@ static void replaceIndexOpsByInductionVariables(RewriterBase &rewriter,
   // Replace the index operations in the body of the innermost loop op.
   if (!loopOps.empty()) {
     auto loopOp = cast<LoopLikeOpInterface>(loopOps.back());
-    for (Region *r : loopOp.getLoopRegions())
-      for (IndexOp indexOp : llvm::make_early_inc_range(r->getOps<IndexOp>()))
+    for (Region *r : loopOp.getLoopRegions()) {
+      r->walk([&](IndexOp indexOp) {
         rewriter.replaceOp(indexOp, allIvs[indexOp.getDim()]);
+      });
+    }
   }
 }
 
