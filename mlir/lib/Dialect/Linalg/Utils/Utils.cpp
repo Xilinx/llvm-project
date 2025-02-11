@@ -56,10 +56,21 @@ namespace {
 //   `d0 + 2 * d1 + d3` is tiled by [0, 0, 0, 2] but not by [0, 0, 2, 0]
 //
 struct TileCheck : public AffineExprVisitor<TileCheck> {
-  TileCheck(ArrayRef<OpFoldResult> tileSizes) : tileSizes(tileSizes) {}
+  TileCheck(ArrayRef<OpFoldResult> tileSizes, ArrayRef<int64_t> domainSizes)
+      : tileSizes(tileSizes), domainSizes(domainSizes) {}
 
   void visitDimExpr(AffineDimExpr expr) {
-    isTiled |= !isZeroIndex(tileSizes[expr.getPosition()]);
+    unsigned pos = expr.getPosition();
+
+    // There is no tile if all tile sizes correspond to the domain size
+    std::optional<int64_t> tileSize = getConstantIntValue(tileSizes[pos]);
+    if (tileSize && !domainSizes.empty()) {
+      if (domainSizes[pos] == *tileSize) {
+        return;
+      }
+    }
+
+    isTiled |= !isZeroIndex(tileSizes[pos]);
   }
   void visitAffineBinaryOpExpr(AffineBinaryOpExpr expr) {
     visit(expr.getLHS());
@@ -70,24 +81,28 @@ struct TileCheck : public AffineExprVisitor<TileCheck> {
   }
   bool isTiled = false;
   ArrayRef<OpFoldResult> tileSizes;
+  ArrayRef<int64_t> domainSizes;
 };
 
 } // namespace
 
-static bool isTiled(AffineExpr expr, ArrayRef<OpFoldResult> tileSizes) {
+static bool isTiled(AffineExpr expr, ArrayRef<OpFoldResult> tileSizes,
+                    ArrayRef<int64_t> domainSizes) {
   if (!expr)
     return false;
-  TileCheck t(tileSizes);
+
+  TileCheck t(tileSizes, domainSizes);
   t.visit(expr);
   return t.isTiled;
 }
 
 // Checks whether the `map  varies with respect to a non-zero `tileSize`.
-static bool isTiled(AffineMap map, ArrayRef<OpFoldResult> tileSizes) {
+static bool isTiled(AffineMap map, ArrayRef<OpFoldResult> tileSizes,
+                    ArrayRef<int64_t> domainSizes) {
   if (!map)
     return false;
   for (unsigned r = 0; r < map.getNumResults(); ++r)
-    if (isTiled(map.getResult(r), tileSizes))
+    if (isTiled(map.getResult(r), tileSizes, domainSizes))
       return true;
   return false;
 }
@@ -556,19 +571,19 @@ Operation *makeTiledShape(OpBuilder &builder, Location loc, Value valueToTile,
                           ArrayRef<OpFoldResult> lbs,
                           ArrayRef<OpFoldResult> ubs,
                           ArrayRef<OpFoldResult> subShapeSizes,
-                          bool omitPartialTileCheck) {
-  SliceParameters sliceParams =
-      computeSliceParameters(builder, loc, valueToTile, tileSizes, map, lbs,
-                             ubs, subShapeSizes, omitPartialTileCheck);
+                          bool omitPartialTileCheck,
+                          ArrayRef<int64_t> domainSizes) {
+  SliceParameters sliceParams = computeSliceParameters(
+      builder, loc, valueToTile, tileSizes, map, lbs, ubs, subShapeSizes,
+      omitPartialTileCheck, domainSizes);
   return materializeTiledShape(builder, loc, valueToTile, sliceParams);
 }
 
-SliceParameters
-computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
-                       ArrayRef<OpFoldResult> tileSizes, AffineMap map,
-                       ArrayRef<OpFoldResult> lbs, ArrayRef<OpFoldResult> ubs,
-                       ArrayRef<OpFoldResult> subShapeSizes,
-                       bool omitPartialTileCheck) {
+SliceParameters computeSliceParameters(
+    OpBuilder &builder, Location loc, Value valueToTile,
+    ArrayRef<OpFoldResult> tileSizes, AffineMap map, ArrayRef<OpFoldResult> lbs,
+    ArrayRef<OpFoldResult> ubs, ArrayRef<OpFoldResult> subShapeSizes,
+    bool omitPartialTileCheck, ArrayRef<int64_t> domainSizes) {
   auto shapedType = dyn_cast<ShapedType>(valueToTile.getType());
   assert(shapedType && "only shaped types can be tiled");
   ArrayRef<int64_t> shape = shapedType.getShape();
@@ -585,7 +600,7 @@ computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
     // The offset & size computation below only handles the case when
     // the map is monotonically increasing, i.e. the min and max values are
     // attained at the lower and upper bounds of the iteration domain.
-    if (!isTiled(m, tileSizes) || !m.isComponentWiseMonotonicallyIncreasing()) {
+    if (!isTiled(m, tileSizes, domainSizes)) {
       sliceParams.offsets.push_back(builder.getIndexAttr(0));
       OpFoldResult dim = createFoldedDimOp(builder, loc, valueToTile, r);
       sliceParams.sizes.push_back(dim);
@@ -786,8 +801,9 @@ computeAllSliceParameters(OpBuilder &builder, Location loc, LinalgOp linalgOp,
     // subdomains explicit.
 
     Type operandType = opOperand.get().getType();
-    if (!isTiled(map, tileSizes) && !(isa<RankedTensorType>(operandType) &&
-                                      linalgOp.isDpsInit(&opOperand))) {
+    if (!isTiled(map, tileSizes, linalgOp.getStaticLoopRanges()) &&
+        !(isa<RankedTensorType>(operandType) &&
+          linalgOp.isDpsInit(&opOperand))) {
       allSliceParams.push_back(std::nullopt);
       LLVM_DEBUG(llvm::dbgs()
                  << ": not tiled: use shape: " << operandType << "\n");
@@ -797,7 +813,7 @@ computeAllSliceParameters(OpBuilder &builder, Location loc, LinalgOp linalgOp,
 
     allSliceParams.push_back(computeSliceParameters(
         builder, loc, shapedOp, tileSizes, map, lbs, sizeBounds, subShapeSizes,
-        omitPartialTileCheck));
+        omitPartialTileCheck, linalgOp.getStaticLoopRanges()));
   }
 
   return allSliceParams;
