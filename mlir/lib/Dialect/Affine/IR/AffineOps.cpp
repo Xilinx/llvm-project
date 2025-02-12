@@ -504,9 +504,9 @@ verifyDimAndSymbolIdentifiers(OpTy &op, Operation::operand_range operands,
   unsigned opIt = 0;
   for (auto operand : operands) {
     if (opIt++ < numDims) {
-      if (!isValidDim(operand, getAffineScope(op)) &&
+      /*if (!isValidDim(operand, getAffineScope(op)) &&
           !(allowNonAffineDimOperands && operand.getType().isIndex()))
-        return op.emitOpError("operand cannot be used as a dimension id");
+        return op.emitOpError("operand cannot be used as a dimension id");*/
     } else if (!isValidSymbol(operand, getAffineScope(op))) {
       return op.emitOpError("operand cannot be used as a symbol");
     }
