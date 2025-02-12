@@ -12,7 +12,6 @@
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringSet.h"
 #include <optional>
 
@@ -177,8 +176,7 @@ Operation *makeTiledShape(OpBuilder &builder, Location loc, Value valueToTile,
                           ArrayRef<OpFoldResult> lbs,
                           ArrayRef<OpFoldResult> ubs,
                           ArrayRef<OpFoldResult> subShapeSizes,
-                          bool omitPartialTileCheck,
-                          ArrayRef<OpFoldResult> sizeBounds = {});
+                          bool omitPartialTileCheck);
 
 /// Creates extract_slice/subview ops for all `valuesToTile` of the given
 /// `linalgOp` with `builder`, assuming `linalgOp` is being fused into a loop

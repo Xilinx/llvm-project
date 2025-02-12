@@ -90,7 +90,6 @@ static bool isTiled(AffineExpr expr, ArrayRef<OpFoldResult> tileSizes,
                     ArrayRef<int64_t> domainSizes) {
   if (!expr)
     return false;
-
   TileCheck t(tileSizes, domainSizes);
   t.visit(expr);
   return t.isTiled;
@@ -612,7 +611,6 @@ SliceParameters computeSliceParameters(
 
     // Tiling creates a new slice at the proper index, the slice step is 1
     // (i.e. the op does not subsample, stepping occurs in the loop).
-    auto m = map.getSubMap({r});
     LLVM_DEBUG(llvm::dbgs() << "computeSliceParameters: submap: " << m << "\n");
     IRRewriter rewriter(builder);
     // The offset of the slice is map(lbs) - map(0).
