@@ -585,7 +585,7 @@ computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
     // The offset & size computation below only handles the case when
     // the map is monotonically increasing, i.e. the min and max values are
     // attained at the lower and upper bounds of the iteration domain.
-    if (!isTiled(m, tileSizes) || !m.isComponentWiseMonotonicallyIncreasing()) {
+    if (!isTiled(m, tileSizes)) {
       sliceParams.offsets.push_back(builder.getIndexAttr(0));
       OpFoldResult dim = createFoldedDimOp(builder, loc, valueToTile, r);
       sliceParams.sizes.push_back(dim);
@@ -610,9 +610,9 @@ computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
     OpFoldResult offset = makeComposedFoldedAffineApply(
         rewriter, loc, m.getResult(0) - *atZeroInt, lbs);
 
-    if (m.getResult(0).getKind() == AffineExprKind::Mod) {
+    /*if (m.getResult(0).getKind() == AffineExprKind::Mod) {
       offset = rewriter.getIndexAttr(0);
-    }
+    }*/
     sliceParams.offsets.push_back(offset);
 
     OpFoldResult closedIntSize =
@@ -621,12 +621,12 @@ computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
     AffineExpr s0 = getAffineSymbolExpr(0, builder.getContext());
     OpFoldResult size =
         makeComposedFoldedAffineApply(rewriter, loc, s0 + 1, closedIntSize);
-    if (m.getResult(0).getKind() == AffineExprKind::Mod) {
+    /*if (m.getResult(0).getKind() == AffineExprKind::Mod) {
       size = rewriter.getIndexAttr(
           dyn_cast<AffineConstantExpr>(
               dyn_cast<AffineBinaryOpExpr>(m.getResult(0)).getRHS())
               .getValue());
-    }
+    }*/
     LLVM_DEBUG(llvm::dbgs()
                << "computeSliceParameters: raw size: " << size << "\n");
     LLVM_DEBUG(llvm::dbgs()
