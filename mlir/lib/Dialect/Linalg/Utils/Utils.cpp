@@ -798,9 +798,15 @@ computeAllSliceParameters(OpBuilder &builder, Location loc, LinalgOp linalgOp,
     // transformations such as padding and bufferization since the
     // extract/insert slice pairs make the accessed iteration argument
     // subdomains explicit.
-
+    SmallVector<int64_t> domainSizes;
+    // FIXME: tileToPartialReduction adds the new init tensor to the output
+    // but doesn't update the indexing type of the index map causing a crash.
+    // isAllParallelLoops
+    if (linalgOp.getNumParallelLoops() == linalgOp.getNumLoops()) {
+      domainSizes = linalgOp.getStaticLoopRanges();
+    }
     Type operandType = opOperand.get().getType();
-    if (!isTiled(map, tileSizes, linalgOp.getStaticLoopRanges()) &&
+    if (!isTiled(map, tileSizes, domainSizes) &&
         !(isa<RankedTensorType>(operandType) &&
           linalgOp.isDpsInit(&opOperand))) {
       allSliceParams.push_back(std::nullopt);
@@ -812,7 +818,7 @@ computeAllSliceParameters(OpBuilder &builder, Location loc, LinalgOp linalgOp,
 
     allSliceParams.push_back(computeSliceParameters(
         builder, loc, shapedOp, tileSizes, map, lbs, sizeBounds, subShapeSizes,
-        omitPartialTileCheck, linalgOp.getStaticLoopRanges()));
+        omitPartialTileCheck, domainSizes));
   }
 
   return allSliceParams;

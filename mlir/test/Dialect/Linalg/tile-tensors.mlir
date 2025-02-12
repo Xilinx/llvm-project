@@ -170,6 +170,10 @@ module attributes {transform.with_named_sequence} {
 
 // -----
 
+
+// CHECK-LABEL: func @generic_op_tensors
+//  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]: tensor<?x?x?xf32>
+//  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]: tensor<?x?x?xf32>
 func.func @non_monotonic_affine_expr(%arg0 : tensor<7xf32>) -> tensor<7xf32> {
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %arg0, %c0 : tensor<7xf32>
