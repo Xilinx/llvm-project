@@ -1540,9 +1540,11 @@ struct TosaFoldConstantMatMul
 
     // Convert int64_t to the correct output type.
     std::vector<APInt> apintValues;
-    llvm::transform(values, std::back_inserter(apintValues),
-                    [&](const int64_t &val) {
-                      APInt apIntVal(baseType.getIntOrFloatBitWidth(), val);
+    llvm::transform(
+        values, std::back_inserter(apintValues), [&](const int64_t &val) {
+          APInt apIntVal(baseType.getIntOrFloatBitWidth(), val,
+                         /*isSigned=*/true); // tosa-mlir uses signless
+                                             // instead of signed
                       return apIntVal;
                     });
     return DenseElementsAttr::get(outputType, apintValues);
