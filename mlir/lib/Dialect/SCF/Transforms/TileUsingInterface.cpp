@@ -984,8 +984,7 @@ mlir::scf::tileReductionUsingScf(RewriterBase &b,
 
     // 4a. Clone the operation.
     {
-      auto clonedOp = cast<PartialReductionOpInterface>(
-          cloneOpAndUpdateDestinationArgs(b, op, regionIterArgs));
+      auto clonedOp = cast<PartialReductionOpInterface>(rewriter.clone(*op));
 
       // 4b. Tile the cloned operation.
       FailureOr<TilingResult> partialTilingResult =

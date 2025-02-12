@@ -170,16 +170,16 @@ module attributes {transform.with_named_sequence} {
 
 // -----
 
-
-// CHECK-LABEL: func @generic_op_tensors
-//  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]: tensor<?x?x?xf32>
-//  CHECK-SAME:   %[[ARG1:[a-zA-Z0-9_]+]]: tensor<?x?x?xf32>
+// CHECK-LABEL: func @non_monotonic_affine_expr
+//  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]: tensor<7xf32>
 func.func @non_monotonic_affine_expr(%arg0 : tensor<7xf32>) -> tensor<7xf32> {
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %arg0, %c0 : tensor<7xf32>
   %empty = tensor.empty() : tensor<7xf32>
-  // FIXME: Do proper testing
-  // CHECK: tensor.extract_slice %arg2[0] [7] [1] : tensor<7xf32> to tensor<7xf32>
+
+  // CHECK: %[[OUT:.*]] = tensor.empty() : tensor<7xf32>
+  // CHECK: scf.for {{.*}} to {{.*}} step {{.*}} iter_args(%[[TC0:.*]] = %[[OUT]]) -> (tensor<7xf32>) {
+  // CHECK: tensor.extract_slice %[[TC0]][0] [7] [1] : tensor<7xf32> to tensor<7xf32>
   %generic = linalg.generic
     {indexing_maps = [affine_map<(d0) -> (d0 mod 4)>,
                       affine_map<(d0) -> (d0)>],
