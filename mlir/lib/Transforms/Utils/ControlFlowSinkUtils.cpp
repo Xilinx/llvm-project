@@ -61,6 +61,8 @@ private:
   /// Recurse on subgraphs using a work queue.
   void sinkRegion(Region *region);
 
+  Block *findBlockToSink(Operation *op);
+
   /// The callback to determine whether an op should be moved in to a region.
   function_ref<bool(Operation *, Region *)> shouldMoveIntoRegion;
   /// The calback to move an operation into the region.
@@ -82,6 +84,17 @@ bool Sinker::allUsersDominatedBy(Operation *op, Region *region) {
   });
 }
 
+Block *Sinker::findBlockToSink(Operation *op) {
+  llvm::SmallPtrSet<Block *, 16> userBlocks;
+  for (auto u : op->getUsers()) {
+    userBlocks.insert(u->getBlock());
+  }
+  auto *common = domInfo.findNearestCommonDominator(userBlocks);
+  if (!common || common == op->getBlock())
+    return nullptr;
+  return common;
+}
+
 void Sinker::tryToSinkPredecessors(Operation *user, Region *region,
                                    std::vector<Operation *> &stack) {
   LLVM_DEBUG(user->print(llvm::dbgs() << "\nContained op:\n"));
@@ -92,9 +105,19 @@ void Sinker::tryToSinkPredecessors(Operation *user, Region *region,
       continue;
     LLVM_DEBUG(op->print(llvm::dbgs() << "\nTry to sink:\n"));
 
+    auto *targetBlock = findBlockToSink(op);
+    if (!targetBlock)
+      continue;
+    auto targetRegion = targetBlock->getParent();
+
+    if (!allUsersDominatedBy(op, targetRegion)) {
+      LLVM_DEBUG(op->print(
+          llvm::dbgs() << "-> Not all users are dominated by new region\n"));
+    }
     // If the op's users are all in the region and it can be moved, then do so.
-    if (allUsersDominatedBy(op, region) && shouldMoveIntoRegion(op, region)) {
-      moveIntoRegion(op, region);
+    if (allUsersDominatedBy(op, targetRegion) &&
+        shouldMoveIntoRegion(op, targetRegion)) {
+      moveIntoRegion(op, targetRegion);
       ++numSunk;
       // Add the op to the work queue.
       stack.push_back(op);
