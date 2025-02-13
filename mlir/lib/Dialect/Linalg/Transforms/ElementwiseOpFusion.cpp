@@ -2178,7 +2178,14 @@ struct LinalgElementwiseOpFusionPass
     // Add folding with reshape by expansion patterns.
     ControlFusionFn defaultControlFn = [](OpOperand *fusedOperand) {
       Operation *producer = fusedOperand->get().getDefiningOp();
-      return producer && producer->hasOneUse();
+      if (!producer)
+        return false;
+      if (producer->hasOneUse())
+        return true;
+      auto linalg = dyn_cast<linalg::GenericOp>(producer);
+      // linalg.generic that only contains a yield in the body, i.e. data
+      // movement
+      return linalg && linalg.getBody()->getOperations().size() == 1;
     };
 
     // Add elementwise op fusion patterns.
