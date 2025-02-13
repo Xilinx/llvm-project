@@ -800,9 +800,8 @@ computeAllSliceParameters(OpBuilder &builder, Location loc, LinalgOp linalgOp,
     // extract/insert slice pairs make the accessed iteration argument
     // subdomains explicit.
     Type operandType = opOperand.get().getType();
-    if (!isTiled(map, tileSizes, linalgOp.getStaticLoopRanges()) &&
-        !(isa<RankedTensorType>(operandType) &&
-          linalgOp.isDpsInit(&opOperand))) {
+    if (!isTiled(map, tileSizes, {}) && !(isa<RankedTensorType>(operandType) &&
+                                          linalgOp.isDpsInit(&opOperand))) {
       allSliceParams.push_back(std::nullopt);
       LLVM_DEBUG(llvm::dbgs()
                  << ": not tiled: use shape: " << operandType << "\n");
