@@ -6,7 +6,6 @@ func.func @pad_and_hoist_rhs(
   %arg0: tensor<24x12xf32>, %arg1: tensor<12x25xf32>, %arg2: tensor<24x25xf32>)
      -> tensor<24x25xf32>
 {
-  // expected-note @below {{target op}}
   %0 = linalg.matmul ins(%arg0, %arg1 : tensor<24x12xf32>, tensor<12x25xf32>) outs(%arg2 : tensor<24x25xf32>) -> tensor<24x25xf32>
   func.return %0 : tensor<24x25xf32>
 }
@@ -25,11 +24,10 @@ module attributes {transform.with_named_sequence} {
 
     // In this case, the pad op is actually empty: we only tile the first dimension
     // and it does not have an impact on the RHS operand.
-    // expected-error @below {{could not find a producer for operand number: 1}}
     %pad = transform.get_producer_of_operand %matmul_padded[1]
       : (!transform.any_op) -> !transform.any_op
 
-    // We do not even reach this transform op.
+    // expected-error @below {{requires exactly 2 non-null handles}}
     transform.structured.hoist_pad.build_packing_loop_nest %pad above %loops_l1
        : (!transform.any_op, !transform.any_op) -> !transform.any_op
        transform.yield
