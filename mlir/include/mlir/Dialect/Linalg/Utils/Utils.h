@@ -143,12 +143,11 @@ struct SliceParameters {
 ///
 /// `omitPartialTileCheck` controls whether to omit the partial/boundary tile
 /// condition check in cases where we statically know that it is unnecessary.
-SliceParameters
-computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
-                       ArrayRef<OpFoldResult> tileSizes, AffineMap map,
-                       ArrayRef<OpFoldResult> lbs, ArrayRef<OpFoldResult> ubs,
-                       ArrayRef<OpFoldResult> subShapeSizes,
-                       bool omitPartialTileCheck);
+SliceParameters computeSliceParameters(
+    OpBuilder &builder, Location loc, Value valueToTile,
+    ArrayRef<OpFoldResult> tileSizes, AffineMap map, ArrayRef<OpFoldResult> lbs,
+    ArrayRef<OpFoldResult> ubs, ArrayRef<OpFoldResult> subShapeSizes,
+    bool omitPartialTileCheck, ArrayRef<int64_t> domainSizes = {});
 
 /// Computes SliceParamaters for all `valuesToTile` of the given `linalgOp`,
 /// assuming `linalgOp` is being fused into a loop nest. Calls
