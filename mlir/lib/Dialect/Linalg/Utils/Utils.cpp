@@ -62,7 +62,8 @@ struct TileCheck : public AffineExprVisitor<TileCheck> {
   void visitDimExpr(AffineDimExpr expr) {
     unsigned pos = expr.getPosition();
 
-    // There is no tile if all tile sizes correspond to the domain size
+    // This dimension is tiled if the tile size is larger than zero and not
+    // equal to its domain size (if statically known).
     std::optional<int64_t> tileSize = getConstantIntValue(tileSizes[pos]);
     if (tileSize && !domainSizes.empty()) {
       if (domainSizes[pos] == *tileSize) {
