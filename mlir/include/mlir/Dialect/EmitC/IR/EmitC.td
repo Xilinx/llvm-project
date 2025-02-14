@@ -686,7 +686,7 @@ def EmitC_DeclareFuncOp : EmitC_Op<"declare_func", [
 
 def EmitC_FuncOp : EmitC_Op<"func", [
   AutomaticAllocationScope,
-  FunctionOpInterface, IsolatedFromAbove
+  FunctionOpInterface, IsolatedFromAbove, OpAsmOpInterface
 ]> {
   let summary = "An operation with a name containing a single `SSACFG` region";
   let description = [{
@@ -760,6 +760,14 @@ def EmitC_FuncOp : EmitC_Op<"func", [
     //===------------------------------------------------------------------===//
 
     bool isDeclaration() { return isExternal(); }
+    
+    // OpAsmOpInterface Methods
+    //===------------------------------------------------------------------===//
+
+    /// EmitC ops in the body can omit their 'emitc.' prefix in the assembly.
+    static ::llvm::StringRef getDefaultDialect() {
+      return "emitc";
+    }
   }];
   let hasCustomAssemblyFormat = 1;
   let hasVerifier = 1;
