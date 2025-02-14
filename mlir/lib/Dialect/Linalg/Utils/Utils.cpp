@@ -614,7 +614,6 @@ computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
     // Tiling creates a new slice at the proper index, the slice step is 1
     // (i.e. the op does not subsample, stepping occurs in the loop).
     LLVM_DEBUG(llvm::dbgs() << "computeSliceParameters: submap: " << m << "\n");
-
     IRRewriter rewriter(builder);
     // The offset of the slice is map(lbs) - map(0).
     SmallVector<Attribute> zeros(lbs.size(), rewriter.getIndexAttr(0));
@@ -625,10 +624,6 @@ computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
     assert(atZeroInt);
     OpFoldResult offset = makeComposedFoldedAffineApply(
         rewriter, loc, m.getResult(0) - *atZeroInt, lbs);
-
-    /*if (m.getResult(0).getKind() == AffineExprKind::Mod) {
-      offset = rewriter.getIndexAttr(0);
-    }*/
     sliceParams.offsets.push_back(offset);
 
     OpFoldResult closedIntSize =
@@ -637,12 +632,6 @@ computeSliceParameters(OpBuilder &builder, Location loc, Value valueToTile,
     AffineExpr s0 = getAffineSymbolExpr(0, builder.getContext());
     OpFoldResult size =
         makeComposedFoldedAffineApply(rewriter, loc, s0 + 1, closedIntSize);
-    /*if (m.getResult(0).getKind() == AffineExprKind::Mod) {
-      size = rewriter.getIndexAttr(
-          dyn_cast<AffineConstantExpr>(
-              dyn_cast<AffineBinaryOpExpr>(m.getResult(0)).getRHS())
-              .getValue());
-    }*/
     LLVM_DEBUG(llvm::dbgs()
                << "computeSliceParameters: raw size: " << size << "\n");
     LLVM_DEBUG(llvm::dbgs()

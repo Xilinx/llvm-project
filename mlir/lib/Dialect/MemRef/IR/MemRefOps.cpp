@@ -1943,12 +1943,6 @@ OpFoldResult ReinterpretCastOp::fold(FoldAdaptor /*operands*/) {
     if (auto prev = src.getDefiningOp<CastOp>())
       return prev.getSource();
 
-    if (auto prev = src.getDefiningOp<CollapseShapeOp>())
-      return prev.getSrc();
-
-    if (auto prev = src.getDefiningOp<ExpandShapeOp>())
-      return prev.getSrc();
-
     // reinterpret_cast(subview(x)) -> reinterpret_cast(x) if subview offsets
     // are 0.
     if (auto prev = src.getDefiningOp<SubViewOp>())
