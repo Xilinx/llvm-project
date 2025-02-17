@@ -199,3 +199,44 @@ module attributes {transform.with_named_sequence} {
     transform.yield
   }
 }
+
+// -----
+
+#identity = affine_map<(d0, d1) -> (d0, d1)>
+#identity1 = affine_map<(d0, d1) -> (d0 mod 3, d1)>
+
+// CHECK-LABEL: func @tile_monotonic_outer_dim
+//  CHECK-SAME:   %[[ARG0:[a-zA-Z0-9_]+]]: tensor<4x10xf32>
+func.func @tile_monotonic_outer_dim(%in: tensor<4x10xf32>) -> tensor<4x10xf32> {
+  %empty = tensor.empty() : tensor<4x10xf32>
+  %1 = linalg.generic {indexing_maps = [#identity, #identity1], iterator_types = ["parallel", "parallel"]}
+    ins(%in : tensor<4x10xf32>) outs(%empty : tensor<4x10xf32>) {
+    ^bb1(%a: f32, %b: f32):
+      linalg.yield %a : f32
+  } -> tensor<4x10xf32>
+
+  // CHECK: %[[C4:.+]] = arith.constant 4 : index
+  // CHECK: %[[C4_1:.+]] = arith.constant 4 : index
+  // CHECK: %[[C5:.+]] = arith.constant 5 : index
+  // CHECK: scf.for %[[IV0:.+]] = %{{.+}} to %[[C4]] step %[[C4_1]] iter_args(%[[ARG1:.+]] = %[[OUT:.+]]) -> (tensor<4x10xf32>) {
+  // CHECK:   scf.for %[[IV1:.+]] = %{{.+}} to %{{.+}} step %[[C5]] iter_args(%[[ARG2:.+]] = %[[ARG1]]) -> (tensor<4x10xf32>) {
+  // CHECK:         %[[INSLICE:.+]] = tensor.extract_slice %[[ARG0]][0, %[[IV1]]] [4, 5] [1, 1] : tensor<4x10xf32> to tensor<4x5xf32>
+  // CHECK:         %[[OUTSLICE:.+]] = tensor.extract_slice %[[ARG2]][0, %[[IV1]]] [4, 5] [1, 1] : tensor<4x10xf32> to tensor<4x5xf32>
+  // CHECK:         %[[RES:.+]] = linalg.generic {indexing_maps = [#map, #map1], iterator_types = ["parallel", "parallel"]} ins(%[[INSLICE]] : tensor<4x5xf32>) outs(%[[OUTSLICE]] : tensor<4x5xf32>) {
+  // CHECK:         ^bb0(%in: f32, %out: f32):
+  // CHECK:           linalg.yield %in : f32
+  // CHECK:         } -> tensor<4x5xf32>
+  // CHECK:         %[[INSERT_SLICE:.+]] = tensor.insert_slice %[[RES]] into %[[ARG2]][0, %[[IV1]]] [4, 5] [1, 1] : tensor<4x5xf32> into tensor<4x10xf32>
+  // CHECK:         scf.yield %[[INSERT_SLICE]] : tensor<4x10xf32>
+  // CHECK:       }
+
+  return %1 : tensor<4x10xf32>
+}
+
+module attributes {transform.with_named_sequence} {
+  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
+    %0 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!transform.any_op) -> !transform.any_op
+    %1, %loops:2 = transform.structured.tile_using_for %0 tile_sizes [4, 5] : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
+   transform.yield
+  }
+}
