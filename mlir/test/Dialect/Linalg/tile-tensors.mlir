@@ -177,9 +177,14 @@ func.func @non_monotonic_affine_expr(%arg0 : tensor<7xf32>) -> tensor<7xf32> {
   %0 = tensor.dim %arg0, %c0 : tensor<7xf32>
   %empty = tensor.empty() : tensor<7xf32>
 
-  // CHECK: %[[OUT:.*]] = tensor.empty() : tensor<7xf32>
-  // CHECK: scf.for {{.*}} to {{.*}} step {{.*}} iter_args(%[[TC0:.*]] = %[[OUT]]) -> (tensor<7xf32>) {
-  // CHECK: tensor.extract_slice %[[TC0]][0] [7] [1] : tensor<7xf32> to tensor<7xf32>
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[OUT:.*]] = tensor.empty() : tensor<7xf32>
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
+  // CHECK-DAG: %[[C7:.*]] = arith.constant 7 : index
+  // CHECK-DAG: %[[C7_1:.*]] = arith.constant 7 : index
+  // CHECK: scf.for %[[IV0:.+]] = %[[C0]] to %[[C7]] step %[[C7_1]] iter_args(%[[TC0:.*]] = %[[OUT]]) -> (tensor<7xf32>) {
+  // CHECK: tensor.extract_slice %[[ARG0]][0] [7] [1] : tensor<7xf32> to tensor<7xf32>
+  // CHECK: tensor.extract_slice %[[TC0]][%[[IV0]]] [7] [1] : tensor<7xf32> to tensor<7xf32>
   %generic = linalg.generic
     {indexing_maps = [affine_map<(d0) -> (d0 mod 4)>,
                       affine_map<(d0) -> (d0)>],
@@ -220,7 +225,7 @@ func.func @tile_monotonic_outer_dim(%in: tensor<4x10xf32>) -> tensor<4x10xf32> {
   // CHECK: %[[C5:.+]] = arith.constant 5 : index
   // CHECK: scf.for %[[IV0:.+]] = %{{.+}} to %[[C4]] step %[[C4_1]] iter_args(%[[ARG1:.+]] = %[[OUT:.+]]) -> (tensor<4x10xf32>) {
   // CHECK:   scf.for %[[IV1:.+]] = %{{.+}} to %{{.+}} step %[[C5]] iter_args(%[[ARG2:.+]] = %[[ARG1]]) -> (tensor<4x10xf32>) {
-  // CHECK:         %[[INSLICE:.+]] = tensor.extract_slice %[[ARG0]][0, %[[IV1]]] [4, 5] [1, 1] : tensor<4x10xf32> to tensor<4x5xf32>
+  // CHECK:         %[[INSLICE:.+]] = tensor.extract_slice %[[ARG0]][%[[IV0]], %[[IV1]]] [4, 5] [1, 1] : tensor<4x10xf32> to tensor<4x5xf32>
   // CHECK:         %[[OUTSLICE:.+]] = tensor.extract_slice %[[ARG2]][0, %[[IV1]]] [4, 5] [1, 1] : tensor<4x10xf32> to tensor<4x5xf32>
   // CHECK:         %[[RES:.+]] = linalg.generic {indexing_maps = [#map, #map1], iterator_types = ["parallel", "parallel"]} ins(%[[INSLICE]] : tensor<4x5xf32>) outs(%[[OUTSLICE]] : tensor<4x5xf32>) {
   // CHECK:         ^bb0(%in: f32, %out: f32):
