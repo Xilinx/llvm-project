@@ -1905,10 +1905,9 @@ mlir::scf::tileAndFuseConsumerOfSlice(RewriterBase &rewriter,
     SmallVector<SmallVector<OpFoldResult>> resultSizes(
         totalNumResultsOfConsumer);
     for (auto [idx, v] : llvm::enumerate(tiledConsumerOp->getResults())) {
-      if (failed(cast<TilingInterface>(clonedConsumerOp)
-                     .getResultTilePosition(rewriter, idx, iterDomainOffsets,
-                                            iterDomainSizes, resultOffsets[idx],
-                                            resultSizes[idx]))) {
+      if (failed(tiledConsumerOp.getResultTilePosition(
+              rewriter, idx, iterDomainOffsets, iterDomainSizes,
+              resultOffsets[idx], resultSizes[idx]))) {
         return rewriter.notifyMatchFailure(
             tiledConsumerOp,
             "can't get result domain position from iter domain position");
