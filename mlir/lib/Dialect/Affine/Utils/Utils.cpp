@@ -1951,11 +1951,14 @@ static FailureOr<OpFoldResult> composedAffineMultiply(OpBuilder &b,
 
 FailureOr<SmallVector<Value>>
 mlir::affine::delinearizeIndex(OpBuilder &b, Location loc, Value linearIndex,
-                               ArrayRef<Value> basis) {
+                               ArrayRef<Value> basis, bool hasOuterBound) {
+  if (hasOuterBound)
+    basis = basis.drop_front();
+
   // Note: the divisors are backwards due to the scan.
   SmallVector<Value> divisors;
   OpFoldResult basisProd = b.getIndexAttr(1);
-  for (OpFoldResult basisElem : llvm::reverse(basis.drop_front())) {
+  for (OpFoldResult basisElem : llvm::reverse(basis)) {
     FailureOr<OpFoldResult> nextProd =
         composedAffineMultiply(b, loc, basisElem, basisProd);
     if (failed(nextProd))
@@ -1978,11 +1981,15 @@ mlir::affine::delinearizeIndex(OpBuilder &b, Location loc, Value linearIndex,
 
 FailureOr<SmallVector<Value>>
 mlir::affine::delinearizeIndex(OpBuilder &b, Location loc, Value linearIndex,
-                               ArrayRef<OpFoldResult> basis) {
+                               ArrayRef<OpFoldResult> basis,
+                               bool hasOuterBound) {
+  if (hasOuterBound)
+    basis = basis.drop_front();
+
   // Note: the divisors are backwards due to the scan.
   SmallVector<Value> divisors;
   OpFoldResult basisProd = b.getIndexAttr(1);
-  for (OpFoldResult basisElem : llvm::reverse(basis.drop_front())) {
+  for (OpFoldResult basisElem : llvm::reverse(basis)) {
     FailureOr<OpFoldResult> nextProd =
         composedAffineMultiply(b, loc, basisElem, basisProd);
     if (failed(nextProd))
@@ -2012,8 +2019,15 @@ OpFoldResult mlir::affine::linearizeIndex(ArrayRef<OpFoldResult> multiIndex,
 OpFoldResult mlir::affine::linearizeIndex(OpBuilder &builder, Location loc,
                                           ArrayRef<OpFoldResult> multiIndex,
                                           ArrayRef<OpFoldResult> basis) {
-  assert(multiIndex.size() == basis.size());
+  assert(multiIndex.size() == basis.size() ||
+         multiIndex.size() == basis.size() + 1);
   SmallVector<AffineExpr> basisAffine;
+
+  // Add a fake initial size in order to make the later index linearization
+  // computations line up if an outer bound is not provided.
+  if (multiIndex.size() == basis.size() + 1)
+    basisAffine.push_back(getAffineConstantExpr(1, builder.getContext()));
+
   for (size_t i = 0; i < basis.size(); ++i) {
     basisAffine.push_back(getAffineSymbolExpr(i, builder.getContext()));
   }
