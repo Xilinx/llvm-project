@@ -218,10 +218,15 @@ struct LinalgOpTilingInterface
         }));
 
     OpOperand *outOperand = linalgOp.getDpsInitOperand(resultNumber);
+    SmallVector<OpFoldResult> allShapeSizes =
+        linalgOp.createFlatListOfOperandDims(b, linalgOp.getLoc());
+    SmallVector<OpFoldResult> sizeBounds =
+        mlir::affine::makeComposedFoldedMultiResultAffineApply(
+            b, loc, linalgOp.getShapesToLoopsMap(), allShapeSizes);
     SliceParameters sliceParams = computeSliceParameters(
         b, loc, outOperand->get(), sizes,
         linalgOp.getMatchingIndexingMap(outOperand), offsets,
-        /*ubs*/ {}, subShapeSizes, true);
+        /*ubs*/ sizeBounds, subShapeSizes, true);
     resultOffsets = sliceParams.offsets;
     resultSizes = sliceParams.sizes;
     return success();
