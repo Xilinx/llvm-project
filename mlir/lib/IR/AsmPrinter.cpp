@@ -2791,7 +2791,8 @@ void AsmPrinter::Impl::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
 
     SmallString<16> separator = StringRef(", ");
     if (printerFlags.getNewlineAfterAttrLimit() &&
-        attrs.size() > *printerFlags.getNewlineAfterAttrLimit()) {
+        std::distance(filteredAttrs.begin(), filteredAttrs.end()) >
+            *printerFlags.getNewlineAfterAttrLimit()) {
 
       // Increase indent to match the visually match the "{ " below.
       // currentIndent += 2;
