@@ -78,10 +78,10 @@ public:
 private:
   bool boundsSigned;
   uint64_t bitWidth;
-  void
-  inferBinOpRange(AffineBinaryOpExpr expr,
-                  std::function<ConstantIntRanges(ArrayRef<ConstantIntRanges>)>
-                      opInference);
+  void inferBinOpRange(
+      AffineBinaryOpExpr expr,
+      const std::function<ConstantIntRanges(ArrayRef<ConstantIntRanges>)>
+          &opInference);
 
   /// Bounds that have been computed for subexpressions are memoized and reused.
   llvm::DenseMap<AffineExpr, APInt> lb;

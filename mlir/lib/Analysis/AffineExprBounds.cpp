@@ -17,6 +17,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Interfaces/InferIntRangeInterface.h"
 #include "mlir/Interfaces/Utils/InferIntRangeCommon.h"
+#include "llvm/ADT/APInt.h"
 
 #include <cstdint>
 
@@ -40,7 +41,8 @@ AffineExprBoundsVisitor::AffineExprBoundsVisitor(
 
 AffineExprBoundsVisitor::AffineExprBoundsVisitor(
     ArrayRef<std::optional<int64_t>> constLowerBounds,
-    ArrayRef<std::optional<int64_t>> constUpperBounds, MLIRContext *context) {
+    ArrayRef<std::optional<int64_t>> constUpperBounds, MLIRContext *context)
+    : boundsSigned(true), bitWidth(64) {
   assert(constLowerBounds.size() == constUpperBounds.size());
   // Convert int64_ts to APInts.
   for (unsigned i = 0; i < constLowerBounds.size(); i++) {
@@ -107,7 +109,8 @@ ConstantIntRanges getRange(APInt lb, APInt ub, bool boundsSigned) {
 /// binary operations on two ranges.
 void AffineExprBoundsVisitor::inferBinOpRange(
     AffineBinaryOpExpr expr,
-    std::function<ConstantIntRanges(ArrayRef<ConstantIntRanges>)> opInference) {
+    const std::function<ConstantIntRanges(ArrayRef<ConstantIntRanges>)>
+        &opInference) {
   ConstantIntRanges lhsRange =
       getRange(lb[expr.getLHS()], ub[expr.getLHS()], boundsSigned);
   ConstantIntRanges rhsRange =
