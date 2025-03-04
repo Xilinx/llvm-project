@@ -981,11 +981,11 @@ struct TosaFoldConstantCast : public TosaFoldConstantBase<CastOp> {
     warnAboutNaNToIntCast(elements, tosaCast, rewriter);
 
     // Only fold splat tensors and those used only once to avoid duplicating
-    // them.
+    // them and increasing memory consumption.
     if (!inputTensor.hasOneUse() && !isa<SplatElementsAttr>(elements)) {
-      return rewriter.notifyMatchFailure(tosaCast,
-                                         "Currently, casts will only be folded "
-                                         "if its input only has a single user");
+      return rewriter.notifyMatchFailure(
+          tosaCast, "Currently, casts will only be folded "
+                    "if its input only has a single user or is a splat value.");
     }
 
     // Report a match failure for unexpected types
