@@ -110,16 +110,34 @@ DenseElementsAttr applyElementWise(
   // We already know the amount of values we will insert, reserve space for
   // all of them to avoid dynamic resizing
   transformedValues.reserve(toTransform.getNumElements());
-  for (auto val : toTransform.getValues<SrcValType>()) {
-    auto transformedVal = toApply(val, targetType);
-    transformedValues.push_back(transformedVal);
+  if constexpr (std::is_same_v<SrcValType, APSInt>) {
+    for (auto val : toTransform.getValues<APInt>()) {
+      auto transformedVal =
+          toApply(APSInt(val, toTransform.getElementType().isUnsignedInteger()),
+                  targetType);
+      transformedValues.push_back(transformedVal);
+    }
+  } else {
+    for (auto val : toTransform.getValues<SrcValType>()) {
+      auto transformedVal = toApply(val, targetType);
+      transformedValues.push_back(transformedVal);
+    }
   }
 
   // Make sure that the output tensor has the expected output type
   auto inShape = toTransform.getType();
   auto outTy = inShape.cloneWith({}, targetType);
 
-  return DenseElementsAttr::get(outTy, transformedValues);
+  if constexpr (std::is_same_v<TargetValType, APSInt>) {
+    SmallVector<APInt> transformedValuesAPInt;
+    transformedValuesAPInt.reserve(transformedValues.size());
+    for (APSInt val : transformedValues) {
+      transformedValuesAPInt.emplace_back(val);
+    }
+    return DenseElementsAttr::get(outTy, transformedValuesAPInt);
+  } else {
+    return DenseElementsAttr::get(outTy, transformedValues);
+  }
 }
 
 template DenseElementsAttr applyElementWise<APFloat, APFloat, FloatType>(
@@ -881,10 +899,10 @@ struct TosaFoldConstantCast : public TosaFoldConstantBase<CastOp> {
 
   using TosaFoldConstantBase::TosaFoldConstantBase;
 
-  static APFloat convertIntToFloat(const APInt &toConvert,
+  static APFloat convertIntToFloat(const APSInt &toConvert,
                                    FloatType targetType) {
     APFloat res(targetType.getFloatSemantics());
-    res.convertFromAPInt(toConvert, true /* isSigned */, tosaRoundingMode);
+    res.convertFromAPInt(toConvert, toConvert.isSigned(), tosaRoundingMode);
     return res;
   }
 
@@ -928,15 +946,14 @@ struct TosaFoldConstantCast : public TosaFoldConstantBase<CastOp> {
     return converted;
   }
 
-  static APInt convertIntToInt(const APInt &toConvert, IntegerType targetType) {
+  static APSInt convertIntToInt(const APSInt &toConvert,
+                                IntegerType targetType) {
     // Make sure to properly translate booleans
     if (targetType.getWidth() == 1) {
-      return toConvert.isZero() ? APInt::getZero(1) : APInt::getAllOnes(1);
+      return APSInt(toConvert.isZero() ? APInt::getZero(1)
+                                       : APInt::getAllOnes(1));
     }
-    if (targetType.isUnsigned()) {
-      return toConvert.zextOrTrunc(targetType.getIntOrFloatBitWidth());
-    }
-    return toConvert.sextOrTrunc(targetType.getIntOrFloatBitWidth());
+    return toConvert.extOrTrunc(targetType.getIntOrFloatBitWidth());
   }
 
   static void warnAboutNaNToIntCast(DenseElementsAttr elements, CastOp location,
@@ -994,20 +1011,17 @@ struct TosaFoldConstantCast : public TosaFoldConstantBase<CastOp> {
           tosaCast, "Only casts from/to int/float are supported.");
     }
 
-    auto isUnsigned = [](Type toCheck) {
-      return isa<IntegerType>(toCheck) &&
-             cast<IntegerType>(toCheck).isUnsigned();
-    };
-    auto typesToCheck = {toType, fromType};
-    if (llvm::any_of(typesToCheck, isUnsigned)) {
+    // TOSA spec does not allow casts from/to unsigned, but we partially do, to
+    // enable the folding of lowered qdq nodes
+    if (isa<FloatType>(fromType) && isa<IntegerType>(toType) &&
+        cast<IntegerType>(toType).isUnsigned()) {
       // TOSA casts currently don't support unsigned integers.
-      // To support them by here, one could use APSInt instead of APInts,
-      // however, this causes trouble with `getValues` which does not support
-      // APSInts currently.
+      // Casting float to unsigned int would need a decision about how to handle
+      // negative floats
       return rewriter.notifyMatchFailure(
-          tosaCast, "Cast folding from/to unsigned integers is not supported.");
+          tosaCast,
+          "Cast folding from float to unsigned integers is not supported.");
     }
-
     DenseElementsAttr res;
     if (auto intOutTy = dyn_cast<IntegerType>(toType)) {
       if (isa<FloatType>(fromType)) {
@@ -1015,7 +1029,7 @@ struct TosaFoldConstantCast : public TosaFoldConstantBase<CastOp> {
             elements, &convertFloatToInt, intOutTy);
       } else {
         assert(isa<IntegerType>(fromType));
-        res = applyElementWise<APInt, APInt, IntegerType>(
+        res = applyElementWise<APSInt, APSInt, IntegerType>(
             elements, &convertIntToInt, intOutTy);
       }
     } else {
@@ -1026,7 +1040,7 @@ struct TosaFoldConstantCast : public TosaFoldConstantBase<CastOp> {
             elements, &convertFloatToFloat, floatOutTy);
       } else {
         assert(isa<IntegerType>(fromType));
-        res = applyElementWise<APInt, APFloat, FloatType>(
+        res = applyElementWise<APSInt, APFloat, FloatType>(
             elements, &convertIntToFloat, floatOutTy);
       }
     }

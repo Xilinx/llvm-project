@@ -1877,6 +1877,15 @@ def Tosa_CastOp: Tosa_Op<"cast", [Pure,
     | signed 16 to float       | int16   | float   |
     | float 32 to float 64     | float32 | float64 |
     | float 64 to float 32     | float64 | float32 |
+
+    AMD extensions:
+    | signed to unsigned       | signed  | unsigned|
+    | unsigned to signed       | unsigned| signed  |
+    | unsigned to float        | unsigned| float  |
+      - unsigned to signed integer and signed to unsigned integer:
+        wrap on overflow
+      - unsigned to float:
+        uses llvm's float to int conversion with TOSA rounding mode
   }];
 
   let arguments = (ins
