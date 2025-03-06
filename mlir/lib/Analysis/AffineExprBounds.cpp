@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 #include "mlir/Analysis/AffineExprBounds.h"
 
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -158,13 +159,24 @@ AffineExprBoundsVisitor::visitFloorDivExpr(AffineBinaryOpExpr expr) {
   return failure();
 }
 LogicalResult AffineExprBoundsVisitor::visitModExpr(AffineBinaryOpExpr expr) {
-  inferBinOpRange(
-      expr, [boundsSigned = boundsSigned](ArrayRef<ConstantIntRanges> ranges) {
-        if (boundsSigned) {
-          return intrange::inferRemS(ranges);
-        }
-        return intrange::inferRemU(ranges);
-      });
+  // Only support integers >= 1 as RHS.
+  auto rhsConst = dyn_cast<AffineConstantExpr>(expr.getRHS());
+  if (!rhsConst || rhsConst.getValue() < 1)
+    return failure();
+
+  inferBinOpRange(expr, [boundsSigned =
+                             boundsSigned](ArrayRef<ConstantIntRanges> ranges) {
+    // Mod must return a value between 0 and N-1.
+    // Computing (N + (expr mod N)) mod N is guaranteed to yield a result in
+    // this range.
+    if (boundsSigned) {
+      auto rhs = ranges[1];
+      auto lhs = ranges[0];
+      return intrange::inferRemS(
+          {intrange::inferAdd({intrange::inferRemS({lhs, rhs}), rhs}), rhs});
+    }
+    return intrange::inferRemU(ranges);
+  });
   return success();
 }
 LogicalResult AffineExprBoundsVisitor::visitDimExpr(AffineDimExpr expr) {

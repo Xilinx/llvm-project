@@ -52,6 +52,16 @@ func.func @test_compute_affine_expr_bounds() {
   // CHECK-SAME: expr_ub = 3
   "test.mod_not_wrapping_around"() {affine_map = affine_map<(d0) -> (((d0 + 12) mod 11) mod 5)>, lbs = [0], ubs = [2]} : () -> ()
 
+  // CHECK: "test.mod_neg"()
+  // CHECK-SAME: expr_lb = 1
+  // CHECK-SAME: expr_ub = 3
+  "test.mod_neg"() {affine_map = affine_map<(d0) -> (d0 mod 5)>, lbs = [-4], ubs = [-2]} : () -> ()
+
+  // CHECK: "test.mod_wrapping_by_zero"()
+  // CHECK-SAME: expr_lb = 0
+  // CHECK-SAME: expr_ub = 4
+  "test.mod_wrapping_by_zero"() {affine_map = affine_map<(d0) -> (d0 mod 5)>, lbs = [-2], ubs = [1]} : () -> ()
+
   // FloorDiv
 
   // CHECK: "test.floordiv_basic"()
