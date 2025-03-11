@@ -1,4 +1,6 @@
+#include "llvm/Support/MathExtras.h"
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>
@@ -75,25 +77,36 @@ LogicalResult static unaryOp(PatternRewriter &rewriter, PDLResultList &results,
 
       results.push_back(rewriter.getIntegerAttr(integerType, resultInt));
     } else if constexpr (T == UnaryOpKind::log2) {
+      if ((integerType.isSigned() || integerType.isSignless()) &&
+          operandIntAttr.getValue().getSExtValue() < 0) {
+        llvm::llvm_unreachable_internal(
+            "The logarithm of negative numbers is undefined.");
+      }
+
       auto getIntegerAsAttr = [&](const APSInt &value) -> Attribute {
         // Only calculate values for exact log2.
         int32_t log2Value = value.exactLogBase2();
-        if (log2Value < 0)
-          return Attribute();
-        return rewriter.getIntegerAttr(
-            integerType,
-            APSInt(APInt(bitWidth, log2Value), integerType.isUnsigned()));
+
+        // Assume the input integer has bitwidth up to 64, the logarithm output
+        // is [0, 63] Using a new bitwidth of 8 is sufficent to cover the range.
+        // Furthermore, if the input is not a power of 2, 255, maximum number of
+        // 8-bit unsigned integer, is returned instead of a failure.
+        const unsigned int newBitWidth = 8;
+        return log2Value < 0
+                   ? IntegerAttr::get(
+                         rewriter.getIntegerType(newBitWidth,
+                                                 /*isSigned*/ false),
+                         APInt(newBitWidth, llvm::maxUIntN(newBitWidth),
+                               /*isSigned=*/false))
+                   : IntegerAttr::get(
+                         rewriter.getIntegerType(newBitWidth, false),
+                         APInt(newBitWidth, log2Value, /*isSigned=*/false));
       };
       // for log2 we treat signless integer as signed
-      Attribute log2IntegerAttr;
-      if (integerType.isSignless())
-        log2IntegerAttr =
-            getIntegerAsAttr(APSInt(operandIntAttr.getValue(), false));
-      else
-        log2IntegerAttr = getIntegerAsAttr(operandIntAttr.getAPSInt());
-      // Return failure if log2 value isn't exact.
-      if (!log2IntegerAttr)
-        return failure();
+      Attribute log2IntegerAttr =
+          integerType.isSignless()
+              ? getIntegerAsAttr(APSInt(operandIntAttr.getValue(), false))
+              : getIntegerAsAttr(operandIntAttr.getAPSInt());
       results.push_back(log2IntegerAttr);
     } else if constexpr (T == UnaryOpKind::abs) {
       if (integerType.isSigned()) {
