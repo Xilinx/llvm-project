@@ -687,8 +687,8 @@ struct ConcatSliceOptimization : public OpRewritePattern<tosa::SliceOp> {
           sliceOp, "degenerate slice with zero sized dim in output");
     }
     sliceStart[axis] -= droppedConcatInputSize;
-    auto newConcat = rewriter.create<tosa::ConcatOp>(concatOp->getLoc(),
-                                                     requiredConcatInputs, axis);
+    auto newConcat = rewriter.create<tosa::ConcatOp>(
+        concatOp->getLoc(), requiredConcatInputs, axis);
     auto newSlice = rewriter.create<tosa::SliceOp>(
         sliceOp->getLoc(), sliceOp.getType(), newConcat,
         rewriter.getDenseI64ArrayAttr(sliceStart),
@@ -698,9 +698,75 @@ struct ConcatSliceOptimization : public OpRewritePattern<tosa::SliceOp> {
   }
 };
 
+///  This patterns adjust the multipliers of a tile followed by a slice to only
+///  tile as much data as it is required by the slice
+struct TileSliceOptimization : public OpRewritePattern<tosa::SliceOp> {
+  using OpRewritePattern<tosa::SliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tosa::SliceOp sliceOp,
+                                PatternRewriter &rewriter) const override {
+    Value sliceInput = sliceOp.getInput1();
+    auto tileOp = sliceInput.getDefiningOp<tosa::TileOp>();
+    if (!tileOp)
+      return rewriter.notifyMatchFailure(sliceOp,
+                                         "slice input must be tile operation");
+    if (!tileOp->hasOneUse())
+      return rewriter.notifyMatchFailure(
+          sliceOp, "preceding tile must have a single use"); // Do not insert
+                                                             // additional tiles
+
+    const auto tileOpInputType =
+        dyn_cast<RankedTensorType>(tileOp->getOperand(0).getType());
+    if (!tileOpInputType || !tileOpInputType.hasStaticShape())
+      return rewriter.notifyMatchFailure(
+          sliceOp, "input to preceding tile op must be a static ranked tensor");
+    llvm::SmallVector<int64_t> requiredMultipliers;
+    llvm::SmallVector<int64_t> newTileStarts;
+    requiredMultipliers.reserve(tileOpInputType.getRank());
+    newTileStarts.reserve(tileOpInputType.getRank());
+    for (auto [axis, sliceStart, sliceSize] :
+         llvm::enumerate(sliceOp.getStart(), sliceOp.getSize())) {
+      if (sliceSize <= 0) {
+        return rewriter.notifyMatchFailure(
+            sliceOp, "degenerate slice with zero sized dim");
+      }
+      const int64_t tileInputDimSize = tileOpInputType.getDimSize(axis);
+      const int64_t sliceOffsetInNewFirstTile = sliceStart % tileInputDimSize;
+      const int64_t sliceSizeInFirstTile =
+          std::min(tileInputDimSize - sliceOffsetInNewFirstTile, sliceSize);
+      assert(sliceSizeInFirstTile > 0);
+      const int64_t requiredMultiplierWithoutFirstTile =
+          llvm::divideCeil(sliceSize - sliceSizeInFirstTile, tileInputDimSize);
+      const int64_t requiredMultiplier =
+          requiredMultiplierWithoutFirstTile + (sliceSizeInFirstTile != 0);
+      assert(requiredMultiplier <= tileOp.getMultiples()[axis]);
+      requiredMultipliers.push_back(requiredMultiplier);
+      newTileStarts.push_back(sliceOffsetInNewFirstTile);
+    }
+    if (requiredMultipliers == tileOp.getMultiples())
+      return rewriter.notifyMatchFailure(
+          sliceOp, "could not reduce multipliers in preceding tile");
+
+    llvm::SmallVector<int64_t> newTileShape(tileOpInputType.getShape());
+    for (auto [newShape, multiplier] :
+         llvm::zip_equal(newTileShape, requiredMultipliers)) {
+      newShape *= multiplier;
+    }
+    auto newTile = rewriter.create<tosa::TileOp>(
+        tileOp->getLoc(), tileOpInputType.clone(newTileShape),
+        tileOp->getOperand(0), requiredMultipliers);
+    auto newSlice = rewriter.create<tosa::SliceOp>(
+        sliceOp->getLoc(), sliceOp.getType(), newTile,
+        rewriter.getDenseI64ArrayAttr(newTileStarts), sliceOp.getSizeAttr());
+    rewriter.replaceOp(sliceOp, newSlice);
+    return success();
+  }
+};
+
 void SliceOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
   results.add<ConcatSliceOptimization>(context);
+  results.add<TileSliceOptimization>(context);
 }
 
 struct MinToClampOptimization : public OpRewritePattern<tosa::MinimumOp> {
