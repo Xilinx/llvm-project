@@ -1362,6 +1362,21 @@ OpFoldResult TileOp::fold(FoldAdaptor adaptor) {
   bool allOnes = llvm::all_of(getMultiples(), [](int64_t v) { return v == 1; });
   if (allOnes && getInput1().getType() == getType())
     return getInput1();
+
+  if (auto inputTile = getInput1().getDefiningOp<TileOp>()) {
+    if (!inputTile->hasOneUse()) {
+      return {};
+    }
+    llvm::SmallVector<int64_t> newMultiplies{getMultiples()};
+    for (auto [idx, multiplier] : llvm::enumerate(inputTile.getMultiples())) {
+      newMultiplies[idx] *= multiplier;
+    }
+    setMultiples(newMultiplies);
+    setOperand(inputTile->getOperand(0));
+    getOperation()->setLoc(
+        FusedLoc::get(getContext(), {inputTile->getLoc(), getLoc()}));
+    return getResult();
+  }
   return {};
 }
 

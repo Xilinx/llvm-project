@@ -21,9 +21,8 @@ func.func @concat_different_axis(%arg0: tensor<1x1x7x7xf32>) -> tensor<2x2x7x7xf
 
 // CHECK-LABEL:  func.func @concat_different_axis
 // CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<1x1x7x7xf32>) -> tensor<2x2x7x7xf32> {
-// CHECK:           [[VAR_0_:%.+]] = tosa.tile [[PARAM_0_]] {multiples = array<i64: 1, 2, 1, 1>} : (tensor<1x1x7x7xf32>) -> tensor<1x2x7x7xf32>
-// CHECK:           [[VAR_1_:%.+]] = tosa.tile [[VAR_0_]] {multiples = array<i64: 2, 1, 1, 1>} : (tensor<1x2x7x7xf32>) -> tensor<2x2x7x7xf32>
-// CHECK:           return [[VAR_1_]] : tensor<2x2x7x7xf32>
+// CHECK:           [[VAR_0_:%.+]] = tosa.tile [[PARAM_0_]] {multiples = array<i64: 2, 2, 1, 1>} : (tensor<1x1x7x7xf32>) -> tensor<2x2x7x7xf32>
+// CHECK:           return [[VAR_0_]] : tensor<2x2x7x7xf32>
 // CHECK:         }
 
 // -----

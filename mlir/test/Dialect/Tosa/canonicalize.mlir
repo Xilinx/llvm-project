@@ -691,6 +691,31 @@ func.func @tile_fold(%arg0: tensor<3x4xf32>) -> tensor<3x4xf32> {
 
 // -----
 
+// CHECK-LABEL:  func.func @tile_fold_consecutive
+func.func @tile_fold_consecutive(%arg0: tensor<3x4xf32>) -> tensor<6x16xf32> { 
+  // CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<3x4xf32>) -> tensor<6x16xf32> {
+  // CHECK:           [[VAR_0_:%.+]] = tosa.tile [[PARAM_0_]] {multiples = array<i64: 2, 4>} : (tensor<3x4xf32>) -> tensor<6x16xf32>
+  // CHECK:           return [[VAR_0_]] : tensor<6x16xf32>
+  %0 = tosa.tile %arg0 { multiples = array<i64: 1, 2> }: (tensor<3x4xf32>) -> tensor<3x8xf32>
+  %1 = tosa.tile %0 { multiples = array<i64: 2, 2> }: (tensor<3x8xf32>) -> tensor<6x16xf32>
+  return %1 : tensor<6x16xf32>
+}
+
+// -----
+
+// CHECK-LABEL:  func.func @tile_no_fold_consecutive_multi_use
+func.func @tile_no_fold_consecutive_multi_use(%arg0: tensor<3x4xf32>) -> (tensor<3x8xf32>, tensor<6x16xf32>) {
+  // CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<3x4xf32>) -> (tensor<3x8xf32>, tensor<6x16xf32>) {
+  // CHECK:           [[VAR_0_:%.+]] = tosa.tile [[PARAM_0_]] {multiples = array<i64: 1, 2>} : (tensor<3x4xf32>) -> tensor<3x8xf32>
+  // CHECK:           [[VAR_1_:%.+]] = tosa.tile [[VAR_0_]] {multiples = array<i64: 2, 2>} : (tensor<3x8xf32>) -> tensor<6x16xf32>
+  // CHECK:           return [[VAR_0_]], [[VAR_1_]] : tensor<3x8xf32>, tensor<6x16xf32>
+  %0 = tosa.tile %arg0 { multiples = array<i64: 1, 2> }: (tensor<3x4xf32>) -> tensor<3x8xf32>
+  %1 = tosa.tile %0 { multiples = array<i64: 2, 2> }: (tensor<3x8xf32>) -> tensor<6x16xf32>
+  return %0, %1 : tensor<3x8xf32>, tensor<6x16xf32>
+}
+
+// -----
+
 // CHECK-LABEL: @tile_nofold
 func.func @tile_nofold(%arg0: tensor<3x4xf32>) -> tensor<3x8xf32> {
   // CHECK: tosa.tile
