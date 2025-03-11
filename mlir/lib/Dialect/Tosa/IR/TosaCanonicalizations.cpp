@@ -60,9 +60,51 @@ struct ConcatOptimization : public OpRewritePattern<tosa::ConcatOp> {
   }
 };
 
+struct SelfConcatToTile : public OpRewritePattern<tosa::ConcatOp> {
+  using OpRewritePattern<tosa::ConcatOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tosa::ConcatOp concatOp,
+                                PatternRewriter &rewriter) const override {
+    if (llvm::all_equal(concatOp->getUsers())) {
+      const auto concatUser = llvm::dyn_cast<tosa::ConcatOp>(
+          concatOp->getUses().begin()->getOwner());
+      if (concatUser) {
+        // Try folding the concat into its consumer before rewriting it to a
+        // tile.
+        SmallVector<Value> replacementValues;
+        auto foldResult = rewriter.tryFold(concatUser, replacementValues);
+        if (foldResult.succeeded()) {
+          if (!replacementValues.empty()) {
+            rewriter.replaceOp(concatUser, replacementValues);
+          }
+          return success();
+        }
+      }
+    }
+
+    if (!llvm::all_equal(concatOp->getOperands())) {
+      return rewriter.notifyMatchFailure(
+          concatOp, "Requires all operands to be the same");
+    }
+    const auto concatType = dyn_cast<ShapedType>(concatOp.getType());
+    if (!concatType || !concatType.hasRank()) {
+      return rewriter.notifyMatchFailure(concatOp,
+                                         "Requires concat to be ranked");
+    }
+    SmallVector<int64_t> multiplies(concatType.getRank(), 1);
+    multiplies[concatOp.getAxis()] = concatOp->getNumOperands();
+    auto tileOp = rewriter.createOrFold<tosa::TileOp>(
+        concatOp->getLoc(), concatOp.getType(), concatOp->getOperand(0),
+        multiplies);
+    rewriter.replaceOp(concatOp, {tileOp});
+    return success();
+  }
+};
+
 void ConcatOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                            MLIRContext *context) {
   results.add<ConcatOptimization>(context);
+  results.add<SelfConcatToTile>(context);
 }
 
 struct SqrtReciprocalOptimization : public OpRewritePattern<tosa::PowOp> {
