@@ -1,6 +1,4 @@
-#include "llvm/Support/MathExtras.h"
 #include <cassert>
-#include <cmath>
 #include <cstdint>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/APInt.h>

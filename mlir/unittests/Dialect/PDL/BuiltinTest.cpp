@@ -7,8 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Dialect/PDL/IR/Builtins.h"
-#include "mlir/IR/PDLPatternMatch.h.inc"
-#include "llvm/Support/MathExtras.h"
 #include "gmock/gmock.h"
 #include <cstdint>
 #include <gtest/gtest.h>
@@ -602,17 +600,16 @@ TEST_F(BuiltinTest, log2) {
 
     PDLValue result = results.getResults()[0];
     EXPECT_EQ(
-      cast<IntegerAttr>(result.cast<Attribute>()).getValue().getZExtValue(),
-      llvm::maxUIntN(8)
-    );
+        cast<IntegerAttr>(result.cast<Attribute>()).getValue().getZExtValue(),
+        llvm::maxUIntN(8));
   }
 
   auto minusOneI32 = rewriter.getI32IntegerAttr(-1);
   {
     TestPDLResultList results(1);
-    EXPECT_DEATH(static_cast<void>(
-                     builtin::log2(rewriter, results, {minusOneI32})),
-                 "The logarithm of negative numbers is undefined.");
+    EXPECT_DEATH(
+        static_cast<void>(builtin::log2(rewriter, results, {minusOneI32})),
+        "The logarithm of negative numbers is undefined.");
   }
 
   auto fourF16 = rewriter.getF16FloatAttr(4.0);
