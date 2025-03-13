@@ -908,6 +908,17 @@ func.func @canonicalize_tile_slice(%arg0 : tensor<1x12x12x10x10x10xf32>) -> tens
 
 // -----
 
+// CHECK-LABEL:  func.func @canonicalize_tile_slice_fold
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<1x12x12x10x10x10xf32>) -> tensor<1x12x12x10x10x10xf32> {
+// CHECK:           return [[PARAM_0_]] : tensor<1x12x12x10x10x10xf32>
+func.func @canonicalize_tile_slice_fold(%arg0 : tensor<1x12x12x10x10x10xf32>) -> tensor<1x12x12x10x10x10xf32> {
+  %0 = tosa.tile %arg0 {multiples = array<i64: 10, 10, 10, 10, 10, 10>} : (tensor<1x12x12x10x10x10xf32>) -> tensor<10x120x120x100x100x100xf32>
+  %1 = tosa.slice %0 {size = array<i64: 1, 12, 12, 10, 10, 10>, start = array<i64: 0, 24, 12, 10, 10, 0>} : (tensor<10x120x120x100x100x100xf32>) -> tensor<1x12x12x10x10x10xf32>
+  return  %1 :  tensor<1x12x12x10x10x10xf32>
+}
+
+// -----
+
 // CHECK-LABEL:  func.func @canonicalize_self_concat_slice
 // CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {
 // CHECK:           return [[PARAM_0_]] : tensor<1x2x3x4xf32>
