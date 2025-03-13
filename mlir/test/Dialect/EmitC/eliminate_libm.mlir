@@ -3,7 +3,7 @@
 // CHECK: emitc.include <"cmath">
 // CHECK-NOT: emitc.func private @expm1
 // CHECK-DAG: emitc.func @call_expm1(%[[IN:.*]]: f64) -> f64
-// CHECK-DAG: %[[RESULT:.*]] = emitc.call_opaque "expm1"(%[[IN]]) : (f64) -> f64
+// CHECK-DAG: %[[RESULT:.*]] = call_opaque "expm1"(%[[IN]]) : (f64) -> f64
 // CHECK-DAG: return %[[RESULT]]
 module {
   emitc.func private @expm1(f64) -> f64 attributes {libm, llvm.readnone, specifiers = ["extern"]}
@@ -18,7 +18,7 @@ module {
 // CHECK-NOT: emitc.include <"cmath">
 // CHECK: emitc.func private @expm1
 // CHECK: emitc.func @call_expm1(%[[IN:.*]]: f64) -> f64
-// CHECK-NEXT: %[[RESULT:.*]] = emitc.call @expm1(%[[IN]]) : (f64) -> f64
+// CHECK-NEXT: %[[RESULT:.*]] = call @expm1(%[[IN]]) : (f64) -> f64
 // CHECK-NEXT: return %[[RESULT]]
 module {
   emitc.func private @expm1(f64) -> f64 attributes {llvm.readnone}
