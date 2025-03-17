@@ -1389,7 +1389,7 @@ public:
     // TODO: consider caching the type properties in the constructor to avoid
     // querying them on each element access.
     if (mlirTypeIsAIndex(type)) {
-      return mlirDenseElementsAttrGetIndexValue(*this, pos);
+      return nb::int_(mlirDenseElementsAttrGetIndexValue(*this, pos));
     }
     unsigned width = mlirIntegerTypeGetWidth(type);
     bool isUnsigned = mlirIntegerTypeIsUnsigned(type);
