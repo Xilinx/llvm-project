@@ -785,7 +785,7 @@ def EmitC_ReturnOp : EmitC_Op<"return", [Pure, HasParent<"FuncOp">,
     Example:
 
     ```mlir
-    emitc.func @foo() : (i32) {
+    emitc.func @foo() -> (i32) {
       ...
       emitc.return %0 : i32
     }
