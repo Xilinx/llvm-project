@@ -66,13 +66,17 @@ TEST_F(BuiltinTest, addEntryToDictionaryAttr) {
 }
 
 TEST_F(BuiltinTest, addElemToArrayAttr) {
+  TestPDLResultList results(1);
+
   auto dict = rewriter.getDictionaryAttr(
       rewriter.getNamedAttr("key", rewriter.getStringAttr("value")));
   rewriter.getArrayAttr({});
 
   auto arrAttr = rewriter.getArrayAttr({});
+  EXPECT_TRUE(succeeded(
+      builtin::addElemToArrayAttr(rewriter, results, {arrAttr, dict})));
   mlir::Attribute updatedArrAttr =
-      builtin::addElemToArrayAttr(rewriter, arrAttr, dict);
+      results.getResults().front().cast<Attribute>();
 
   auto dictInsideArrAttr =
       cast<DictionaryAttr>(*cast<ArrayAttr>(updatedArrAttr).begin());
@@ -617,7 +621,7 @@ TEST_F(BuiltinTest, log2) {
         cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat(),
         2.0);
   }
-  
+
   auto threeF16 = rewriter.getF16FloatAttr(3.0);
 
   // check correctness
@@ -626,7 +630,8 @@ TEST_F(BuiltinTest, log2) {
     EXPECT_TRUE(builtin::log2(rewriter, results, {threeF16}).succeeded());
 
     PDLValue result = results.getResults()[0];
-    float resultVal = cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat();
+    float resultVal =
+        cast<FloatAttr>(result.cast<Attribute>()).getValue().convertToFloat();
     EXPECT_TRUE(resultVal > 1.58 && resultVal < 1.59);
   }
 }

@@ -625,7 +625,8 @@ private:
   struct {
     ast::UserRewriteDecl *addEntryToDictionaryAttr_Rewrite;
     ast::UserConstraintDecl *addEntryToDictionaryAttr_Constraint;
-    ast::UserRewriteDecl *addElemToArrayAttr;
+    ast::UserRewriteDecl *addElemToArrayAttrRewrite;
+    ast::UserConstraintDecl *addElemToArrayAttrConstraint;
     ast::UserRewriteDecl *mulRewrite;
     ast::UserRewriteDecl *divRewrite;
     ast::UserRewriteDecl *modRewrite;
@@ -691,9 +692,13 @@ void Parser::declareBuiltins() {
           "__builtin_addEntryToDictionaryAttr_constraint",
           {"attr", "attrName", "attrEntry"},
           /*returnsAttr=*/true);
-  builtins.addElemToArrayAttr = declareBuiltin<ast::UserRewriteDecl>(
-      "__builtin_addElemToArrayAttr", {"attr", "element"},
+  builtins.addElemToArrayAttrRewrite = declareBuiltin<ast::UserRewriteDecl>(
+      "__builtin_addElemToArrayAttrRewriter", {"attr", "element"},
       /*returnsAttr=*/true);
+  builtins.addElemToArrayAttrConstraint =
+      declareBuiltin<ast::UserConstraintDecl>(
+          "__builtin_addElemToArrayAttrConstraint", {"attr", "element"},
+          /*returnsAttr=*/true);
   builtins.mulRewrite = declareBuiltin<ast::UserRewriteDecl>(
       "__builtin_mulRewrite", {"lhs", "rhs"}, true);
   builtins.divRewrite = declareBuiltin<ast::UserRewriteDecl>(
@@ -2323,13 +2328,19 @@ FailureOr<ast::Expr *> Parser::parseArrayAttrExpr() {
 
   consumeToken(Token::l_square);
 
+  ast::Decl *builtinFunction = builtins.addElemToArrayAttrRewrite;
   if (parserContext != ParserContext::Rewrite)
-    return emitError(
-        "Parsing of array attributes as constraint not supported!");
+    builtinFunction = builtins.addElemToArrayAttrConstraint;
 
-  FailureOr<ast::Expr *> arrayAttr = ast::AttributeExpr::create(ctx, curToken.getLoc(), "[]");
+  FailureOr<ast::Expr *> arrayAttr =
+      ast::AttributeExpr::create(ctx, curToken.getLoc(), "[]");
   if (failed(arrayAttr))
     return failure();
+
+  // No values inside the array
+  if (consumeIf(Token::r_square)) {
+    return arrayAttr;
+  }
 
   do {
     FailureOr<ast::Expr *> attr = parseExpr();
@@ -2337,13 +2348,15 @@ FailureOr<ast::Expr *> Parser::parseArrayAttrExpr() {
       return failure();
 
     SmallVector<ast::Expr *> arrayAttrArgs{*arrayAttr, *attr};
-    auto elemToArrayCall = createBuiltinCall(
-        curToken.getLoc(), builtins.addElemToArrayAttr, arrayAttrArgs);
+
+    auto elemToArrayCall =
+        createBuiltinCall(curToken.getLoc(), builtinFunction, arrayAttrArgs);
     if (failed(elemToArrayCall))
       return failure();
 
     // Uses the new array for the next element.
     arrayAttr = elemToArrayCall;
+
   } while (consumeIf(Token::comma));
 
   if (failed(
@@ -2415,7 +2428,8 @@ FailureOr<ast::Expr *> Parser::parseDictAttrExpr() {
   consumeToken(Token::l_brace);
   SMRange loc = curToken.getLoc();
 
-  FailureOr<ast::Expr *> dictAttrCall = ast::AttributeExpr::create(ctx, loc, "{}");
+  FailureOr<ast::Expr *> dictAttrCall =
+      ast::AttributeExpr::create(ctx, loc, "{}");
   if (failed(dictAttrCall))
     return failure();
 
