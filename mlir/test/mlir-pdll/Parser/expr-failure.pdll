@@ -134,6 +134,22 @@ Pattern {
 
 // -----
 
+Pattern ConstraintArrayAttrWithAttrAndValue {
+  let root = op<test.op>(arg: Value) -> ();
+  let attr1 = attr<"\"test1\"">;
+  let array = [attr1, arg];
+  // CHECK:  unable to convert expression of type `Value` to the expected type of `Attr`
+  let root = op<test.op> -> ();
+  rewrite root with {
+      let newRoot = op<test.success>() { some_array = array} -> ();
+      replace root with newRoot;
+  };
+}
+
+// -----
+
+
+
 //===----------------------------------------------------------------------===//
 // Range Expr
 //===----------------------------------------------------------------------===//
