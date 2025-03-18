@@ -42,6 +42,8 @@ LogicalResult addElemToArrayAttr(PatternRewriter &rewriter,
                                  PDLResultList &results,
                                  ArrayRef<PDLValue> args) {
 
+  assert(args.size() == 2 &&
+         "Expected two arguments, one ArrayAttr and one Attr");
   auto arrayAttr = cast<ArrayAttr>(args[0].cast<Attribute>());
   auto attrElement = args[1].cast<Attribute>();
   std::vector<Attribute> values = arrayAttr.getValue().vec();
