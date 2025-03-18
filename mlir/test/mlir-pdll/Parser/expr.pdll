@@ -34,7 +34,7 @@ Pattern {
 
 // CHECK-LABEL: Module
 // CHECK: |-NamedAttributeDecl {{.*}}  Name<some_array>
-// CHECK: `-UserRewriteDecl {{.*}} Name<__builtin_addElemToArrayAttr> ResultType<Attr>
+// CHECK: `-UserRewriteDecl {{.*}} Name<__builtin_addElemToArrayAttrRewriter> ResultType<Attr>
 // CHECK:   `Arguments`
 // CHECK:     CallExpr {{.*}} Type<Attr>
 // CHECK:       AttributeExpr {{.*}} Value<"[]">
@@ -86,6 +86,41 @@ Constraint getPopulatedDict() -> Attr {
   let dictionary = { test = "String" };
   return dictionary;
 }
+
+
+
+// -----
+
+// CHECK-LABEL: Module
+//     CHECK:LetStmt {{.*}}
+//CHECK-NEXT:`-VariableDecl {{.*}} Name<array> Type<Attr>
+//CHECK-NEXT:  `-AttributeExpr {{.*}} Value<"[]">
+//CHECK-NEXT:ReturnStmt {{.*}}
+
+Constraint getEmtpyArray() -> Attr {
+  let array = [];
+  return array;
+}
+
+// -----
+
+// CHECK-LABEL: Module
+//     CHECK:LetStmt {{.*}}
+//CHECK-NEXT:`-VariableDecl {{.*}} Name<array> Type<Attr>
+//CHECK-NEXT:  `-CallExpr {{.*}} Type<Attr>
+//CHECK-NEXT:    `-DeclRefExpr {{.*}} Type<Constraint>
+//CHECK-NEXT:      `-UserConstraintDecl {{.*}} Name<__builtin_addElemToArrayAttrConstraint> ResultType<Attr>
+//     CHECK:    `Arguments`
+//CHECK-NEXT:      |-AttributeExpr {{.*}} Value<"[]">
+//CHECK-NEXT:      `-AttributeExpr {{.*}} Value<""attr1"">
+//CHECK-NEXT:ReturnStmt {{.*}}
+
+Constraint getPopulateArray() -> Attr {
+  let array = ["attr1"];
+  return array;
+}
+
+
 
 // -----
 

@@ -43,8 +43,9 @@ enum class UnaryOpKind {
 LogicalResult addEntryToDictionaryAttr(PatternRewriter &rewriter,
                                        PDLResultList &results,
                                        ArrayRef<PDLValue> args);
-Attribute addElemToArrayAttr(PatternRewriter &rewriter, Attribute attr,
-                             Attribute element);
+LogicalResult addElemToArrayAttr(PatternRewriter &rewriter,
+                                 PDLResultList &results,
+                                 ArrayRef<PDLValue> args);
 LogicalResult mul(PatternRewriter &rewriter, PDLResultList &results,
                   llvm::ArrayRef<PDLValue> args);
 LogicalResult div(PatternRewriter &rewriter, PDLResultList &results,
