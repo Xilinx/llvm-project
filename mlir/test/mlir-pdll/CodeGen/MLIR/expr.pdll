@@ -253,6 +253,17 @@ Pattern ConstraintWithArrayAttr {
   };
 }
 
+// -----
+
+// CHECK-LABEL: pdl.pattern @ConstraintNotMatchingArrayAttrInAttrType
+// CHECK-NOT: apply_native_constraint "__builtin_addElemToArrayAttrConstraint"
+
+
+Constraint I64Value(value: Value);
+Pattern ConstraintNotMatchingArrayAttrInAttrType {
+  let root = op<my_dialect.foo>(arg: Value, arg2: Value, arg3: [Value, I64Value], arg);
+  replace root with arg;
+}
 
 
 // -----
