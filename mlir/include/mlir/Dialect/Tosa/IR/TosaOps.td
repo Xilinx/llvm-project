@@ -1713,11 +1713,15 @@ def Tosa_TileOp : Tosa_InferShapedTypeOp<"tile"> {
 
   let arguments = (ins
     Tosa_Tensor:$input1,
-    DenseI64ArrayAttr:$multiples);
+    Tosa_Shape:$multiples);
 
   let results = (outs
     Tosa_Tensor:$output
   );
+
+  let extraClassDeclaration = [{
+    LogicalResult getConstantMultiples(llvm::SmallVector<int64_t> &multiples);
+  }];
 
   let hasFolder = 1;
   let hasVerifier = 1;
@@ -2129,5 +2133,7 @@ def Tosa_WhileOp : Tosa_Op<"while_loop", [
 }
 
 include "mlir/Dialect/Tosa/IR/TosaUtilOps.td"
+
+include "mlir/Dialect/Tosa/IR/TosaShapeOps.td"
 
 #endif // TOSA_OPS
