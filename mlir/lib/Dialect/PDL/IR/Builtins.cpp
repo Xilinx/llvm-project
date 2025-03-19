@@ -46,7 +46,7 @@ LogicalResult addElemToArrayAttr(PatternRewriter &rewriter,
          "Expected two arguments, one ArrayAttr and one Attr");
   auto arrayAttr = cast<ArrayAttr>(args[0].cast<Attribute>());
   auto attrElement = args[1].cast<Attribute>();
-  std::vector<Attribute> values = arrayAttr.getValue().vec();
+  llvm::SmallVector<Attribute> values(arrayAttr.getValue());
   values.push_back(attrElement);
 
   results.push_back(rewriter.getArrayAttr(values));
