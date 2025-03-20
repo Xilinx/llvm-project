@@ -121,6 +121,42 @@ Constraint getPopulateArray() -> Attr {
 }
 
 
+// -----
+
+
+// CHECK-LABEL: Module
+//     CHECK:LetStmt {{.*}}
+//CHECK-NEXT:`-VariableDecl {{.*}} Name<array> Type<Attr>
+//CHECK-NEXT:  `-CallExpr {{.*}} Type<Attr>
+//CHECK-NEXT:    `-DeclRefExpr {{.*}} Type<Constraint>
+//CHECK-NEXT:      `-UserConstraintDecl {{.*}} Name<__builtin_addElemToArrayAttrConstraint> ResultType<Attr>
+// CHECK-DAG:    `Arguments`
+//CHECK-NEXT:      |-CallExpr {{.*}} Type<Attr>
+//CHECK-NEXT:        `-DeclRefExpr {{.*}} Type<Constraint>
+//CHECK-NEXT:     |    `-UserConstraintDecl {{.*}} Name<__builtin_addElemToArrayAttrConstraint> ResultType<Attr>
+// CHECK-DAG:        `Arguments`
+//CHECK-NEXT:        |-AttributeExpr {{.*}} Value<"[]">
+//CHECK-NEXT:        `-CallExpr {{.*}} Type<Attr>
+//CHECK-NEXT:          `-DeclRefExpr {{.*}} Type<Constraint>
+//CHECK-NEXT:            `-UserConstraintDecl {{.*}} Name<getA> ResultType<Attr>
+//     CHECK: `-CallExpr {{.*}} Type<Attr>
+//CHECK-NEXT:  `-DeclRefExpr {{.*}} Type<Constraint>
+//CHECK-NEXT:    `-UserConstraintDecl {{.*}} Name<getB> ResultType<Attr>
+// CHECK-DAG: -ReturnStmt {{.*}}
+
+Constraint getA() -> Attr {
+  return "A";
+}
+
+Constraint getB() -> Attr {
+  return "B";
+}
+
+Constraint getPopulateArrayFromOtherConstraints() -> Attr {
+  let array = [getA(), getB()];
+  return array;
+}
+
 
 // -----
 
