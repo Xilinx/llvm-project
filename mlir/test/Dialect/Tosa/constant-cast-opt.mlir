@@ -71,6 +71,20 @@ func.func @cast_fold_f32_to_i8() -> tensor<5xi8> {
   return %1 : tensor<5xi8>
 }
 
+// CHECK-LABEL: @cast_fold_f32_to_ui8
+// COM: Do not fold casts from floats to uint
+func.func @cast_fold_f32_to_ui8() -> tensor<5xui8> {
+  // CHECK: tosa.const
+  // CHECK-NOT: tensor<5xui8>
+  // CHECK: tosa.cast
+  %0 = "tosa.const"() {value =
+                        dense<[12.0, 0.0, 5.0, 32770.11, -32770.11]> :
+                        tensor<5xf32>
+                      } : () -> tensor<5xf32>
+  %1 = "tosa.cast"(%0) : (tensor<5xf32>) -> tensor<5xui8>
+  return %1 : tensor<5xui8>
+}
+
 // CHECK-LABEL: @cast_fold_float_to_int_infinity_zero_nan
 func.func @cast_fold_float_to_int_infinity_zero_nan() -> tensor<5xi16> {
   // Check if infinity and zero are translated properly. Don't expect any
@@ -114,6 +128,71 @@ func.func @cast_fold_i32_to_i8() -> tensor<5xi8> {
                       } : () -> tensor<5xi32>
   %1 = "tosa.cast"(%0) : (tensor<5xi32>) -> tensor<5xi8>
   return %1 : tensor<5xi8>
+}
+
+// CHECK-LABEL: @cast_fold_i8_to_ui8
+func.func @cast_fold_i8_to_ui8() -> tensor<3xui8> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}4, 0, 251{{.*}}tensor<3xui8>
+  // CHECK-NOT: tosa.cast
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value =
+                        dense<[4, 0, -5]> :
+                        tensor<3xi8>
+                      } : () -> tensor<3xi8>
+  %1 = "tosa.cast"(%0) : (tensor<3xi8>) -> tensor<3xui8>
+  return %1 : tensor<3xui8>
+}
+
+// CHECK-LABEL: @cast_fold_ui8_to_i8
+func.func @cast_fold_ui8_to_i8() -> tensor<3xi8> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}4, 0, -6{{.*}}tensor<3xi8>
+  // CHECK-NOT: tosa.cast
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value =
+                        dense<[4, 0, 250]> :
+                        tensor<3xui8>
+                      } : () -> tensor<3xui8>
+  %1 = "tosa.cast"(%0) : (tensor<3xui8>) -> tensor<3xi8>
+  return %1 : tensor<3xi8>
+}
+
+// CHECK-LABEL: @cast_fold_ui8_to_i16
+func.func @cast_fold_ui8_to_i16() -> tensor<3xi16> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}4, 0, 250{{.*}}tensor<3xi16>
+  // CHECK-NOT: tosa.cast
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value =
+                        dense<[4, 0, 250]> :
+                        tensor<3xui8>
+                      } : () -> tensor<3xui8>
+  %1 = "tosa.cast"(%0) : (tensor<3xui8>) -> tensor<3xi16>
+  return %1 : tensor<3xi16>
+}
+
+// CHECK-LABEL: @cast_fold_ui8_to_i1
+func.func @cast_fold_ui8_to_i1() -> tensor<3xi1> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}true, false, true{{.*}}tensor<3xi1>
+  // CHECK-NOT: tosa.cast
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value =
+                        dense<[4, 0, 250]> :
+                        tensor<3xui8>
+                      } : () -> tensor<3xui8>
+  %1 = "tosa.cast"(%0) : (tensor<3xui8>) -> tensor<3xi1>
+  return %1 : tensor<3xi1>
+}
+
+// CHECK-LABEL: @cast_fold_ui8_to_ui1
+func.func @cast_fold_ui8_to_ui1() -> tensor<3xui1> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}true, false, true{{.*}}tensor<3xui1>
+  // CHECK-NOT: tosa.cast
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value =
+                        dense<[4, 0, 250]> :
+                        tensor<3xui8>
+                      } : () -> tensor<3xui8>
+  %1 = "tosa.cast"(%0) : (tensor<3xui8>) -> tensor<3xui1>
+  return %1 : tensor<3xui1>
 }
 
 
@@ -170,6 +249,19 @@ func.func @cast_fold_i32_to_f16() -> tensor<4xf16> {
                       } : () -> tensor<4xi32>
   %1 = "tosa.cast"(%0) : (tensor<4xi32>) -> tensor<4xf16>
   return %1 : tensor<4xf16>
+}
+
+// CHECK-LABEL: @cast_fold_ui8_to_f32
+func.func @cast_fold_ui8_to_f32() -> tensor<4xf32> {
+  // CHECK: [[RES:]] ={{.*}}tosa.const{{.*}}0.000000e+00, 1.000000e+00, 4.000000e+00, 2.550000e+02{{.*}}tensor<4xf32>
+  // CHECK-NOT: tosa.cast
+  // CHECK: return [[RES]]
+  %0 = "tosa.const"() {value =
+                        dense<[0, 1, 4, 255]> :
+                        tensor<4xui8>
+                      } : () -> tensor<4xui8>
+  %1 = "tosa.cast"(%0) : (tensor<4xui8>) -> tensor<4xf32>
+  return %1 : tensor<4xf32>
 }
 
 // -----
