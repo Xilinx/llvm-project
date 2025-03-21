@@ -160,3 +160,25 @@ LogicalResult mlir::tosa::EqualizeRanks(ImplicitLocOpBuilder &builder,
 
   return success();
 }
+
+namespace {
+SmallVector<int64_t> convertFromMlirShape(ArrayRef<int64_t> shape) {
+  return to_vector(llvm::map_range(shape, [](int64_t dim) {
+    return ShapedType::isDynamic(dim) ? -1 : dim;
+  }));
+}
+} // namespace
+
+Value mlir::tosa::getTosaConstShape(ImplicitLocOpBuilder &builder,
+                                    llvm::ArrayRef<int64_t> shape) {
+  auto attr = builder.getIndexTensorAttr(convertFromMlirShape(shape));
+  auto type = mlir::tosa::shapeType::get(builder.getContext(), shape.size());
+  mlir::Operation *mlir_op = builder.create<tosa::ConstShapeOp>(type, attr);
+  return mlir_op->getResult(0);
+}
+
+Value mlir::tosa::getTosaConstShape(PatternRewriter &rewriter, Location loc,
+                                    llvm::ArrayRef<int64_t> shape) {
+  ImplicitLocOpBuilder builder(loc, rewriter);
+  return getTosaConstShape(builder, shape);
+}

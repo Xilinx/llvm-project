@@ -93,15 +93,11 @@ struct SelfConcatToTile : public OpRewritePattern<tosa::ConcatOp> {
     }
     SmallVector<int64_t> multiplies(concatType.getRank(), 1);
     multiplies[concatOp.getAxis()] = concatOp->getNumOperands();
-    const int64_t rank = multiplies.size();
-    auto constantShapeOp = rewriter.create<ConstShapeOp>(
-        concatOp->getLoc(), shapeType::get(concatOp->getContext(), rank),
-        DenseIntElementsAttr::get(
-            RankedTensorType::get({rank}, rewriter.getIndexType()),
-            multiplies));
+    auto constantShapeValue =
+        getTosaConstShape(rewriter, concatOp->getLoc(), multiplies);
     auto tileOp = rewriter.createOrFold<tosa::TileOp>(
         concatOp->getLoc(), concatOp.getType(), concatOp->getOperand(0),
-        constantShapeOp);
+        constantShapeValue);
     rewriter.replaceOp(concatOp, {tileOp});
     return success();
   }
@@ -140,19 +136,15 @@ struct FuseChainedTile : public OpRewritePattern<tosa::TileOp> {
     for (auto [idx, multiplier] : llvm::enumerate(inputTileMultiples)) {
       multiplies[idx] *= multiplier;
     }
-    auto constantShapeOp = rewriter.create<ConstShapeOp>(
+    auto constantShapeValue = getTosaConstShape(
+        rewriter,
         rewriter.getFusedLoc(
             {op.getMultiples().getLoc(), inputTile.getMultiples().getLoc()}),
-        op.getMultiples().getType(),
-        DenseIntElementsAttr::get(
-            RankedTensorType::get(
-                {cast<shapeType>(op.getMultiples().getType()).getRank()},
-                rewriter.getIndexType()),
-            multiplies));
+        multiplies);
 
     rewriter.modifyOpInPlace(op, [&]() {
       op.setOperand(0, inputTile->getOperand(0));
-      op.setOperand(1, constantShapeOp);
+      op.setOperand(1, constantShapeValue);
       op.getOperation()->setLoc(
           FusedLoc::get(getContext(), {inputTile->getLoc(), op.getLoc()}));
     });
@@ -828,16 +820,11 @@ struct TileSliceOptimization : public OpRewritePattern<tosa::SliceOp> {
          llvm::zip_equal(newTileShape, requiredMultipliers)) {
       newShape *= multiplier;
     }
-    auto constantShapeOp = rewriter.create<ConstShapeOp>(
-        tileOp.getMultiples().getLoc(), tileOp.getMultiples().getType(),
-        DenseIntElementsAttr::get(
-            RankedTensorType::get(
-                {cast<shapeType>(tileOp.getMultiples().getType()).getRank()},
-                rewriter.getIndexType()),
-            requiredMultipliers));
+    auto constantShapeValue = getTosaConstShape(
+        rewriter, tileOp.getMultiples().getLoc(), requiredMultipliers);
     auto newTile = rewriter.create<tosa::TileOp>(
         tileOp->getLoc(), tileOpInputType.clone(newTileShape),
-        tileOp->getOperand(0), constantShapeOp);
+        tileOp->getOperand(0), constantShapeValue);
     auto newSlice = rewriter.create<tosa::SliceOp>(
         sliceOp->getLoc(), sliceOp.getType(), newTile,
         rewriter.getDenseI64ArrayAttr(newTileStarts), sliceOp.getSizeAttr());
