@@ -732,7 +732,8 @@ function(mlir_target_link_libraries target type)
   endif()
 
   if (MLIR_LINK_MLIR_DYLIB)
-    target_link_libraries(${target} ${type} MLIR)
+    # AMD: Do not link shared, as this casues linking errors
+    target_link_libraries(${target} ${type} ${ARGN})
   else()
     target_link_libraries(${target} ${type} ${ARGN})
   endif()
