@@ -90,6 +90,12 @@ Value getTosaConstShape(ImplicitLocOpBuilder &builder,
 Value getTosaConstShape(PatternRewriter &rewriter, Location loc,
                         llvm::ArrayRef<int64_t> shape);
 
+// Get accumulator type for TOSA convolution ops
+LogicalResult getConvOpsAccType(PatternRewriter &rewriter,
+                                RankedTensorType inputTy,
+                                RankedTensorType weightTy,
+                                RankedTensorType outputTy, TypeAttr &accType);
+
 namespace {
 
 // Creates a TOSA operation and performs shape inference on the individual
