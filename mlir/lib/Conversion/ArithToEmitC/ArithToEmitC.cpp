@@ -84,7 +84,7 @@ public:
   matchAndRewrite(arith::CmpFOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
 
-    if (!isa<FloatType>(adaptor.getRhs().getType())) {
+    if (!emitc::isFloatOrOpaqueType(adaptor.getRhs().getType())) {
       return rewriter.notifyMatchFailure(op.getLoc(),
                                          "cmpf currently only supported on "
                                          "floats, not tensors/vectors thereof");
