@@ -1463,6 +1463,30 @@ OpFoldResult ReverseOp::fold(FoldAdaptor adaptor) {
 }
 
 OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
+  const auto tryFoldWithPrecedingSlice = [this](FoldAdaptor adaptor) {
+    auto precedingSliceOp = getInput1().getDefiningOp<SliceOp>();
+    if (!precedingSliceOp)
+      return failure();
+    const auto precedingSliceStart = precedingSliceOp.getStart();
+    const auto thisSliceStart = getStart();
+    SmallVector<int64_t> newSliceStart;
+    newSliceStart.reserve(precedingSliceStart.size());
+    for (auto [startPreceding, startThis] :
+         llvm::zip_equal(precedingSliceStart, thisSliceStart)) {
+      newSliceStart.push_back(startPreceding + startThis);
+    }
+    setOperand(precedingSliceOp->getOperand(0));
+    setStart(newSliceStart);
+    getOperation()->setLoc(
+        FusedLoc::get(getContext(), {precedingSliceOp->getLoc(), getLoc()}));
+    return success();
+  };
+
+  // First try folding the preceding slice, this also works if the shapes are
+  // dynamic
+  if (succeeded(tryFoldWithPrecedingSlice(adaptor)))
+    return getResult();
+
   auto inputTy = llvm::dyn_cast<RankedTensorType>(getInput1().getType());
   auto outputTy = llvm::dyn_cast<RankedTensorType>(getType());
 
