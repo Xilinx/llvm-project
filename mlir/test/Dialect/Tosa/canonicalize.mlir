@@ -693,6 +693,81 @@ func.func @slice_nofold(%arg0: tensor<?x4xf32>) -> tensor<?x4xf32> {
 
 // -----
 
+// CHECK-LABEL: @slice_fuse
+func.func @slice_fuse(%arg0: tensor<3x4xf32>) -> tensor<1x2xf32> {
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<3x4xf32>) -> tensor<1x2xf32> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.slice [[PARAM_0_]] {size = array<i64: 1, 2>, start = array<i64: 0, 0>} : (tensor<3x4xf32>) -> tensor<1x2xf32>
+// CHECK:           return [[VAR_0_]] : tensor<1x2xf32>
+  %0 = tosa.slice %arg0 { size = array<i64: 2, 3>, start = array<i64: 0, 0>}: (tensor<3x4xf32>) -> tensor<2x3xf32>
+  %1 = tosa.slice %0 { size = array<i64: 1, 2>, start = array<i64: 0, 0>}: (tensor<2x3xf32>) -> tensor<1x2xf32>
+  return %1 : tensor<1x2xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @slice_fuse_different_step
+func.func @slice_fuse_different_step(%arg0: tensor<3x4xf32>) -> tensor<1x1xf32> {
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<3x4xf32>) -> tensor<1x1xf32> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.slice [[PARAM_0_]] {size = array<i64: 1, 1>, start = array<i64: 0, 0>} : (tensor<3x4xf32>) -> tensor<1x1xf32>
+// CHECK:           return [[VAR_0_]] : tensor<1x1xf32>
+  %0 = tosa.slice %arg0 { size = array<i64: 1, 3>, start = array<i64: 0, 0>}: (tensor<3x4xf32>) -> tensor<1x3xf32>
+  %1 = tosa.slice %0 { size = array<i64: 1, 1>, start = array<i64: 0, 0>}: (tensor<1x3xf32>) -> tensor<1x1xf32>
+  return %1 : tensor<1x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @slice_fuse_different_start
+func.func @slice_fuse_different_start(%arg0: tensor<3x4xf32>) -> tensor<1x1xf32> {
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<3x4xf32>) -> tensor<1x1xf32> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.slice [[PARAM_0_]] {size = array<i64: 1, 1>, start = array<i64: 1, 0>} : (tensor<3x4xf32>) -> tensor<1x1xf32>
+// CHECK:           return [[VAR_0_]] : tensor<1x1xf32>
+  %0 = tosa.slice %arg0 { size = array<i64: 1, 3>, start = array<i64: 1, 0>}: (tensor<3x4xf32>) -> tensor<1x3xf32>
+  %1 = tosa.slice %0 { size = array<i64: 1, 1>, start = array<i64: 0, 0>}: (tensor<1x3xf32>) -> tensor<1x1xf32>
+  return %1 : tensor<1x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @slice_fuse_different_start_2
+func.func @slice_fuse_different_start_2(%arg0: tensor<10x10xf32>) -> tensor<1x1xf32> {
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<10x10xf32>) -> tensor<1x1xf32> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.slice [[PARAM_0_]] {size = array<i64: 1, 1>, start = array<i64: 4, 1>} : (tensor<10x10xf32>) -> tensor<1x1xf32>
+// CHECK:           return [[VAR_0_]] : tensor<1x1xf32>
+  %0 = tosa.slice %arg0 { size = array<i64: 5, 5>, start = array<i64: 4, 0>}: (tensor<10x10xf32>) -> tensor<5x5xf32>
+  %1 = tosa.slice %0  { size = array<i64: 3, 3>, start = array<i64: 0, 0>}: (tensor<5x5xf32>) -> tensor<3x3xf32>
+  %2 = tosa.slice %1 { size = array<i64: 1, 1>, start = array<i64: 0, 1>}: (tensor<3x3xf32>) -> tensor<1x1xf32>
+  return %2 : tensor<1x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @slice_fuse_different_start_3
+func.func @slice_fuse_different_start_3(%arg0: tensor<10x10xf32>) -> tensor<1x1xf32> {
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<10x10xf32>) -> tensor<1x1xf32> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.slice [[PARAM_0_]] {size = array<i64: 1, 1>, start = array<i64: 4, 2>} : (tensor<10x10xf32>) -> tensor<1x1xf32>
+// CHECK:           return [[VAR_0_]] : tensor<1x1xf32>
+  %0 = tosa.slice %arg0 { size = array<i64: 5, 5>, start = array<i64: 4, 1>}: (tensor<10x10xf32>) -> tensor<5x5xf32>
+  %1 = tosa.slice %0  { size = array<i64: 3, 3>, start = array<i64: 0, 0>}: (tensor<5x5xf32>) -> tensor<3x3xf32>
+  %2 = tosa.slice %1 { size = array<i64: 1, 1>, start = array<i64: 0, 1>}: (tensor<3x3xf32>) -> tensor<1x1xf32>
+  return %2 : tensor<1x1xf32>
+}
+
+// -----
+
+// CHECK-LABEL:  func.func @slice_fuse_different_start_dynamic
+func.func @slice_fuse_different_start_dynamic(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<*xf32>) -> tensor<*xf32> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.slice [[PARAM_0_]] {size = array<i64: 1, 1>, start = array<i64: 4, 1>} : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK:           return [[VAR_0_]] : tensor<*xf32>
+  %0 = tosa.slice %arg0 { size = array<i64: 5, 5>, start = array<i64: 4, 0>}: (tensor<*xf32>) -> tensor<*xf32>
+  %1 = tosa.slice %0  { size = array<i64: 3, 3>, start = array<i64: 0, 0>}: (tensor<*xf32>) -> tensor<*xf32>
+  %2 = tosa.slice %1 { size = array<i64: 1, 1>, start = array<i64: 0, 1>}: (tensor<*xf32>) -> tensor<*xf32>
+  return %2 : tensor<*xf32>
+}
+
+// -----
+
 // CHECK-LABEL: @tile_fold
 func.func @tile_fold(%arg0: tensor<3x4xf32>) -> tensor<3x4xf32> {
   // CHECK: return %arg0
