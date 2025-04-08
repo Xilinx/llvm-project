@@ -12,7 +12,7 @@ func.func @test() {
   return
 }
 // CPP-DEFAULT-LABEL: void test() {
-// CPP-DEFAULT-NEXT:   for (size_t v1 = (size_t) 0; v1 < (size_t) 10; v1 += (size_t) 1) {
+// CPP-DEFAULT-NEXT:   for (size_t [[V1:[^ ]*]] = (size_t) 0; [[V1]] < (size_t) 10; [[V1]] += (size_t) 1) {
 // CPP-DEFAULT-NEXT:   }
 // CPP-DEFAULT-NEXT:   return;
 // CPP-DEFAULT-NEXT: }
