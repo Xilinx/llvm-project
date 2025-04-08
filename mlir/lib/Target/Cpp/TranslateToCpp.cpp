@@ -185,6 +185,9 @@ struct CppEmitter {
   /// Return the existing or a new name for a Value.
   StringRef getOrCreateName(Value val);
 
+  // Return the existing or a new name for an iteration variable Value
+  StringRef getOrCreateName(emitc::ForOp forOp);
+
   // Returns the textual representation of a subscript operation.
   std::string getSubscriptName(emitc::SubscriptOp op);
 
@@ -204,17 +207,22 @@ struct CppEmitter {
   struct Scope {
     Scope(CppEmitter &emitter)
         : valueMapperScope(emitter.valueMapper),
+          iterationVarMapperScope(emitter.iterationVarMapper),
           blockMapperScope(emitter.blockMapper), emitter(emitter) {
       emitter.valueInScopeCount.push(emitter.valueInScopeCount.top());
+      emitter.iterationVarInScopeCount.push(
+          emitter.iterationVarInScopeCount.top());
       emitter.labelInScopeCount.push(emitter.labelInScopeCount.top());
     }
     ~Scope() {
       emitter.valueInScopeCount.pop();
+      emitter.iterationVarInScopeCount.pop();
       emitter.labelInScopeCount.pop();
     }
 
   private:
     llvm::ScopedHashTableScope<Value, std::string> valueMapperScope;
+    llvm::ScopedHashTableScope<Value, std::string> iterationVarMapperScope;
     llvm::ScopedHashTableScope<Block *, std::string> blockMapperScope;
     CppEmitter &emitter;
   };
@@ -285,12 +293,16 @@ private:
   /// Map from value to name of C++ variable that contain the name.
   ValueMapper valueMapper;
 
+  // Map from value to name of C++ iteration variable that contains the name.
+  ValueMapper iterationVarMapper;
+
   /// Map from block to name of C++ label.
   BlockMapper blockMapper;
 
   /// The number of values in the current scope. This is used to declare the
   /// names of values in a scope.
   std::stack<int64_t> valueInScopeCount;
+  std::stack<int64_t> iterationVarInScopeCount;
   std::stack<int64_t> labelInScopeCount;
 
   /// State of the current expression being emitted.
@@ -930,12 +942,12 @@ static LogicalResult printOperation(CppEmitter &emitter, emitc::ForOp forOp) {
           emitter.emitType(forOp.getLoc(), forOp.getInductionVar().getType())))
     return failure();
   os << " ";
-  os << emitter.getOrCreateName(forOp.getInductionVar());
+  os << emitter.getOrCreateName(forOp);
   os << " = ";
   if (failed(emitter.emitOperand(forOp.getLowerBound())))
     return failure();
   os << "; ";
-  os << emitter.getOrCreateName(forOp.getInductionVar());
+  os << emitter.getOrCreateName(forOp);
   os << " < ";
   Value upperBound = forOp.getUpperBound();
   bool upperBoundRequiresParentheses = requiresParentheses(upperBound);
@@ -946,7 +958,7 @@ static LogicalResult printOperation(CppEmitter &emitter, emitc::ForOp forOp) {
   if (upperBoundRequiresParentheses)
     os << ")";
   os << "; ";
-  os << emitter.getOrCreateName(forOp.getInductionVar());
+  os << emitter.getOrCreateName(forOp);
   os << " += ";
   if (failed(emitter.emitOperand(forOp.getStep())))
     return failure();
@@ -1312,6 +1324,7 @@ CppEmitter::CppEmitter(raw_ostream &os, bool declareVariablesAtTop,
     : os(os), declareVariablesAtTop(declareVariablesAtTop),
       onlyTu(onlyTu.str()), constantsAsVariables(constantsAsVariables) {
   valueInScopeCount.push(0);
+  iterationVarInScopeCount.push(0);
   labelInScopeCount.push(0);
 }
 
@@ -1348,13 +1361,37 @@ void CppEmitter::cacheDeferredOpResult(Value value, StringRef str) {
 
 /// Return the existing or a new name for a Value.
 StringRef CppEmitter::getOrCreateName(Value val) {
-  if (!valueMapper.count(val)) {
+  if (!valueMapper.count(val) && !iterationVarMapper.count(val)) {
     assert(!hasDeferredEmission(val.getDefiningOp()) &&
            "cacheDeferredOpResult should have been called on this value, "
            "update the emitOperation function.");
+
     valueMapper.insert(val, formatv("v{0}", ++valueInScopeCount.top()));
   }
+  // Check whether value belongs to iteration variable
+  if (iterationVarMapper.count(val)) {
+    return *iterationVarMapper.begin(val);
+  }
   return *valueMapper.begin(val);
+}
+
+/// Return the existing or a new name for an iteration variable Value.
+// Iteration variables follow natural naming: i,j,k,...
+StringRef CppEmitter::getOrCreateName(emitc::ForOp forOp) {
+  Value val = forOp.getInductionVar();
+
+  if (!iterationVarMapper.count(val)) {
+    int64_t incdCount = iterationVarInScopeCount.top()++;
+
+    if (incdCount >= 0 && incdCount <= 'z' - 'i') {
+      iterationVarMapper.insert(val, std::string(1, (char)(incdCount + 'i')));
+    } else {
+      // If running out of letters, continue with iX
+      iterationVarMapper.insert(val,
+                                formatv("i{0}", incdCount - ('z' - 'i') - 1));
+    }
+  }
+  return *iterationVarMapper.begin(val);
 }
 
 /// Return the existing or a new label for a Block.
