@@ -185,7 +185,8 @@ struct CppEmitter {
   /// Return the existing or a new name for a Value.
   StringRef getOrCreateName(Value val);
 
-  // Return the existing or a new name for a loop induction variable of an emitc::ForOp
+  // Return the existing or a new name for a loop induction variable of an
+  // emitc::ForOp
   StringRef getOrCreateName(emitc::ForOp forOp);
 
   // Returns the textual representation of a subscript operation.
@@ -225,13 +226,12 @@ struct CppEmitter {
   /// RAII helper function to manage entering/exiting emitc::ForOp scopes only
   struct ForOpScope {
     ForOpScope(CppEmitter &emitter)
-        : loopInductionVarMapperScope(emitter.loopInductionVarMapper), emitter(emitter){
+        : loopInductionVarMapperScope(emitter.loopInductionVarMapper),
+          emitter(emitter) {
       emitter.loopInductionVarInScopeCount.push(
           emitter.loopInductionVarInScopeCount.top());
     }
-    ~ForOpScope() {
-      emitter.loopInductionVarInScopeCount.pop();
-    }
+    ~ForOpScope() { emitter.loopInductionVarInScopeCount.pop(); }
 
   private:
     llvm::ScopedHashTableScope<Value, std::string> loopInductionVarMapperScope;
@@ -304,7 +304,8 @@ private:
   /// Map from value to name of C++ variable that contain the name.
   ValueMapper valueMapper;
 
-  // Map from value to name of C++ loop induction variable that contains the name.
+  // Map from value to name of C++ loop induction variable that contains the
+  // name.
   ValueMapper loopInductionVarMapper;
 
   /// Map from block to name of C++ label.
@@ -1397,11 +1398,12 @@ StringRef CppEmitter::getOrCreateName(emitc::ForOp forOp) {
 
     char range = 'z' - 'i';
     if (incdCount >= 0 && incdCount <= range) {
-      loopInductionVarMapper.insert(val, std::string(1, (char)(incdCount + 'i')));
+      loopInductionVarMapper.insert(val,
+                                    std::string(1, (char)(incdCount + 'i')));
     } else {
       // If running out of letters, continue with zX
       loopInductionVarMapper.insert(val,
-                                formatv("z{0}", incdCount - range - 1));
+                                    formatv("z{0}", incdCount - range - 1));
     }
   }
   return *loopInductionVarMapper.begin(val);
