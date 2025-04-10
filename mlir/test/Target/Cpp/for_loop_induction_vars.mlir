@@ -31,7 +31,7 @@ func.func @test_for_siblings() {
 // CHECK-NEXT: }
 // CHECK-NEXT: for (size_t [[ITER2:i]] = {{.*}}; [[ITER2]] < {{.*}}; [[ITER2]] += {{.*}}) {
   // CHECK-NEXT: for (size_t [[ITER3:j]] = {{.*}}; [[ITER3]] < {{.*}}; [[ITER3]] += {{.*}}) {
-    // CHECK-NEXT: int32_t [[V8:[^ ]*]] = f();
+    // CHECK-NEXT: int32_t {{.*}} = f();
   // CHECK-NEXT: }
 // CHECK-NEXT: }
 // CHECK-NEXT: return;
@@ -92,7 +92,7 @@ func.func @test_for_nesting() {
       // CHECK-NEXT: for (size_t [[ITERz:z]] = {{.*}}; [[ITERz]] < {{.*}}; [[ITERz]] += {{.*}}) {
         // CHECK-NEXT: for (size_t [[ITERz0:z0]] = {{.*}}; [[ITERz0]] < {{.*}}; [[ITERz0]] += {{.*}}) {
           // CHECK-NEXT: for (size_t [[ITERz1:z1]] = {{.*}}; [[ITERz1]] < {{.*}}; [[ITERz1]] += {{.*}}) {
-            // CHECK-NEXT: int32_t [[V7:[^ ]*]] = f();
+            // CHECK-NEXT: int32_t {{.*}} = f();
           // CHECK-NEXT: }
         // CHECK-NEXT: }
       // CHECK-NEXT: }
