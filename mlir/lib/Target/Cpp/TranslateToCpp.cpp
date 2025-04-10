@@ -225,16 +225,13 @@ struct CppEmitter {
 
   /// RAII helper function to manage entering/exiting emitc::ForOp scopes only
   struct ForOpScope {
-    ForOpScope(CppEmitter &emitter)
-        : loopInductionVarMapperScope(emitter.loopInductionVarMapper),
-          emitter(emitter) {
+    ForOpScope(CppEmitter &emitter) : emitter(emitter) {
       emitter.loopInductionVarInScopeCount.push(
           emitter.loopInductionVarInScopeCount.top());
     }
     ~ForOpScope() { emitter.loopInductionVarInScopeCount.pop(); }
 
   private:
-    llvm::ScopedHashTableScope<Value, std::string> loopInductionVarMapperScope;
     CppEmitter &emitter;
   };
 
