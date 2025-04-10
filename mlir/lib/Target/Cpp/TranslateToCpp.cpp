@@ -185,7 +185,7 @@ struct CppEmitter {
   /// Return the existing or a new name for a Value.
   StringRef getOrCreateName(Value val);
 
-  // Return the existing or a new name for an iteration variable Value
+  // Return the existing or a new name for a loop induction variable of an emitc::ForOp
   StringRef getOrCreateName(emitc::ForOp forOp);
 
   // Returns the textual representation of a subscript operation.
@@ -207,23 +207,34 @@ struct CppEmitter {
   struct Scope {
     Scope(CppEmitter &emitter)
         : valueMapperScope(emitter.valueMapper),
-          iterationVarMapperScope(emitter.iterationVarMapper),
           blockMapperScope(emitter.blockMapper), emitter(emitter) {
       emitter.valueInScopeCount.push(emitter.valueInScopeCount.top());
-      emitter.iterationVarInScopeCount.push(
-          emitter.iterationVarInScopeCount.top());
       emitter.labelInScopeCount.push(emitter.labelInScopeCount.top());
     }
     ~Scope() {
       emitter.valueInScopeCount.pop();
-      emitter.iterationVarInScopeCount.pop();
       emitter.labelInScopeCount.pop();
     }
 
   private:
     llvm::ScopedHashTableScope<Value, std::string> valueMapperScope;
-    llvm::ScopedHashTableScope<Value, std::string> iterationVarMapperScope;
     llvm::ScopedHashTableScope<Block *, std::string> blockMapperScope;
+    CppEmitter &emitter;
+  };
+
+  /// RAII helper function to manage entering/exiting emitc::ForOp scopes only
+  struct ForOpScope {
+    ForOpScope(CppEmitter &emitter)
+        : loopInductionVarMapperScope(emitter.loopInductionVarMapper), emitter(emitter){
+      emitter.loopInductionVarInScopeCount.push(
+          emitter.loopInductionVarInScopeCount.top());
+    }
+    ~ForOpScope() {
+      emitter.loopInductionVarInScopeCount.pop();
+    }
+
+  private:
+    llvm::ScopedHashTableScope<Value, std::string> loopInductionVarMapperScope;
     CppEmitter &emitter;
   };
 
@@ -293,8 +304,8 @@ private:
   /// Map from value to name of C++ variable that contain the name.
   ValueMapper valueMapper;
 
-  // Map from value to name of C++ iteration variable that contains the name.
-  ValueMapper iterationVarMapper;
+  // Map from value to name of C++ loop induction variable that contains the name.
+  ValueMapper loopInductionVarMapper;
 
   /// Map from block to name of C++ label.
   BlockMapper blockMapper;
@@ -302,7 +313,7 @@ private:
   /// The number of values in the current scope. This is used to declare the
   /// names of values in a scope.
   std::stack<int64_t> valueInScopeCount;
-  std::stack<int64_t> iterationVarInScopeCount;
+  std::stack<int64_t> loopInductionVarInScopeCount;
   std::stack<int64_t> labelInScopeCount;
 
   /// State of the current expression being emitted.
@@ -923,6 +934,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
 }
 
 static LogicalResult printOperation(CppEmitter &emitter, emitc::ForOp forOp) {
+  CppEmitter::ForOpScope fScope(emitter);
 
   raw_indented_ostream &os = emitter.ostream();
 
@@ -1324,7 +1336,7 @@ CppEmitter::CppEmitter(raw_ostream &os, bool declareVariablesAtTop,
     : os(os), declareVariablesAtTop(declareVariablesAtTop),
       onlyTu(onlyTu.str()), constantsAsVariables(constantsAsVariables) {
   valueInScopeCount.push(0);
-  iterationVarInScopeCount.push(0);
+  loopInductionVarInScopeCount.push(0);
   labelInScopeCount.push(0);
 }
 
@@ -1361,37 +1373,38 @@ void CppEmitter::cacheDeferredOpResult(Value value, StringRef str) {
 
 /// Return the existing or a new name for a Value.
 StringRef CppEmitter::getOrCreateName(Value val) {
-  if (!valueMapper.count(val) && !iterationVarMapper.count(val)) {
+  if (!valueMapper.count(val) && !loopInductionVarMapper.count(val)) {
     assert(!hasDeferredEmission(val.getDefiningOp()) &&
            "cacheDeferredOpResult should have been called on this value, "
            "update the emitOperation function.");
 
     valueMapper.insert(val, formatv("v{0}", ++valueInScopeCount.top()));
   }
-  // Check whether value belongs to iteration variable
-  if (iterationVarMapper.count(val)) {
-    return *iterationVarMapper.begin(val);
+  // Check whether value belongs to a loop induction variable
+  if (loopInductionVarMapper.count(val)) {
+    return *loopInductionVarMapper.begin(val);
   }
   return *valueMapper.begin(val);
 }
 
-/// Return the existing or a new name for an iteration variable Value.
-// Iteration variables follow natural naming: i,j,k,...
+/// Return the existing or a new name for a loop induction variable Value.
+// loop induction variables follow natural naming: i, j, k,...
 StringRef CppEmitter::getOrCreateName(emitc::ForOp forOp) {
   Value val = forOp.getInductionVar();
 
-  if (!iterationVarMapper.count(val)) {
-    int64_t incdCount = iterationVarInScopeCount.top()++;
+  if (!loopInductionVarMapper.count(val)) {
+    int64_t incdCount = loopInductionVarInScopeCount.top()++;
 
-    if (incdCount >= 0 && incdCount <= 'z' - 'i') {
-      iterationVarMapper.insert(val, std::string(1, (char)(incdCount + 'i')));
+    char range = 'z' - 'i';
+    if (incdCount >= 0 && incdCount <= range) {
+      loopInductionVarMapper.insert(val, std::string(1, (char)(incdCount + 'i')));
     } else {
-      // If running out of letters, continue with iX
-      iterationVarMapper.insert(val,
-                                formatv("i{0}", incdCount - ('z' - 'i') - 1));
+      // If running out of letters, continue with zX
+      loopInductionVarMapper.insert(val,
+                                formatv("z{0}", incdCount - range - 1));
     }
   }
-  return *iterationVarMapper.begin(val);
+  return *loopInductionVarMapper.begin(val);
 }
 
 /// Return the existing or a new label for a Block.
