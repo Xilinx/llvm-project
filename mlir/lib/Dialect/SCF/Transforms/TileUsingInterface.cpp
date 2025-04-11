@@ -31,6 +31,7 @@
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
 #include <optional>
+#include <utility>
 
 #define DEBUG_TYPE "tile-using-interface"
 
@@ -1319,6 +1320,15 @@ FailureOr<SmallVector<Operation *>> mlir::scf::yieldReplacementForFusedProducer(
   return generatedSlices;
 }
 
+struct NodeData {
+  NodeData() = default;
+  NodeData(llvm::SetVector<Value> producers, int depth)
+      : producers(std::move(producers)), depth(depth) {}
+
+  llvm::SetVector<Value> producers;
+  int depth;
+};
+
 namespace {
 
 //===----------------------------------------------------------------------===//
@@ -1351,6 +1361,28 @@ public:
 
   /// Remove the operation from the worklist.
   void notifyOperationReplaced(Operation *op, ValueRange replacement) override;
+
+  std::deque<tensor::ExtractSliceOp>
+  filteredWorkList(llvm::SmallDenseMap<Value, NodeData> &operandToResult) {
+    std::deque<tensor::ExtractSliceOp> result;
+    std::map<int, tensor::ExtractSliceOp> orderedList;
+    for (auto &slice : worklist) {
+      auto it = operandToResult.find(slice.getSource());
+      if (it != operandToResult.end()) {
+        orderedList.insert({it->second.depth, slice});
+      } else {
+        orderedList.insert({0, slice});
+      }
+    }
+
+    auto currentDepth = orderedList.begin()->first;
+    for (auto &slice : orderedList) {
+      if (slice.first <= currentDepth) {
+        result.push_back(slice.second);
+      }
+    }
+    return result;
+  }
 
   /// The worklist for this transformation keeps track of the slices to visit
   /// next for fusion.
@@ -1417,6 +1449,42 @@ void SliceTrackingListener::notifyOperationReplaced(Operation *op,
 }
 } // namespace
 
+// Create a dependency tree for the whole function so that we can answer which
+// extract_slice src dominates which one
+static void
+getOperandToResultMap(Operation *operation,
+                      llvm::SmallDenseMap<Value, NodeData> &operandToResult,
+                      int &depth) {
+  assert(operation->getNumResults() == 1 &&
+         "Expected only one result for the operation");
+
+  Value result = operation->getResult(0);
+  // Look at all operand of the current operation
+  for (auto &operand : operation->getOpOperands()) {
+    if (operand.get().getDefiningOp()) {
+      auto it = operandToResult.find(result);
+
+      if (it != operandToResult.end()) {
+        if (it->second.depth < depth) {
+          it->second.depth = depth; // Update the depth since it is increasing
+        }
+        it->second.producers.insert(operand.get());
+      } else {
+        llvm::SetVector<Value> producers;
+        producers.insert(operand.get());
+        NodeData node(producers, depth);
+        operandToResult[result] = node;
+      }
+
+      // recursively call this function to look at the operand of the defining
+      // operation
+      getOperandToResultMap(operand.get().getDefiningOp(), operandToResult,
+                            ++depth);
+      depth--;
+    }
+  }
+}
+
 /// Implementation of tile consumer and fuse producer greedily.
 FailureOr<scf::SCFTileAndFuseResult>
 mlir::scf::tileConsumerAndFuseProducersUsingSCF(
@@ -1480,10 +1548,24 @@ mlir::scf::tileConsumerAndFuseProducersUsingSCF(
           sliceTracker.insertAndApplyPatterns(tilingResult->generatedSlices))) {
     return rewriter.notifyMatchFailure(consumer, "cleanup patterns failed");
   }
+
+  // Create a dependency tree for the whole function so that we can answer which
+  // extract_slice src dominates which one
+  llvm::SmallDenseMap<Value, NodeData> resultToOperand;
+  int depth = 0;
+  getOperandToResultMap(consumer.getOperation(), resultToOperand, depth);
+
+  auto [producer, nodeDepth] = resultToOperand.at(consumer->getResult(0));
+
   OpBuilder::InsertionGuard g(rewriter);
   while (!sliceTracker.worklist.empty()) {
-    auto candidateSlice = sliceTracker.worklist.front();
-    sliceTracker.worklist.pop_front();
+    auto candidateSlice =
+        sliceTracker.filteredWorkList(resultToOperand).front();
+    // Remove from the actual worklist
+    sliceTracker.removeOp(candidateSlice);
+
+    /*auto candidateSlice = sliceTracker.worklist.front();
+    sliceTracker.worklist.pop_front();*/
 
     auto [fusableProducer, destinationInitArg] =
         getUntiledProducerFromSliceSource(&candidateSlice.getSourceMutable(),
@@ -1547,12 +1629,20 @@ mlir::scf::tileConsumerAndFuseProducersUsingSCF(
     if (failed(sliceTracker.insertAndApplyPatterns(worklistCandidates))) {
       return rewriter.notifyMatchFailure(consumer, "cleanup patterns failed");
     }
+
+    // IR Change, recompute the dependency from the PoV of the consumer
+    resultToOperand.clear();
+    depth = 0;
+    getOperandToResultMap(consumer.getOperation(), resultToOperand, depth);
   }
 
   DenseMap<Value, Value> replacements;
   for (auto [origVal, resultNumber] : origValToResultNumber) {
     replacements[origVal] = loops.front()->getResult(resultNumber);
   }
+
+  assert(sliceTracker.worklist.empty() &&
+         "Expected all slices to be removed from the worklist");
 
   return scf::SCFTileAndFuseResult{fusedProducers, tiledAndFusedOps, loops,
                                    replacements};
