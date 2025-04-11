@@ -185,8 +185,8 @@ struct CppEmitter {
   /// Return the existing or a new name for a Value.
   StringRef getOrCreateName(Value val);
 
-  // Return the existing or a new name for a loop induction variable of an
-  // emitc::ForOp
+  /// Return the existing or a new name for a loop induction variable of an
+  /// emitc::ForOp.
   StringRef getOrCreateName(emitc::ForOp forOp);
 
   // Returns the textual representation of a subscript operation.
@@ -206,32 +206,30 @@ struct CppEmitter {
 
   /// RAII helper function to manage entering/exiting C++ scopes.
   struct Scope {
-    Scope(CppEmitter &emitter)
+    Scope(CppEmitter &emitter, bool reuseVarNames = false)
         : valueMapperScope(emitter.valueMapper),
-          blockMapperScope(emitter.blockMapper), emitter(emitter) {
-      emitter.valueInScopeCount.push(emitter.valueInScopeCount.top());
+          blockMapperScope(emitter.blockMapper),
+          inductionVarMapperScope(emitter.loopInductionVarMapper),
+          emitter(emitter) {
       emitter.labelInScopeCount.push(emitter.labelInScopeCount.top());
+      emitter.loopInductionVarInScopeCount.push(
+          emitter.loopInductionVarInScopeCount.top());
+
+      // Reset emitter-level value counters
+      if (!reuseVarNames) {
+        emitter.valueCount = 1;
+        emitter.inductionVarCount = 1;
+      }
     }
     ~Scope() {
-      emitter.valueInScopeCount.pop();
       emitter.labelInScopeCount.pop();
+      emitter.loopInductionVarInScopeCount.pop();
     }
 
   private:
     llvm::ScopedHashTableScope<Value, std::string> valueMapperScope;
     llvm::ScopedHashTableScope<Block *, std::string> blockMapperScope;
-    CppEmitter &emitter;
-  };
-
-  /// RAII helper function to manage entering/exiting emitc::ForOp scopes only
-  struct ForOpScope {
-    ForOpScope(CppEmitter &emitter) : emitter(emitter) {
-      emitter.loopInductionVarInScopeCount.push(
-          emitter.loopInductionVarInScopeCount.top());
-    }
-    ~ForOpScope() { emitter.loopInductionVarInScopeCount.pop(); }
-
-  private:
+    llvm::ScopedHashTableScope<Value, std::string> inductionVarMapperScope;
     CppEmitter &emitter;
   };
 
@@ -308,11 +306,28 @@ private:
   /// Map from block to name of C++ label.
   BlockMapper blockMapper;
 
-  /// The number of values in the current scope. This is used to declare the
-  /// names of values in a scope.
-  std::stack<int64_t> valueInScopeCount;
-  std::stack<int64_t> loopInductionVarInScopeCount;
+  /// Keeps track of original value of element
+  struct TrackingStackElem {
+    TrackingStackElem() = default;
+    TrackingStackElem(const TrackingStackElem &parent)
+        : origVal(parent.currentVal), currentVal(parent.currentVal) {
+      if (parent.level != 0) {
+        level = parent.level + 1;
+      }
+    };
+
+    int64_t origVal{0};
+    int64_t currentVal{0};
+    // Stores level at which changes begin
+    int64_t level{0};
+  };
+
+  std::stack<TrackingStackElem> loopInductionVarInScopeCount;
   std::stack<int64_t> labelInScopeCount;
+
+  /// Emitter-level count of created values to enable unique identifiers
+  unsigned int valueCount{1};
+  unsigned int inductionVarCount{1};
 
   /// State of the current expression being emitted.
   ExpressionOp emittedExpression;
@@ -932,8 +947,6 @@ static LogicalResult printOperation(CppEmitter &emitter,
 }
 
 static LogicalResult printOperation(CppEmitter &emitter, emitc::ForOp forOp) {
-  CppEmitter::ForOpScope fScope(emitter);
-
   raw_indented_ostream &os = emitter.ostream();
 
   // Utility function to determine whether a value is an expression that will be
@@ -977,6 +990,8 @@ static LogicalResult printOperation(CppEmitter &emitter, emitc::ForOp forOp) {
 
   Region &forRegion = forOp.getRegion();
   auto regionOps = forRegion.getOps();
+
+  CppEmitter::Scope scope(emitter, true);
 
   // We skip the trailing yield op.
   for (auto it = regionOps.begin(); std::next(it) != regionOps.end(); ++it) {
@@ -1333,9 +1348,8 @@ CppEmitter::CppEmitter(raw_ostream &os, bool declareVariablesAtTop,
                        StringRef onlyTu, bool constantsAsVariables)
     : os(os), declareVariablesAtTop(declareVariablesAtTop),
       onlyTu(onlyTu.str()), constantsAsVariables(constantsAsVariables) {
-  valueInScopeCount.push(0);
-  loopInductionVarInScopeCount.push(0);
   labelInScopeCount.push(0);
+  loopInductionVarInScopeCount.emplace();
 }
 
 std::string CppEmitter::getSubscriptName(emitc::SubscriptOp op) {
@@ -1365,43 +1379,59 @@ std::string CppEmitter::createMemberAccess(emitc::MemberOfPtrOp op) {
 }
 
 void CppEmitter::cacheDeferredOpResult(Value value, StringRef str) {
-  if (!valueMapper.count(value))
+  if (!valueMapper.count(value)) {
     valueMapper.insert(value, str.str());
+    valueCount++;
+  }
 }
 
 /// Return the existing or a new name for a Value.
 StringRef CppEmitter::getOrCreateName(Value val) {
-  if (!valueMapper.count(val) && !loopInductionVarMapper.count(val)) {
+  // Check whether value belongs to a loop induction variable
+  if (loopInductionVarMapper.count(val)) {
+    return *loopInductionVarMapper.begin(val);
+  }
+
+  if (!valueMapper.count(val)) {
     assert(!hasDeferredEmission(val.getDefiningOp()) &&
            "cacheDeferredOpResult should have been called on this value, "
            "update the emitOperation function.");
 
-    valueMapper.insert(val, formatv("v{0}", ++valueInScopeCount.top()));
-  }
-  // Check whether value belongs to a loop induction variable
-  if (loopInductionVarMapper.count(val)) {
-    return *loopInductionVarMapper.begin(val);
+    valueMapper.insert(val, formatv("v{0}", valueCount));
+    valueCount++;
   }
   return *valueMapper.begin(val);
 }
 
 /// Return the existing or a new name for a loop induction variable Value.
-// loop induction variables follow natural naming: i, j, k,...
+/// Loop induction variables follow natural naming: i, j, k,...
 StringRef CppEmitter::getOrCreateName(emitc::ForOp forOp) {
   Value val = forOp.getInductionVar();
 
   if (!loopInductionVarMapper.count(val)) {
-    int64_t incdCount = loopInductionVarInScopeCount.top()++;
+
+    // Only increase induction var id on creating sibling loops
+    if (loopInductionVarInScopeCount.top().currentVal >
+        loopInductionVarInScopeCount.top().origVal) {
+      inductionVarCount++;
+    }
+    // If called on first loop, start keeping track of nesting level
+    if (loopInductionVarInScopeCount.top().level == 0)
+      loopInductionVarInScopeCount.top().level = 1;
+
+    int64_t identifier = loopInductionVarInScopeCount.top().level - 1;
 
     char range = 'z' - 'i';
-    if (incdCount >= 0 && incdCount <= range) {
-      loopInductionVarMapper.insert(val,
-                                    std::string(1, (char)(incdCount + 'i')));
+    if (identifier >= 0 && identifier <= range) {
+      loopInductionVarMapper.insert(
+          val, formatv("{0}_{1}", (char)(identifier + 'i'), inductionVarCount));
     } else {
       // If running out of letters, continue with zX
-      loopInductionVarMapper.insert(val,
-                                    formatv("z{0}", incdCount - range - 1));
+      loopInductionVarMapper.insert(
+          val, formatv("z{0}_{1}", identifier - range - 1, inductionVarCount));
     }
+
+    loopInductionVarInScopeCount.top().currentVal++;
   }
   return *loopInductionVarMapper.begin(val);
 }
