@@ -152,7 +152,7 @@ static cl::opt<bool>
 
 static cl::opt<bool>
     EnableAndCmpSinking("enable-andcmp-sinking", cl::Hidden, cl::init(true),
-                        cl::desc("Enable sinkinig and/cmp into branches."));
+                        cl::desc("Enable sinking and/cmp into branches."));
 
 static cl::opt<bool> DisableStoreExtract(
     "disable-cgp-store-extract", cl::Hidden, cl::init(false),
@@ -1885,7 +1885,7 @@ static bool foldICmpWithDominatingICmp(CmpInst *Cmp,
     return false;
 
   Value *CmpOp0 = Cmp->getOperand(0), *CmpOp1 = Cmp->getOperand(1);
-  ICmpInst::Predicate DomPred;
+  CmpPredicate DomPred;
   if (!match(DomCond, m_ICmp(DomPred, m_Specific(CmpOp0), m_Specific(CmpOp1))))
     return false;
   if (DomPred != ICmpInst::ICMP_SGT && DomPred != ICmpInst::ICMP_SLT)
@@ -2155,7 +2155,7 @@ bool CodeGenPrepare::optimizeURem(Instruction *Rem) {
 static bool adjustIsPower2Test(CmpInst *Cmp, const TargetLowering &TLI,
                                const TargetTransformInfo &TTI,
                                const DataLayout &DL) {
-  ICmpInst::Predicate Pred;
+  CmpPredicate Pred;
   if (!match(Cmp, m_ICmp(Pred, m_Intrinsic<Intrinsic::ctpop>(), m_One())))
     return false;
   if (!ICmpInst::isEquality(Pred))
@@ -7690,8 +7690,8 @@ bool CodeGenPrepare::tryToSinkFreeOperands(Instruction *I) {
     // sunk instruction uses, if it is part of a chain that has already been
     // sunk.
     Instruction *OldI = cast<Instruction>(U->getUser());
-    if (NewInstructions.count(OldI))
-      NewInstructions[OldI]->setOperand(U->getOperandNo(), NI);
+    if (auto It = NewInstructions.find(OldI); It != NewInstructions.end())
+      It->second->setOperand(U->getOperandNo(), NI);
     else
       U->set(NI);
     Changed = true;

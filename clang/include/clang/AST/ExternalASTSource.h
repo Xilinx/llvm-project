@@ -51,6 +51,7 @@ class RecordDecl;
 class Selector;
 class Stmt;
 class TagDecl;
+class Module;
 
 /// Abstract interface for external sources of AST nodes.
 ///
@@ -145,12 +146,35 @@ public:
   /// Find all declarations with the given name in the given context,
   /// and add them to the context by calling SetExternalVisibleDeclsForName
   /// or SetNoExternalVisibleDeclsForName.
-  /// \return \c true if any declarations might have been found, \c false if
-  /// we definitely have no declarations with tbis name.
+  /// \param DC the context for lookup.
+  /// \param Name the name of the declarations to find.
+  /// \param NamedModule find declarations visible to the given module
+  /// \c NamedModule . This may be different from owning module of \c DC since
+  /// there are declarations (e.g., namespace declaration) can appear in
+  /// multiple modules.
+  ///
+  /// \return \c true if any declarations might have been found, and \c false
+  /// if we definitely have no declarations with this name.
   ///
   /// The default implementation of this method is a no-op returning \c false.
+  virtual bool FindExternalVisibleDeclsByName(const DeclContext *DC,
+                                              DeclarationName Name,
+                                              Module *NamedModule);
+
+  /// Load all the external specializations for the Decl \param D if \param
+  /// OnlyPartial is false. Otherwise, load all the external **partial**
+  /// specializations for the \param D.
+  ///
+  /// Return true if any new specializations get loaded. Return false otherwise.
+  virtual bool LoadExternalSpecializations(const Decl *D, bool OnlyPartial);
+
+  /// Load all the specializations for the Decl \param D with the same template
+  /// args specified by \param TemplateArgs.
+  ///
+  /// Return true if any new specializations get loaded. Return false otherwise.
   virtual bool
-  FindExternalVisibleDeclsByName(const DeclContext *DC, DeclarationName Name);
+  LoadExternalSpecializations(const Decl *D,
+                              ArrayRef<TemplateArgument> TemplateArgs);
 
   /// Ensures that the table of all visible declarations inside this
   /// context is up to date.
@@ -447,9 +471,7 @@ public:
       : Value(Value) {}
 
   /// Forcibly set this pointer (which must be lazy) as needing updates.
-  void markIncomplete() {
-    Value.template get<LazyData *>()->LastGeneration = 0;
-  }
+  void markIncomplete() { cast<LazyData *>(Value)->LastGeneration = 0; }
 
   /// Set the value of this pointer, in the current generation.
   void set(T NewValue) {
@@ -472,14 +494,14 @@ public:
       }
       return LazyVal->LastValue;
     }
-    return Value.template get<T>();
+    return cast<T>(Value);
   }
 
   /// Get the most recently computed value of this pointer without updating it.
   T getNotUpdated() const {
     if (auto *LazyVal = Value.template dyn_cast<LazyData *>())
       return LazyVal->LastValue;
-    return Value.template get<T>();
+    return cast<T>(Value);
   }
 
   void *getOpaqueValue() { return Value.getOpaqueValue(); }

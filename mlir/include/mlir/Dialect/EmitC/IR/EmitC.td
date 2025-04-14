@@ -633,7 +633,7 @@ def EmitC_CallOp : EmitC_Op<"call",
 
     /// Set the callee for this operation.
     void setCalleeFromCallable(CallInterfaceCallable callee) {
-      (*this)->setAttr("callee", callee.get<SymbolRefAttr>());
+      (*this)->setAttr("callee", cast<SymbolRefAttr>(callee));
     }
   }];
 
@@ -785,7 +785,7 @@ def EmitC_ReturnOp : EmitC_Op<"return", [Pure, HasParent<"FuncOp">,
     Example:
 
     ```mlir
-    emitc.func @foo() : (i32) {
+    emitc.func @foo() -> (i32) {
       ...
       emitc.return %0 : i32
     }
@@ -1382,8 +1382,6 @@ def EmitC_IfOp : EmitC_Op<"if",
       Block* body = getBody(1);
       return OpBuilder::atBlockEnd(body, listener);
     }
-    Block* thenBlock();
-    Block* elseBlock();
   }];
   let hasCustomAssemblyFormat = 1;
 }

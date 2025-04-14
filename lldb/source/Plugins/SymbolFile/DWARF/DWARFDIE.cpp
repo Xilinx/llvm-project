@@ -13,10 +13,12 @@
 #include "DWARFDebugInfoEntry.h"
 #include "DWARFDeclContext.h"
 #include "DWARFUnit.h"
+#include "LogChannelDWARF.h"
 #include "lldb/Symbol/Type.h"
 
 #include "llvm/ADT/iterator.h"
 #include "llvm/BinaryFormat/Dwarf.h"
+#include "llvm/DebugInfo/DWARF/DWARFAddressRange.h"
 
 using namespace lldb_private;
 using namespace lldb_private::dwarf;
@@ -172,21 +174,27 @@ DWARFDIE::LookupDeepestBlock(lldb::addr_t address) const {
   }
 
   if (match_addr_range) {
-    DWARFRangeList ranges =
-        m_die->GetAttributeAddressRanges(m_cu, /*check_hi_lo_pc=*/true);
-    if (ranges.FindEntryThatContains(address)) {
-      check_children = true;
-      switch (Tag()) {
-      default:
-        break;
+    if (llvm::Expected<llvm::DWARFAddressRangesVector> ranges =
+            m_die->GetAttributeAddressRanges(m_cu, /*check_hi_lo_pc=*/true)) {
+      bool addr_in_range =
+          llvm::any_of(*ranges, [&](const llvm::DWARFAddressRange &r) {
+            return r.LowPC <= address && address < r.HighPC;
+          });
+      if (addr_in_range) {
+        switch (Tag()) {
+        default:
+          break;
 
-      case DW_TAG_inlined_subroutine: // Inlined Function
-      case DW_TAG_lexical_block:      // Block { } in code
-        result = *this;
-        break;
+        case DW_TAG_inlined_subroutine: // Inlined Function
+        case DW_TAG_lexical_block:      // Block { } in code
+          result = *this;
+          break;
+        }
       }
+      check_children = addr_in_range;
     } else {
-      check_children = false;
+      LLDB_LOG_ERROR(GetLog(DWARFLog::DebugInfo), ranges.takeError(),
+                     "DIE({1:x}): {0}", GetID());
     }
   }
 
@@ -368,6 +376,36 @@ lldb_private::Type *DWARFDIE::ResolveTypeUID(const DWARFDIE &die) const {
   return nullptr;
 }
 
+static CompilerContext GetContextEntry(DWARFDIE die) {
+  auto ctx = [die](CompilerContextKind kind) {
+    return CompilerContext(kind, ConstString(die.GetName()));
+  };
+
+  switch (die.Tag()) {
+  case DW_TAG_module:
+    return ctx(CompilerContextKind::Module);
+  case DW_TAG_namespace:
+    return ctx(CompilerContextKind::Namespace);
+  case DW_TAG_class_type:
+  case DW_TAG_structure_type:
+    return ctx(CompilerContextKind::ClassOrStruct);
+  case DW_TAG_union_type:
+    return ctx(CompilerContextKind::Union);
+  case DW_TAG_enumeration_type:
+    return ctx(CompilerContextKind::Enum);
+  case DW_TAG_subprogram:
+    return ctx(CompilerContextKind::Function);
+  case DW_TAG_variable:
+    return ctx(CompilerContextKind::Variable);
+  case DW_TAG_typedef:
+    return ctx(CompilerContextKind::Typedef);
+  case DW_TAG_base_type:
+    return ctx(CompilerContextKind::Builtin);
+  default:
+    llvm_unreachable("Check tag type in the caller!");
+  }
+}
+
 static void GetDeclContextImpl(DWARFDIE die,
                                llvm::SmallSet<lldb::user_id_t, 4> &seen,
                                std::vector<CompilerContext> &context) {
@@ -380,34 +418,17 @@ static void GetDeclContextImpl(DWARFDIE die,
     }
 
     // Add this DIE's contribution at the end of the chain.
-    auto push_ctx = [&](CompilerContextKind kind, llvm::StringRef name) {
-      context.push_back({kind, ConstString(name)});
-    };
     switch (die.Tag()) {
     case DW_TAG_module:
-      push_ctx(CompilerContextKind::Module, die.GetName());
-      break;
     case DW_TAG_namespace:
-      push_ctx(CompilerContextKind::Namespace, die.GetName());
-      break;
     case DW_TAG_class_type:
     case DW_TAG_structure_type:
-      push_ctx(CompilerContextKind::ClassOrStruct, die.GetName());
-      break;
     case DW_TAG_union_type:
-      push_ctx(CompilerContextKind::Union, die.GetName());
-      break;
     case DW_TAG_enumeration_type:
-      push_ctx(CompilerContextKind::Enum, die.GetName());
-      break;
     case DW_TAG_subprogram:
-      push_ctx(CompilerContextKind::Function, die.GetName());
-      break;
     case DW_TAG_variable:
-      push_ctx(CompilerContextKind::Variable, die.GetPubname());
-      break;
     case DW_TAG_typedef:
-      push_ctx(CompilerContextKind::Typedef, die.GetName());
+      context.push_back(GetContextEntry(die));
       break;
     default:
       break;
@@ -431,32 +452,18 @@ static void GetTypeLookupContextImpl(DWARFDIE die,
   // Stop if we hit a cycle.
   while (die && seen.insert(die.GetID()).second) {
     // Add this DIE's contribution at the end of the chain.
-    auto push_ctx = [&](CompilerContextKind kind, llvm::StringRef name) {
-      context.push_back({kind, ConstString(name)});
-    };
     switch (die.Tag()) {
     case DW_TAG_namespace:
-      push_ctx(CompilerContextKind::Namespace, die.GetName());
-      break;
     case DW_TAG_class_type:
     case DW_TAG_structure_type:
-      push_ctx(CompilerContextKind::ClassOrStruct, die.GetName());
-      break;
     case DW_TAG_union_type:
-      push_ctx(CompilerContextKind::Union, die.GetName());
-      break;
     case DW_TAG_enumeration_type:
-      push_ctx(CompilerContextKind::Enum, die.GetName());
-      break;
     case DW_TAG_variable:
-      push_ctx(CompilerContextKind::Variable, die.GetPubname());
-      break;
     case DW_TAG_typedef:
-      push_ctx(CompilerContextKind::Typedef, die.GetName());
-      break;
     case DW_TAG_base_type:
-      push_ctx(CompilerContextKind::Builtin, die.GetName());
+      context.push_back(GetContextEntry(die));
       break;
+
     // If any of the tags below appear in the parent chain, stop the decl
     // context and return. Prior to these being in here, if a type existed in a
     // namespace "a" like "a::my_struct", but we also have a function in that
@@ -559,10 +566,11 @@ bool DWARFDIE::IsMethod() const {
 }
 
 bool DWARFDIE::GetDIENamesAndRanges(
-    const char *&name, const char *&mangled, DWARFRangeList &ranges,
-    std::optional<int> &decl_file, std::optional<int> &decl_line,
-    std::optional<int> &decl_column, std::optional<int> &call_file,
-    std::optional<int> &call_line, std::optional<int> &call_column,
+    const char *&name, const char *&mangled,
+    llvm::DWARFAddressRangesVector &ranges, std::optional<int> &decl_file,
+    std::optional<int> &decl_line, std::optional<int> &decl_column,
+    std::optional<int> &call_file, std::optional<int> &call_line,
+    std::optional<int> &call_column,
     lldb_private::DWARFExpressionList *frame_base) const {
   if (IsValid()) {
     return m_die->GetDIENamesAndRanges(
