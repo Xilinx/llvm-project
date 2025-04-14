@@ -1338,8 +1338,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
 CppEmitter::CppEmitter(raw_ostream &os, bool declareVariablesAtTop,
                        StringRef onlyTu, bool constantsAsVariables)
     : os(os), declareVariablesAtTop(declareVariablesAtTop),
-      onlyTu(onlyTu.str()), constantsAsVariables(constantsAsVariables),
-      loopNestingLevel(0) {
+      onlyTu(onlyTu.str()), constantsAsVariables(constantsAsVariables) {
   valueInScopeCount.push(0);
   labelInScopeCount.push(0);
 }
@@ -1401,8 +1400,7 @@ StringRef CppEmitter::getOrCreateName(emitc::ForOp forOp) {
 
   if (!loopInductionVarMapper.count(val)) {
 
-    int64_t identifier = loopNestingLevel;
-    loopNestingLevel++;
+    int64_t identifier = loopNestingLevel++;
 
     char range = 'z' - 'i';
     if (identifier >= 0 && identifier <= range) {
