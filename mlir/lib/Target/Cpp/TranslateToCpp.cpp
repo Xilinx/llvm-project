@@ -211,10 +211,9 @@ struct CppEmitter {
           blockMapperScope(emitter.blockMapper),
           inductionVarMapperScope(emitter.loopInductionVarMapper),
           emitter(emitter) {
-      emitter.valueInScopeCount.push(emitter.valueInScopeCount.top());
       emitter.labelInScopeCount.push(emitter.labelInScopeCount.top());
     }
-    ~Scope() { emitter.popStacksAndUpdate(); }
+    ~Scope() { emitter.labelInScopeCount.pop(); }
 
   private:
     llvm::ScopedHashTableScope<Value, std::string> valueMapperScope;
@@ -305,7 +304,6 @@ private:
   /// Map from block to name of C++ label.
   BlockMapper blockMapper;
 
-  std::stack<int64_t> valueInScopeCount;
   std::stack<int64_t> labelInScopeCount;
 
   uint64_t loopNestingLevel{0};
@@ -1338,7 +1336,6 @@ CppEmitter::CppEmitter(raw_ostream &os, bool declareVariablesAtTop,
                        StringRef onlyTu, bool constantsAsVariables)
     : os(os), declareVariablesAtTop(declareVariablesAtTop),
       onlyTu(onlyTu.str()), constantsAsVariables(constantsAsVariables) {
-  valueInScopeCount.push(0);
   labelInScopeCount.push(0);
 }
 
@@ -1386,8 +1383,7 @@ StringRef CppEmitter::getOrCreateName(Value val) {
            "cacheDeferredOpResult should have been called on this value, "
            "update the emitOperation function.");
 
-    valueMapper.insert(val,
-                       formatv("v{0}", ++valueInScopeCount.top() + valueCount));
+    valueMapper.insert(val, formatv("v{0}", ++valueCount));
   }
   return *valueMapper.begin(val);
 }
@@ -1404,13 +1400,11 @@ StringRef CppEmitter::getOrCreateName(emitc::ForOp forOp) {
     char range = 'z' - 'i';
     if (identifier >= 0 && identifier <= range) {
       loopInductionVarMapper.insert(
-          val, formatv("{0}_{1}", (char)(identifier + 'i'),
-                       ++valueInScopeCount.top() + valueCount));
+          val, formatv("{0}_{1}", (char)(identifier + 'i'), ++valueCount));
     } else {
       // If running out of letters, continue with zX
       loopInductionVarMapper.insert(
-          val, formatv("z{0}_{1}", identifier - range - 1,
-                       ++valueInScopeCount.top() + valueCount));
+          val, formatv("z{0}_{1}", identifier - range - 1, ++valueCount));
     }
   }
   return *loopInductionVarMapper.begin(val);
@@ -2003,16 +1997,6 @@ LogicalResult CppEmitter::emitTupleType(Location loc, ArrayRef<Type> types) {
     return failure();
   os << ">";
   return success();
-}
-
-void CppEmitter::popStacksAndUpdate() {
-  uint64_t newValues = valueInScopeCount.top();
-
-  valueInScopeCount.pop();
-  labelInScopeCount.pop();
-
-  newValues -= valueInScopeCount.top();
-  valueCount += newValues;
 }
 
 void CppEmitter::resetValueCounter() { valueCount = 0; }
