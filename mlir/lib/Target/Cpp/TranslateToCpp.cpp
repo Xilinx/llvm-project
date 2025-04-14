@@ -25,6 +25,7 @@
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
+#include <cstdint>
 #include <stack>
 #include <utility>
 
@@ -206,25 +207,15 @@ struct CppEmitter {
 
   /// RAII helper function to manage entering/exiting C++ scopes.
   struct Scope {
-    Scope(CppEmitter &emitter, bool reuseVarNames = false)
+    Scope(CppEmitter &emitter)
         : valueMapperScope(emitter.valueMapper),
           blockMapperScope(emitter.blockMapper),
           inductionVarMapperScope(emitter.loopInductionVarMapper),
           emitter(emitter) {
+      emitter.valueInScopeCount.push(emitter.valueInScopeCount.top());
       emitter.labelInScopeCount.push(emitter.labelInScopeCount.top());
-      emitter.loopInductionVarInScopeCount.push(
-          emitter.loopInductionVarInScopeCount.top());
-
-      // Reset emitter-level value counters
-      if (!reuseVarNames) {
-        emitter.valueCount = 1;
-        emitter.inductionVarCount = 1;
-      }
     }
-    ~Scope() {
-      emitter.labelInScopeCount.pop();
-      emitter.loopInductionVarInScopeCount.pop();
-    }
+    ~Scope() { emitter.popStacksAndUpdate(); }
 
   private:
     llvm::ScopedHashTableScope<Value, std::string> valueMapperScope;
@@ -278,6 +269,15 @@ struct CppEmitter {
   /// This emitter will only emit translation units whos id matches this value.
   StringRef willOnlyEmitTu() { return onlyTu; }
 
+  /// Reduces stacks and updates value counter
+  void popStacksAndUpdate();
+
+  // Resets the value counter to 0
+  void resetValueCounter();
+
+  // Decreases the loop nesting level by 1
+  void decreaseLoopNestingLevel();
+
 private:
   using ValueMapper = llvm::ScopedHashTable<Value, std::string>;
   using BlockMapper = llvm::ScopedHashTable<Block *, std::string>;
@@ -306,28 +306,13 @@ private:
   /// Map from block to name of C++ label.
   BlockMapper blockMapper;
 
-  /// Keeps track of original value of element
-  struct TrackingStackElem {
-    TrackingStackElem() = default;
-    TrackingStackElem(const TrackingStackElem &parent)
-        : origVal(parent.currentVal), currentVal(parent.currentVal) {
-      if (parent.level != 0) {
-        level = parent.level + 1;
-      }
-    };
-
-    int64_t origVal{0};
-    int64_t currentVal{0};
-    // Stores level at which changes begin
-    int64_t level{0};
-  };
-
-  std::stack<TrackingStackElem> loopInductionVarInScopeCount;
+  std::stack<int64_t> valueInScopeCount;
   std::stack<int64_t> labelInScopeCount;
 
+  uint64_t loopNestingLevel{0};
+
   /// Emitter-level count of created values to enable unique identifiers
-  unsigned int valueCount{1};
-  unsigned int inductionVarCount{1};
+  unsigned int valueCount{0};
 
   /// State of the current expression being emitted.
   ExpressionOp emittedExpression;
@@ -947,6 +932,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
 }
 
 static LogicalResult printOperation(CppEmitter &emitter, emitc::ForOp forOp) {
+  CppEmitter::Scope scope(emitter);
   raw_indented_ostream &os = emitter.ostream();
 
   // Utility function to determine whether a value is an expression that will be
@@ -991,8 +977,6 @@ static LogicalResult printOperation(CppEmitter &emitter, emitc::ForOp forOp) {
   Region &forRegion = forOp.getRegion();
   auto regionOps = forRegion.getOps();
 
-  CppEmitter::Scope scope(emitter, true);
-
   // We skip the trailing yield op.
   for (auto it = regionOps.begin(); std::next(it) != regionOps.end(); ++it) {
     if (failed(emitter.emitOperation(*it, /*trailingSemicolon=*/true)))
@@ -1000,6 +984,8 @@ static LogicalResult printOperation(CppEmitter &emitter, emitc::ForOp forOp) {
   }
 
   os.unindent() << "}";
+
+  emitter.decreaseLoopNestingLevel();
 
   return success();
 }
@@ -1076,6 +1062,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
 }
 
 static LogicalResult printOperation(CppEmitter &emitter, ModuleOp moduleOp) {
+  emitter.resetValueCounter();
   CppEmitter::Scope scope(emitter);
 
   for (Operation &op : moduleOp) {
@@ -1089,6 +1076,7 @@ static LogicalResult printOperation(CppEmitter &emitter, TranslationUnitOp tu) {
   if (!emitter.shouldEmitTu(tu))
     return success();
 
+  emitter.resetValueCounter();
   CppEmitter::Scope scope(emitter);
 
   for (Operation &op : tu) {
@@ -1253,6 +1241,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
     return functionOp.emitOpError() << "cannot emit array type as result type";
   }
 
+  emitter.resetValueCounter();
   CppEmitter::Scope scope(emitter);
   raw_indented_ostream &os = emitter.ostream();
   if (failed(emitter.emitTypes(functionOp.getLoc(),
@@ -1281,6 +1270,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
         "with multiple blocks needs variables declared at top");
   }
 
+  emitter.resetValueCounter();
   CppEmitter::Scope scope(emitter);
   raw_indented_ostream &os = emitter.ostream();
   if (functionOp.getSpecifiers()) {
@@ -1315,6 +1305,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
 
 static LogicalResult printOperation(CppEmitter &emitter,
                                     DeclareFuncOp declareFuncOp) {
+  emitter.resetValueCounter();
   CppEmitter::Scope scope(emitter);
   raw_indented_ostream &os = emitter.ostream();
 
@@ -1347,9 +1338,10 @@ static LogicalResult printOperation(CppEmitter &emitter,
 CppEmitter::CppEmitter(raw_ostream &os, bool declareVariablesAtTop,
                        StringRef onlyTu, bool constantsAsVariables)
     : os(os), declareVariablesAtTop(declareVariablesAtTop),
-      onlyTu(onlyTu.str()), constantsAsVariables(constantsAsVariables) {
+      onlyTu(onlyTu.str()), constantsAsVariables(constantsAsVariables),
+      loopNestingLevel(0) {
+  valueInScopeCount.push(0);
   labelInScopeCount.push(0);
-  loopInductionVarInScopeCount.emplace();
 }
 
 std::string CppEmitter::getSubscriptName(emitc::SubscriptOp op) {
@@ -1396,8 +1388,8 @@ StringRef CppEmitter::getOrCreateName(Value val) {
            "cacheDeferredOpResult should have been called on this value, "
            "update the emitOperation function.");
 
-    valueMapper.insert(val, formatv("v{0}", valueCount));
-    valueCount++;
+    valueMapper.insert(val,
+                       formatv("v{0}", ++valueInScopeCount.top() + valueCount));
   }
   return *valueMapper.begin(val);
 }
@@ -1409,28 +1401,20 @@ StringRef CppEmitter::getOrCreateName(emitc::ForOp forOp) {
 
   if (!loopInductionVarMapper.count(val)) {
 
-    // Only increase induction var id on creating sibling loops
-    if (loopInductionVarInScopeCount.top().currentVal >
-        loopInductionVarInScopeCount.top().origVal) {
-      inductionVarCount++;
-    }
-    // If called on first loop, start keeping track of nesting level
-    if (loopInductionVarInScopeCount.top().level == 0)
-      loopInductionVarInScopeCount.top().level = 1;
-
-    int64_t identifier = loopInductionVarInScopeCount.top().level - 1;
+    int64_t identifier = loopNestingLevel;
+    loopNestingLevel++;
 
     char range = 'z' - 'i';
     if (identifier >= 0 && identifier <= range) {
       loopInductionVarMapper.insert(
-          val, formatv("{0}_{1}", (char)(identifier + 'i'), inductionVarCount));
+          val, formatv("{0}_{1}", (char)(identifier + 'i'),
+                       ++valueInScopeCount.top() + valueCount));
     } else {
       // If running out of letters, continue with zX
       loopInductionVarMapper.insert(
-          val, formatv("z{0}_{1}", identifier - range - 1, inductionVarCount));
+          val, formatv("z{0}_{1}", identifier - range - 1,
+                       ++valueInScopeCount.top() + valueCount));
     }
-
-    loopInductionVarInScopeCount.top().currentVal++;
   }
   return *loopInductionVarMapper.begin(val);
 }
@@ -2023,6 +2007,20 @@ LogicalResult CppEmitter::emitTupleType(Location loc, ArrayRef<Type> types) {
   os << ">";
   return success();
 }
+
+void CppEmitter::popStacksAndUpdate() {
+  uint64_t newValues = valueInScopeCount.top();
+
+  valueInScopeCount.pop();
+  labelInScopeCount.pop();
+
+  newValues -= valueInScopeCount.top();
+  valueCount += newValues;
+}
+
+void CppEmitter::resetValueCounter() { valueCount = 0; }
+
+void CppEmitter::decreaseLoopNestingLevel() { loopNestingLevel--; }
 
 LogicalResult emitc::translateToCpp(Operation *op, raw_ostream &os,
                                     bool declareVariablesAtTop,
