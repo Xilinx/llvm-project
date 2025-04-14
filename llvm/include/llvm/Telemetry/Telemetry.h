@@ -30,17 +30,20 @@ namespace telemetry {
 
 class Serializer {
 public:
+  virtual ~Serializer() = default;
+
   virtual Error init() = 0;
   virtual void write(StringRef KeyName, bool Value) = 0;
   virtual void write(StringRef KeyName, StringRef Value) = 0;
-
-  template <typename T>
-  std::enable_if_t<std::is_integral_v<T>> write(StringRef KeyName, T Value) {
-    if constexpr (std::is_signed_v<T>)
-      writeSigned(KeyName, Value);
-    else
-      writeUnsigned(KeyName, Value);
-  }
+  virtual void write(StringRef KeyName, int Value) = 0;
+  virtual void write(StringRef KeyName, long Value) = 0;
+  virtual void write(StringRef KeyName, long long Value) = 0;
+  virtual void write(StringRef KeyName, unsigned int Value) = 0;
+  virtual void write(StringRef KeyName, unsigned long Value) = 0;
+  virtual void write(StringRef KeyName, unsigned long long Value) = 0;
+  virtual void beginObject(StringRef KeyName) = 0;
+  virtual void endObject() = 0;
+  virtual Error finalize() = 0;
 
   template <typename T, typename = typename T::mapped_type>
   void write(StringRef KeyName, const T &Map) {
@@ -51,15 +54,6 @@ public:
       write(KeyVal.first, KeyVal.second);
     endObject();
   }
-
-  virtual void beginObject(StringRef KeyName) = 0;
-  virtual void endObject() = 0;
-
-  virtual Error finalize() = 0;
-
-private:
-  virtual void writeUnsigned(StringRef KeyName, unsigned long long) = 0;
-  virtual void writeSigned(StringRef KeyName, long long) = 0;
 };
 
 /// Configuration for the Manager class.
@@ -70,6 +64,8 @@ private:
 /// This struct can be extended as needed to add additional configuration
 /// points specific to a vendor's implementation.
 struct Config {
+  virtual ~Config() = default;
+
   // If true, telemetry will be enabled.
   const bool EnableTelemetry;
   Config(bool E) : EnableTelemetry(E) {}
@@ -140,6 +136,8 @@ public:
 /// monitored and transmitting the data elsewhere.
 class Manager {
 public:
+  virtual ~Manager() = default;
+
   // Optional callback for subclasses to perform additional tasks before
   // dispatching to Destinations.
   virtual Error preDispatch(TelemetryInfo *Entry) = 0;

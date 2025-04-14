@@ -9,7 +9,7 @@ void TelemetryInfo::serialize(Serializer &serializer) const {
 
 Error Manager::dispatch(TelemetryInfo *Entry) {
   if (Error Err = preDispatch(Entry))
-    return std::move(Err);
+    return Err;
 
   Error AllErrs = Error::success();
   for (auto &Dest : Destinations) {
