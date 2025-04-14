@@ -832,7 +832,7 @@ def Tosa_PowOp : Tosa_ElementwiseOp<"pow", [SameOperandsAndResultElementType]> {
   );
 
   let results = (outs
-    Tosa_Tensor:$z
+    Tosa_Tensor:$output
   );
 
   let hasCanonicalizer = 1;
