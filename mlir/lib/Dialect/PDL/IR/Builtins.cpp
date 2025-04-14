@@ -38,13 +38,19 @@ LogicalResult addEntryToDictionaryAttr(PatternRewriter &rewriter,
   return success();
 }
 
-mlir::Attribute addElemToArrayAttr(mlir::PatternRewriter &rewriter,
-                                   mlir::Attribute attr,
-                                   mlir::Attribute element) {
-  assert(isa<ArrayAttr>(attr));
-  auto values = cast<ArrayAttr>(attr).getValue().vec();
-  values.push_back(element);
-  return rewriter.getArrayAttr(values);
+LogicalResult addElemToArrayAttr(PatternRewriter &rewriter,
+                                 PDLResultList &results,
+                                 ArrayRef<PDLValue> args) {
+
+  assert(args.size() == 2 &&
+         "Expected two arguments, one ArrayAttr and one Attr");
+  auto arrayAttr = cast<ArrayAttr>(args[0].cast<Attribute>());
+  auto attrElement = args[1].cast<Attribute>();
+  llvm::SmallVector<Attribute> values(arrayAttr.getValue());
+  values.push_back(attrElement);
+
+  results.push_back(rewriter.getArrayAttr(values));
+  return success();
 }
 
 template <UnaryOpKind T>
@@ -344,11 +350,15 @@ void registerBuiltins(PDLPatternModule &pdlPattern) {
   // See Parser::defineBuiltins()
   pdlPattern.registerRewriteFunction(
       "__builtin_addEntryToDictionaryAttr_rewrite", addEntryToDictionaryAttr);
-  pdlPattern.registerRewriteFunction("__builtin_addElemToArrayAttr",
-                                     addElemToArrayAttr);
   pdlPattern.registerConstraintFunction(
       "__builtin_addEntryToDictionaryAttr_constraint",
       addEntryToDictionaryAttr);
+
+  pdlPattern.registerRewriteFunction("__builtin_addElemToArrayAttrRewriter",
+                                     addElemToArrayAttr);
+  pdlPattern.registerConstraintFunction(
+      "__builtin_addElemToArrayAttrConstraint", addElemToArrayAttr);
+
   pdlPattern.registerRewriteFunction("__builtin_mulRewrite", mul);
   pdlPattern.registerRewriteFunction("__builtin_divRewrite", div);
   pdlPattern.registerRewriteFunction("__builtin_modRewrite", mod);
@@ -357,22 +367,14 @@ void registerBuiltins(PDLPatternModule &pdlPattern) {
   pdlPattern.registerRewriteFunction("__builtin_log2Rewrite", log2);
   pdlPattern.registerRewriteFunction("__builtin_exp2Rewrite", exp2);
   pdlPattern.registerRewriteFunction("__builtin_absRewrite", abs);
-  pdlPattern.registerConstraintFunction("__builtin_mulConstraint",
-                                                   mul);
-  pdlPattern.registerConstraintFunction("__builtin_divConstraint",
-                                                   div);
-  pdlPattern.registerConstraintFunction("__builtin_modConstraint",
-                                                   mod);
-  pdlPattern.registerConstraintFunction("__builtin_addConstraint",
-                                                   add);
-  pdlPattern.registerConstraintFunction("__builtin_subConstraint",
-                                                   sub);
-  pdlPattern.registerConstraintFunction("__builtin_log2Constraint",
-                                                   log2);
-  pdlPattern.registerConstraintFunction("__builtin_exp2Constraint",
-                                                   exp2);
-  pdlPattern.registerConstraintFunction("__builtin_absConstraint",
-                                                   abs);
+  pdlPattern.registerConstraintFunction("__builtin_mulConstraint", mul);
+  pdlPattern.registerConstraintFunction("__builtin_divConstraint", div);
+  pdlPattern.registerConstraintFunction("__builtin_modConstraint", mod);
+  pdlPattern.registerConstraintFunction("__builtin_addConstraint", add);
+  pdlPattern.registerConstraintFunction("__builtin_subConstraint", sub);
+  pdlPattern.registerConstraintFunction("__builtin_log2Constraint", log2);
+  pdlPattern.registerConstraintFunction("__builtin_exp2Constraint", exp2);
+  pdlPattern.registerConstraintFunction("__builtin_absConstraint", abs);
   pdlPattern.registerConstraintFunction("__builtin_equals", equals);
 }
 } // namespace mlir::pdl

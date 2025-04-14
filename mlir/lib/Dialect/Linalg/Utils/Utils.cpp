@@ -56,19 +56,24 @@ namespace {
 //   `d0 + 2 * d1 + d3` is tiled by [0, 0, 0, 2] but not by [0, 0, 2, 0]
 //
 struct TileCheck : public AffineExprVisitor<TileCheck> {
-  TileCheck(ArrayRef<OpFoldResult> tileSizes, ArrayRef<OpFoldResult> sizeBounds)
-      : tileSizes(tileSizes), sizeBounds(sizeBounds) {}
+  TileCheck(ArrayRef<OpFoldResult> tileSizes, ArrayRef<OpFoldResult> sizeBounds,
+            bool isMonotonicallyIncreasing)
+      : tileSizes(tileSizes), sizeBounds(sizeBounds),
+        isMonotonicallyIncreasing(isMonotonicallyIncreasing) {}
 
   void visitDimExpr(AffineDimExpr expr) {
     unsigned pos = expr.getPosition();
 
-    // This dimension is tiled if the tile size is larger than zero and not
-    // equal to its domain size (if statically known).
-    std::optional<int64_t> tileSize = getConstantIntValue(tileSizes[pos]);
-    if (tileSize && !sizeBounds.empty()) {
-      std::optional<int64_t> sizeBound = getConstantIntValue(sizeBounds[pos]);
-      if (sizeBound && *sizeBound == *tileSize) {
-        return;
+    // If the expression is non monotonic, this dimension is tiled if the tile
+    // size is larger than zero and not equal to its domain size (if statically
+    // known).
+    if (!isMonotonicallyIncreasing) {
+      std::optional<int64_t> tileSize = getConstantIntValue(tileSizes[pos]);
+      if (tileSize && !sizeBounds.empty()) {
+        std::optional<int64_t> sizeBound = getConstantIntValue(sizeBounds[pos]);
+        if (sizeBound && *sizeBound == *tileSize) {
+          return;
+        }
       }
     }
 
@@ -84,6 +89,7 @@ struct TileCheck : public AffineExprVisitor<TileCheck> {
   bool isTiled = false;
   ArrayRef<OpFoldResult> tileSizes;
   ArrayRef<OpFoldResult> sizeBounds;
+  bool isMonotonicallyIncreasing;
 };
 
 } // namespace
@@ -92,7 +98,7 @@ static bool isTiled(AffineExpr expr, ArrayRef<OpFoldResult> tileSizes,
                     ArrayRef<OpFoldResult> sizeBounds) {
   if (!expr)
     return false;
-  TileCheck t(tileSizes, sizeBounds);
+  TileCheck t(tileSizes, sizeBounds, expr.isMonotonicallyIncreasing());
   t.visit(expr);
   return t.isTiled;
 }
