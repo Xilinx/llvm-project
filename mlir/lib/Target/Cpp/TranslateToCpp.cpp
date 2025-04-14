@@ -208,9 +208,7 @@ struct CppEmitter {
   struct Scope {
     Scope(CppEmitter &emitter)
         : valueMapperScope(emitter.valueMapper),
-          blockMapperScope(emitter.blockMapper),
-          inductionVarMapperScope(emitter.loopInductionVarMapper),
-          emitter(emitter) {
+          blockMapperScope(emitter.blockMapper), emitter(emitter) {
       emitter.labelInScopeCount.push(emitter.labelInScopeCount.top());
     }
     ~Scope() { emitter.labelInScopeCount.pop(); }
@@ -218,7 +216,6 @@ struct CppEmitter {
   private:
     llvm::ScopedHashTableScope<Value, std::string> valueMapperScope;
     llvm::ScopedHashTableScope<Block *, std::string> blockMapperScope;
-    llvm::ScopedHashTableScope<Value, std::string> inductionVarMapperScope;
     CppEmitter &emitter;
   };
 
@@ -296,10 +293,6 @@ private:
 
   /// Map from value to name of C++ variable that contain the name.
   ValueMapper valueMapper;
-
-  // Map from value to name of C++ loop induction variable that contains the
-  // name.
-  ValueMapper loopInductionVarMapper;
 
   /// Map from block to name of C++ label.
   BlockMapper blockMapper;
@@ -1373,11 +1366,6 @@ void CppEmitter::cacheDeferredOpResult(Value value, StringRef str) {
 
 /// Return the existing or a new name for a Value.
 StringRef CppEmitter::getOrCreateName(Value val) {
-  // Check whether value belongs to a loop induction variable
-  if (loopInductionVarMapper.count(val)) {
-    return *loopInductionVarMapper.begin(val);
-  }
-
   if (!valueMapper.count(val)) {
     assert(!hasDeferredEmission(val.getDefiningOp()) &&
            "cacheDeferredOpResult should have been called on this value, "
@@ -1393,21 +1381,21 @@ StringRef CppEmitter::getOrCreateName(Value val) {
 StringRef CppEmitter::getOrCreateName(emitc::ForOp forOp) {
   Value val = forOp.getInductionVar();
 
-  if (!loopInductionVarMapper.count(val)) {
+  if (!valueMapper.count(val)) {
 
     int64_t identifier = loopNestingLevel++;
 
     char range = 'z' - 'i';
     if (identifier >= 0 && identifier <= range) {
-      loopInductionVarMapper.insert(
+      valueMapper.insert(
           val, formatv("{0}_{1}", (char)(identifier + 'i'), ++valueCount));
     } else {
       // If running out of letters, continue with zX
-      loopInductionVarMapper.insert(
+      valueMapper.insert(
           val, formatv("z{0}_{1}", identifier - range - 1, ++valueCount));
     }
   }
-  return *loopInductionVarMapper.begin(val);
+  return *valueMapper.begin(val);
 }
 
 /// Return the existing or a new label for a Block.
