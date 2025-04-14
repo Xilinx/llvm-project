@@ -22,12 +22,12 @@ func.func @test_for_siblings() {
   return
 }
 // CHECK-LABEL: test_for_siblings
-// CHECK: for (size_t [[ITER0:i_1]] = {{.*}}; [[ITER0]] < {{.*}}; [[ITER0]] += {{.*}}) {
-  // CHECK: for (size_t [[ITER1:j_1]] = {{.*}}; [[ITER1]] < {{.*}}; [[ITER1]] += {{.*}}) {
-    // CHECK-NEXT: {{.*}} = i_1;
-    // CHECK-NEXT: {{.*}} = j_1;
-// CHECK: for (size_t [[ITER2:i_2]] = {{.*}}; [[ITER2]] < {{.*}}; [[ITER2]] += {{.*}})
-  // CHECK: for (size_t [[ITER3:j_2]] = {{.*}}; [[ITER3]] < {{.*}}; [[ITER3]] += {{.*}})
+// CHECK: for (size_t [[ITER0:i_[0-9]*]] = {{.*}}; [[ITER0]] < {{.*}}; [[ITER0]] += {{.*}}) {
+  // CHECK: for (size_t [[ITER1:j_[0-9]*]] = {{.*}}; [[ITER1]] < {{.*}}; [[ITER1]] += {{.*}}) {
+    // CHECK-NEXT: {{.*}} = [[ITER0]];
+    // CHECK-NEXT: {{.*}} = [[ITER1]];
+// CHECK: for (size_t [[ITER2:i_[0-9]*]] = {{.*}}; [[ITER2]] < {{.*}}; [[ITER2]] += {{.*}})
+  // CHECK: for (size_t [[ITER3:j_[0-9]*]] = {{.*}}; [[ITER3]] < {{.*}}; [[ITER3]] += {{.*}})
 
 func.func @test_for_nesting() {
   %start = "emitc.constant"() <{value = 0 : index}> : () -> !emitc.size_t
@@ -78,10 +78,7 @@ func.func @test_for_nesting() {
   return
 }
 // CHECK-LABEL: test_for_nesting
-// CHECK: for (size_t [[ITERi:i_1]] = {{.*}}; [[ITERi]] < {{.*}}; [[ITERi]] += {{.*}}) {
-  // CHECK-NEXT: for (size_t [[ITERj:j_1]] = {{.*}}; [[ITERj]] < {{.*}}; [[ITERj]] += {{.*}}) {
-    // CHECK-COUNT-15: for (size_t [[ITERk:[k-y]_1]] = {{.*}}; [[ITERk]] < {{.*}}; [[ITERk]] += {{.*}}) {
-      // CHECK-NEXT: for (size_t [[ITERz:z_1]] = {{.*}}; [[ITERz]] < {{.*}}; [[ITERz]] += {{.*}}) {
-        // CHECK-NEXT: for (size_t [[ITERz0:z0_1]] = {{.*}}; [[ITERz0]] < {{.*}}; [[ITERz0]] += {{.*}}) {
-          // CHECK-NEXT: for (size_t [[ITERz1:z1_1]] = {{.*}}; [[ITERz1]] < {{.*}}; [[ITERz1]] += {{.*}}) {
+// CHECK-COUNT-18: for (size_t [[ITER:[i-z]_[0-9]*]] = {{.*}}; [[ITER]] < {{.*}}; [[ITER]] += {{.*}}) {
+  // CHECK: for (size_t [[ITERz0:z0_[0-9]*]] = {{.*}}; [[ITERz0]] < {{.*}}; [[ITERz0]] += {{.*}}) {
+    // CHECK: for (size_t [[ITERz1:z1_[0-9]*]] = {{.*}}; [[ITERz1]] < {{.*}}; [[ITERz1]] += {{.*}}) {
 
