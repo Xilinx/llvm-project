@@ -671,14 +671,17 @@ public:
 
     // Float-to-i1 casts are not supported: any value with 0 < value < 1 must be
     // truncated to 0, whereas a boolean conversion would return true.
-    if (!emitc::isSupportedIntegerType(dstType) || dstType.isInteger(1))
-      return rewriter.notifyMatchFailure(castOp,
-                                         "unsupported cast destination type");
+    bool isOpaque = isa<emitc::OpaqueType>((dstType));
+    if (!isOpaque) {
+      if (!emitc::isSupportedIntegerType(dstType) || dstType.isInteger(1))
+        return rewriter.notifyMatchFailure(castOp,
+                                           "unsupported cast destination type");
+    }
 
     // Convert to unsigned if it's the "ui" variant
     // Signless is interpreted as signed, so no need to cast for "si"
     Type actualResultType = dstType;
-    if (isa<arith::FPToUIOp>(castOp)) {
+    if (isa<arith::FPToUIOp>(castOp) && !isOpaque) {
       actualResultType =
           rewriter.getIntegerType(dstType.getIntOrFloatBitWidth(),
                                   /*isSigned=*/false);
@@ -708,7 +711,9 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     // Vectors in particular are not supported
     Type operandType = adaptor.getIn().getType();
-    if (!emitc::isSupportedIntegerType(operandType))
+    bool isOpaque = isa<emitc::OpaqueType>((operandType));
+
+    if (!(isOpaque || emitc::isSupportedIntegerType(operandType)))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast source type");
 
@@ -723,7 +728,7 @@ public:
     // Convert to unsigned if it's the "ui" variant
     // Signless is interpreted as signed, so no need to cast for "si"
     Type actualOperandType = operandType;
-    if (isa<arith::UIToFPOp>(castOp)) {
+    if (!isOpaque && isa<arith::UIToFPOp>(castOp)) {
       actualOperandType =
           rewriter.getIntegerType(operandType.getIntOrFloatBitWidth(),
                                   /*isSigned=*/false);
