@@ -1381,7 +1381,6 @@ std::string CppEmitter::createMemberAccess(emitc::MemberOfPtrOp op) {
 void CppEmitter::cacheDeferredOpResult(Value value, StringRef str) {
   if (!valueMapper.count(value)) {
     valueMapper.insert(value, str.str());
-    valueCount++;
   }
 }
 
