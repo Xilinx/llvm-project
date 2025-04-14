@@ -108,14 +108,6 @@ To use Telemetry in your tool, you need to provide a concrete implementation of 
       writeHelper(KeyName, Value);
     }
 
-    void write(StringRef KeyName, unsigned int Value) override {
-      writeHelper(KeyName, Value);
-    }
-
-    void write(StringRef KeyName, unsigned long Value) override {
-      writeHelper(KeyName, Value);
-    }
-
     void write(StringRef KeyName, long Value) override {
       writeHelper(KeyName, Value);
     }
@@ -124,6 +116,14 @@ To use Telemetry in your tool, you need to provide a concrete implementation of 
       writeHelper(KeyName, Value);
     }
 
+    void write(StringRef KeyName, unsigned int Value) override {
+      writeHelper(KeyName, Value);
+    }
+
+    void write(StringRef KeyName, unsigned long Value) override {
+      writeHelper(KeyName, Value);
+    }
+    
     void write(StringRef KeyName, unsigned long long Value) override {
       writeHelper(KeyName, Value);
     }

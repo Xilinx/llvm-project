@@ -53,6 +53,30 @@ public:
     writeHelper(KeyName, Value);
   }
 
+  void write(StringRef KeyName, int Value) override {
+    writeHelper(KeyName, Value);
+  }
+
+  void write(StringRef KeyName, long Value) override {
+    writeHelper(KeyName, Value);
+  }
+
+  void write(StringRef KeyName, long long Value) override {
+    writeHelper(KeyName, Value);
+  }
+
+  void write(StringRef KeyName, unsigned int Value) override {
+    writeHelper(KeyName, Value);
+  }
+
+  void write(StringRef KeyName, unsigned long Value) override {
+    writeHelper(KeyName, Value);
+  }
+
+  void write(StringRef KeyName, unsigned long long Value) override {
+    writeHelper(KeyName, Value);
+  }
+
   void beginObject(StringRef KeyName) override {
     Children.push_back(std::string("\n"));
     ChildrenNames.push_back(KeyName.str());
@@ -82,14 +106,6 @@ private:
       Buffer.append((Name + ":" + Twine(Value) + "\n").str());
     else
       Children.back().append((Name + ":" + Twine(Value) + "\n").str());
-  }
-
-  void writeUnsigned(StringRef KeyName, unsigned long long Value) override {
-    writeHelper(KeyName, Value);
-  }
-
-  void writeSigned(StringRef KeyName, long long Value) override {
-    writeHelper(KeyName, Value);
   }
 
   bool Started = false;
@@ -177,6 +193,7 @@ public:
 
   Error preDispatch(TelemetryInfo *Entry) override {
     Entry->SessionId = SessionId;
+    (void)CurrentContext;
     return Error::success();
   }
 
