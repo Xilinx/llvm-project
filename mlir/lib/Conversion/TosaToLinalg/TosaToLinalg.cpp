@@ -1264,9 +1264,6 @@ public:
     if (!outputTy) {
       return rewriter.notifyMatchFailure(op, "unable to convert type");
     }
-    bool inputAsUnsigned =
-        op.getInput().getType().getElementType().isUnsignedInteger();
-    bool outputAsUnsigned = op.getType().getElementType().isUnsignedInteger();
     unsigned rank = inputTy.getRank();
 
     // This is an illegal configuration. terminate and log an error
@@ -1382,7 +1379,7 @@ public:
           Value shift = shiftConstant ? shiftConstant : blockArgs[shiftArg];
 
           if (valueTy.getIntOrFloatBitWidth() < 32) {
-            if (inputAsUnsigned) {
+            if (op.getInputUnsigned()) {
               value = nestedBuilder.create<arith::ExtUIOp>(
                   nestedLoc, nestedBuilder.getI32Type(), value);
             } else {
@@ -1411,7 +1408,7 @@ public:
           int32_t intMax = APInt::getSignedMaxValue(outBitWidth).getSExtValue();
 
           // Unsigned integers have a difference output value.
-          if (outputAsUnsigned) {
+          if (op.getOutputUnsigned()) {
             intMin = 0;
             intMax = APInt::getMaxValue(outBitWidth).getZExtValue();
           }

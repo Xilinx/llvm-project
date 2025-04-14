@@ -81,7 +81,8 @@ mlirPassManagerRunOnOp(MlirPassManager passManager, MlirOperation op);
 MLIR_CAPI_EXPORTED void mlirPassManagerEnableIRPrinting(
     MlirPassManager passManager, bool printBeforeAll, bool printAfterAll,
     bool printModuleScope, bool printAfterOnlyOnChange,
-    bool printAfterOnlyOnFailure, MlirStringRef treePrintingPath);
+    bool printAfterOnlyOnFailure, MlirOpPrintingFlags flags,
+    MlirStringRef treePrintingPath);
 
 /// Enable lir-reproducer-before-all.
 MLIR_CAPI_EXPORTED void
