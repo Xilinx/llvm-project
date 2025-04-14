@@ -19,6 +19,14 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Func/Transforms/FuncConversions.h"
+
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
+#include "mlir/Conversion/SCFToEmitC/SCFToEmitC.h"
+#include "mlir/Conversion/FuncToEmitC/FuncToEmitC.h"
+#include "mlir/Conversion/MemRefToEmitC/MemRefToEmitC.h"
+
 namespace mlir {
 #define GEN_PASS_DEF_CONVERTARITHTOEMITC
 #include "mlir/Conversion/Passes.h.inc"
@@ -30,7 +38,7 @@ namespace {
 struct ConvertArithToEmitC
     : public impl::ConvertArithToEmitCBase<ConvertArithToEmitC> {
   void runOnOperation() override;
-};
+    };
 } // namespace
 
 void ConvertArithToEmitC::runOnOperation() {
@@ -42,7 +50,21 @@ void ConvertArithToEmitC::runOnOperation() {
   RewritePatternSet patterns(&getContext());
 
   TypeConverter typeConverter;
-  typeConverter.addConversion([](Type type) { return type; });
+  typeConverter.addConversion([](Type type) -> std::optional<emitc::OpaqueType>{
+    return emitc::OpaqueType::get(type.getContext(), "dummyType");
+  });
+
+  typeConverter.addTypeAttributeConversion(
+      [](Type type, Attribute attrToConvert)
+          -> TypeConverter::AttributeConversionResult {
+        return emitc::OpaqueAttr::get(type.getContext(), "dummyAttr");
+      });
+
+  populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                   typeConverter);
+  populateCallOpTypeConversionPattern(patterns, typeConverter);
+  populateReturnOpTypeConversionPattern(patterns, typeConverter);
+  populateFuncToEmitCPatterns(patterns, typeConverter);
 
   populateArithToEmitCPatterns(typeConverter, patterns);
 
