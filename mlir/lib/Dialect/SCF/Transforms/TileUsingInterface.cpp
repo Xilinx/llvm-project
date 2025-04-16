@@ -1559,9 +1559,11 @@ mlir::scf::tileConsumerAndFuseProducersUsingSCF(
 
   OpBuilder::InsertionGuard g(rewriter);
   while (!sliceTracker.worklist.empty()) {
-    auto candidateSlice =
+    auto candidateSlice = // sliceTracker.worklist.front();
         sliceTracker.filteredWorkList(resultToOperand).front();
-    // Remove from the actual worklist
+
+    // sliceTracker.worklist.pop_front();
+    //  Remove from the actual worklist
     sliceTracker.removeOp(candidateSlice);
 
     /*auto candidateSlice = sliceTracker.worklist.front();

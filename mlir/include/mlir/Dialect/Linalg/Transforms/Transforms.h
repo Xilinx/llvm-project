@@ -13,6 +13,7 @@
 
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
@@ -1467,11 +1468,17 @@ struct LinalgGeneralizationPattern
   /// transformed pieces of IR.
   FailureOr<GenericOp>
   returningMatchAndRewrite(LinalgOp op, PatternRewriter &rewriter) const {
+    if (dyn_cast<FillOp>(op.getOperation())) {
+      return failure();
+    }
     return generalizeNamedOp(rewriter, op);
   }
 
   LogicalResult matchAndRewrite(LinalgOp op,
                                 PatternRewriter &rewriter) const override {
+    if (dyn_cast<FillOp>(op.getOperation())) {
+      return failure();
+    }
     return returningMatchAndRewrite(op, rewriter);
   }
 };
