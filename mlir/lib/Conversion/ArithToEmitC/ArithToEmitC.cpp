@@ -280,8 +280,9 @@ public:
 
     Type type = adaptor.getLhs().getType();
     bool isOpaque = isa<emitc::OpaqueType>((type));
-    if (!isOpaque){
-      if (!type || !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
+    if (!isOpaque) {
+      if (!type ||
+          !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
         return rewriter.notifyMatchFailure(
             op, "expected integer or size_t/ssize_t/ptrdiff_t type");
       }
@@ -474,8 +475,9 @@ public:
 
     Type type = this->getTypeConverter()->convertType(op.getType());
     bool isOpaque = isa<emitc::OpaqueType>((type));
-    if (!isOpaque){
-      if (!type || !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
+    if (!isOpaque) {
+      if (!type ||
+          !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
         return rewriter.notifyMatchFailure(
             op, "expected integer or size_t/ssize_t/ptrdiff_t type");
       }
