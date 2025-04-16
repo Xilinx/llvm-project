@@ -11,9 +11,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"
 #include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"
+#include "mlir/IR/AffineMap.h"
+#include "llvm/ADT/SmallVector.h"
+#include <cstdint>
 
 using namespace mlir;
 using namespace mlir::tosa;
@@ -30,6 +34,14 @@ struct Conv2DIsFullyConnected : public OpRewritePattern<tosa::Conv2DOp> {
   explicit Conv2DIsFullyConnected(MLIRContext *context)
       : OpRewritePattern(context) {}
 
+  FailureOr<RankedTensorType> collapseOuterUnitDim(PatternRewriter &rewriter,
+                                                   ShapedType inputType) const {
+    ArrayRef<int64_t> inputShape = inputType.getShape();
+    llvm::SmallVector<int64_t, 2> revisedInputShape(
+        llvm::make_range(std::next(inputShape.begin()), inputShape.end()));
+    return RankedTensorType::get(revisedInputShape, inputType.getElementType());
+  }
+
   LogicalResult matchAndRewrite(tosa::Conv2DOp op,
                                 PatternRewriter &rewriter) const override {
     Value input = op.getInput();
@@ -37,6 +49,69 @@ struct Conv2DIsFullyConnected : public OpRewritePattern<tosa::Conv2DOp> {
     ShapedType inputType = cast<ShapedType>(input.getType());
     ShapedType weightType = cast<ShapedType>(weight.getType());
     ShapedType resultType = cast<ShapedType>(op.getType());
+
+    auto newInputShape = collapseOuterUnitDim(rewriter, inputType);
+    auto newInput = rewriter
+                        .create<tosa::ReshapeOp>(
+                            rewriter.getUnknownLoc(), *newInputShape, input,
+                            rewriter.getDenseI64ArrayAttr(convertFromMlirShape(
+                                newInputShape->getShape())))
+                        .getResult();
+    auto newWeightShape = collapseOuterUnitDim(rewriter, weightType);
+    newWeightShape = RankedTensorType::get({newWeightShape->getShape()[0],
+                                            newWeightShape->getShape()[2],
+                                            newWeightShape->getShape()[1]},
+                                           inputType.getElementType());
+    auto newWeight = rewriter
+                         .create<tosa::ReshapeOp>(
+                             rewriter.getUnknownLoc(), *newWeightShape, weight,
+                             rewriter.getDenseI64ArrayAttr(convertFromMlirShape(
+                                 newWeightShape->getShape())))
+                         .getResult();
+
+    auto result = rewriter.create<tosa::MatMulOp>(
+        op->getLoc(), *collapseOuterUnitDim(rewriter, resultType), newInput,
+        newWeight);
+
+    // auto resultShape = RankedTensorType::get(
+    //     SmallVector<int64_t>{newInputShape->getShape()[0],
+    //                          newInputShape->getShape()[1]},
+    //     inputType.getElementType());
+    //  auto empty = rewriter.create<tensor::EmptyOp>(
+    //  op.getLoc(), resultShape.getShape(), resultShape.getElementType());
+    //  auto result = rewriter.create<linalg::MatmulOp>(
+    //  op->getLoc(), ValueRange{newInput, newWeight}, ValueRange{empty});
+
+    // SmallVector<AffineMap> indexingMaps;
+    //// input
+    // indexingMaps.push_back(AffineMap::get(
+    ///*dimCount=*/3, /*symbolCount=*/0,
+    ///*results=*/
+    //{rewriter.getAffineDimExpr(0), rewriter.getAffineDimExpr(1),
+    // rewriter.getAffineDimExpr(2)},
+    // rewriter.getContext()));
+    //// weight
+    // indexingMaps.push_back(AffineMap::get(
+    ///*dimCount=*/3, /*symbolCount=*/0,
+    ///*results=*/
+    //{rewriter.getAffineDimExpr(0), rewriter.getAffineDimExpr(1),
+    // rewriter.getAffineDimExpr(2)},
+    // rewriter.getContext()));
+    //// result
+    // indexingMaps.push_back(AffineMap::get(
+    ///*dimCount=*/3, /*symbolCount=*/0,
+    ///*results=*/
+    //{rewriter.getAffineDimExpr(0), rewriter.getAffineDimExpr(1)},
+    // rewriter.getContext()));
+
+    // result.setIndexingMapsAttr(rewriter.getAffineMapArrayAttr(indexingMaps));
+
+    rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(
+        op, resultType, result->getResult(0),
+        rewriter.getDenseI64ArrayAttr(
+            convertFromMlirShape(resultType.getShape())));
+
+    return success();
 
     auto numDynamic =
         llvm::count_if(inputType.getShape(), ShapedType::isDynamic);
@@ -159,5 +234,5 @@ struct Conv2DIsFullyConnected : public OpRewritePattern<tosa::Conv2DOp> {
 
 void mlir::tosa::populateTosaDecomposeConv2D(MLIRContext *ctx,
                                              RewritePatternSet &patterns) {
-  patterns.add<Conv2DIsFullyConnected>(ctx);
+  // patterns.add<Conv2DIsFullyConnected>(ctx);
 }
