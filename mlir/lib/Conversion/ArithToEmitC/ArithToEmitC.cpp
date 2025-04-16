@@ -279,9 +279,12 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = adaptor.getLhs().getType();
-    if (!type || !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
-      return rewriter.notifyMatchFailure(
-          op, "expected integer or size_t/ssize_t/ptrdiff_t type");
+    bool isOpaque = isa<emitc::OpaqueType>((type));
+    if (!isOpaque){
+      if (!type || !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
+        return rewriter.notifyMatchFailure(
+            op, "expected integer or size_t/ssize_t/ptrdiff_t type");
+      }
     }
 
     bool needsUnsigned = needsUnsignedCmp(op.getPredicate());
@@ -436,10 +439,11 @@ public:
   matchAndRewrite(ArithOp uiBinOp, typename ArithOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Type newRetTy = this->getTypeConverter()->convertType(uiBinOp.getType());
-    if (!newRetTy)
+    bool retIsOpaque = isa<emitc::OpaqueType>((newRetTy));
+    if (!retIsOpaque && !newRetTy)
       return rewriter.notifyMatchFailure(uiBinOp,
                                          "converting result type failed");
-    if (!isa<IntegerType>(newRetTy)) {
+    if (!retIsOpaque && !isa<IntegerType>(newRetTy)) {
       return rewriter.notifyMatchFailure(uiBinOp, "expected integer type");
     }
     Type unsignedType =
@@ -469,9 +473,12 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = this->getTypeConverter()->convertType(op.getType());
-    if (!type || !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
-      return rewriter.notifyMatchFailure(
-          op, "expected integer or size_t/ssize_t/ptrdiff_t type");
+    bool isOpaque = isa<emitc::OpaqueType>((type));
+    if (!isOpaque){
+      if (!type || !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
+        return rewriter.notifyMatchFailure(
+            op, "expected integer or size_t/ssize_t/ptrdiff_t type");
+      }
     }
 
     if (type.isInteger(1)) {
