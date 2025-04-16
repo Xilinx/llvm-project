@@ -19,14 +19,6 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Func/Transforms/FuncConversions.h"
-
-#include "mlir/Conversion/FuncToEmitC/FuncToEmitC.h"
-#include "mlir/Conversion/MemRefToEmitC/MemRefToEmitC.h"
-#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
-#include "mlir/Conversion/SCFToEmitC/SCFToEmitC.h"
-
 namespace mlir {
 #define GEN_PASS_DEF_CONVERTARITHTOEMITC
 #include "mlir/Conversion/Passes.h.inc"
@@ -50,22 +42,31 @@ void ConvertArithToEmitC::runOnOperation() {
   RewritePatternSet patterns(&getContext());
 
   TypeConverter typeConverter;
-  typeConverter.addConversion(
-      [](Type type) -> std::optional<emitc::OpaqueType> {
-        return emitc::OpaqueType::get(type.getContext(), "dummyType");
-      });
+  typeConverter.addConversion([](Type type) -> std::optional<Type> {
+    if (type.isF80())
+      return emitc::OpaqueType::get(type.getContext(), "float_80");
+    if (type.isInteger() && type.getIntOrFloatBitWidth() == 80)
+      return emitc::OpaqueType::get(type.getContext(), "int_80");
+    return type;
+  });
 
   typeConverter.addTypeAttributeConversion(
       [](Type type,
          Attribute attrToConvert) -> TypeConverter::AttributeConversionResult {
-        return emitc::OpaqueAttr::get(type.getContext(), "dummyAttr");
+        if (auto floatAttr = llvm::dyn_cast<FloatAttr>(attrToConvert)) {
+          if (floatAttr.getType().isF80()) {
+            return emitc::OpaqueAttr::get(type.getContext(), "F80Attr");
+          }
+          return {};
+        }
+        if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attrToConvert)) {
+          if (intAttr.getType().isInteger() &&
+              intAttr.getType().getIntOrFloatBitWidth() == 80) {
+            return emitc::OpaqueAttr::get(type.getContext(), "I80Attr");
+          }
+        }
+        return {};
       });
-
-  populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
-                                                                 typeConverter);
-  populateCallOpTypeConversionPattern(patterns, typeConverter);
-  populateReturnOpTypeConversionPattern(patterns, typeConverter);
-  populateFuncToEmitCPatterns(patterns, typeConverter);
 
   populateArithToEmitCPatterns(typeConverter, patterns);
 
