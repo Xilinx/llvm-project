@@ -73,6 +73,7 @@ Type adaptIntegralTypeSignedness(Type ty, bool needsUnsigned) {
 
 /// Insert a cast operation to type \p ty if \p val does not have this type.
 Value adaptValueType(Value val, ConversionPatternRewriter &rewriter, Type ty) {
+  assert(emitc::isSupportedEmitCType(val.getType()));
   return rewriter.createOrFold<emitc::CastOp>(val.getLoc(), ty, val);
 }
 
@@ -452,8 +453,8 @@ public:
     if (!unsignedType)
       return rewriter.notifyMatchFailure(uiBinOp,
                                          "converting result type failed");
-    Value lhsAdapted = adaptValueType(uiBinOp.getLhs(), rewriter, unsignedType);
-    Value rhsAdapted = adaptValueType(uiBinOp.getRhs(), rewriter, unsignedType);
+    Value lhsAdapted = adaptValueType(adaptor.getLhs(), rewriter, unsignedType);
+    Value rhsAdapted = adaptValueType(adaptor.getRhs(), rewriter, unsignedType);
 
     auto newDivOp =
         rewriter.create<EmitCOp>(uiBinOp.getLoc(), unsignedType,
