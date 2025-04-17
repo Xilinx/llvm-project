@@ -280,8 +280,7 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = adaptor.getLhs().getType();
-    bool isOpaque = isa<emitc::OpaqueType>((type));
-    if (!isOpaque) {
+    if (!isa<emitc::OpaqueType>((type))) {
       if (!type ||
           !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
         return rewriter.notifyMatchFailure(
@@ -339,8 +338,7 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type opReturnType = this->getTypeConverter()->convertType(op.getType());
-    bool retIsOpaque = isa<emitc::OpaqueType>((opReturnType));
-    if (!retIsOpaque) {
+    if (!isa<emitc::OpaqueType>((opReturnType))) {
       if (!opReturnType || !(isa<IntegerType>(opReturnType) ||
                              emitc::isPointerWideType(opReturnType)))
         return rewriter.notifyMatchFailure(
@@ -353,9 +351,7 @@ public:
     }
 
     Type operandType = adaptor.getIn().getType();
-    bool opIsOpaque = isa<emitc::OpaqueType>((operandType));
-
-    if (!opIsOpaque) {
+    if (!isa<emitc::OpaqueType>((operandType))) {
       if (!operandType || !(isa<IntegerType>(operandType) ||
                             emitc::isPointerWideType(operandType)))
         return rewriter.notifyMatchFailure(
@@ -482,8 +478,7 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = this->getTypeConverter()->convertType(op.getType());
-    bool isOpaque = isa<emitc::OpaqueType>((type));
-    if (!isOpaque) {
+    if (!isa<emitc::OpaqueType>((type))) {
       if (!type ||
           !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
         return rewriter.notifyMatchFailure(
@@ -529,8 +524,8 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = this->getTypeConverter()->convertType(op.getType());
-    bool isOpaque = isa<emitc::OpaqueType>((type));
-    if (!isOpaque && !isa_and_nonnull<IntegerType>(type)) {
+    if (!isa<emitc::OpaqueType>((type)) &&
+        !isa_and_nonnull<IntegerType>(type)) {
       return rewriter.notifyMatchFailure(
           op,
           "expected integer type, vector/tensor support not yet implemented");
@@ -570,8 +565,8 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = this->getTypeConverter()->convertType(op.getType());
-    bool isOpaque = isa<emitc::OpaqueType>((type));
-    if (!isOpaque) {
+    bool retIsOpaque = isa<emitc::OpaqueType>((type));
+    if (!retIsOpaque) {
       if (!type ||
           !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
         return rewriter.notifyMatchFailure(
@@ -601,7 +596,7 @@ public:
       width = rewriter.create<emitc::MulOp>(op.getLoc(), rhsType, eight,
                                             sizeOfCall.getResult(0));
     } else {
-      if (!isOpaque) {
+      if (!retIsOpaque) {
         width = rewriter.create<emitc::ConstantOp>(
             op.getLoc(), rhsType,
             rewriter.getIntegerAttr(rhsType, type.getIntOrFloatBitWidth()));
@@ -618,7 +613,7 @@ public:
 
     // Any concrete value is a valid refinement of poison.
     Value poison;
-    if (isOpaque) {
+    if (retIsOpaque) {
       poison = rewriter.create<emitc::ConstantOp>(
           op.getLoc(), arithmeticType,
           emitc::OpaqueAttr::get(rhsType.getContext(), "opaque_shift_poison"));
@@ -707,8 +702,8 @@ public:
 
     // Float-to-i1 casts are not supported: any value with 0 < value < 1 must be
     // truncated to 0, whereas a boolean conversion would return true.
-    bool isOpaque = isa<emitc::OpaqueType>((dstType));
-    if (!isOpaque) {
+    bool dstIsOpaque = isa<emitc::OpaqueType>((dstType));
+    if (!dstIsOpaque) {
       if (!emitc::isSupportedIntegerType(dstType) || dstType.isInteger(1))
         return rewriter.notifyMatchFailure(castOp,
                                            "unsupported cast destination type");
@@ -717,7 +712,7 @@ public:
     // Convert to unsigned if it's the "ui" variant
     // Signless is interpreted as signed, so no need to cast for "si"
     Type actualResultType = dstType;
-    if (isa<arith::FPToUIOp>(castOp) && !isOpaque) {
+    if (isa<arith::FPToUIOp>(castOp) && !dstIsOpaque) {
       actualResultType =
           rewriter.getIntegerType(dstType.getIntOrFloatBitWidth(),
                                   /*isSigned=*/false);
@@ -747,9 +742,9 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     // Vectors in particular are not supported
     Type operandType = adaptor.getIn().getType();
-    bool isOpaque = isa<emitc::OpaqueType>((operandType));
+    bool opIsOpaque = isa<emitc::OpaqueType>((operandType));
 
-    if (!(isOpaque || emitc::isSupportedIntegerType(operandType)))
+    if (!(opIsOpaque || emitc::isSupportedIntegerType(operandType)))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast source type");
 
@@ -764,7 +759,7 @@ public:
     // Convert to unsigned if it's the "ui" variant
     // Signless is interpreted as signed, so no need to cast for "si"
     Type actualOperandType = operandType;
-    if (!isOpaque && isa<arith::UIToFPOp>(castOp)) {
+    if (!opIsOpaque && isa<arith::UIToFPOp>(castOp)) {
       actualOperandType =
           rewriter.getIntegerType(operandType.getIntOrFloatBitWidth(),
                                   /*isSigned=*/false);

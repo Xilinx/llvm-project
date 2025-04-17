@@ -30,19 +30,14 @@ namespace {
 struct ConvertArithToEmitC
     : public impl::ConvertArithToEmitCBase<ConvertArithToEmitC> {
   void runOnOperation() override;
+
+  void populateOpaqueTypeConversions(TypeConverter &converter);
 };
 } // namespace
 
-void ConvertArithToEmitC::runOnOperation() {
-  ConversionTarget target(getContext());
-
-  target.addLegalDialect<emitc::EmitCDialect>();
-  target.addIllegalDialect<arith::ArithDialect>();
-
-  RewritePatternSet patterns(&getContext());
-
-  TypeConverter typeConverter;
-  typeConverter.addConversion([](Type type) -> std::optional<Type> {
+void ConvertArithToEmitC::populateOpaqueTypeConversions(
+    TypeConverter &converter) {
+  converter.addConversion([](Type type) -> std::optional<Type> {
     if (type.isF80())
       return emitc::OpaqueType::get(type.getContext(), "f80");
     if (type.isInteger() && type.getIntOrFloatBitWidth() == 80)
@@ -50,7 +45,7 @@ void ConvertArithToEmitC::runOnOperation() {
     return type;
   });
 
-  typeConverter.addTypeAttributeConversion(
+  converter.addTypeAttributeConversion(
       [](Type type,
          Attribute attrToConvert) -> TypeConverter::AttributeConversionResult {
         if (auto floatAttr = llvm::dyn_cast<FloatAttr>(attrToConvert)) {
@@ -67,7 +62,19 @@ void ConvertArithToEmitC::runOnOperation() {
         }
         return {};
       });
+}
 
+void ConvertArithToEmitC::runOnOperation() {
+  ConversionTarget target(getContext());
+
+  target.addLegalDialect<emitc::EmitCDialect>();
+  target.addIllegalDialect<arith::ArithDialect>();
+
+  RewritePatternSet patterns(&getContext());
+
+  TypeConverter typeConverter;
+
+  populateOpaqueTypeConversions(typeConverter);
   populateArithToEmitCPatterns(typeConverter, patterns);
 
   if (failed(
