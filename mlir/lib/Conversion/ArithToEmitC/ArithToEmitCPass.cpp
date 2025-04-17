@@ -44,9 +44,9 @@ void ConvertArithToEmitC::runOnOperation() {
   TypeConverter typeConverter;
   typeConverter.addConversion([](Type type) -> std::optional<Type> {
     if (type.isF80())
-      return emitc::OpaqueType::get(type.getContext(), "float_80");
+      return emitc::OpaqueType::get(type.getContext(), "f80");
     if (type.isInteger() && type.getIntOrFloatBitWidth() == 80)
-      return emitc::OpaqueType::get(type.getContext(), "int_80");
+      return emitc::OpaqueType::get(type.getContext(), "i80");
     return type;
   });
 
@@ -55,14 +55,14 @@ void ConvertArithToEmitC::runOnOperation() {
          Attribute attrToConvert) -> TypeConverter::AttributeConversionResult {
         if (auto floatAttr = llvm::dyn_cast<FloatAttr>(attrToConvert)) {
           if (floatAttr.getType().isF80()) {
-            return emitc::OpaqueAttr::get(type.getContext(), "F80Attr");
+            return emitc::OpaqueAttr::get(type.getContext(), "f80");
           }
           return {};
         }
         if (auto intAttr = llvm::dyn_cast<IntegerAttr>(attrToConvert)) {
           if (intAttr.getType().isInteger() &&
               intAttr.getType().getIntOrFloatBitWidth() == 80) {
-            return emitc::OpaqueAttr::get(type.getContext(), "I80Attr");
+            return emitc::OpaqueAttr::get(type.getContext(), "i80");
           }
         }
         return {};
