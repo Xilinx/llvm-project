@@ -339,10 +339,13 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type opReturnType = this->getTypeConverter()->convertType(op.getType());
-    if (!opReturnType || !(isa<IntegerType>(opReturnType) ||
-                           emitc::isPointerWideType(opReturnType)))
-      return rewriter.notifyMatchFailure(
-          op, "expected integer or size_t/ssize_t/ptrdiff_t result type");
+    bool retIsOpaque = isa<emitc::OpaqueType>((opReturnType));
+    if (!retIsOpaque) {
+      if (!opReturnType || !(isa<IntegerType>(opReturnType) ||
+                             emitc::isPointerWideType(opReturnType)))
+        return rewriter.notifyMatchFailure(
+            op, "expected integer or size_t/ssize_t/ptrdiff_t result type");
+    }
 
     if (adaptor.getOperands().size() != 1) {
       return rewriter.notifyMatchFailure(
@@ -350,10 +353,14 @@ public:
     }
 
     Type operandType = adaptor.getIn().getType();
-    if (!operandType || !(isa<IntegerType>(operandType) ||
-                          emitc::isPointerWideType(operandType)))
-      return rewriter.notifyMatchFailure(
-          op, "expected integer or size_t/ssize_t/ptrdiff_t operand type");
+    bool opIsOpaque = isa<emitc::OpaqueType>((operandType));
+
+    if (!opIsOpaque) {
+      if (!operandType || !(isa<IntegerType>(operandType) ||
+                            emitc::isPointerWideType(operandType)))
+        return rewriter.notifyMatchFailure(
+            op, "expected integer or size_t/ssize_t/ptrdiff_t operand type");
+    }
 
     // Signed (sign-extending) casts from i1 are not supported.
     if (operandType.isInteger(1) && !castToUnsigned)
@@ -522,7 +529,8 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = this->getTypeConverter()->convertType(op.getType());
-    if (!isa_and_nonnull<IntegerType>(type)) {
+    bool isOpaque = isa<emitc::OpaqueType>((type));
+    if (!isOpaque && !isa_and_nonnull<IntegerType>(type)) {
       return rewriter.notifyMatchFailure(
           op,
           "expected integer type, vector/tensor support not yet implemented");
@@ -562,9 +570,13 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = this->getTypeConverter()->convertType(op.getType());
-    if (!type || !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
-      return rewriter.notifyMatchFailure(
-          op, "expected integer or size_t/ssize_t/ptrdiff_t type");
+    bool isOpaque = isa<emitc::OpaqueType>((type));
+    if (!isOpaque) {
+      if (!type ||
+          !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
+        return rewriter.notifyMatchFailure(
+            op, "expected integer or size_t/ssize_t/ptrdiff_t type");
+      }
     }
 
     if (type.isInteger(1)) {
@@ -589,20 +601,34 @@ public:
       width = rewriter.create<emitc::MulOp>(op.getLoc(), rhsType, eight,
                                             sizeOfCall.getResult(0));
     } else {
-      width = rewriter.create<emitc::ConstantOp>(
-          op.getLoc(), rhsType,
-          rewriter.getIntegerAttr(rhsType, type.getIntOrFloatBitWidth()));
+      if (!isOpaque) {
+        width = rewriter.create<emitc::ConstantOp>(
+            op.getLoc(), rhsType,
+            rewriter.getIntegerAttr(rhsType, type.getIntOrFloatBitWidth()));
+      } else {
+        width = rewriter.create<emitc::ConstantOp>(
+            op.getLoc(), rhsType,
+            emitc::OpaqueAttr::get(rhsType.getContext(),
+                                   "opaque_shift_bitwidth"));
+      }
     }
 
     Value excessCheck = rewriter.create<emitc::CmpOp>(
         op.getLoc(), rewriter.getI1Type(), emitc::CmpPredicate::lt, rhs, width);
 
     // Any concrete value is a valid refinement of poison.
-    Value poison = rewriter.create<emitc::ConstantOp>(
-        op.getLoc(), arithmeticType,
-        (isa<IntegerType>(arithmeticType)
-             ? rewriter.getIntegerAttr(arithmeticType, 0)
-             : rewriter.getIndexAttr(0)));
+    Value poison;
+    if (isOpaque) {
+      poison = rewriter.create<emitc::ConstantOp>(
+          op.getLoc(), arithmeticType,
+          emitc::OpaqueAttr::get(rhsType.getContext(), "opaque_shift_poison"));
+    } else {
+      poison = rewriter.create<emitc::ConstantOp>(
+          op.getLoc(), arithmeticType,
+          (isa<IntegerType>(arithmeticType)
+               ? rewriter.getIntegerAttr(arithmeticType, 0)
+               : rewriter.getIndexAttr(0)));
+    }
 
     emitc::ExpressionOp ternary = rewriter.create<emitc::ExpressionOp>(
         op.getLoc(), arithmeticType, /*do_not_inline=*/false);
