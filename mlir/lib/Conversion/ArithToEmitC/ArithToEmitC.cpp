@@ -280,12 +280,10 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = adaptor.getLhs().getType();
-    if (!isa<emitc::OpaqueType>((type))) {
-      if (!type ||
-          !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
-        return rewriter.notifyMatchFailure(
-            op, "expected integer or size_t/ssize_t/ptrdiff_t type");
-      }
+    if (!type || !(emitc::isIntegerOrOpaqueType(type) ||
+                   emitc::isPointerWideType(type))) {
+      return rewriter.notifyMatchFailure(
+          op, "expected integer or size_t/ssize_t/ptrdiff_t type");
     }
 
     bool needsUnsigned = needsUnsignedCmp(op.getPredicate());
@@ -338,12 +336,10 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type opReturnType = this->getTypeConverter()->convertType(op.getType());
-    if (!isa<emitc::OpaqueType>((opReturnType))) {
-      if (!opReturnType || !(isa<IntegerType>(opReturnType) ||
-                             emitc::isPointerWideType(opReturnType)))
-        return rewriter.notifyMatchFailure(
-            op, "expected integer or size_t/ssize_t/ptrdiff_t result type");
-    }
+    if (!opReturnType || !(emitc::isIntegerOrOpaqueType(opReturnType) ||
+                           emitc::isPointerWideType(opReturnType)))
+      return rewriter.notifyMatchFailure(
+          op, "expected integer or size_t/ssize_t/ptrdiff_t result type");
 
     if (adaptor.getOperands().size() != 1) {
       return rewriter.notifyMatchFailure(
@@ -351,12 +347,10 @@ public:
     }
 
     Type operandType = adaptor.getIn().getType();
-    if (!isa<emitc::OpaqueType>((operandType))) {
-      if (!operandType || !(isa<IntegerType>(operandType) ||
-                            emitc::isPointerWideType(operandType)))
-        return rewriter.notifyMatchFailure(
-            op, "expected integer or size_t/ssize_t/ptrdiff_t operand type");
-    }
+    if (!operandType || !(emitc::isIntegerOrOpaqueType(operandType) ||
+                          emitc::isPointerWideType(operandType)))
+      return rewriter.notifyMatchFailure(
+          op, "expected integer or size_t/ssize_t/ptrdiff_t operand type");
 
     // Signed (sign-extending) casts from i1 are not supported.
     if (operandType.isInteger(1) && !castToUnsigned)
@@ -444,10 +438,11 @@ public:
   matchAndRewrite(ArithOp uiBinOp, typename ArithOp::Adaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     Type newRetTy = this->getTypeConverter()->convertType(uiBinOp.getType());
-    bool retIsOpaque = isa<emitc::OpaqueType>((newRetTy));
-    if (!retIsOpaque && !newRetTy)
+    if (!newRetTy)
       return rewriter.notifyMatchFailure(uiBinOp,
                                          "converting result type failed");
+
+    bool retIsOpaque = isa<emitc::OpaqueType>((newRetTy));
     if (!retIsOpaque && !isa<IntegerType>(newRetTy)) {
       return rewriter.notifyMatchFailure(uiBinOp, "expected integer type");
     }
@@ -478,12 +473,10 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = this->getTypeConverter()->convertType(op.getType());
-    if (!isa<emitc::OpaqueType>((type))) {
-      if (!type ||
-          !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
-        return rewriter.notifyMatchFailure(
-            op, "expected integer or size_t/ssize_t/ptrdiff_t type");
-      }
+    if (!type || !(emitc::isIntegerOrOpaqueType(type) ||
+                   emitc::isPointerWideType(type))) {
+      return rewriter.notifyMatchFailure(
+          op, "expected integer or size_t/ssize_t/ptrdiff_t type");
     }
 
     if (type.isInteger(1)) {
@@ -524,8 +517,7 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = this->getTypeConverter()->convertType(op.getType());
-    if (!isa<emitc::OpaqueType>((type)) &&
-        !isa_and_nonnull<IntegerType>(type)) {
+    if (!type || !emitc::isIntegerOrOpaqueType(type)) {
       return rewriter.notifyMatchFailure(
           op,
           "expected integer type, vector/tensor support not yet implemented");
@@ -565,13 +557,11 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = this->getTypeConverter()->convertType(op.getType());
-    bool retIsOpaque = isa<emitc::OpaqueType>((type));
-    if (!retIsOpaque) {
-      if (!type ||
-          !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
-        return rewriter.notifyMatchFailure(
-            op, "expected integer or size_t/ssize_t/ptrdiff_t type");
-      }
+    bool retIsOpaque = isa_and_nonnull<emitc::OpaqueType>((type));
+    if (!type || (!retIsOpaque && !(isa<IntegerType>(type) ||
+                                    emitc::isPointerWideType(type)))) {
+      return rewriter.notifyMatchFailure(
+          op, "expected integer or size_t/ssize_t/ptrdiff_t type");
     }
 
     if (type.isInteger(1)) {
@@ -742,7 +732,7 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     // Vectors in particular are not supported
     Type operandType = adaptor.getIn().getType();
-    bool opIsOpaque = isa<emitc::OpaqueType>((operandType));
+    bool opIsOpaque = isa_and_nonnull<emitc::OpaqueType>((operandType));
 
     if (!(opIsOpaque || emitc::isSupportedIntegerType(operandType)))
       return rewriter.notifyMatchFailure(castOp,
