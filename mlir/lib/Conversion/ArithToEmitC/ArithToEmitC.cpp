@@ -442,8 +442,7 @@ public:
       return rewriter.notifyMatchFailure(uiBinOp,
                                          "converting result type failed");
 
-    bool retIsOpaque = isa<emitc::OpaqueType>((newRetTy));
-    if (!retIsOpaque && !isa<IntegerType>(newRetTy)) {
+    if (!emitc::isIntegerOrOpaqueType(newRetTy)) {
       return rewriter.notifyMatchFailure(uiBinOp, "expected integer type");
     }
     Type unsignedType =
@@ -585,17 +584,15 @@ public:
           op.getLoc(), rhsType, "sizeof", ArrayRef<Value>{eight});
       width = rewriter.create<emitc::MulOp>(op.getLoc(), rhsType, eight,
                                             sizeOfCall.getResult(0));
+    } else if (!retIsOpaque) {
+      width = rewriter.create<emitc::ConstantOp>(
+          op.getLoc(), rhsType,
+          rewriter.getIntegerAttr(rhsType, type.getIntOrFloatBitWidth()));
     } else {
-      if (!retIsOpaque) {
-        width = rewriter.create<emitc::ConstantOp>(
-            op.getLoc(), rhsType,
-            rewriter.getIntegerAttr(rhsType, type.getIntOrFloatBitWidth()));
-      } else {
-        width = rewriter.create<emitc::ConstantOp>(
-            op.getLoc(), rhsType,
-            emitc::OpaqueAttr::get(rhsType.getContext(),
-                                   "opaque_shift_bitwidth"));
-      }
+      width = rewriter.create<emitc::ConstantOp>(
+          op.getLoc(), rhsType,
+          emitc::OpaqueAttr::get(rhsType.getContext(),
+                                 "opaque_shift_bitwidth"));
     }
 
     Value excessCheck = rewriter.create<emitc::CmpOp>(
@@ -690,6 +687,8 @@ public:
     if (!dstType)
       return rewriter.notifyMatchFailure(castOp, "type conversion failed");
 
+    Type actualResultType = dstType;
+
     // Float-to-i1 casts are not supported: any value with 0 < value < 1 must be
     // truncated to 0, whereas a boolean conversion would return true.
     bool dstIsOpaque = isa<emitc::OpaqueType>((dstType));
@@ -697,15 +696,14 @@ public:
       if (!emitc::isSupportedIntegerType(dstType) || dstType.isInteger(1))
         return rewriter.notifyMatchFailure(castOp,
                                            "unsupported cast destination type");
-    }
 
-    // Convert to unsigned if it's the "ui" variant
-    // Signless is interpreted as signed, so no need to cast for "si"
-    Type actualResultType = dstType;
-    if (isa<arith::FPToUIOp>(castOp) && !dstIsOpaque) {
-      actualResultType =
-          rewriter.getIntegerType(dstType.getIntOrFloatBitWidth(),
-                                  /*isSigned=*/false);
+      // Convert to unsigned if it's the "ui" variant
+      // Signless is interpreted as signed, so no need to cast for "si"
+      if (isa<arith::FPToUIOp>(castOp)) {
+        actualResultType =
+            rewriter.getIntegerType(dstType.getIntOrFloatBitWidth(),
+                                    /*isSigned=*/false);
+      }
     }
 
     Value result = rewriter.create<emitc::CastOp>(
@@ -732,7 +730,7 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     // Vectors in particular are not supported
     Type operandType = adaptor.getIn().getType();
-    bool opIsOpaque = isa_and_nonnull<emitc::OpaqueType>((operandType));
+    bool opIsOpaque = isa<emitc::OpaqueType>((operandType));
 
     if (!(opIsOpaque || emitc::isSupportedIntegerType(operandType)))
       return rewriter.notifyMatchFailure(castOp,
