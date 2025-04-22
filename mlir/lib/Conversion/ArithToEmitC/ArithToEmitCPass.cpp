@@ -31,6 +31,8 @@ struct ConvertArithToEmitC
     : public impl::ConvertArithToEmitCBase<ConvertArithToEmitC> {
   void runOnOperation() override;
 
+  /// Applies conversion to opaque types for f80 and i80 types, both unsupported
+  /// in emitc. Used to test the pass with opaque types.
   void populateOpaqueTypeConversions(TypeConverter &converter);
 };
 } // namespace
