@@ -556,7 +556,7 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = this->getTypeConverter()->convertType(op.getType());
-    bool retIsOpaque = isa_and_nonnull<emitc::OpaqueType>((type));
+    bool retIsOpaque = isa_and_nonnull<emitc::OpaqueType>(type);
     if (!type || (!retIsOpaque && !(isa<IntegerType>(type) ||
                                     emitc::isPointerWideType(type)))) {
       return rewriter.notifyMatchFailure(
@@ -691,7 +691,7 @@ public:
 
     // Float-to-i1 casts are not supported: any value with 0 < value < 1 must be
     // truncated to 0, whereas a boolean conversion would return true.
-    bool dstIsOpaque = isa<emitc::OpaqueType>((dstType));
+    bool dstIsOpaque = isa<emitc::OpaqueType>(dstType);
     if (!dstIsOpaque) {
       if (!emitc::isSupportedIntegerType(dstType) || dstType.isInteger(1))
         return rewriter.notifyMatchFailure(castOp,
@@ -730,7 +730,7 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     // Vectors in particular are not supported
     Type operandType = adaptor.getIn().getType();
-    bool opIsOpaque = isa<emitc::OpaqueType>((operandType));
+    bool opIsOpaque = isa<emitc::OpaqueType>(operandType);
 
     if (!(opIsOpaque || emitc::isSupportedIntegerType(operandType)))
       return rewriter.notifyMatchFailure(castOp,
