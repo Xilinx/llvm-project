@@ -17,3 +17,5 @@ add_mlir_dialect_library(MLIREmitCDialect
   MLIRIR
   MLIRSideEffectInterfaces
   )
+
+set_property(SOURCE EmitC.cpp APPEND PROPERTY COMPILE_FLAGS "-g" )
