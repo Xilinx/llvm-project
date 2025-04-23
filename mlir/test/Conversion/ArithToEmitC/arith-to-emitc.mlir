@@ -757,10 +757,12 @@ func.func @arith_extf_truncf(%arg0: f32, %arg1: f64) {
 
 // -----
 
-// CHECK-LABEL: float_opaque_conversion
 func.func @float_opaque_conversion(%arg0: f80, %arg1: f80) {
-  // CHECK-DAG: [[arg1_cast:[^ ]*]] = builtin.unrealized_conversion_cast %arg1 : f80 to !emitc.opaque<"f80"> 
-  // CHECK-DAG: [[arg0_cast:[^ ]*]] = builtin.unrealized_conversion_cast %arg0 : f80 to !emitc.opaque<"f80"> 
+  // CHECK-LABEL: float_opaque_conversion
+  // CHECK-SAME: (%[[Arg0:[^ ]*]]: f80, %[[Arg1:[^ ]*]]: f80)
+
+  // CHECK-DAG: [[arg1_cast:[^ ]*]] = builtin.unrealized_conversion_cast %[[Arg1]] : f80 to !emitc.opaque<"f80"> 
+  // CHECK-DAG: [[arg0_cast:[^ ]*]] = builtin.unrealized_conversion_cast %[[Arg0]] : f80 to !emitc.opaque<"f80"> 
   // CHECK: "emitc.constant"() <{value = #emitc.opaque<"f80">}> : () -> !emitc.opaque<"f80">
   %10 = arith.constant 0.0 : f80
   // CHECK: emitc.add [[arg0_cast]], [[arg1_cast]] : (!emitc.opaque<"f80">, !emitc.opaque<"f80">) -> !emitc.opaque<"f80">
@@ -787,10 +789,12 @@ func.func @float_opaque_conversion(%arg0: f80, %arg1: f80) {
 
 // -----
 
-// CHECK-LABEL: int_opaque_conversion
 func.func @int_opaque_conversion(%arg0: i80, %arg1: i80, %arg2: i1) {
-  // CHECK-DAG: [[arg1_cast:[^ ]*]] = builtin.unrealized_conversion_cast %arg1 : i80 to !emitc.opaque<"i80"> 
-  // CHECK-DAG: [[arg0_cast:[^ ]*]] = builtin.unrealized_conversion_cast %arg0 : i80 to !emitc.opaque<"i80">
+  // CHECK-LABEL: int_opaque_conversion
+  // CHECK-SAME: (%[[Arg0:[^ ]*]]: i80, %[[Arg1:[^ ]*]]: i80, %[[Arg2:[^ ]*]]: i1)
+
+  // CHECK-DAG: [[arg1_cast:[^ ]*]] = builtin.unrealized_conversion_cast %[[Arg1]] : i80 to !emitc.opaque<"i80"> 
+  // CHECK-DAG: [[arg0_cast:[^ ]*]] = builtin.unrealized_conversion_cast %[[Arg0]] : i80 to !emitc.opaque<"i80">
   // CHECK: "emitc.constant"() <{value = #emitc.opaque<"i80">}> : () -> !emitc.opaque<"i80">
   %10 = arith.constant 0 : i80
   // CHECK: emitc.div [[arg0_cast]], [[arg1_cast]] : (!emitc.opaque<"i80">, !emitc.opaque<"i80">) -> !emitc.opaque<"i80">
@@ -810,7 +814,7 @@ func.func @int_opaque_conversion(%arg0: i80, %arg1: i80, %arg2: i1) {
   %12 = arith.shli %arg0, %arg1 : i80
   // CHECK: emitc.cmp eq, [[arg0_cast]], [[arg1_cast]] : (!emitc.opaque<"i80">, !emitc.opaque<"i80">) -> i1
   %11 = arith.cmpi eq, %arg0, %arg1 : i80
-  // CHECK: emitc.conditional %arg2, [[arg0_cast]], [[arg1_cast]] : !emitc.opaque<"i80">
+  // CHECK: emitc.conditional %[[Arg2]], [[arg0_cast]], [[arg1_cast]] : !emitc.opaque<"i80">
   %13 = arith.select %arg2, %arg0, %arg1 : i80
   // CHECK: [[V0:[^ ]*]] = emitc.cast [[arg0_cast]] : !emitc.opaque<"i80"> to ui8
   // CHECK: emitc.cast [[V0]] : ui8 to i8
