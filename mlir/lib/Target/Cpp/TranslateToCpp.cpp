@@ -122,6 +122,10 @@ struct CppEmitter {
   LogicalResult emitAttribute(Location loc, Attribute attr);
 
   /// Emits operation 'op' with/without training semicolon or returns failure.
+  ///
+  /// For operations that should never be followed by a semicolon, like ForOp,
+  /// the `trailingSemicolon` argument is ignored and a semicolon is not
+  /// emitted.
   LogicalResult emitOperation(Operation &op, bool trailingSemicolon);
 
   /// Emits a reference to type 'type' or returns failure.
@@ -1818,7 +1822,7 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
     return success();
 
   if (isa<cf::CondBranchOp, emitc::DeclareFuncOp, emitc::ForOp, emitc::IfOp,
-          emitc::SwitchOp, emitc::VerbatimOp>(op)) {
+          emitc::IncludeOp, emitc::SwitchOp, emitc::VerbatimOp>(op)) {
     trailingSemicolon = false;
   }
 

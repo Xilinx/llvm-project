@@ -93,9 +93,11 @@ struct SelfConcatToTile : public OpRewritePattern<tosa::ConcatOp> {
     }
     SmallVector<int64_t> multiplies(concatType.getRank(), 1);
     multiplies[concatOp.getAxis()] = concatOp->getNumOperands();
+    auto constantShapeValue =
+        getTosaConstShape(rewriter, concatOp->getLoc(), multiplies);
     auto tileOp = rewriter.createOrFold<tosa::TileOp>(
         concatOp->getLoc(), concatOp.getType(), concatOp->getOperand(0),
-        multiplies);
+        constantShapeValue);
     rewriter.replaceOp(concatOp, {tileOp});
     return success();
   }
@@ -107,6 +109,55 @@ void ConcatOp::getCanonicalizationPatterns(RewritePatternSet &results,
   results.add<SelfConcatToTile>(context);
 }
 
+struct FuseChainedTile : public OpRewritePattern<tosa::TileOp> {
+  using OpRewritePattern<tosa::TileOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(tosa::TileOp op,
+                                PatternRewriter &rewriter) const override {
+    SmallVector<int64_t> multiplies;
+    if (failed(op.getConstantMultiples(multiplies))) {
+      return rewriter.notifyMatchFailure(op, "Requires const multiplies");
+    }
+    auto inputTile = op.getInput1().getDefiningOp<TileOp>();
+    if (!inputTile) {
+      return rewriter.notifyMatchFailure(op, "Input is not a TileOp");
+    }
+    if (!inputTile->hasOneUse()) {
+      return rewriter.notifyMatchFailure(op,
+                                         "Input tile should only have one use");
+    }
+    SmallVector<int64_t> inputTileMultiples;
+    if (failed(inputTile.getConstantMultiples(inputTileMultiples))) {
+      return rewriter.notifyMatchFailure(
+          op, "Requires const multiplies on input tile");
+      ;
+    }
+
+    for (auto [idx, multiplier] : llvm::enumerate(inputTileMultiples)) {
+      multiplies[idx] *= multiplier;
+    }
+    auto constantShapeValue = getTosaConstShape(
+        rewriter,
+        rewriter.getFusedLoc(
+            {op.getMultiples().getLoc(), inputTile.getMultiples().getLoc()}),
+        multiplies);
+
+    rewriter.modifyOpInPlace(op, [&]() {
+      op.setOperand(0, inputTile->getOperand(0));
+      op.setOperand(1, constantShapeValue);
+      op.getOperation()->setLoc(
+          FusedLoc::get(getContext(), {inputTile->getLoc(), op.getLoc()}));
+    });
+
+    return success();
+  }
+};
+
+void TileOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                         MLIRContext *context) {
+  results.add<FuseChainedTile>(context);
+}
+
 struct SqrtReciprocalOptimization : public OpRewritePattern<tosa::PowOp> {
   using OpRewritePattern<tosa::PowOp>::OpRewritePattern;
   // Pattern that matches a Sqrt + Reciprocal to replace them by a rsqrt.
@@ -115,44 +166,54 @@ struct SqrtReciprocalOptimization : public OpRewritePattern<tosa::PowOp> {
                                 PatternRewriter &rewriter) const override {
     // Check that the PowOp has a single user
     if (!op->hasOneUse())
-      return rewriter.notifyMatchFailure(op, "pow operator has more than one user");
+      return rewriter.notifyMatchFailure(op,
+                                         "pow operator has more than one user");
 
-    Operation* user = *op->user_begin();
+    Operation *user = *op->user_begin();
     // Check that this user is a reciprocal
     if (!isa<tosa::ReciprocalOp>(user))
-      return rewriter.notifyMatchFailure(op, "expected a pow + reciprocal pattern");
+      return rewriter.notifyMatchFailure(op,
+                                         "expected a pow + reciprocal pattern");
 
-    // Check that the Pow op is an Sqrt - its second input should be the scale, 0.5 for Sqrt.
-    Operation* powScale = op.getInput2().getDefiningOp();
+    // Check that the Pow op is an Sqrt - its second input should be the scale,
+    // 0.5 for Sqrt.
+    Operation *powScale = op.getInput2().getDefiningOp();
     if (!powScale || !isa<tosa::ConstOp>(powScale))
-      return rewriter.notifyMatchFailure(op, "expected the pow to have a constant scale input");
+      return rewriter.notifyMatchFailure(
+          op, "expected the pow to have a constant scale input");
 
-    auto scale = cast<DenseElementsAttr>(cast<tosa::ConstOp>(powScale).getValue());
+    auto scale =
+        cast<DenseElementsAttr>(cast<tosa::ConstOp>(powScale).getValue());
     if (!scale.isSplat())
-      return rewriter.notifyMatchFailure(op, "expected the pow scale to be a splat tensor");
+      return rewriter.notifyMatchFailure(
+          op, "expected the pow scale to be a splat tensor");
 
     float scaleValue = scale.getSplatValue<llvm::APFloat>().convertToFloat();
-    if(scaleValue != 0.5)
-      return rewriter.notifyMatchFailure(op, "expected the pow to have a scale of 0.5 to be a sqrt");
+    if (scaleValue != 0.5)
+      return rewriter.notifyMatchFailure(
+          op, "expected the pow to have a scale of 0.5 to be a sqrt");
 
     auto inputType = cast<ShapedType>(op.getOperand(0).getType());
     auto outputType = cast<ShapedType>(op.getType());
     // If the operator needs tiling, fail to match
-    // An improvement for the future would be to generate a tile operator here instead
+    // An improvement for the future would be to generate a tile operator here
+    // instead
     if (inputType != outputType)
-      return rewriter.notifyMatchFailure(op, "input type and output type are different, tiling is not supported for this canonicalization");
+      return rewriter.notifyMatchFailure(
+          op, "input type and output type are different, tiling is not "
+              "supported for this canonicalization");
 
     auto rsqrtOp = rewriter.create<tosa::RsqrtOp>(
         rewriter.getFusedLoc({op.getLoc(), user->getLoc()}), outputType,
         op.getInput1());
     rewriter.replaceOp(user, rsqrtOp);
-      
+
     return success();
   }
 };
 
 void PowOp::getCanonicalizationPatterns(RewritePatternSet &results,
-                                           MLIRContext *context) {
+                                        MLIRContext *context) {
   results.add<SqrtReciprocalOptimization>(context);
 }
 
@@ -724,6 +785,9 @@ struct TileSliceOptimization : public OpRewritePattern<tosa::SliceOp> {
     llvm::SmallVector<int64_t> newTileStarts;
     requiredMultipliers.reserve(tileOpInputType.getRank());
     newTileStarts.reserve(tileOpInputType.getRank());
+    SmallVector<int64_t> tileMultiplies;
+    const LogicalResult tileHasConstantMultiplies =
+        tileOp.getConstantMultiples(tileMultiplies);
     for (auto [axis, sliceStart, sliceSize] :
          llvm::enumerate(sliceOp.getStart(), sliceOp.getSize())) {
       if (sliceSize <= 0) {
@@ -739,22 +803,28 @@ struct TileSliceOptimization : public OpRewritePattern<tosa::SliceOp> {
           llvm::divideCeil(sliceSize - sliceSizeInFirstTile, tileInputDimSize);
       const int64_t requiredMultiplier =
           requiredMultiplierWithoutFirstTile + (sliceSizeInFirstTile != 0);
-      assert(requiredMultiplier <= tileOp.getMultiples()[axis]);
+      assert(failed(tileHasConstantMultiplies) ||
+             requiredMultiplier <= tileMultiplies[axis]);
       requiredMultipliers.push_back(requiredMultiplier);
       newTileStarts.push_back(sliceOffsetInNewFirstTile);
     }
-    if (requiredMultipliers == tileOp.getMultiples())
+
+    if (succeeded(tileHasConstantMultiplies) &&
+        requiredMultipliers == tileMultiplies) {
       return rewriter.notifyMatchFailure(
           sliceOp, "could not reduce multipliers in preceding tile");
+    }
 
     llvm::SmallVector<int64_t> newTileShape(tileOpInputType.getShape());
     for (auto [newShape, multiplier] :
          llvm::zip_equal(newTileShape, requiredMultipliers)) {
       newShape *= multiplier;
     }
+    auto constantShapeValue = getTosaConstShape(
+        rewriter, tileOp.getMultiples().getLoc(), requiredMultipliers);
     auto newTile = rewriter.create<tosa::TileOp>(
         tileOp->getLoc(), tileOpInputType.clone(newTileShape),
-        tileOp->getOperand(0), requiredMultipliers);
+        tileOp->getOperand(0), constantShapeValue);
     auto newSlice = rewriter.create<tosa::SliceOp>(
         sliceOp->getLoc(), sliceOp.getType(), newTile,
         rewriter.getDenseI64ArrayAttr(newTileStarts), sliceOp.getSizeAttr());
@@ -1173,7 +1243,8 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
 
   // cast-to-iN(cast-to-iM(x)) -> cast-to-iN(x) when N <= M
   if (auto cast = getInput().getDefiningOp<CastOp>()) {
-    auto intermediateElTy = cast.getType().getElementType().dyn_cast<IntegerType>();
+    auto intermediateElTy =
+        cast.getType().getElementType().dyn_cast<IntegerType>();
     auto finalElTy = getType().getElementType().dyn_cast<IntegerType>();
     if (intermediateElTy && finalElTy &&
         intermediateElTy.getSignedness() == finalElTy.getSignedness() &&
@@ -1256,6 +1327,8 @@ OpFoldResult CastOp::fold(FoldAdaptor adaptor) {
 }
 
 OpFoldResult ConstOp::fold(FoldAdaptor adaptor) { return getValueAttr(); }
+
+OpFoldResult ConstShapeOp::fold(FoldAdaptor adaptor) { return getValueAttr(); }
 
 #define REDUCE_FOLDER(OP)                                                      \
   OpFoldResult OP::fold(FoldAdaptor adaptor) {                                 \
@@ -1462,25 +1535,13 @@ OpFoldResult tosa::SelectOp::fold(FoldAdaptor adaptor) {
 }
 
 OpFoldResult TileOp::fold(FoldAdaptor adaptor) {
-  bool allOnes = llvm::all_of(getMultiples(), [](int64_t v) { return v == 1; });
-  if (allOnes && getInput1().getType() == getType())
-    return getInput1();
-
-  if (auto inputTile = getInput1().getDefiningOp<TileOp>()) {
-    if (!inputTile->hasOneUse()) {
-      return {};
-    }
-    llvm::SmallVector<int64_t> newMultiplies{getMultiples()};
-    for (auto [idx, multiplier] : llvm::enumerate(inputTile.getMultiples())) {
-      newMultiplies[idx] *= multiplier;
-    }
-    setMultiples(newMultiplies);
-    setOperand(inputTile->getOperand(0));
-    getOperation()->setLoc(
-        FusedLoc::get(getContext(), {inputTile->getLoc(), getLoc()}));
-    return getResult();
+  SmallVector<int64_t> multiples;
+  if (getInput1().getType() != getType() ||
+      failed(getConstantMultiples(multiples)) ||
+      !llvm::all_of(multiples, [](int64_t v) { return v == 1; })) {
+    return {};
   }
-  return {};
+  return getInput1();
 }
 
 OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
@@ -1493,10 +1554,6 @@ OpFoldResult TransposeOp::fold(FoldAdaptor adaptor) {
         input.getType().getElementType() == resultTy.getElementType())
       return input.reshape(resultTy);
   }
-
-  // Transpose does not change the input type.
-  if (getInput1().getType() != getType())
-    return {};
 
   // Transpose is not the identity transpose.
   SmallVector<int32_t> perms;
@@ -1552,7 +1609,7 @@ OpFoldResult tosa::AbsOp::fold(FoldAdaptor adaptor) {
 OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
   /// Remove operands that have zero elements.
   bool changed = false;
-  for (size_t i = 0; i < getInput1().size(); ) {
+  for (size_t i = 0; i < getInput1().size();) {
     auto input = cast<RankedTensorType>(getInput1()[i].getType());
     // Ensure that we have at least one operand left.
     if (input.getDimSize(getAxis()) == 0 && getInput1().size() > 1) {

@@ -20,6 +20,8 @@ The following convention is followed:
     GCC or Clang.
 *   If `ub.posion` values should be initialized and have an opaque type,
     C++ is generated.
+*   If `emitc.array` with a dimension of size zero is used, then the code
+    requires [a GCC extension](https://gcc.gnu.org/onlinedocs/gcc/Zero-Length.html).
 *   Else the generated code is compatible with C99.
 
 These restrictions are neither inherent to the EmitC dialect itself nor to the

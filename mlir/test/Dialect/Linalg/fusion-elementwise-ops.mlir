@@ -986,13 +986,13 @@ module {
 #map3 = affine_map<(d0, d1) -> (d0, d1)>
 
 // CHECK-DAG: [[$MAP0:#[a-zA-Z0-9_]*]] = affine_map<(d0, d1) -> (d0, d1)>
-// CHECK-DAG: [[$MAP1:#[a-zA-Z0-9_]*]] = affine_map<(d0) -> (d0 floordiv 4)>
+// CHECK-DAG: [[$MAP1:#[a-zA-Z0-9_]*]] = affine_map<()[s0] -> (s0 floordiv 4)>
 
 func.func @fuse_and_collapse(%arg0: tensor<3x4xindex>) -> tensor<2x12xindex> {
   %1 = tensor.empty() : tensor<2x3x4xindex>
   // CHECK: linalg.generic {
   // CHECK: %[[INDEX1:[a-zA-Z0-9_]+]] = linalg.index 1 : index
-  // CHECK-NEXT: %[[MAP:[a-zA-Z0-9_]+]] = affine.apply #map1(%[[INDEX1]])
+  // CHECK-NEXT: %[[MAP:[a-zA-Z0-9_]+]] = affine.apply #map1()[%[[INDEX1]]]
   // CHECK-NEXT: linalg.yield %[[MAP]] : index
   %2 = linalg.generic {indexing_maps = [#map, #map1], iterator_types = ["parallel", "parallel", "parallel"]} ins(%arg0: tensor<3x4xindex>) outs(%1 : tensor<2x3x4xindex>) {
   ^bb0(%in: index, %out: index):
