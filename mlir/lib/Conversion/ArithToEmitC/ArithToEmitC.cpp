@@ -775,7 +775,7 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     // Vectors in particular are not supported.
     Type operandType = adaptor.getIn().getType();
-    if (!emitc::isSupportedFloatType(operandType))
+    if (!emitc::isFloatOrOpaqueType(operandType))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast source type");
     if (auto roundingModeOp =
@@ -789,7 +789,7 @@ public:
     if (!dstType)
       return rewriter.notifyMatchFailure(castOp, "type conversion failed");
 
-    if (!emitc::isSupportedFloatType(dstType))
+    if (!emitc::isFloatOrOpaqueType(dstType))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
 
