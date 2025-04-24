@@ -73,6 +73,7 @@ Type adaptIntegralTypeSignedness(Type ty, bool needsUnsigned) {
 
 /// Insert a cast operation to type \p ty if \p val does not have this type.
 Value adaptValueType(Value val, ConversionPatternRewriter &rewriter, Type ty) {
+  assert(emitc::isSupportedEmitCType(val.getType()));
   return rewriter.createOrFold<emitc::CastOp>(val.getLoc(), ty, val);
 }
 
@@ -279,7 +280,8 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = adaptor.getLhs().getType();
-    if (!type || !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
+    if (!type || !(emitc::isIntegerOrOpaqueType(type) ||
+                   emitc::isPointerWideType(type))) {
       return rewriter.notifyMatchFailure(
           op, "expected integer or size_t/ssize_t/ptrdiff_t type");
     }
@@ -334,7 +336,7 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type opReturnType = this->getTypeConverter()->convertType(op.getType());
-    if (!opReturnType || !(isa<IntegerType>(opReturnType) ||
+    if (!opReturnType || !(emitc::isIntegerOrOpaqueType(opReturnType) ||
                            emitc::isPointerWideType(opReturnType)))
       return rewriter.notifyMatchFailure(
           op, "expected integer or size_t/ssize_t/ptrdiff_t result type");
@@ -345,7 +347,7 @@ public:
     }
 
     Type operandType = adaptor.getIn().getType();
-    if (!operandType || !(isa<IntegerType>(operandType) ||
+    if (!operandType || !(emitc::isIntegerOrOpaqueType(operandType) ||
                           emitc::isPointerWideType(operandType)))
       return rewriter.notifyMatchFailure(
           op, "expected integer or size_t/ssize_t/ptrdiff_t operand type");
@@ -439,7 +441,8 @@ public:
     if (!newRetTy)
       return rewriter.notifyMatchFailure(uiBinOp,
                                          "converting result type failed");
-    if (!isa<IntegerType>(newRetTy)) {
+
+    if (!emitc::isIntegerOrOpaqueType(newRetTy)) {
       return rewriter.notifyMatchFailure(uiBinOp, "expected integer type");
     }
     Type unsignedType =
@@ -447,8 +450,8 @@ public:
     if (!unsignedType)
       return rewriter.notifyMatchFailure(uiBinOp,
                                          "converting result type failed");
-    Value lhsAdapted = adaptValueType(uiBinOp.getLhs(), rewriter, unsignedType);
-    Value rhsAdapted = adaptValueType(uiBinOp.getRhs(), rewriter, unsignedType);
+    Value lhsAdapted = adaptValueType(adaptor.getLhs(), rewriter, unsignedType);
+    Value rhsAdapted = adaptValueType(adaptor.getRhs(), rewriter, unsignedType);
 
     auto newDivOp =
         rewriter.create<EmitCOp>(uiBinOp.getLoc(), unsignedType,
@@ -469,7 +472,8 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = this->getTypeConverter()->convertType(op.getType());
-    if (!type || !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
+    if (!type || !(emitc::isIntegerOrOpaqueType(type) ||
+                   emitc::isPointerWideType(type))) {
       return rewriter.notifyMatchFailure(
           op, "expected integer or size_t/ssize_t/ptrdiff_t type");
     }
@@ -512,7 +516,7 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = this->getTypeConverter()->convertType(op.getType());
-    if (!isa_and_nonnull<IntegerType>(type)) {
+    if (!type || !emitc::isIntegerOrOpaqueType(type)) {
       return rewriter.notifyMatchFailure(
           op,
           "expected integer type, vector/tensor support not yet implemented");
@@ -552,7 +556,9 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
 
     Type type = this->getTypeConverter()->convertType(op.getType());
-    if (!type || !(isa<IntegerType>(type) || emitc::isPointerWideType(type))) {
+    bool retIsOpaque = isa_and_nonnull<emitc::OpaqueType>(type);
+    if (!type || (!retIsOpaque && !(isa<IntegerType>(type) ||
+                                    emitc::isPointerWideType(type)))) {
       return rewriter.notifyMatchFailure(
           op, "expected integer or size_t/ssize_t/ptrdiff_t type");
     }
@@ -578,21 +584,33 @@ public:
           op.getLoc(), rhsType, "sizeof", ArrayRef<Value>{eight});
       width = rewriter.create<emitc::MulOp>(op.getLoc(), rhsType, eight,
                                             sizeOfCall.getResult(0));
-    } else {
+    } else if (!retIsOpaque) {
       width = rewriter.create<emitc::ConstantOp>(
           op.getLoc(), rhsType,
           rewriter.getIntegerAttr(rhsType, type.getIntOrFloatBitWidth()));
+    } else {
+      width = rewriter.create<emitc::ConstantOp>(
+          op.getLoc(), rhsType,
+          emitc::OpaqueAttr::get(rhsType.getContext(),
+                                 "opaque_shift_bitwidth"));
     }
 
     Value excessCheck = rewriter.create<emitc::CmpOp>(
         op.getLoc(), rewriter.getI1Type(), emitc::CmpPredicate::lt, rhs, width);
 
     // Any concrete value is a valid refinement of poison.
-    Value poison = rewriter.create<emitc::ConstantOp>(
-        op.getLoc(), arithmeticType,
-        (isa<IntegerType>(arithmeticType)
-             ? rewriter.getIntegerAttr(arithmeticType, 0)
-             : rewriter.getIndexAttr(0)));
+    Value poison;
+    if (retIsOpaque) {
+      poison = rewriter.create<emitc::ConstantOp>(
+          op.getLoc(), arithmeticType,
+          emitc::OpaqueAttr::get(rhsType.getContext(), "opaque_shift_poison"));
+    } else {
+      poison = rewriter.create<emitc::ConstantOp>(
+          op.getLoc(), arithmeticType,
+          (isa<IntegerType>(arithmeticType)
+               ? rewriter.getIntegerAttr(arithmeticType, 0)
+               : rewriter.getIndexAttr(0)));
+    }
 
     emitc::ExpressionOp ternary = rewriter.create<emitc::ExpressionOp>(
         op.getLoc(), arithmeticType, /*do_not_inline=*/false);
@@ -669,19 +687,23 @@ public:
     if (!dstType)
       return rewriter.notifyMatchFailure(castOp, "type conversion failed");
 
+    Type actualResultType = dstType;
+
     // Float-to-i1 casts are not supported: any value with 0 < value < 1 must be
     // truncated to 0, whereas a boolean conversion would return true.
-    if (!emitc::isSupportedIntegerType(dstType) || dstType.isInteger(1))
-      return rewriter.notifyMatchFailure(castOp,
-                                         "unsupported cast destination type");
+    bool dstIsOpaque = isa<emitc::OpaqueType>(dstType);
+    if (!dstIsOpaque) {
+      if (!emitc::isSupportedIntegerType(dstType) || dstType.isInteger(1))
+        return rewriter.notifyMatchFailure(castOp,
+                                           "unsupported cast destination type");
 
-    // Convert to unsigned if it's the "ui" variant
-    // Signless is interpreted as signed, so no need to cast for "si"
-    Type actualResultType = dstType;
-    if (isa<arith::FPToUIOp>(castOp)) {
-      actualResultType =
-          rewriter.getIntegerType(dstType.getIntOrFloatBitWidth(),
-                                  /*isSigned=*/false);
+      // Convert to unsigned if it's the "ui" variant
+      // Signless is interpreted as signed, so no need to cast for "si"
+      if (isa<arith::FPToUIOp>(castOp)) {
+        actualResultType =
+            rewriter.getIntegerType(dstType.getIntOrFloatBitWidth(),
+                                    /*isSigned=*/false);
+      }
     }
 
     Value result = rewriter.create<emitc::CastOp>(
@@ -708,7 +730,9 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     // Vectors in particular are not supported
     Type operandType = adaptor.getIn().getType();
-    if (!emitc::isSupportedIntegerType(operandType))
+    bool opIsOpaque = isa<emitc::OpaqueType>(operandType);
+
+    if (!(opIsOpaque || emitc::isSupportedIntegerType(operandType)))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast source type");
 
@@ -723,7 +747,7 @@ public:
     // Convert to unsigned if it's the "ui" variant
     // Signless is interpreted as signed, so no need to cast for "si"
     Type actualOperandType = operandType;
-    if (isa<arith::UIToFPOp>(castOp)) {
+    if (!opIsOpaque && isa<arith::UIToFPOp>(castOp)) {
       actualOperandType =
           rewriter.getIntegerType(operandType.getIntOrFloatBitWidth(),
                                   /*isSigned=*/false);
@@ -751,7 +775,7 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     // Vectors in particular are not supported.
     Type operandType = adaptor.getIn().getType();
-    if (!emitc::isSupportedFloatType(operandType))
+    if (!emitc::isFloatOrOpaqueType(operandType))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast source type");
     if (auto roundingModeOp =
@@ -765,7 +789,7 @@ public:
     if (!dstType)
       return rewriter.notifyMatchFailure(castOp, "type conversion failed");
 
-    if (!emitc::isSupportedFloatType(dstType))
+    if (!emitc::isFloatOrOpaqueType(dstType))
       return rewriter.notifyMatchFailure(castOp,
                                          "unsupported cast destination type");
 

@@ -133,6 +133,10 @@ bool mlir::emitc::isSupportedFloatType(Type type) {
   return false;
 }
 
+bool mlir::emitc::isIntegerOrOpaqueType(Type type) {
+  return isa<emitc::OpaqueType>(type) || isSupportedIntegerType(type);
+}
+
 bool mlir::emitc::isFloatOrOpaqueType(Type type) {
   return isa<emitc::OpaqueType>(type) || isSupportedFloatType(type);
 }

@@ -50,6 +50,10 @@ bool isSupportedFloatType(mlir::Type type);
 /// EmitC.
 bool isFloatOrOpaqueType(mlir::Type type);
 
+/// Determines whether \p type is a valid integer or opaque type in
+/// EmitC.
+bool isIntegerOrOpaqueType(mlir::Type type);
+
 /// Determines whether \p type is a emitc.size_t/ssize_t type.
 bool isPointerWideType(mlir::Type type);
 
