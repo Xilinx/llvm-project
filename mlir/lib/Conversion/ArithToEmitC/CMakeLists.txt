@@ -15,6 +15,3 @@ add_mlir_conversion_library(MLIRArithToEmitC
   MLIRPass
   MLIRTransformUtils
   )
-
-set_property(SOURCE ArithToEmitC.cpp APPEND PROPERTY COMPILE_FLAGS "-g" )
-set_property(SOURCE ArithToEmitCPass.cpp APPEND PROPERTY COMPILE_FLAGS "-g" )

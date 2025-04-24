@@ -70,4 +70,3 @@ add_mlir_library(MLIRIR
   MLIRSupport
   )
 
-set_property(SOURCE Operation.cpp APPEND PROPERTY COMPILE_FLAGS "-g" )
