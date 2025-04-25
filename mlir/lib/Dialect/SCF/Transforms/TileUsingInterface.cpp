@@ -1389,7 +1389,8 @@ namespace {
 class SliceTrackingListener : public RewriterBase::Listener {
 public:
   explicit SliceTrackingListener(
-      std::optional<FrozenRewritePatternSet> patterns);
+      std::optional<FrozenRewritePatternSet> patterns,
+      ArrayRef<LoopLikeOpInterface> loops);
   SliceTrackingListener() = default;
 
   /// Adds the given list of operations to the worklist, and if present,
@@ -1419,18 +1420,75 @@ private:
   /// Optional pattern set to apply when adding new operations to the
   /// worklist.
   std::optional<FrozenRewritePatternSet> patterns = std::nullopt;
+  ArrayRef<LoopLikeOpInterface> loops;
 };
 
 SliceTrackingListener::SliceTrackingListener(
-    std::optional<FrozenRewritePatternSet> p) {
+    std::optional<FrozenRewritePatternSet> p, ArrayRef<LoopLikeOpInterface> l) {
   patterns = std::move(p);
+  loops = l;
 }
 
+// Invariant that this must preserve:
+// the worklist is topologically sorted with the producers of the insert_slices
+// (provided these ops exist)
+// i.e. for any two elements in the worklist:
+//  * if both have a producer op, and one of them is dependent on another, then
+//    the dependent one is before the other in the worklist,
+//  * if one of them has a producer op, and the other one does not, then the
+//    one with a producer is before the other in the worklist,
+//  * if both have no producer op, then the order is not important.
+// What happens if a extract_slice extracts from a ForLoop argument?
+// (then there's nothing to tile anyway).
+void insertIntoWorkList(tensor::ExtractSliceOp op,
+                        std::deque<tensor::ExtractSliceOp> &worklist,
+                        ArrayRef<LoopLikeOpInterface> loops) {
+  DominanceInfo dom;
+  auto [newOpProducer, _] =
+      getUntiledProducerFromSliceSource(&(op.getSourceMutable()), loops);
+  if (!newOpProducer) {
+    // Insert at the back of the queue.
+    LLVM_DEBUG(llvm::dbgs()
+               << "worklist: op " << op
+               << " has no producer, inserting at back of queue\n");
+    worklist.push_back(op);
+    return;
+  }
+
+  auto it = worklist.begin();
+  for (; it != worklist.end(); ++it) {
+    auto [oldOpProducer, _] = getUntiledProducerFromSliceSource(
+        &(it->getSourceMutable()),
+        loops); // (*it)->getOperand(0).getDefiningOp();
+    if (!oldOpProducer) {
+      // Insert the new extract_slice before the first extract_slice without a
+      // producer (these come last)
+      break;
+    }
+    if (!dom.properlyDominates(newOpProducer.getOwner(),
+                               oldOpProducer.getOwner())) {
+      // Insert the new extract_slice before the first extract_slice it does not
+      // dominate.
+      break;
+    }
+  }
+  worklist.insert(it, op);
+  // Dump the worklist
+  LLVM_DEBUG(llvm::dbgs() << "worklist: current worklist is \n");
+  for (auto &op : worklist) {
+    LLVM_DEBUG(llvm::dbgs() << "  " << op << "\n");
+  }
+}
+
+/// Insert extract_slice ops into the worklist.
 LogicalResult
 SliceTrackingListener::insertAndApplyPatterns(ArrayRef<Operation *> ops) {
   for (Operation *op : ops) {
-    if (auto slice = dyn_cast<tensor::ExtractSliceOp>(op))
-      worklist.push_back(slice);
+    if (auto slice = dyn_cast<tensor::ExtractSliceOp>(op)) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "worklist: insertAndApplyPatterns of " << slice << "\n");
+      insertIntoWorkList(slice, worklist, loops);
+    }
   }
 
   if (!patterns)
@@ -1442,12 +1500,16 @@ SliceTrackingListener::insertAndApplyPatterns(ArrayRef<Operation *> ops) {
   return applyOpPatternsGreedily(ops, patterns.value(), config);
 }
 
+/// Insert extract_slice ops created by cleanup patterns into the worklist.
+/// Triggered from applyOpPatternsAndFold() above.
 void SliceTrackingListener::notifyOperationInserted(
     Operation *op, OpBuilder::InsertPoint previous) {
   auto slice = dyn_cast<tensor::ExtractSliceOp>(op);
   if (!slice)
     return;
-  worklist.push_back(slice);
+  LLVM_DEBUG(llvm::dbgs() << "worklist: notifyOperationInserted of " << slice
+                          << "\n");
+  insertIntoWorkList(slice, worklist, loops);
 }
 
 // Scan the worklist for the given op and remove it if present. The
@@ -1578,7 +1640,7 @@ mlir::scf::tileConsumerAndFuseProducersUsingSCF(
   };
 
   SliceTrackingListener sliceTracker =
-      SliceTrackingListener(options.cleanupPatterns);
+      SliceTrackingListener(options.cleanupPatterns, loops);
 
   if (failed(
           sliceTracker.insertAndApplyPatterns(tilingResult->generatedSlices))) {
@@ -1587,6 +1649,7 @@ mlir::scf::tileConsumerAndFuseProducersUsingSCF(
   OpBuilder::InsertionGuard g(rewriter);
   while (!sliceTracker.worklist.empty()) {
     auto candidateSlice = sliceTracker.worklist.front();
+    LLVM_DEBUG(llvm::dbgs() << "worklist: popping " << candidateSlice << "\n");
     sliceTracker.worklist.pop_front();
 
     auto [fusableProducer, destinationInitArg] =
@@ -1594,6 +1657,8 @@ mlir::scf::tileConsumerAndFuseProducersUsingSCF(
                                           loops);
     if (!fusableProducer)
       continue;
+    LLVM_DEBUG(llvm::dbgs() << "worklist: producer is "
+                            << *(fusableProducer.getOwner()) << "\n");
 
     std::optional<SCFTileAndFuseOptions::ControlFnResult> controlFnResult =
         options.fusionControlFn(candidateSlice, fusableProducer,
