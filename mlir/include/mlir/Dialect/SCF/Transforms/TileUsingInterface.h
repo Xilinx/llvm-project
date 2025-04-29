@@ -206,13 +206,13 @@ struct SCFTileAndFuseOptions {
          std::deque<tensor::ExtractSliceOp> &worklist) {
         worklist.push_back(op);
       };
-  SCFTileAndFuseOptions &setWorklistInsertFn(WorklistInsertFnTy controlFn) {
-    worklistInsertFn = controlFn;
+  SCFTileAndFuseOptions &setWorklistInsertFn(WorklistInsertFnTy insertFn) {
+    worklistInsertFn = insertFn;
     return *this;
   }
   /// Emit a remark with the order in which operations are tiled.
   /// This is useful to debug the worklist insert function.
-  bool printTilingOrder;
+  bool printTilingOrder = false;
 };
 
 /// Fuse the producer of the source of `candidateSliceOp` by computing the
@@ -331,9 +331,10 @@ struct SCFTileAndFuseResult {
 ///   %4 = linalg.matmul .. outs(%3 : ...)
 /// }
 /// ```
-FailureOr<SCFTileAndFuseResult> tileConsumerAndFuseProducersUsingSCF(
-    RewriterBase &rewriter, TilingInterface consumer,
-    const SCFTileAndFuseOptions &options, bool debugWorkList = false);
+FailureOr<SCFTileAndFuseResult>
+tileConsumerAndFuseProducersUsingSCF(RewriterBase &rewriter,
+                                     TilingInterface consumer,
+                                     const SCFTileAndFuseOptions &options);
 
 /// Fuse the consumer of the source of `candidateSliceOp` by computing the
 /// required slice of the consumer in-place.  Note that the method

@@ -1538,7 +1538,7 @@ private:
 FailureOr<scf::SCFTileAndFuseResult>
 mlir::scf::tileConsumerAndFuseProducersUsingSCF(
     RewriterBase &rewriter, TilingInterface consumer,
-    const scf::SCFTileAndFuseOptions &options, bool debugWorkList) {
+    const scf::SCFTileAndFuseOptions &options) {
   // This transformation is only valid for ops that return values (i.e. not
   // valid to use with operations that have memref operands).
   if (!consumer->getNumResults()) {
@@ -1632,8 +1632,8 @@ mlir::scf::tileConsumerAndFuseProducersUsingSCF(
     if (!fusedResult)
       continue;
 
-    if (debugWorkList) {
-      auto message = llvm::formatv("Tiled this op in position {}", tilingOrder);
+    if (options.printTilingOrder) {
+      auto message = llvm::formatv("Fused op in position {}", tilingOrder);
       fusableProducer.getOwner()->emitRemark(message);
     }
     tilingOrder++;

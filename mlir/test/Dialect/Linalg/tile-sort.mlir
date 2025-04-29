@@ -3,8 +3,8 @@
 func.func @tile_me(%arg: tensor<256xi32>) -> tensor<256xi32> {
   %one = arith.constant 1 : i32
   %empty = tensor.empty() : tensor<256xi32>
-  // expected-remark @below {{Tiled this op in position 0}}
-  // expected-remark @below {{Tiled this op in position 2}}
+  // expected-remark @below {{Fused op in position 0}}
+  // expected-remark @below {{Fused op in position 2}}
   %0 = linalg.generic {indexing_maps=[affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types=["parallel"]}
   ins(%arg: tensor<256xi32>) outs(%empty: tensor<256xi32>) {
   ^bb0(%arg0: i32, %arg1: i32):
@@ -15,7 +15,7 @@ func.func @tile_me(%arg: tensor<256xi32>) -> tensor<256xi32> {
   %empty1 = tensor.empty() : tensor<256xi32>
   %minustwo = arith.constant -2 : i32
   
-  // expected-remark @below {{Tiled this op in position 1}}
+  // expected-remark @below {{Fused op in position 1}}
   %1 = linalg.generic {indexing_maps=[affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types=["parallel"]}
   ins(%0: tensor<256xi32>) outs(%empty: tensor<256xi32>) {
   ^bb0(%arg0: i32, %arg1: i32):
@@ -47,8 +47,8 @@ module attributes {transform.with_named_sequence} {
 func.func @tile_me(%arg: tensor<256xi32>) -> tensor<256xi32> {
   %one = arith.constant 1 : i32
   %empty = tensor.empty() : tensor<256xi32>
-  // expected-remark @below {{Tiled this op in position 1}}
-  // expected-remark @below {{Tiled this op in position 2}}
+  // expected-remark @below {{Fused op in position 1}}
+  // expected-remark @below {{Fused op in position 2}}
   %0 = linalg.generic {indexing_maps=[affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types=["parallel"]}
   ins(%arg: tensor<256xi32>) outs(%empty: tensor<256xi32>) {
   ^bb0(%arg0: i32, %arg1: i32):
@@ -59,7 +59,7 @@ func.func @tile_me(%arg: tensor<256xi32>) -> tensor<256xi32> {
   %empty1 = tensor.empty() : tensor<256xi32>
   %minustwo = arith.constant -2 : i32
   
-  // expected-remark @below {{Tiled this op in position 0}}
+  // expected-remark @below {{Fused op in position 0}}
   %1 = linalg.generic {indexing_maps=[affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>], iterator_types=["parallel"]}
   ins(%0: tensor<256xi32>) outs(%empty: tensor<256xi32>) {
   ^bb0(%arg0: i32, %arg1: i32):

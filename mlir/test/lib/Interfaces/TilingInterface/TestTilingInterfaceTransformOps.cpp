@@ -94,6 +94,9 @@ static LogicalResult applyTileAndFuseToAll(
           });
     }
     tileAndFuseOptions.setTilingOptions(tilingOptions);
+    if (debugWorkList) {
+      tileAndFuseOptions.printTilingOrder = true;
+    }
 
     scf::SCFTileAndFuseOptions::ControlFnTy controlFn =
         [&](tensor::ExtractSliceOp candidateSliceOp, OpResult originalProducer,
@@ -108,8 +111,8 @@ static LogicalResult applyTileAndFuseToAll(
 
     rewriter.setInsertionPoint(target);
     FailureOr<scf::SCFTileAndFuseResult> tiledResults =
-        scf::tileConsumerAndFuseProducersUsingSCF(
-            rewriter, tilingInterfaceOp, tileAndFuseOptions, debugWorkList);
+        scf::tileConsumerAndFuseProducersUsingSCF(rewriter, tilingInterfaceOp,
+                                                  tileAndFuseOptions);
     if (failed(tiledResults))
       return failure();
 
