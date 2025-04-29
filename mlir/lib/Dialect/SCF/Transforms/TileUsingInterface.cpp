@@ -31,6 +31,7 @@
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/FormatVariadic.h"
 #include <optional>
 
 #define DEBUG_TYPE "tile-using-interface"
@@ -1587,7 +1588,7 @@ private:
 FailureOr<scf::SCFTileAndFuseResult>
 mlir::scf::tileConsumerAndFuseProducersUsingSCF(
     RewriterBase &rewriter, TilingInterface consumer,
-    const scf::SCFTileAndFuseOptions &options) {
+    const scf::SCFTileAndFuseOptions &options, bool debugWorkList) {
   // This transformation is only valid for ops that return values (i.e. not
   // valid to use with operations that have memref operands).
   if (!consumer->getNumResults()) {
@@ -1649,6 +1650,8 @@ mlir::scf::tileConsumerAndFuseProducersUsingSCF(
     return rewriter.notifyMatchFailure(consumer, "cleanup patterns failed");
   }
   OpBuilder::InsertionGuard g(rewriter);
+
+  unsigned tilingOrder = 0;
   while (!sliceTracker.worklist.empty()) {
     auto candidateSlice = sliceTracker.worklist.front();
     LLVM_DEBUG(llvm::dbgs() << "worklist: popping " << candidateSlice << "\n");
@@ -1678,6 +1681,12 @@ mlir::scf::tileConsumerAndFuseProducersUsingSCF(
                                    loops);
     if (!fusedResult)
       continue;
+
+    if (debugWorkList) {
+      auto message = llvm::formatv("Tiled this op in position {}", tilingOrder);
+      fusableProducer.getOwner()->emitRemark(message);
+    }
+    tilingOrder++;
 
     SmallVector<Operation *> worklistCandidates = fusedResult->generatedSlices;
 

@@ -59,7 +59,7 @@ applyTileAndFuseToAll(RewriterBase &rewriter, Operation *transformOp,
                       Range &&payloadOps, unsigned numLoops,
                       ArrayRef<OpFoldResult> tileSizes,
                       ArrayRef<int64_t> interchange, bool useForall,
-                      TransformResults &transformResults) {
+                      bool debugWorkList, TransformResults &transformResults) {
   SmallVector<Operation *> tiledOps;
   SmallVector<SmallVector<Operation *>> loopOps(numLoops);
 
@@ -102,8 +102,8 @@ applyTileAndFuseToAll(RewriterBase &rewriter, Operation *transformOp,
 
     rewriter.setInsertionPoint(target);
     FailureOr<scf::SCFTileAndFuseResult> tiledResults =
-        scf::tileConsumerAndFuseProducersUsingSCF(rewriter, tilingInterfaceOp,
-                                                  tileAndFuseOptions);
+        scf::tileConsumerAndFuseProducersUsingSCF(
+            rewriter, tilingInterfaceOp, tileAndFuseOptions, debugWorkList);
     if (failed(tiledResults))
       return failure();
 
@@ -157,7 +157,7 @@ transform::TestFuseAndYieldOp::apply(TransformRewriter &rewriter,
   LogicalResult result = applyTileAndFuseToAll(
       rewriter, getOperation(), state.getPayloadOps(getTarget()),
       tileSizes.size() - llvm::count(tileSizes, 0), tileSizesOfr,
-      tileInterchange, getUseForall(), transformResults);
+      tileInterchange, getUseForall(), getDebugWorklist(), transformResults);
   return failed(result) ? DiagnosedSilenceableFailure::definiteFailure()
                         : DiagnosedSilenceableFailure::success();
 }

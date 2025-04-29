@@ -312,10 +312,9 @@ struct SCFTileAndFuseResult {
 ///   %4 = linalg.matmul .. outs(%3 : ...)
 /// }
 /// ```
-FailureOr<SCFTileAndFuseResult>
-tileConsumerAndFuseProducersUsingSCF(RewriterBase &rewriter,
-                                     TilingInterface consumer,
-                                     const SCFTileAndFuseOptions &options);
+FailureOr<SCFTileAndFuseResult> tileConsumerAndFuseProducersUsingSCF(
+    RewriterBase &rewriter, TilingInterface consumer,
+    const SCFTileAndFuseOptions &options, bool debugWorkList = false);
 
 /// Fuse the consumer of the source of `candidateSliceOp` by computing the
 /// required slice of the consumer in-place.  Note that the method
