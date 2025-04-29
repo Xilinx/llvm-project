@@ -39,13 +39,15 @@ def TestFuseAndYieldOp : Op<Transform_Dialect, "test.fuse_and_yield",
         DefaultValuedAttr<I64ArrayAttr, "{}">:$tile_sizes,
         DefaultValuedAttr<I64ArrayAttr, "{}">:$tile_interchange,
         DefaultValuedAttr<BoolAttr, "false">:$use_forall,
-        DefaultValuedAttr<BoolAttr, "false">:$debug_worklist);
+        DefaultValuedAttr<BoolAttr, "false">:$debug_worklist,
+        DefaultValuedAttr<BoolAttr, "false">:$reverse_worklist);
   let results = (outs TransformHandleTypeInterface:$transfomed,
       Variadic<TransformHandleTypeInterface>:$loops);
 
   let assemblyFormat = [{
     $target ($tile_sizes^)? (`interchange` $tile_interchange^)?
-    (`use_forall` $use_forall^)? (`debug_worklist` $debug_worklist^)? attr-dict 
+    (`use_forall` $use_forall^)? (`debug_worklist` $debug_worklist^)?
+    (`reverse_worklist` $reverse_worklist^)? attr-dict 
     `:` functional-type(operands, results)
   }];
 }
