@@ -210,10 +210,6 @@ struct SCFTileAndFuseOptions {
     worklistInsertFn = insertFn;
     return *this;
   }
-  /// Annotate tiled ops with the order in which tiling happened in a
-  /// "tiling_order" attribute. This is useful to debug the worklist insert
-  /// function.
-  bool annotateTilingOrder = false;
 };
 
 /// Fuse the producer of the source of `candidateSliceOp` by computing the

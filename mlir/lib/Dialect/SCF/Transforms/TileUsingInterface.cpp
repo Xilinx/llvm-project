@@ -1440,8 +1440,6 @@ LogicalResult
 SliceTrackingListener::insertAndApplyPatterns(ArrayRef<Operation *> ops) {
   for (Operation *op : ops) {
     if (auto slice = dyn_cast<tensor::ExtractSliceOp>(op)) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "worklist: insertAndApplyPatterns of " << slice << "\n");
       worklistInsertFn(slice, worklist);
     }
   }
@@ -1462,8 +1460,6 @@ void SliceTrackingListener::notifyOperationInserted(
   auto slice = dyn_cast<tensor::ExtractSliceOp>(op);
   if (!slice)
     return;
-  LLVM_DEBUG(llvm::dbgs() << "worklist: notifyOperationInserted of " << slice
-                          << "\n");
   worklistInsertFn(slice, worklist);
 }
 
@@ -1603,10 +1599,8 @@ mlir::scf::tileConsumerAndFuseProducersUsingSCF(
   }
   OpBuilder::InsertionGuard g(rewriter);
 
-  unsigned tilingOrder = 0;
   while (!sliceTracker.worklist.empty()) {
     auto candidateSlice = sliceTracker.worklist.front();
-    LLVM_DEBUG(llvm::dbgs() << "worklist: popping " << candidateSlice << "\n");
     sliceTracker.worklist.pop_front();
 
     auto [fusableProducer, destinationInitArg] =
@@ -1633,16 +1627,6 @@ mlir::scf::tileConsumerAndFuseProducersUsingSCF(
                                    loops);
     if (!fusedResult)
       continue;
-
-    if (options.annotateTilingOrder) {
-      Operation *tiledOp = fusedResult->tiledAndFusedProducer.getDefiningOp();
-      if (tiledOp) {
-        tiledOp->setAttr("tiling_order",
-                         IntegerAttr::get(IndexType::get(tiledOp->getContext()),
-                                          tilingOrder));
-      }
-    }
-    tilingOrder++;
 
     SmallVector<Operation *> worklistCandidates = fusedResult->generatedSlices;
 

@@ -57,8 +57,8 @@ template <typename Range>
 static LogicalResult applyTileAndFuseToAll(
     RewriterBase &rewriter, Operation *transformOp, Range &&payloadOps,
     unsigned numLoops, ArrayRef<OpFoldResult> tileSizes,
-    ArrayRef<int64_t> interchange, bool useForall, bool debugWorkList,
-    bool reverseWorkList, TransformResults &transformResults) {
+    ArrayRef<int64_t> interchange, bool useForall, bool reverseWorkList,
+    TransformResults &transformResults) {
   SmallVector<Operation *> tiledOps;
   SmallVector<SmallVector<Operation *>> loopOps(numLoops);
 
@@ -94,9 +94,6 @@ static LogicalResult applyTileAndFuseToAll(
           });
     }
     tileAndFuseOptions.setTilingOptions(tilingOptions);
-    if (debugWorkList) {
-      tileAndFuseOptions.annotateTilingOrder = true;
-    }
 
     scf::SCFTileAndFuseOptions::ControlFnTy controlFn =
         [&](tensor::ExtractSliceOp candidateSliceOp, OpResult originalProducer,
@@ -166,8 +163,7 @@ transform::TestFuseAndYieldOp::apply(TransformRewriter &rewriter,
   LogicalResult result = applyTileAndFuseToAll(
       rewriter, getOperation(), state.getPayloadOps(getTarget()),
       tileSizes.size() - llvm::count(tileSizes, 0), tileSizesOfr,
-      tileInterchange, getUseForall(), getDebugWorklist(), getReverseWorklist(),
-      transformResults);
+      tileInterchange, getUseForall(), getReverseWorklist(), transformResults);
   return failed(result) ? DiagnosedSilenceableFailure::definiteFailure()
                         : DiagnosedSilenceableFailure::success();
 }
