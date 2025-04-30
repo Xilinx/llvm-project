@@ -21,8 +21,6 @@
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/IndexingUtils.h"
-#include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dominance.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
@@ -33,7 +31,6 @@
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/FormatVariadic.h"
 #include <optional>
 
 #define DEBUG_TYPE "tile-using-interface"
@@ -1439,9 +1436,8 @@ SliceTrackingListener::SliceTrackingListener(
 LogicalResult
 SliceTrackingListener::insertAndApplyPatterns(ArrayRef<Operation *> ops) {
   for (Operation *op : ops) {
-    if (auto slice = dyn_cast<tensor::ExtractSliceOp>(op)) {
+    if (auto slice = dyn_cast<tensor::ExtractSliceOp>(op))
       worklistInsertFn(slice, worklist);
-    }
   }
 
   if (!patterns)
@@ -1598,7 +1594,6 @@ mlir::scf::tileConsumerAndFuseProducersUsingSCF(
     return rewriter.notifyMatchFailure(consumer, "cleanup patterns failed");
   }
   OpBuilder::InsertionGuard g(rewriter);
-
   while (!sliceTracker.worklist.empty()) {
     auto candidateSlice = sliceTracker.worklist.front();
     sliceTracker.worklist.pop_front();
