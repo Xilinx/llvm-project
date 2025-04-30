@@ -21,6 +21,8 @@
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/IndexingUtils.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dominance.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
@@ -1632,9 +1634,13 @@ mlir::scf::tileConsumerAndFuseProducersUsingSCF(
     if (!fusedResult)
       continue;
 
-    if (options.printTilingOrder) {
-      auto message = llvm::formatv("Fused op in position {}", tilingOrder);
-      fusableProducer.getOwner()->emitRemark(message);
+    if (options.annotateTilingOrder) {
+      Operation *tiledOp = fusedResult->tiledAndFusedProducer.getDefiningOp();
+      if (tiledOp) {
+        tiledOp->setAttr("tiling_order",
+                         IntegerAttr::get(IndexType::get(tiledOp->getContext()),
+                                          tilingOrder));
+      }
     }
     tilingOrder++;
 

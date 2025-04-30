@@ -95,7 +95,7 @@ static LogicalResult applyTileAndFuseToAll(
     }
     tileAndFuseOptions.setTilingOptions(tilingOptions);
     if (debugWorkList) {
-      tileAndFuseOptions.printTilingOrder = true;
+      tileAndFuseOptions.annotateTilingOrder = true;
     }
 
     scf::SCFTileAndFuseOptions::ControlFnTy controlFn =
