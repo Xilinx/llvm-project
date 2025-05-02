@@ -8,6 +8,7 @@
 
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/IR/AffineValueMap.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
@@ -312,6 +313,10 @@ bool mlir::affine::isValidDim(Value value, Region *region) {
     return isa<AffineForOp, AffineParallelOp>(parentOp);
   }
 
+  // Remove me: linalg.index ops are valid affine dim identifiers
+  if (isa<linalg::IndexOp>(op))
+    return true;
+
   // Affine apply operation is ok if all of its operands are ok.
   if (auto applyOp = dyn_cast<AffineApplyOp>(op))
     return applyOp.isValidDim(region);
@@ -438,6 +443,10 @@ bool mlir::affine::isValidSymbol(Value value, Region *region) {
         return isValidSymbol(value, parentOpRegion);
     return false;
   }
+
+  // Remove me: linalg.index ops are not valid affine symbols
+  if (isa<linalg::IndexOp>(defOp))
+    return false;
 
   // Constant operation is ok.
   Attribute operandCst;
