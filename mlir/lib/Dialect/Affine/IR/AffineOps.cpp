@@ -314,7 +314,7 @@ bool mlir::affine::isValidDim(Value value, Region *region) {
   }
 
   // Remove me: linalg.index ops are valid affine dim identifiers
-  if (isa<linalg::IndexOp>(op))
+  if (op->hasTrait<OpTrait::AffineDim>())
     return true;
 
   // Affine apply operation is ok if all of its operands are ok.
@@ -445,7 +445,7 @@ bool mlir::affine::isValidSymbol(Value value, Region *region) {
   }
 
   // Remove me: linalg.index ops are not valid affine symbols
-  if (isa<linalg::IndexOp>(defOp))
+  if (defOp->hasTrait<OpTrait::AffineDim>())
     return false;
 
   // Constant operation is ok.
