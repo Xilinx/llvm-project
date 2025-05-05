@@ -44,7 +44,7 @@ def TestFuseAndYieldOp : Op<Transform_Dialect, "test.fuse_and_yield",
 
   let assemblyFormat = [{
     $target ($tile_sizes^)? (`interchange` $tile_interchange^)?
-    (`use_forall` $use_forall^)? attr-dict
+    (`use_forall` $use_forall^)? attr-dict 
     `:` functional-type(operands, results)
   }];
 }
