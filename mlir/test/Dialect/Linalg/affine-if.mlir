@@ -2,6 +2,9 @@
 
 // Check that linalg.index does not cause folding of affine.if set to
 // a symbolic set.
+// This is a deviation from upstream MLIR.
+// The origin of this test is that PR:
+// https://github.com/Xilinx/llvm-project/pull/537
 
 // CHECK: = affine_set<(d0) : (-d0 + 5 >= 0)>
 #set = affine_set<(d0) : (-d0 + 5 >= 0)>
