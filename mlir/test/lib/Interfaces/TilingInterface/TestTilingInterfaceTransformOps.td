@@ -55,7 +55,7 @@ def TestFuseOrderedOp : Op<Transform_Dialect, "test.tile_fuse_ordered",
    ReportTrackingListenerFailuresOpTrait]> {
   let description = [{
     Applies tiling and fusion to the operations pointed to by the target handle,
-    following the order given by each operation's tiling_order attribute.
+    following the order given by each operation's tiling_priority attribute.
 
     On success returns the tiled operations as well as generated loops. Emits
     a definite failure if tiling fails.
