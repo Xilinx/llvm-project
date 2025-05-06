@@ -2,7 +2,7 @@
 
 func.func @tile_order_ceil_then_negf(%arg: tensor<256xf32>) -> tensor<256xf32> {
   // Ops are tiled by lower priority: linalg.powf, linalg.ceil (1st operand of powf, priority = 0),
-  // linalg.negf (2nd oprand of powf, priority = 1), linalg.ceil (operand of negf, priority = 0)
+  // linalg.negf (2nd operand of powf, priority = 1), linalg.ceil (operand of negf, priority = 0)
   %empty = tensor.empty() : tensor<256xf32>
   %0 = linalg.ceil {tiling_priority = 0 : i64} ins(%arg: tensor<256xf32>) outs(%empty: tensor<256xf32>) -> tensor<256xf32>
   %empty1 = tensor.empty() : tensor<256xf32>
