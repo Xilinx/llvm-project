@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -transform-interpreter -split-input-file -debug-only=tile-using-interface 2>&1 | FileCheck %s
+// RUN: mlir-opt %s -transform-interpreter -split-input-file -debug-only=tile-using-interface --mlir-disable-threading 2>&1 | FileCheck %s
 
 func.func @tile_order_ceil_then_negf(%arg: tensor<256xf32>) -> tensor<256xf32> {
   // Ops are tiled by lower priority: linalg.powf, linalg.ceil (1st operand of powf, priority = 0),
