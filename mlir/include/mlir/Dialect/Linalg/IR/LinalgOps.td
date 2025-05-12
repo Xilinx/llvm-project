@@ -101,7 +101,8 @@ def Linalg_SoftmaxOp : Linalg_Op<"softmax",
       ["getIterationDomain",
        "getLoopIteratorTypes",
        "getResultTilePosition",
-       "getTiledImplementation"]>]> {
+       "getTiledImplementation",
+       "generateResultTileValue"]>]> {
   let summary = "Softmax operator";
   let description = [{
     linalg.softmax computes a numerically stable version of softmax.
