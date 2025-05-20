@@ -220,9 +220,9 @@ LogicalResult mlir::tosa ::getConvOpsAccType(PatternRewriter &rewriter,
   } else if (inputElemTy.isInteger(16) && weightElemTy.isInteger(8) &&
              outputElemTy.isInteger(48)) {
     accType = mlir::TypeAttr::get(rewriter.getIntegerType(48));
-  } else if ((inputElemTy.isFloat8E4M3() && weightElemTy.isFloat8E4M3() &&
+  } else if ((isa<Float8E4M3FNType>(inputElemTy) && isa<Float8E4M3FNType>(weightElemTy) &&
               outputElemTy.isF16()) ||
-             (inputElemTy.isFloat8E5M2() && weightElemTy.isFloat8E5M2() &&
+             (isa<Float8E5M2Type>(inputElemTy) && isa<Float8E5M2Type>(weightElemTy) &&
               outputElemTy.isF16())) {
     accType = mlir::TypeAttr::get(rewriter.getF16Type());
   } else {
