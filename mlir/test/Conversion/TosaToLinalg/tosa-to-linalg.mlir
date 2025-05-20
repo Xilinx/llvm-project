@@ -2066,12 +2066,12 @@ func.func @test_abs_conversion(%arg0: tensor<9xui64> {func.orig_type = tensor<9x
 
 // -----
 
-// CHECK: #[[$MAP:.+]] = affine_map<(d0) -> (d0)>
+// CHECK: #[[$MAP0:.+]] = affine_map<(d0) -> (d0)>
 
 // CHECK-LABEL:   func.func @test_cast_fp32_i64(
 // CHECK-SAME:                                  %[[ARG0:.*]]: tensor<1xf32>) -> tensor<1xi64> {
 // CHECK:           %[[EMPTY_TENSOR:.*]] = tensor.empty() : tensor<1xi64>
-// CHECK:           %[[RESULT:.*]] = linalg.generic {indexing_maps = [#[[$MAP]], #[[$MAP]]], iterator_types = ["parallel"]} ins(%[[ARG0]] : tensor<1xf32>) outs(%[[EMPTY_TENSOR]] : tensor<1xi64>) {
+// CHECK:           %[[RESULT:.*]] = linalg.generic {indexing_maps = [#[[$MAP0]], #[[$MAP0]]], iterator_types = ["parallel"]} ins(%[[ARG0]] : tensor<1xf32>) outs(%[[EMPTY_TENSOR]] : tensor<1xi64>) {
 // CHECK:           ^bb0(%[[IN:.*]]: f32, %[[OUT:.*]]: i64):
 // CHECK:             %[[ROUND_EVEN:.*]] = math.roundeven %[[IN]] : f32
 // CHECK:             %[[FP_INT_MIN:.*]] = arith.constant -9.22337203E+18 : f32
