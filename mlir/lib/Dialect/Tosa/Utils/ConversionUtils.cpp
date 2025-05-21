@@ -162,13 +162,11 @@ LogicalResult mlir::tosa::EqualizeRanks(ImplicitLocOpBuilder &builder,
   return success();
 }
 
-namespace {
-SmallVector<int64_t> convertFromMlirShape(ArrayRef<int64_t> shape) {
+SmallVector<int64_t> mlir::tosa::convertFromMlirShape(ArrayRef<int64_t> shape) {
   return to_vector(llvm::map_range(shape, [](int64_t dim) {
     return ShapedType::isDynamic(dim) ? -1 : dim;
   }));
 }
-} // namespace
 
 Value mlir::tosa::getTosaConstShape(ImplicitLocOpBuilder &builder,
                                     llvm::ArrayRef<int64_t> shape) {
@@ -220,14 +218,32 @@ LogicalResult mlir::tosa ::getConvOpsAccType(PatternRewriter &rewriter,
   } else if (inputElemTy.isInteger(16) && weightElemTy.isInteger(8) &&
              outputElemTy.isInteger(48)) {
     accType = mlir::TypeAttr::get(rewriter.getIntegerType(48));
-  } else if ((isa<Float8E4M3FNType>(inputElemTy) && isa<Float8E4M3FNType>(weightElemTy) &&
-              outputElemTy.isF16()) ||
-             (isa<Float8E5M2Type>(inputElemTy) && isa<Float8E5M2Type>(weightElemTy) &&
-              outputElemTy.isF16())) {
+  } else if ((isa<Float8E4M3FNType>(inputElemTy) &&
+              isa<Float8E4M3FNType>(weightElemTy) && outputElemTy.isF16()) ||
+             (isa<Float8E5M2Type>(inputElemTy) &&
+              isa<Float8E5M2Type>(weightElemTy) && outputElemTy.isF16())) {
     accType = mlir::TypeAttr::get(rewriter.getF16Type());
   } else {
     accType = mlir::TypeAttr::get(outputElemTy);
   }
 
   return success();
+}
+
+bool mlir::tosa::getConstShapeValue(Operation *op,
+                                    llvm::SmallVector<int64_t> &result_shape) {
+  if (!op) {
+    return false;
+  }
+  if (auto constOp = mlir::dyn_cast<tosa::ConstShapeOp>(op)) {
+    Attribute constOpAttr = constOp->getAttr("value");
+    DenseElementsAttr elementsAttr = cast<DenseElementsAttr>(constOpAttr);
+    for (int i = 0; i < elementsAttr.size(); i++) {
+      int64_t val = elementsAttr.getValues<int64_t>()[i];
+      result_shape.push_back(val);
+    }
+    return true;
+  }
+  // for undefined op, return false.
+  return false;
 }
