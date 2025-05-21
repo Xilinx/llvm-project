@@ -3093,7 +3093,7 @@ foreach vt = [f16, v2f16, f32, v2f32, f64] in {
 // Prefer selecting to max when legal, but using mul is always valid.
 let AddedComplexity = -5 in {
 
-let OtherPredicates = [NotHasTrue16BitInsts] in {
+let True16Predicate = NotHasTrue16BitInsts in {
 def : GCNPat<
   (fcanonicalize (f16 (VOP3Mods f16:$src, i32:$src_mods))),
   (V_MUL_F16_e64 0, (i32 CONST.FP16_ONE), $src_mods, $src)
@@ -3103,9 +3103,21 @@ def : GCNPat<
   (fcanonicalize (f16 (fneg (VOP3Mods f16:$src, i32:$src_mods)))),
   (V_MUL_F16_e64 0, (i32 CONST.FP16_NEG_ONE), $src_mods, $src)
 >;
-} // End OtherPredicates
+} // End True16Predicate
 
-let OtherPredicates = [HasTrue16BitInsts] in {
+let True16Predicate = UseRealTrue16Insts in {
+def : GCNPat<
+  (fcanonicalize (f16 (VOP3Mods f16:$src, i32:$src_mods))),
+  (V_MUL_F16_t16_e64 0, (i16 CONST.FP16_ONE), $src_mods, $src, 0/*Clamp*/, /*omod*/0, /*opsel*/0)
+>;
+
+def : GCNPat<
+  (fcanonicalize (f16 (fneg (VOP3Mods f16:$src, i32:$src_mods)))),
+  (V_MUL_F16_t16_e64 0, (i16 CONST.FP16_NEG_ONE), $src_mods, $src, 0/*Clamp*/, /*omod*/0, /*opsel*/0)
+>;
+} // End True16Predicate
+
+let True16Predicate = UseFakeTrue16Insts in {
 def : GCNPat<
   (fcanonicalize (f16 (VOP3Mods f16:$src, i32:$src_mods))),
   (V_MUL_F16_fake16_e64 0, (i32 CONST.FP16_ONE), $src_mods, $src)
@@ -3115,7 +3127,7 @@ def : GCNPat<
   (fcanonicalize (f16 (fneg (VOP3Mods f16:$src, i32:$src_mods)))),
   (V_MUL_F16_fake16_e64 0, (i32 CONST.FP16_NEG_ONE), $src_mods, $src)
 >;
-} // End OtherPredicates
+} // End True16Predicate
 
 def : GCNPat<
   (fcanonicalize (v2f16 (VOP3PMods v2f16:$src, i32:$src_mods))),
@@ -3173,13 +3185,22 @@ multiclass SelectCanonicalizeAsMax<
   def : GCNPat<
     (fcanonicalize (f16 (VOP3Mods f16:$src, i32:$src_mods))),
     (V_MAX_F16_e64 $src_mods, $src, $src_mods, $src, 0, 0)> {
-    let OtherPredicates = !listconcat(f16_preds, [Has16BitInsts, NotHasTrue16BitInsts]);
+    let OtherPredicates = !listconcat(f16_preds, [Has16BitInsts]);
+    let True16Predicate = NotHasTrue16BitInsts;
+  }
+
+  def : GCNPat<
+    (fcanonicalize (f16 (VOP3Mods f16:$src, i32:$src_mods))),
+    (V_MAX_F16_t16_e64 $src_mods, $src, $src_mods, $src, 0, 0)> {
+    let OtherPredicates = !listconcat(f16_preds, [Has16BitInsts]);
+    let True16Predicate = UseRealTrue16Insts;
   }
 
   def : GCNPat<
     (fcanonicalize (f16 (VOP3Mods f16:$src, i32:$src_mods))),
     (V_MAX_F16_fake16_e64 $src_mods, $src, $src_mods, $src, 0, 0)> {
-    let OtherPredicates = !listconcat(f16_preds, [Has16BitInsts, HasTrue16BitInsts]);
+    let OtherPredicates = !listconcat(f16_preds, [Has16BitInsts]);
+    let True16Predicate = UseFakeTrue16Insts;
   }
 
   def : GCNPat<
@@ -3767,15 +3788,18 @@ let True16Predicate = UseFakeTrue16Insts in {
 }
 } // End SubtargetPredicate = [isGFX9Plus]
 
-let OtherPredicates = [isGFX12Plus] in {
+let SubtargetPredicate = isGFX12Plus in {
 def : FPMinMaxPat<V_MINIMUMMAXIMUM_F32_e64, f32, DivergentBinFrag<fmaximum>, fminimum_oneuse>;
 def : FPMinMaxPat<V_MAXIMUMMINIMUM_F32_e64, f32, DivergentBinFrag<fminimum>, fmaximum_oneuse>;
-def : FPMinMaxPat<V_MINIMUMMAXIMUM_F16_e64, f16, DivergentBinFrag<fmaximum>, fminimum_oneuse>;
-def : FPMinMaxPat<V_MAXIMUMMINIMUM_F16_e64, f16, DivergentBinFrag<fminimum>, fmaximum_oneuse>;
 def : FPMinCanonMaxPat<V_MINIMUMMAXIMUM_F32_e64, f32, DivergentBinFrag<fmaximum>, fminimum_oneuse>;
 def : FPMinCanonMaxPat<V_MAXIMUMMINIMUM_F32_e64, f32, DivergentBinFrag<fminimum>, fmaximum_oneuse>;
-def : FPMinCanonMaxPat<V_MINIMUMMAXIMUM_F16_e64, f16, DivergentBinFrag<fmaximum>, fminimum_oneuse>;
-def : FPMinCanonMaxPat<V_MAXIMUMMINIMUM_F16_e64, f16, DivergentBinFrag<fminimum>, fmaximum_oneuse>;
+}
+
+let True16Predicate = UseFakeTrue16Insts, SubtargetPredicate = isGFX12Plus in {
+def : FPMinMaxPat<V_MINIMUMMAXIMUM_F16_fake16_e64, f16, DivergentBinFrag<fmaximum>, fminimum_oneuse>;
+def : FPMinMaxPat<V_MAXIMUMMINIMUM_F16_fake16_e64, f16, DivergentBinFrag<fminimum>, fmaximum_oneuse>;
+def : FPMinCanonMaxPat<V_MINIMUMMAXIMUM_F16_fake16_e64, f16, DivergentBinFrag<fmaximum>, fminimum_oneuse>;
+def : FPMinCanonMaxPat<V_MAXIMUMMINIMUM_F16_fake16_e64, f16, DivergentBinFrag<fminimum>, fmaximum_oneuse>;
 }
 
 // Convert a floating-point power of 2 to the integer exponent.
