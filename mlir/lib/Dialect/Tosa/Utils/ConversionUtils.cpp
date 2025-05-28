@@ -13,6 +13,7 @@
 #include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"
 #include "mlir/Dialect/Quant/IR/QuantTypes.h"
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
+#include "mlir/IR/Matchers.h"
 
 using namespace mlir;
 using namespace mlir::tosa;
@@ -160,6 +161,18 @@ LogicalResult mlir::tosa::EqualizeRanks(ImplicitLocOpBuilder &builder,
   }
 
   return success();
+}
+
+std::optional<int32_t> mlir::tosa::getConstTosaMulShift(tosa::MulOp mulOp) {
+  int32_t shift = 0;
+  if (mulOp.getShift().getImpl()) {
+    ElementsAttr shiftElem;
+    if (!matchPattern(mulOp.getShift(), m_Constant(&shiftElem))) {
+      return std::nullopt;
+    }
+    shift = shiftElem.getValues<IntegerAttr>()[0].getInt();
+  }
+  return shift;
 }
 
 SmallVector<int64_t> mlir::tosa::convertFromMlirShape(ArrayRef<int64_t> shape) {
