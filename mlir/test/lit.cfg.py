@@ -99,17 +99,32 @@ def add_runtime(name):
 # available. This is darwin specific since it's currently only needed on darwin.
 # Stolen from llvm/test/lit.cfg.py with a few modifications
 def get_asan_rtlib():
-    if not "asan" in config.available_features or not "Darwin" in config.host_os:
+    if not "asan" in config.available_features:
         return ""
-    # Find the asan rt lib
-    resource_dir = (
-        subprocess.check_output([config.host_cc.strip(), "-print-resource-dir"])
-        .decode("utf-8")
-        .strip()
-    )
-    return os.path.join(
-        resource_dir, "lib", "darwin", "libclang_rt.asan_osx_dynamic.dylib"
-    )
+
+    if "Darwin" in config.host_os:
+        # Find the asan rt lib
+        resource_dir = (
+            subprocess.check_output([config.host_cc.strip(), "-print-resource-dir"])
+            .decode("utf-8")
+            .strip()
+        )
+        return os.path.join(
+            resource_dir, "lib", "darwin", "libclang_rt.asan_osx_dynamic.dylib"
+        )
+    if "Linux" in config.host_os:
+        return (
+            subprocess.check_output(
+                [
+                    config.host_cxx.strip(),
+                    f"-print-file-name=libclang_rt.asan-{config.host_arch}.so",
+                ]
+            )
+            .decode("utf-8")
+            .strip()
+        )
+
+    return ""
 
 
 # On macOS, we can't do the DYLD_INSERT_LIBRARIES trick with a shim python
