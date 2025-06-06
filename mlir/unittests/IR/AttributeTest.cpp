@@ -570,4 +570,26 @@ TEST(NonSplattedDenseElementAttrTest, GetNonSplatRawDataI16) {
                 .getNonSplatRawData<uint16_t>(),
             expected);
 }
+
+TEST(NonSplattedDenseElementAttrTest, GetFromRawI7) {
+  constexpr std::size_t numberOfElements = 6;
+  static constexpr std::array<int8_t, numberOfElements> rawValues = {1, 2, 3,
+                                                                     4, 5, 6};
+
+  mlir::MLIRContext context;
+  mlir::OpBuilder b(&context);
+
+  auto values = mlir::DenseElementsAttr::get(
+      mlir::RankedTensorType::get({numberOfElements}, b.getIntegerType(7)),
+      ArrayRef<int8_t>(rawValues));
+  auto fromRaw = mlir::DenseIntOrFPElementsAttr::getFromRawBuffer(
+      values.getType(), values.getRawData());
+
+  EXPECT_EQ(values, fromRaw);
+  EXPECT_EQ(fromRaw.getElementType(), b.getIntegerType(7));
+  EXPECT_EQ(fromRaw.getNumElements(), numberOfElements);
+  for (auto [fr, e] : llvm::zip_equal(fromRaw.getValues<int8_t>(), rawValues)) {
+    EXPECT_EQ(fr, e);
+  }
+}
 } // namespace
