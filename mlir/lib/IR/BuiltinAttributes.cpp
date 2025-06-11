@@ -1104,15 +1104,13 @@ bool DenseElementsAttr::isValidRawBuffer(ShapedType type,
 /// invariants that the templatized 'getValues' method cannot.
 static bool isValidIntOrFloat(Type type, int64_t dataEltSize, bool isInt,
                               bool isSigned) {
-  // Make sure that the data element size is the same as the type element
-  // storage width.
-  const size_t denseEltStorageBitWidth = getDenseElementStorageWidth(type);
-  const size_t dataSizeBitWidth = static_cast<size_t>(dataEltSize * CHAR_BIT);
-  if (denseEltStorageBitWidth != dataSizeBitWidth) {
-    LLVM_DEBUG(llvm::dbgs()
-               << "expected dense element bit width " << denseEltStorageBitWidth
-               << " to match data size " << dataSizeBitWidth << " for type "
-               << type << "\n");
+  // Make sure that the data element size is the same as the type element width.
+  auto denseEltBitWidth = getDenseElementBitWidth(type);
+  auto dataSize = static_cast<size_t>(dataEltSize * CHAR_BIT);
+  if (denseEltBitWidth != dataSize) {
+    LLVM_DEBUG(llvm::dbgs() << "expected dense element bit width "
+                            << denseEltBitWidth << " to match data size "
+                            << dataSize << " for type " << type << "\n");
     return false;
   }
 

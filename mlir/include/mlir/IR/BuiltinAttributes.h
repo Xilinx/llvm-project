@@ -112,9 +112,9 @@ public:
   static DenseElementsAttr get(ShapedType type, ArrayRef<Attribute> values);
 
   /// Constructs a dense integer elements attribute from an array of integer
-  /// or floating-point values. Each value is expected to be the same as the
-  /// storage bitwidth of the element type of 'type'. 'type' must be a vector or
-  /// tensor with static shape.
+  /// or floating-point values. Each value is expected to be the same bitwidth
+  /// of the element type of 'type'. 'type' must be a vector or tensor with
+  /// static shape.
   template <typename T,
             typename = std::enable_if_t<std::numeric_limits<T>::is_integer ||
                                         is_valid_cpp_fp_type<T>::value>>
