@@ -926,8 +926,18 @@ LogicalResult tosa::SliceOp::inferReturnTypeComponents(
     MLIRContext *context, ::std::optional<Location> location,
     SliceOp::Adaptor adaptor,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
-  auto start = adaptor.getStart();
-  auto size = adaptor.getSize();
+
+  Type inputType = getElementTypeOrSelf(adaptor.getInput1().getType());
+  SmallVector<int64_t> start;
+  SmallVector<int64_t> size;
+
+  if (!tosa::getConstShapeValue(adaptor.getStart().getDefiningOp(), start) ||
+      !tosa::getConstShapeValue(adaptor.getSize().getDefiningOp(), size)) {
+    auto rank = cast<tosa::shapeType>(adaptor.getSize().getType()).getRank();
+    SmallVector<int64_t> fallback(rank, ShapedType::kDynamic);
+    inferredReturnShapes.push_back(ShapedTypeComponents(fallback, inputType));
+    return success();
+  }
 
   // if size[i] is -1, all remaining elements in dimension i are included
   // in the slice, similar to TF.
@@ -965,8 +975,23 @@ LogicalResult tosa::SliceOp::inferReturnTypeComponents(
 
 LogicalResult tosa::SliceOp::verify() {
   auto inputType = llvm::dyn_cast<RankedTensorType>(getInput1().getType());
+  if (!inputType)
+    return success();
+
+  auto startShapeRank =
+      llvm::cast<tosa::shapeType>(getStart().getType()).getRank();
+  if (inputType.getRank() != startShapeRank)
+    return emitOpError(
+        "length of start attribute is not equal rank of input shape");
+
+  auto sizeShapeRank =
+      llvm::cast<tosa::shapeType>(getSize().getType()).getRank();
+  if (inputType.getRank() != sizeShapeRank)
+    return emitOpError(
+        "length of size attribute is not equal rank of input shape");
+
   auto outputType = llvm::dyn_cast<RankedTensorType>(getType());
-  if (!inputType || !outputType)
+  if (!outputType)
     return success();
 
   if (inputType.getRank() != outputType.getRank()) {
@@ -975,30 +1000,31 @@ LogicalResult tosa::SliceOp::verify() {
                          << ") must match";
   }
 
-  if (static_cast<size_t>(inputType.getRank()) != getStart().size())
-    return emitOpError(
-        "length of start attribute is not equal rank of input shape");
-
-  if (static_cast<size_t>(inputType.getRank()) != getSize().size())
-    return emitOpError(
-        "length of size attribute is not equal rank of input shape");
+  SmallVector<int64_t> size;
+  if (!tosa::getConstShapeValue(getSize().getDefiningOp(), size)) {
+    return success();
+  }
 
   for (int64_t dim = 0; dim < outputType.getRank(); ++dim) {
-    if (getSize()[dim] != -1 && !outputType.isDynamicDim(dim) &&
-        getSize()[dim] != outputType.getShape()[dim]) {
-      return emitOpError() << "size attribute (" << getSize()[dim]
+    if (size[dim] != -1 && !outputType.isDynamicDim(dim) &&
+        size[dim] != outputType.getShape()[dim]) {
+      return emitOpError() << "size (" << size[dim]
                            << ") does not match output type ("
                            << outputType.getShape()[dim] << ") in dimension "
                            << dim;
     }
   }
 
+  SmallVector<int64_t> start;
+  if (!tosa::getConstShapeValue(getStart().getDefiningOp(), start)) {
+    return success();
+  }
+
   for (int i = 0; i < inputType.getRank(); ++i) {
-    if (getSize()[i] != -1 && !inputType.isDynamicDim(i) &&
-        getStart()[i] + getSize()[i] > inputType.getShape()[i]) {
-      return emitOpError() << "start (" << getStart()[i] << ") plus size ("
-                           << getSize()[i]
-                           << ") goes out of bounds of input size ("
+    if (size[i] != -1 && !inputType.isDynamicDim(i) &&
+        start[i] + size[i] > inputType.getShape()[i]) {
+      return emitOpError() << "start (" << start[i] << ") plus size ("
+                           << size[i] << ") goes out of bounds of input size ("
                            << inputType.getShape()[i] << ") in dimension " << i;
     }
   }
@@ -1265,7 +1291,7 @@ llvm::LogicalResult tosa::ReshapeOp::verify() {
         return emitOpError() << "cannot reshape " << inputElementsNum
                              << " elements into " << outputElementsNum;
       }
-      
+
       if ((int64_t)getNewShape().size() != outputType.getRank()) {
         return emitOpError()
                << "rank of newShape (" << getNewShape().size()
