@@ -14,7 +14,7 @@ func.func @matmul_i8_i32_with_quant() -> tensor<1x5x6xi32> {
 // CHECK: "tosa.const"() <{value = dense<{{\[\[\[}}-16510, 0, 16640, 12500, 1250, -390], [-254, 0, 256, -200, -20, -6], [1143, 0, -1152, -200, -20, 27], [-254, 0, 256, -300, -30, -6], [1397, 0, -1408, 100, 10, 33]]]>
   %0 = "tosa.const"() <{value = dense<[[[-128, 3, 127], [0, 0, 0], [11, 1, 0], [0, 5, -1], [13, 0, 3]]]> : tensor<1x5x3xi8>}> : () -> tensor<1x5x3xi8>
   %1 = "tosa.const"() <{value = dense<[[[127, 0, -128, 0, 0, 3], [0, 0, 0, 0, 0, 0], [0, 0, 0, 100, 10, 0]]]> : tensor<1x3x6xi8>}> : () -> tensor<1x3x6xi8>
-  %2 = tosa.matmul %0, %1 {quantization_info = #tosa.matmul_quant<a_zp = 2, b_zp = 0>} : (tensor<1x5x3xi8>, tensor<1x3x6xi8>) -> tensor<1x5x6xi32>
+  %2 = tosa.matmul %0, %1 {a_zp = 2 : i32, b_zp = 0 : i32} : (tensor<1x5x3xi8>, tensor<1x3x6xi8>) -> tensor<1x5x6xi32>
   return %2 : tensor<1x5x6xi32>
 }
 

@@ -26,7 +26,7 @@ func.func @matmul_quantized(%arg0: tensor<1x5x3xi8>, %arg1: tensor<1x3x6xi8>) ->
   // CHECK: %[[CONST2:.*]] = arith.constant 2
   // CHECK: %[[VAL_9:.*]] = linalg.quantized_matmul ins(%[[COLLAPSE1]], %[[COLLAPSE2]], %[[CONST1]], %[[CONST2]] : tensor<5x3xi8>, tensor<3x6xi8>, i32, i32) outs(%[[FILL]] : tensor<5x6xi32>) -> tensor<5x6xi32>
   // CHECK:  tensor.expand_shape %[[VAL_9]] {{\[\[}}0, 1], [2]] output_shape [1, 5, 6] : tensor<5x6xi32> into tensor<1x5x6xi32>
-  %0 = "tosa.matmul"(%arg0, %arg1) {quantization_info = #tosa.matmul_quant<a_zp = 1, b_zp = 2>} : (tensor<1x5x3xi8>, tensor<1x3x6xi8>) -> (tensor<1x5x6xi32>)
+  %0 = "tosa.matmul"(%arg0, %arg1) {a_zp = 1 : i32, b_zp = 2 : i32} : (tensor<1x5x3xi8>, tensor<1x3x6xi8>) -> (tensor<1x5x6xi32>)
   return %0 : tensor<1x5x6xi32>
 }
 
