@@ -135,6 +135,8 @@ def Tosa_ElementType : Type<Or<[Tosa_Int.predicate, Tosa_QuantizedInt.predicate,
 class Tosa_TensorOfOrNone<list<Type> allowedTypes, string description = ""> :
   AnyTypeOf<[TosaTensorOf<allowedTypes>, NoneType], description>;
 
+def Tosa_TensorOrNone : Tosa_TensorOfOrNone<[Tosa_AnyNumber]>;
+
 //===----------------------------------------------------------------------===//
 // Tensor types with constrained ranks.
 //===----------------------------------------------------------------------===//

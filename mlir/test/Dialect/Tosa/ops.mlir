@@ -695,6 +695,13 @@ func.func @test_custom(%arg0: tensor<10xi32>) -> tensor<10xi32> {
 }
 
 // -----
+// CHECK-LABEL: test_custom_none
+func.func @test_custom_none(%arg0: tensor<10xi32>, %arg1: none) -> tensor<10xi32> {
+  %0 = tosa.custom %arg0, %arg1 {operator_name="custom_test", domain_name="tosa.mlir_test", implementation_attrs="" } : (tensor<10xi32>, none) -> (tensor<10xi32>)
+  return %0 : tensor<10xi32>
+}
+
+// -----
 // CHECK-LABEL: const_shape
 func.func @test_const_shape() -> !tosa.shape<4> {
   %cst = tosa.const_shape {value = dense<1> : tensor<4xindex>} : () -> !tosa.shape<4>
