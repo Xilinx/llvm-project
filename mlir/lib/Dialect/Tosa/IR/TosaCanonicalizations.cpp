@@ -763,8 +763,19 @@ struct ConcatSliceOptimization : public OpRewritePattern<tosa::SliceOp> {
           sliceOp, "slice input must be a static ranked tensor");
     int32_t axis = concatOp.getAxis();
 
-    llvm::SmallVector<int64_t> sliceStart(sliceOp.getStart());
-    llvm::ArrayRef<int64_t> sliceSize = sliceOp.getSize();
+    llvm::SmallVector<int64_t> sliceStart;
+    if (!tosa::getConstShapeValue(sliceOp.getStart().getDefiningOp(),
+                                  sliceStart)) {
+      return rewriter.notifyMatchFailure(
+          sliceOp, "slice start must be a constant shape");
+    }
+
+    llvm::SmallVector<int64_t> sliceSize;
+    if (!tosa::getConstShapeValue(sliceOp.getSize().getDefiningOp(),
+                                  sliceSize)) {
+      return rewriter.notifyMatchFailure(sliceOp,
+                                         "slice size must be a constant shape");
+    }
     llvm::SmallVector<Value> requiredConcatInputs;
     int64_t processedOriginalConcatInputSize = 0;
     int64_t droppedConcatInputSize = 0;
@@ -803,8 +814,8 @@ struct ConcatSliceOptimization : public OpRewritePattern<tosa::SliceOp> {
         concatOp->getLoc(), requiredConcatInputs, axis);
     auto newSlice = rewriter.create<tosa::SliceOp>(
         sliceOp->getLoc(), sliceOp.getType(), newConcat,
-        rewriter.getDenseI64ArrayAttr(sliceStart),
-        rewriter.getDenseI64ArrayAttr(sliceSize));
+        getTosaConstShape(rewriter, sliceOp.getStart().getLoc(), sliceStart),
+        getTosaConstShape(rewriter, sliceOp.getSize().getLoc(), sliceSize));
     rewriter.replaceOp(sliceOp, newSlice);
     return success();
   }
@@ -839,8 +850,21 @@ struct TileSliceOptimization : public OpRewritePattern<tosa::SliceOp> {
     SmallVector<int64_t> tileMultiplies;
     const LogicalResult tileHasConstantMultiplies =
         tileOp.getConstantMultiples(tileMultiplies);
+    llvm::SmallVector<int64_t> sliceStartShape;
+    if (!tosa::getConstShapeValue(sliceOp.getStart().getDefiningOp(),
+                                  sliceStartShape)) {
+      return rewriter.notifyMatchFailure(
+          sliceOp, "slice start must be a constant shape");
+    }
+
+    llvm::SmallVector<int64_t> sliceSizeShape;
+    if (!tosa::getConstShapeValue(sliceOp.getSize().getDefiningOp(),
+                                  sliceSizeShape)) {
+      return rewriter.notifyMatchFailure(sliceOp,
+                                         "slice size must be a constant shape");
+    }
     for (auto [axis, sliceStart, sliceSize] :
-         llvm::enumerate(sliceOp.getStart(), sliceOp.getSize())) {
+         llvm::enumerate(sliceStartShape, sliceSizeShape)) {
       if (sliceSize <= 0) {
         return rewriter.notifyMatchFailure(
             sliceOp, "degenerate slice with zero sized dim");
@@ -878,8 +902,52 @@ struct TileSliceOptimization : public OpRewritePattern<tosa::SliceOp> {
         tileOp->getOperand(0), constantShapeValue);
     auto newSlice = rewriter.create<tosa::SliceOp>(
         sliceOp->getLoc(), sliceOp.getType(), newTile,
-        rewriter.getDenseI64ArrayAttr(newTileStarts), sliceOp.getSizeAttr());
+        getTosaConstShape(rewriter, sliceOp.getStart().getLoc(), newTileStarts),
+        sliceOp.getSize());
     rewriter.replaceOp(sliceOp, newSlice);
+    return success();
+  }
+};
+
+// This pattern fuses consecutive slice operations into a single slice
+struct SliceSliceOptimization : public OpRewritePattern<tosa::SliceOp> {
+  using OpRewritePattern<tosa::SliceOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(tosa::SliceOp sliceOp,
+                                PatternRewriter &rewriter) const override {
+
+    auto precedingSliceOp = sliceOp.getInput1().getDefiningOp<SliceOp>();
+    if (!precedingSliceOp)
+      return failure();
+    SmallVector<int64_t> precedingSliceStart;
+    if (!tosa::getConstShapeValue(precedingSliceOp.getStart().getDefiningOp(),
+                                  precedingSliceStart)) {
+      return rewriter.notifyMatchFailure(
+          sliceOp, "preceding slice start must be a constant shape");
+    }
+    SmallVector<int64_t> thisSliceStart;
+    if (!tosa::getConstShapeValue(sliceOp.getStart().getDefiningOp(),
+                                  thisSliceStart)) {
+      return rewriter.notifyMatchFailure(
+          sliceOp, "slice start must be a constant shape");
+    }
+    SmallVector<int64_t> newSliceStart;
+    newSliceStart.reserve(precedingSliceStart.size());
+    for (auto [startPreceding, startThis] :
+         llvm::zip_equal(precedingSliceStart, thisSliceStart)) {
+      newSliceStart.push_back(startPreceding + startThis);
+    }
+    Value newStartConst = getTosaConstShape(
+        rewriter,
+        rewriter.getFusedLoc({sliceOp.getStart().getLoc(),
+                              precedingSliceOp.getStart().getLoc()}),
+        newSliceStart);
+    rewriter.modifyOpInPlace(sliceOp, [&]() {
+      sliceOp.getInput1Mutable().assign(precedingSliceOp.getInput1());
+      sliceOp.getStartMutable().assign(newStartConst);
+      sliceOp->setLoc(rewriter.getFusedLoc(
+          {precedingSliceOp->getLoc(), sliceOp->getLoc()}));
+    });
+
     return success();
   }
 };
@@ -888,6 +956,7 @@ void SliceOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                           MLIRContext *context) {
   results.add<ConcatSliceOptimization>(context);
   results.add<TileSliceOptimization>(context);
+  results.add<SliceSliceOptimization>(context);
 }
 
 struct MinToClampOptimization : public OpRewritePattern<tosa::MinimumOp> {
@@ -1525,30 +1594,6 @@ OpFoldResult ReverseOp::fold(FoldAdaptor adaptor) {
 }
 
 OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
-  const auto tryFoldWithPrecedingSlice = [this](FoldAdaptor adaptor) {
-    auto precedingSliceOp = getInput1().getDefiningOp<SliceOp>();
-    if (!precedingSliceOp)
-      return failure();
-    const auto precedingSliceStart = precedingSliceOp.getStart();
-    const auto thisSliceStart = getStart();
-    SmallVector<int64_t> newSliceStart;
-    newSliceStart.reserve(precedingSliceStart.size());
-    for (auto [startPreceding, startThis] :
-         llvm::zip_equal(precedingSliceStart, thisSliceStart)) {
-      newSliceStart.push_back(startPreceding + startThis);
-    }
-    setOperand(precedingSliceOp->getOperand(0));
-    setStart(newSliceStart);
-    getOperation()->setLoc(
-        FusedLoc::get(getContext(), {precedingSliceOp->getLoc(), getLoc()}));
-    return success();
-  };
-
-  // First try folding the preceding slice, this also works if the shapes are
-  // dynamic
-  if (succeeded(tryFoldWithPrecedingSlice(adaptor)))
-    return getResult();
-
   auto inputTy = llvm::dyn_cast<RankedTensorType>(getInput1().getType());
   auto outputTy = llvm::dyn_cast<RankedTensorType>(getType());
 
@@ -1573,7 +1618,12 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
 
   if (inputTy.hasStaticShape() && outputTy.hasStaticShape() &&
       outputTy.getNumElements() == 1) {
-    llvm::SmallVector<uint64_t> indices(getStart());
+    DenseElementsAttr startElems;
+    if (!matchPattern(getStart(), m_Constant(&startElems)))
+      return {};
+
+    llvm::SmallVector<uint64_t> indices =
+        llvm::to_vector(startElems.getValues<uint64_t>());
     auto value = operand.getValues<Attribute>()[indices];
     return SplatElementsAttr::get(outputTy, value);
   }
