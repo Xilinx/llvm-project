@@ -1549,12 +1549,11 @@ struct TosaFoldConstantMatMul
                                    DenseElementsAttr rhsValues,
                                    PatternRewriter &rewriter,
                                    MatMulOp op) const {
-    auto aZp = 0;
-    auto bZp = 0;
-    auto quantInfo = op.getQuantizationInfo();
-    if (quantInfo.has_value()) {
-      aZp = quantInfo->getAZp();
-      bZp = quantInfo->getBZp();
+    uint32_t aZp = 0;
+    uint32_t bZp = 0;
+    if (op.getAZp() || op.getBZp()) {
+      aZp = *op.getAZp();
+      bZp = *op.getBZp();
     }
 
     auto outputType = cast<ShapedType>(op.getType());
