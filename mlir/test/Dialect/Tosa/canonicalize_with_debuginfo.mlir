@@ -49,10 +49,12 @@ func.func @canonicalize_optimize_sqrt_reciprocal_bf16(%arg0: tensor<1x5x1x1xbf16
 
 // CHECK-LABEL: @reshape_canonicalize_double
 func.func @reshape_canonicalize_double(%arg0: tensor<?x10xf32>) -> tensor<?x5xf32> {
-  // CHECK: %[[VAL_1:.*]] = tosa.reshape %arg0 {new_shape = array<i64: -1, 5>} {{.*}} loc([[LOC:.*]])
+  // CHECK: %[[VAL_1:.*]] = tosa.reshape %arg0, %{{.*}} {{.*}} loc([[LOC:.*]])
   // CHECK: return %[[VAL_1]]
-  %0 = tosa.reshape %arg0 {new_shape = array<i64: 5, -1>}: (tensor<?x10xf32>) -> tensor<5x?xf32> loc(#loc0)
-  %1 = tosa.reshape %0 {new_shape = array<i64: -1, 5>}: (tensor<5x?xf32>) -> tensor<?x5xf32> loc(#loc1)
+  %cst0 = tosa.const_shape {value = dense<[5, -1]> : tensor<2xindex>} : () -> !tosa.shape<2>
+  %0 = tosa.reshape %arg0, %cst0 : (tensor<?x10xf32>, !tosa.shape<2>) -> tensor<5x?xf32> loc(#loc0)
+  %cst1 = tosa.const_shape {value = dense<[-1, 5]> : tensor<2xindex>} : () -> !tosa.shape<2>
+  %1 = tosa.reshape %0, %cst1 : (tensor<5x?xf32>, !tosa.shape<2>) -> tensor<?x5xf32> loc(#loc1)
   return %1 : tensor<?x5xf32>
 }
 #loc0 = loc("reshape1")
@@ -66,10 +68,12 @@ func.func @reshape_canonicalize_double(%arg0: tensor<?x10xf32>) -> tensor<?x5xf3
 
 // CHECK-LABEL: @reshape_canonicalize_double_fused_locs
 func.func @reshape_canonicalize_double_fused_locs(%arg0: tensor<?x10xf32>) -> tensor<?x5xf32> {
-  // CHECK: %[[VAL_1:.*]] = tosa.reshape %arg0 {new_shape = array<i64: -1, 5>} {{.*}} loc([[LOC:.*]])
+  // CHECK: %[[VAL_1:.*]] = tosa.reshape %arg0, %{{.*}} {{.*}} loc([[LOC:.*]])
   // CHECK: return %[[VAL_1]]
-  %0 = tosa.reshape %arg0 {new_shape = array<i64: 5, -1>}: (tensor<?x10xf32>) -> tensor<5x?xf32> loc(#fused_loc0)
-  %1 = tosa.reshape %0 {new_shape = array<i64: -1, 5>}: (tensor<5x?xf32>) -> tensor<?x5xf32> loc(#fused_loc1)
+  %cst0 = tosa.const_shape {value = dense<[5, -1]> : tensor<2xindex>} : () -> !tosa.shape<2>
+  %0 = tosa.reshape %arg0, %cst0 : (tensor<?x10xf32>, !tosa.shape<2>) -> tensor<5x?xf32> loc(#fused_loc0)
+  %cst1 = tosa.const_shape {value = dense<[-1, 5]> : tensor<2xindex>} : () -> !tosa.shape<2>
+  %1 = tosa.reshape %0, %cst1 : (tensor<5x?xf32>, !tosa.shape<2>) -> tensor<?x5xf32> loc(#fused_loc1)
   return %1 : tensor<?x5xf32>
 }
 #loc0 = loc("reshape1_1")

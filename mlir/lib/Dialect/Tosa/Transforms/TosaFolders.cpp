@@ -334,7 +334,9 @@ struct TosaFoldConstantBase : public OpRewritePattern<TosaOp> {
                                      DenseElementsAttr values) const {
     if (!foldSplatOrSingleUseOnly)
       return true;
-    assert(unaryOp->getNumOperands() == 1);
+    assert(unaryOp->getNumOperands() == 1 ||
+           isa<ReshapeOp>(unaryOp)); // ReshapeOp is a special case that has 2
+                                     // operands but it behaves like a unary op
     auto inputOp = unaryOp->getOperand(0);
 
     // If the input is a splat, we don't care for the number of users
@@ -386,7 +388,7 @@ struct TosaFoldConstantUnaryElementwise : public TosaFoldConstantBase<TosaOp> {
 
   LogicalResult matchAndRewrite(TosaOp op,
                                 PatternRewriter &rewriter) const override {
-    auto inputTensor = op.getOperand();
+    auto inputTensor = op->getOperand(0);
     // Check that we can apply folding
     auto preCondCheck =
         notifyIfNoTosaDenseConstantTensor(inputTensor, op, rewriter);
@@ -593,6 +595,9 @@ struct TosaFoldConstantTranspose
 
 /// Fold reshapes. This is similar to ReshapeOp::fold, but also allows
 /// to fold with multiple users.
+/// Reshape has two operands: the input tensor and the output shape, but acts
+/// like unary op, as the folding can be determined based on the input tensor
+/// and output shape
 struct TosaFoldConstantReshape
     : public TosaFoldConstantUnaryElementwise<TosaFoldConstantReshape,
                                               ReshapeOp> {
@@ -600,7 +605,7 @@ struct TosaFoldConstantReshape
 
   LogicalResult matchAndRewrite(ReshapeOp op,
                                 PatternRewriter &rewriter) const override {
-    auto inputTensor = op.getOperand();
+    auto inputTensor = op->getOperand(0);
     // Check that we can apply folding
     auto preCondCheck =
         notifyIfNoTosaDenseConstantTensor(inputTensor, op, rewriter);
