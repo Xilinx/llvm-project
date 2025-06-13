@@ -2097,6 +2097,120 @@ struct ReduceConstantOptimization : public OpRewritePattern<OperationType> {
   const bool aggressiveReduceConstant;
 };
 
+template <typename ElementStorageType>
+DenseElementsAttr
+concatenateAttrs(const ShapedType outputType, ArrayRef<ElementsAttr> inputAttrs,
+                 const uint32_t concatAxis, PatternRewriter &rewriter,
+                 const Type elementType) {
+
+  static_assert(std::is_same<ElementStorageType, APInt>::value ||
+                    std::is_same<ElementStorageType, APFloat>::value,
+                "ElementStorageType must be either APInt or APFloat");
+
+  SmallVector<ElementStorageType> resultValues;
+  if constexpr (std::is_same<ElementStorageType, APInt>::value) {
+    resultValues.resize_for_overwrite(outputType.getNumElements());
+  } else {
+    resultValues.resize(
+        outputType.getNumElements(),
+        APFloat::getZero(cast<FloatType>(elementType).getFloatSemantics()));
+  }
+  const auto outputShape = outputType.getShape();
+
+  int64_t concatDimOffset = 0;
+  for (const auto &inputAttr : inputAttrs) {
+    const auto inputShape = cast<ShapedType>(inputAttr.getType()).getShape();
+    const auto inputValues = inputAttr.getValues<ElementStorageType>();
+
+    for (const auto &[inputLinearIdx, val] : llvm::enumerate(inputValues)) {
+      // TODO: Could be optimized to work on slices instead of single value
+      SmallVector<int64_t> multiDimIndex =
+          offsetToIndex(inputShape, inputLinearIdx);
+      multiDimIndex[concatAxis] += concatDimOffset;
+
+      const int64_t outputLinearIndex =
+          indexToOffset(outputShape, multiDimIndex);
+      resultValues[outputLinearIndex] = val;
+    }
+    concatDimOffset += inputShape[concatAxis];
+  }
+  return DenseElementsAttr::get(outputType, resultValues);
+}
+
+struct TosaFoldConstantConcat : public TosaFoldConstantBase<tosa::ConcatOp> {
+  using TosaFoldConstantBase::TosaFoldConstantBase;
+
+  LogicalResult matchAndRewrite(tosa::ConcatOp op,
+                                PatternRewriter &rewriter) const override {
+    auto inputs = op->getOperands();
+    const uint32_t concatAxis = op.getAxis();
+    const auto outputType = cast<ShapedType>(op.getType());
+    if (!outputType.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(
+          op, "Output type must have static shape for concat folding.");
+    }
+    if (llvm::any_of(inputs, [](Value v) {
+          return !cast<ShapedType>(v.getType()).hasStaticShape();
+        })) {
+      return rewriter.notifyMatchFailure(
+          op, "All inputs to ConcatOp must have static shape for folding.");
+    }
+
+    const Type elementType = outputType.getElementType();
+    if (!elementType.isIntOrIndexOrFloat()) {
+      // Sanity check, this should always be the case
+      return rewriter.notifyMatchFailure(
+          op, "Output element type must be int, index, or float for folding.");
+    }
+
+    SmallVector<ElementsAttr> inputAttrs;
+    inputAttrs.reserve(inputs.size());
+
+    for (Value inputVal : inputs) {
+      ElementsAttr inputAsAttr;
+      if (!matchPattern(inputVal, m_Constant(&inputAsAttr))) {
+        // TODO: This could be extended to handle partial non-const inputs
+        return rewriter.notifyMatchFailure(
+            op, "All inputs to ConcatOp must be constant for folding.");
+      }
+
+      if (inputAsAttr.isSplat()) {
+        const ShapedType inputType = cast<ShapedType>(inputAsAttr.getType());
+        if (isa<IntegerType>(elementType)) {
+          inputAsAttr = DenseElementsAttr::get(
+              inputType, inputAsAttr.getSplatValue<APInt>());
+        } else {
+          inputAsAttr = DenseElementsAttr::get(
+              inputType, inputAsAttr.getSplatValue<APFloat>());
+        }
+      }
+      if (foldSplatOrSingleUseOnly && !inputVal.hasOneUse() &&
+          !inputAsAttr.isSplat()) {
+        return rewriter.notifyMatchFailure(
+            op, "Concat folding heuristic: non-splat constant inputs must have "
+                "only a single use.");
+      }
+      inputAttrs.push_back(inputAsAttr);
+    }
+
+    DenseElementsAttr resultAttr;
+    if (auto intType = dyn_cast<IntegerType>(elementType)) {
+      // TODO: This could be optimized to not go to APInt if the int size
+      // matches c++ native types
+      resultAttr = concatenateAttrs<APInt>(outputType, inputAttrs, concatAxis,
+                                           rewriter, elementType);
+    } else {
+      resultAttr = concatenateAttrs<APFloat>(outputType, inputAttrs, concatAxis,
+                                             rewriter, elementType);
+    }
+
+    assert(resultAttr && "Result attribute should not be null.");
+
+    rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, outputType, resultAttr);
+    return success();
+  }
+};
+
 } // namespace
 
 void mlir::tosa::populateTosaFoldConstantPatterns(
@@ -2136,6 +2250,7 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
   patterns.add<TosaFoldConstantPad>(ctx, options.foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantSlice>(ctx, options.foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantMatMul>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantConcat>(ctx, options.foldSplatOrSingleUseOnly);
   if (options.enableTileFolding)
     patterns.add<TosaFoldConstantTile>(ctx, options.foldSplatOrSingleUseOnly);
 }
