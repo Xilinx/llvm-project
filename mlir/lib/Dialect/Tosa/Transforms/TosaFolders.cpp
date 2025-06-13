@@ -2097,6 +2097,44 @@ struct ReduceConstantOptimization : public OpRewritePattern<OperationType> {
   const bool aggressiveReduceConstant;
 };
 
+struct TosaFoldConstantConcat : TosaFoldConstantBase<tosa::ConcatOp> {
+  using TosaFoldConstantBase::TosaFoldConstantBase;
+
+  LogicalResult matchAndRewrite(tosa::ConcatOp op,
+                                PatternRewriter &rewriter) const override {
+    auto inputsRange = op.getInput1();
+    auto axis = op.getAxis();
+
+    // TODO: Matching constraints
+
+    // collect all inputvalues
+    SmallVector<DenseElementsAttr> inputValuesArr;
+    SmallVector<ShapedType> inputTypesArr;
+    for (auto input : inputsRange) {
+      DenseElementsAttr inputValues;
+      if (!matchPattern(input, m_Constant(&inputValues))) {
+        return failure();
+      }
+      inputValuesArr.push_back(inputValues);
+      inputTypesArr.push_back(cast<ShapedType>(input.getType()));
+    }
+
+    // compute result
+    auto result = this->concat(inputValuesArr, inputTypesArr, axis);
+
+    rewriter.replaceOpWithNewOp<tosa::ConstOp>(op, result.first, result.second);
+  }
+
+  std::pair<ShapedType, DenseElementsAttr>
+  concat(SmallVector<DenseElementsAttr> &inputValuesArr,
+         SmallVector<ShapedType> &inputTypesArr, uint32_t axis) const {
+    auto baseType = inputTypesArr[0].getElementType();
+    switch (dyn_cast<IntegerType>(baseType).getWidth()) {
+      // TODO:
+    }
+  }
+}
+
 } // namespace
 
 void mlir::tosa::populateTosaFoldConstantPatterns(
@@ -2136,6 +2174,7 @@ void mlir::tosa::populateTosaFoldConstantPatterns(
   patterns.add<TosaFoldConstantPad>(ctx, options.foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantSlice>(ctx, options.foldSplatOrSingleUseOnly);
   patterns.add<TosaFoldConstantMatMul>(ctx, options.foldSplatOrSingleUseOnly);
+  patterns.add<TosaFoldConstantConcat>(ctx, options.foldSplatOrSingleUseOnly);
   if (options.enableTileFolding)
     patterns.add<TosaFoldConstantTile>(ctx, options.foldSplatOrSingleUseOnly);
 }
