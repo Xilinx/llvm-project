@@ -499,7 +499,7 @@ struct TransposeIsReshape : public OpRewritePattern<tosa::TransposeOp> {
 
     rewriter.replaceOpWithNewOp<tosa::ReshapeOp>(
         op, op.getType(), op.getInput1(),
-        rewriter.getDenseI64ArrayAttr(newShape));
+        getTosaConstShape(rewriter, op.getLoc(), newShape));
     return success();
   }
 };
@@ -1525,8 +1525,12 @@ OpFoldResult ReshapeOp::fold(FoldAdaptor adaptor) {
     if (!getInput1().hasOneUse())
       return {};
 
+    llvm::SmallVector<int64_t> shapeVec;
+    if (!tosa::getConstShapeValue(getShape().getDefiningOp(), shapeVec))
+      return {};
+
     return operand.reshape(
-        llvm::cast<ShapedType>(operand.getType()).clone(getNewShape()));
+        llvm::cast<ShapedType>(operand.getType()).clone(shapeVec));
   }
 
   return {};

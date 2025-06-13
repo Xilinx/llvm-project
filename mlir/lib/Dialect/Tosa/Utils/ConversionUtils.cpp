@@ -147,10 +147,10 @@ LogicalResult mlir::tosa::EqualizeRanks(ImplicitLocOpBuilder &builder,
       llvm::cast<RankedTensorType>(lowerTensorValue.getType());
   auto reshapeOutputType = RankedTensorType::get(
       ArrayRef<int64_t>(reshapeOutputShape), reshapeInputType.getElementType());
+  auto reshapeOutputShapeValue = getTosaConstShape(builder, reshapeOutputShape);
 
   auto reshapeLower = builder.create<tosa::ReshapeOp>(
-      reshapeOutputType, lowerTensorValue,
-      builder.getDenseI64ArrayAttr(reshapeOutputShape));
+      reshapeOutputType, lowerTensorValue, reshapeOutputShapeValue);
 
   if (input1Rank > input2Rank) {
     input1 = higherTensorValue;
@@ -175,12 +175,6 @@ std::optional<int32_t> mlir::tosa::getConstTosaMulShift(tosa::MulOp mulOp) {
   return shift;
 }
 
-SmallVector<int64_t> mlir::tosa::convertFromMlirShape(ArrayRef<int64_t> shape) {
-  return to_vector(llvm::map_range(shape, [](int64_t dim) {
-    return ShapedType::isDynamic(dim) ? -1 : dim;
-  }));
-}
-
 Value mlir::tosa::getTosaConstShape(ImplicitLocOpBuilder &builder,
                                     llvm::ArrayRef<int64_t> shape) {
   auto attr = builder.getIndexTensorAttr(convertFromMlirShape(shape));
@@ -193,6 +187,12 @@ Value mlir::tosa::getTosaConstShape(PatternRewriter &rewriter, Location loc,
                                     llvm::ArrayRef<int64_t> shape) {
   ImplicitLocOpBuilder builder(loc, rewriter);
   return getTosaConstShape(builder, shape);
+}
+
+SmallVector<int64_t> mlir::tosa::convertFromMlirShape(ArrayRef<int64_t> shape) {
+  return to_vector(llvm::map_range(shape, [](int64_t dim) {
+    return ShapedType::isDynamic(dim) ? -1 : dim;
+  }));
 }
 
 // AMD: Picked from torch-mlir 12250739bfe85b702f9503cad45c2e535ea8eb18
