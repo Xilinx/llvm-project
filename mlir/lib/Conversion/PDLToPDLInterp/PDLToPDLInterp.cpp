@@ -21,7 +21,7 @@
 #include "llvm/ADT/TypeSwitch.h"
 
 namespace mlir {
-#define GEN_PASS_DEF_CONVERTPDLTOPDLINTERP
+#define GEN_PASS_DEF_CONVERTPDLTOPDLINTERPPASS
 #include "mlir/Conversion/Passes.h.inc"
 } // namespace mlir
 
@@ -968,7 +968,7 @@ void PatternLowering::generateOperationResultTypeRewriter(
 
 namespace {
 struct PDLToPDLInterpPass
-    : public impl::ConvertPDLToPDLInterpBase<PDLToPDLInterpPass> {
+    : public impl::ConvertPDLToPDLInterpPassBase<PDLToPDLInterpPass> {
   PDLToPDLInterpPass() = default;
   PDLToPDLInterpPass(const PDLToPDLInterpPass &rhs) = default;
   PDLToPDLInterpPass(DenseMap<Operation *, PDLPatternConfigSet *> &configMap)
@@ -1014,10 +1014,7 @@ void PDLToPDLInterpPass::runOnOperation() {
   }
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> mlir::createPDLToPDLInterpPass() {
-  return std::make_unique<PDLToPDLInterpPass>();
-}
-std::unique_ptr<OperationPass<ModuleOp>> mlir::createPDLToPDLInterpPass(
+std::unique_ptr<OperationPass<ModuleOp>> mlir::createConvertPDLToPDLInterpPass(
     DenseMap<Operation *, PDLPatternConfigSet *> &configMap) {
   return std::make_unique<PDLToPDLInterpPass>(configMap);
 }

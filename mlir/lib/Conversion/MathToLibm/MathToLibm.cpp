@@ -20,7 +20,7 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-#define GEN_PASS_DEF_CONVERTMATHTOLIBM
+#define GEN_PASS_DEF_CONVERTMATHTOLIBMPASS
 #include "mlir/Conversion/Passes.h.inc"
 } // namespace mlir
 
@@ -53,7 +53,7 @@ public:
   ScalarOpToLibmCall(MLIRContext *context, PatternBenefit benefit,
                      StringRef floatFunc, StringRef doubleFunc)
       : OpRewritePattern<Op>(context, benefit), floatFunc(floatFunc),
-        doubleFunc(doubleFunc) {};
+        doubleFunc(doubleFunc){};
 
   LogicalResult matchAndRewrite(Op op, PatternRewriter &rewriter) const final;
 
@@ -163,17 +163,22 @@ ScalarOpToLibmCall<Op>::matchAndRewrite(Op op,
 }
 
 void mlir::populateMathToLibmConversionPatterns(
-    RewritePatternSet &patterns, const ConvertMathToLibmOptions &options, PatternBenefit benefit) {
+    RewritePatternSet &patterns, const ConvertMathToLibmPassOptions &options,
+    PatternBenefit benefit) {
   MLIRContext *ctx = patterns.getContext();
 
   populatePatternsForOp<math::AbsFOp>(patterns, benefit, ctx, "fabsf", "fabs");
   populatePatternsForOp<math::AcosOp>(patterns, benefit, ctx, "acosf", "acos");
-  populatePatternsForOp<math::AcoshOp>(patterns, benefit, ctx, "acoshf", "acosh");
+  populatePatternsForOp<math::AcoshOp>(patterns, benefit, ctx, "acoshf",
+                                       "acosh");
   populatePatternsForOp<math::AsinOp>(patterns, benefit, ctx, "asinf", "asin");
-  populatePatternsForOp<math::AsinhOp>(patterns, benefit, ctx, "asinhf", "asinh");
-  populatePatternsForOp<math::Atan2Op>(patterns, benefit, ctx, "atan2f", "atan2");
+  populatePatternsForOp<math::AsinhOp>(patterns, benefit, ctx, "asinhf",
+                                       "asinh");
+  populatePatternsForOp<math::Atan2Op>(patterns, benefit, ctx, "atan2f",
+                                       "atan2");
   populatePatternsForOp<math::AtanOp>(patterns, benefit, ctx, "atanf", "atan");
-  populatePatternsForOp<math::AtanhOp>(patterns, benefit, ctx, "atanhf", "atanh");
+  populatePatternsForOp<math::AtanhOp>(patterns, benefit, ctx, "atanhf",
+                                       "atanh");
   populatePatternsForOp<math::CbrtOp>(patterns, benefit, ctx, "cbrtf", "cbrt");
   populatePatternsForOp<math::CeilOp>(patterns, benefit, ctx, "ceilf", "ceil");
   populatePatternsForOp<math::CosOp>(patterns, benefit, ctx, "cosf", "cos");
@@ -181,36 +186,43 @@ void mlir::populateMathToLibmConversionPatterns(
   populatePatternsForOp<math::ErfOp>(patterns, benefit, ctx, "erff", "erf");
   populatePatternsForOp<math::ExpOp>(patterns, benefit, ctx, "expf", "exp");
   populatePatternsForOp<math::Exp2Op>(patterns, benefit, ctx, "exp2f", "exp2");
-  populatePatternsForOp<math::ExpM1Op>(patterns, benefit, ctx, "expm1f", "expm1");
-  populatePatternsForOp<math::FloorOp>(patterns, benefit, ctx, "floorf", "floor");
+  populatePatternsForOp<math::ExpM1Op>(patterns, benefit, ctx, "expm1f",
+                                       "expm1");
+  populatePatternsForOp<math::FloorOp>(patterns, benefit, ctx, "floorf",
+                                       "floor");
   populatePatternsForOp<math::FmaOp>(patterns, benefit, ctx, "fmaf", "fma");
   populatePatternsForOp<math::LogOp>(patterns, benefit, ctx, "logf", "log");
   populatePatternsForOp<math::Log2Op>(patterns, benefit, ctx, "log2f", "log2");
-  populatePatternsForOp<math::Log10Op>(patterns, benefit, ctx, "log10f", "log10");
-  populatePatternsForOp<math::Log1pOp>(patterns, benefit, ctx, "log1pf", "log1p");
+  populatePatternsForOp<math::Log10Op>(patterns, benefit, ctx, "log10f",
+                                       "log10");
+  populatePatternsForOp<math::Log1pOp>(patterns, benefit, ctx, "log1pf",
+                                       "log1p");
   populatePatternsForOp<math::PowFOp>(patterns, benefit, ctx, "powf", "pow");
   if (options.allowC23Features)
-    populatePatternsForOp<math::RoundEvenOp>(patterns, benefit, ctx, "roundevenf",
-                                             "roundeven");
+    populatePatternsForOp<math::RoundEvenOp>(patterns, benefit, ctx,
+                                             "roundevenf", "roundeven");
   else if (options.roundingModeIsDefault)
-    populatePatternsForOp<math::RoundEvenOp>(patterns, benefit, ctx, "nearbyintf",
-                                             "nearbyint");
+    populatePatternsForOp<math::RoundEvenOp>(patterns, benefit, ctx,
+                                             "nearbyintf", "nearbyint");
   // Roundeven: using nearbyint (pre-C23) for roundeven requires the
   // rounding mode to be FE_TONEAREST (the default). Otherwise we need to
   // issue a call to set the rounding mode (which this pass currently can't do).
-  populatePatternsForOp<math::RoundOp>(patterns, benefit, ctx, "roundf", "round");
+  populatePatternsForOp<math::RoundOp>(patterns, benefit, ctx, "roundf",
+                                       "round");
   populatePatternsForOp<math::SinOp>(patterns, benefit, ctx, "sinf", "sin");
   populatePatternsForOp<math::SinhOp>(patterns, benefit, ctx, "sinhf", "sinh");
   populatePatternsForOp<math::SqrtOp>(patterns, benefit, ctx, "sqrtf", "sqrt");
-  populatePatternsForOp<math::RsqrtOp>(patterns, benefit, ctx, "rsqrtf", "rsqrt");
+  populatePatternsForOp<math::RsqrtOp>(patterns, benefit, ctx, "rsqrtf",
+                                       "rsqrt");
   populatePatternsForOp<math::TanOp>(patterns, benefit, ctx, "tanf", "tan");
   populatePatternsForOp<math::TanhOp>(patterns, benefit, ctx, "tanhf", "tanh");
-  populatePatternsForOp<math::TruncOp>(patterns, benefit, ctx, "truncf", "trunc");
+  populatePatternsForOp<math::TruncOp>(patterns, benefit, ctx, "truncf",
+                                       "trunc");
 }
 
 namespace {
 struct ConvertMathToLibmPass
-    : public impl::ConvertMathToLibmBase<ConvertMathToLibmPass> {
+    : public impl::ConvertMathToLibmPassBase<ConvertMathToLibmPass> {
   using Base::Base;
   void runOnOperation() override;
 };
@@ -230,13 +242,4 @@ void ConvertMathToLibmPass::runOnOperation() {
   target.addIllegalDialect<math::MathDialect>();
   if (failed(applyPartialConversion(module, target, std::move(patterns))))
     signalPassFailure();
-}
-
-std::unique_ptr<OperationPass<ModuleOp>> mlir::createConvertMathToLibmPass() {
-  return std::make_unique<ConvertMathToLibmPass>();
-}
-
-std::unique_ptr<OperationPass<ModuleOp>>
-mlir::createConvertMathToLibmPass(const ConvertMathToLibmOptions &options) {
-  return std::make_unique<ConvertMathToLibmPass>(options);
 }
