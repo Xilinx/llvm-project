@@ -116,7 +116,7 @@ namespace {
 /// Emitter that uses dialect specific emitters to emit C++ code.
 struct CppEmitter {
   explicit CppEmitter(raw_ostream &os, bool declareVariablesAtTop,
-                      StringRef onlyTu, bool constantsAsVariables);
+                      StringRef fileId, bool constantsAsVariables);
 
   /// Emits attribute or returns failure.
   LogicalResult emitAttribute(Location loc, Attribute attr);
@@ -257,7 +257,9 @@ struct CppEmitter {
   bool shouldDeclareVariablesAtTop() { return declareVariablesAtTop; };
 
   /// Returns whether this translation unit should be emitted
-  bool shouldEmitTu(TranslationUnitOp tu) { return tu.getId() == onlyTu; }
+  bool shouldEmitFile(FileOp file) {
+    return !fileId.empty() && file.getId() == fileId;
+  }
 
   /// Returns whether the value of ConstantOps should be stored in variables
   /// or emmited directly in their usage locations.
@@ -285,8 +287,8 @@ struct CppEmitter {
   /// taken care of by transformations run by the backend.
   bool shouldBeInlined(ExpressionOp expressionOp);
 
-  /// This emitter will only emit translation units whos id matches this value.
-  StringRef willOnlyEmitTu() { return onlyTu; }
+  /// This emitter will only emit a file whos id matches this value.
+  StringRef willOnlyEmitFile() { return fileId; }
 
   // Resets the value counter to 0
   void resetValueCounter();
@@ -309,8 +311,8 @@ private:
   /// includes results from ops located in nested regions.
   bool declareVariablesAtTop;
 
-  /// Only emit translation units whos id matches this value.
-  std::string onlyTu;
+  /// Only emit file ops whos id matches this value.
+  std::string fileId;
 
   /// Use variables to hold the constant values
   bool constantsAsVariables;
@@ -431,7 +433,7 @@ static LogicalResult printOperation(CppEmitter &emitter,
     /// Temporary emitter object that writes to our stream instead of the output
     /// allowing for the capture and caching of the produced string.
     CppEmitter sniffer = CppEmitter(ss, emitter.shouldDeclareVariablesAtTop(),
-                                    emitter.willOnlyEmitTu(),
+                                    emitter.willOnlyEmitFile(),
                                     emitter.shouldUseConstantsAsVariables());
 
     ss << "(";
@@ -1091,11 +1093,11 @@ static LogicalResult printOperation(CppEmitter &emitter, ModuleOp moduleOp) {
   return success();
 }
 
-static LogicalResult printOperation(CppEmitter &emitter, TranslationUnitOp tu) {
-  if (!emitter.shouldEmitTu(tu))
+static LogicalResult printOperation(CppEmitter &emitter, FileOp file) {
+  if (!emitter.shouldEmitFile(file))
     return success();
 
-  for (Operation &op : tu) {
+  for (Operation &op : file) {
     if (failed(emitter.emitOperation(op, /*trailingSemicolon=*/false)))
       return failure();
   }
@@ -1348,9 +1350,9 @@ static LogicalResult printOperation(CppEmitter &emitter,
 }
 
 CppEmitter::CppEmitter(raw_ostream &os, bool declareVariablesAtTop,
-                       StringRef onlyTu, bool constantsAsVariables)
+                       StringRef fileId, bool constantsAsVariables)
     : os(os), declareVariablesAtTop(declareVariablesAtTop),
-      onlyTu(onlyTu.str()), constantsAsVariables(constantsAsVariables),
+      fileId(fileId.str()), constantsAsVariables(constantsAsVariables),
       defaultValueMapperScope(valueMapper),
       defaultBlockMapperScope(blockMapper) {
   labelInScopeCount.push(0);
@@ -1778,11 +1780,11 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
                 emitc::BitwiseRightShiftOp, emitc::BitwiseXorOp, emitc::CallOp,
                 emitc::CallOpaqueOp, emitc::CastOp, emitc::CmpOp,
                 emitc::ConditionalOp, emitc::ConstantOp, emitc::DeclareFuncOp,
-                emitc::DivOp, emitc::ExpressionOp, emitc::ForOp, emitc::FuncOp,
-                emitc::GlobalOp, emitc::IfOp, emitc::IncludeOp, emitc::LoadOp,
-                emitc::LogicalAndOp, emitc::LogicalNotOp, emitc::LogicalOrOp,
-                emitc::MulOp, emitc::RemOp, emitc::ReturnOp, emitc::SubOp,
-                emitc::SwitchOp, emitc::TranslationUnitOp, emitc::UnaryMinusOp,
+                emitc::DivOp, emitc::ExpressionOp, emitc::FileOp, emitc::ForOp,
+                emitc::FuncOp, emitc::GlobalOp, emitc::IfOp, emitc::IncludeOp,
+                emitc::LoadOp, emitc::LogicalAndOp, emitc::LogicalNotOp,
+                emitc::LogicalOrOp, emitc::MulOp, emitc::RemOp, emitc::ReturnOp,
+                emitc::SubOp, emitc::SwitchOp, emitc::UnaryMinusOp,
                 emitc::UnaryPlusOp, emitc::VariableOp, emitc::VerbatimOp>(
               [&](auto op) { return printOperation(*this, op); })
           // Func ops.
@@ -1814,7 +1816,7 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
   if (hasDeferredEmission(&op))
     return success();
 
-  if (isa<ModuleOp, TranslationUnitOp>(op))
+  if (isa<ModuleOp, FileOp>(op))
     return success(); // skip adding newlines
 
   if (getEmittedExpression() ||
@@ -1822,8 +1824,9 @@ LogicalResult CppEmitter::emitOperation(Operation &op, bool trailingSemicolon) {
        shouldBeInlined(cast<emitc::ExpressionOp>(op))))
     return success();
 
-  if (isa<cf::CondBranchOp, emitc::DeclareFuncOp, emitc::ForOp, emitc::IfOp,
-          emitc::IncludeOp, emitc::SwitchOp, emitc::VerbatimOp>(op)) {
+  if (isa<cf::CondBranchOp, emitc::DeclareFuncOp, emitc::FileOp, emitc::ForOp,
+          emitc::IfOp, emitc::IncludeOp, emitc::SwitchOp, emitc::VerbatimOp>(
+          op)) {
     trailingSemicolon = false;
   }
 
@@ -2015,8 +2018,8 @@ void CppEmitter::decreaseLoopNestingLevel() { loopNestingLevel--; }
 
 LogicalResult emitc::translateToCpp(Operation *op, raw_ostream &os,
                                     bool declareVariablesAtTop,
-                                    StringRef onlyTu,
+                                    StringRef fileId,
                                     bool constantsAsVariables) {
-  CppEmitter emitter(os, declareVariablesAtTop, onlyTu, constantsAsVariables);
+  CppEmitter emitter(os, declareVariablesAtTop, fileId, constantsAsVariables);
   return emitter.emitOperation(*op, /*trailingSemicolon=*/false);
 }
