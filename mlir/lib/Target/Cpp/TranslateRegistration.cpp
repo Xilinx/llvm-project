@@ -29,9 +29,8 @@ void registerToCppTranslation() {
       llvm::cl::desc("Declare variables at top when emitting C/C++"),
       llvm::cl::init(false));
 
-  static llvm::cl::opt<std::string> onlyTu(
-      "translation-unit-id",
-      llvm::cl::desc("Only emit the translation unit with the matching id"),
+  static llvm::cl::opt<std::string> fileId(
+      "file-id", llvm::cl::desc("Emit emitc.file ops with matching id"),
       llvm::cl::init(""));
 
   static llvm::cl::opt<bool> constantsAsVariables(
@@ -45,7 +44,7 @@ void registerToCppTranslation() {
         return emitc::translateToCpp(
             op, output,
             /*declareVariablesAtTop=*/declareVariablesAtTop,
-            /*onlyTu=*/onlyTu,
+            /*fileId=*/fileId,
             /*constantsAsVariables=*/constantsAsVariables);
       },
       [](DialectRegistry &registry) {
