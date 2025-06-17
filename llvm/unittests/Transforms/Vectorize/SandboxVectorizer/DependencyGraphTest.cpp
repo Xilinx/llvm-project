@@ -1013,3 +1013,94 @@ define void @foo(ptr %ptr, i8 %v1, i8 %v2, i8 %arg) {
   EXPECT_EQ(S2N->getNextNode(), S1N);
   EXPECT_EQ(S1N->getNextNode(), nullptr);
 }
+
+// Extending an "Old" interval with no mem instructions.
+TEST_F(DependencyGraphTest, ExtendDAGWithNoMem) {
+  parseIR(C, R"IR(
+define void @foo(ptr %ptr, i8 %v, i8 %v0, i8 %v1, i8 %v2, i8 %v3) {
+  store i8 %v0, ptr %ptr
+  store i8 %v1, ptr %ptr
+  %zext1 = zext i8 %v to i32
+  %zext2 = zext i8 %v to i32
+  store i8 %v2, ptr %ptr
+  store i8 %v3, ptr %ptr
+  ret void
+}
+)IR");
+  llvm::Function *LLVMF = &*M->getFunction("foo");
+  sandboxir::Context Ctx(C);
+  auto *F = Ctx.createFunction(LLVMF);
+  auto *BB = &*F->begin();
+  auto It = BB->begin();
+  auto *S0 = cast<sandboxir::StoreInst>(&*It++);
+  auto *S1 = cast<sandboxir::StoreInst>(&*It++);
+  auto *Z1 = cast<sandboxir::CastInst>(&*It++);
+  auto *Z2 = cast<sandboxir::CastInst>(&*It++);
+  auto *S2 = cast<sandboxir::StoreInst>(&*It++);
+  auto *S3 = cast<sandboxir::StoreInst>(&*It++);
+
+  sandboxir::DependencyGraph DAG(getAA(*LLVMF), Ctx);
+  // Create a non-empty DAG that contains no memory instructions.
+  DAG.extend({Z1, Z2});
+  // Now extend it downwards.
+  DAG.extend({S2, S3});
+  EXPECT_TRUE(memDependency(DAG.getNode(S2), DAG.getNode(S3)));
+
+  // Same but upwards.
+  DAG.clear();
+  DAG.extend({Z1, Z2});
+  DAG.extend({S0, S1});
+  EXPECT_TRUE(memDependency(DAG.getNode(S0), DAG.getNode(S1)));
+}
+
+// Setting a Use with a setOperand(), RUW, RAUW etc. can add/remove use-def
+// edges. This needs to maintain the UnscheduledSuccs counter.
+TEST_F(DependencyGraphTest, MaintainUnscheduledSuccsOnUseSet) {
+  parseIR(C, R"IR(
+define void @foo(i8 %v0, i8 %v1) {
+  %add0 = add i8 %v0, %v1
+  %add1 = add i8 %add0, %v1
+  ret void
+}
+)IR");
+  llvm::Function *LLVMF = &*M->getFunction("foo");
+  sandboxir::Context Ctx(C);
+  auto *F = Ctx.createFunction(LLVMF);
+  auto *Arg0 = F->getArg(0);
+  auto *BB = &*F->begin();
+  auto It = BB->begin();
+  auto *Add0 = cast<sandboxir::BinaryOperator>(&*It++);
+  auto *Add1 = cast<sandboxir::BinaryOperator>(&*It++);
+  sandboxir::DependencyGraph DAG(getAA(*LLVMF), Ctx);
+  DAG.extend({Add0, Add1});
+  auto *N0 = DAG.getNode(Add0);
+
+  EXPECT_EQ(N0->getNumUnscheduledSuccs(), 1u);
+  // Now change %add1 operand to not use %add0.
+  Add1->setOperand(0, Arg0);
+  EXPECT_EQ(N0->getNumUnscheduledSuccs(), 0u);
+  // Restore it: %add0 is now used by %add1.
+  Add1->setOperand(0, Add0);
+  EXPECT_EQ(N0->getNumUnscheduledSuccs(), 1u);
+
+  // RAUW
+  Add0->replaceAllUsesWith(Arg0);
+  EXPECT_EQ(N0->getNumUnscheduledSuccs(), 0u);
+  // Restore it: %add0 is now used by %add1.
+  Add1->setOperand(0, Add0);
+  EXPECT_EQ(N0->getNumUnscheduledSuccs(), 1u);
+
+  // RUWIf
+  Add0->replaceUsesWithIf(Arg0, [](const auto &U) { return true; });
+  EXPECT_EQ(N0->getNumUnscheduledSuccs(), 0u);
+  // Restore it: %add0 is now used by %add1.
+  Add1->setOperand(0, Add0);
+  EXPECT_EQ(N0->getNumUnscheduledSuccs(), 1u);
+
+  // RUOW
+  Add1->replaceUsesOfWith(Add0, Arg0);
+  EXPECT_EQ(N0->getNumUnscheduledSuccs(), 0u);
+  // Restore it: %add0 is now used by %add1.
+  Add1->setOperand(0, Add0);
+  EXPECT_EQ(N0->getNumUnscheduledSuccs(), 1u);
+}
