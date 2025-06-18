@@ -221,12 +221,12 @@ struct SelectLogicalNotOptimization : public OpRewritePattern<tosa::SelectOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(tosa::SelectOp op,
                                 PatternRewriter &rewriter) const override {
-    auto notOp = op.getPred().getDefiningOp<tosa::LogicalNotOp>();
+    auto notOp = op.getInput1().getDefiningOp<tosa::LogicalNotOp>();
     if (!notOp)
       return failure();
     rewriter.modifyOpInPlace(op, [&]() {
       op.getOperation()->setOperands(
-          {notOp.getInput1(), op.getOnFalse(), op.getOnTrue()});
+          {notOp.getInput1(), op.getInput3(), op.getInput2()});
     });
     return success();
   }
@@ -247,7 +247,7 @@ struct SelectToClampOptimization : public OpRewritePattern<tosa::SelectOp> {
   LogicalResult matchAndRewrite(tosa::SelectOp op,
                                 PatternRewriter &rewriter) const override {
 
-    auto geq = op.getPred().getDefiningOp<tosa::GreaterEqualOp>();
+    auto geq = op.getInput1().getDefiningOp<tosa::GreaterEqualOp>();
     if (!geq) {
       return rewriter.notifyMatchFailure(op,
                                          "Predicate is not a GreaterEqualOp");
@@ -297,8 +297,8 @@ struct SelectToClampOptimization : public OpRewritePattern<tosa::SelectOp> {
       return a.getSplatValue<APFloat>() == b.getSplatValue<APFloat>();
     };
 
-    auto onFalse = op.getOnFalse();
-    auto onTrue = op.getOnTrue();
+    auto onFalse = op.getInput3();
+    auto onTrue = op.getInput2();
     DenseElementsAttr onFalseAttr;
     DenseElementsAttr onTrueAttr;
 
@@ -1722,18 +1722,18 @@ OpFoldResult SliceOp::fold(FoldAdaptor adaptor) {
 }
 
 OpFoldResult tosa::SelectOp::fold(FoldAdaptor adaptor) {
-  if (getOnTrue() == getOnFalse())
-    return getOnTrue();
+  if (getInput2() == getInput3())
+    return getInput2();
 
   auto predicate =
-      llvm::dyn_cast_if_present<DenseIntElementsAttr>(adaptor.getPred());
+      llvm::dyn_cast_if_present<DenseIntElementsAttr>(adaptor.getInput1());
   if (!predicate)
     return {};
 
   if (!predicate.isSplat())
     return {};
-  return predicate.getSplatValue<APInt>().getBoolValue() ? getOnTrue()
-                                                         : getOnFalse();
+  return predicate.getSplatValue<APInt>().getBoolValue() ? getInput2()
+                                                         : getInput3();
 }
 
 OpFoldResult TileOp::fold(FoldAdaptor adaptor) {
