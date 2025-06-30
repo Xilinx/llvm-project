@@ -274,15 +274,11 @@ LogicalResult static binaryOp(PatternRewriter &rewriter, PDLResultList &results,
           "encounter an unsupported binary operator.");
     }
 
-    if (operationStatus != APFloat::opOK) {
-      if (operationStatus != APFloat::opInexact)
-        return failure();
-
-      emitWarning(rewriter.getUnknownLoc())
-          << "Binary arithmetic operation between " << lhsVal.convertToFloat()
-          << " and " << rhsVal.convertToFloat()
-          << " produced an inexact result";
+    if (operationStatus != APFloat::opOK &&
+        operationStatus != APFloat::opInexact) {
+      return failure();
     }
+
     results.push_back(rewriter.getFloatAttr(floatType, resultVal));
     return success();
   }

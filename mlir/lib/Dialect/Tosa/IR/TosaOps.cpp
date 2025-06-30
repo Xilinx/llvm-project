@@ -1079,50 +1079,8 @@ LogicalResult tosa::SliceOp::inferReturnTypeComponents(
     MLIRContext *context, ::std::optional<Location> location,
     SliceOp::Adaptor adaptor,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
-
-  Type inputType = getElementTypeOrSelf(adaptor.getInput1().getType());
-  SmallVector<int64_t> start;
-  SmallVector<int64_t> size;
-
-  if (!tosa::getConstShapeValue(adaptor.getStart().getDefiningOp(), start) ||
-      !tosa::getConstShapeValue(adaptor.getSize().getDefiningOp(), size)) {
-    auto rank = cast<tosa::shapeType>(adaptor.getSize().getType()).getRank();
-    SmallVector<int64_t> fallback(rank, ShapedType::kDynamic);
-    inferredReturnShapes.push_back(ShapedTypeComponents(fallback, inputType));
-    return success();
-  }
-
-  // if size[i] is -1, all remaining elements in dimension i are included
-  // in the slice, similar to TF.
-  ShapeAdaptor inputShape(adaptor.getInput1().getType());
-  // initialize outputShape to all unknown
-  SmallVector<int64_t> outputShape(size.size(), ShapedType::kDynamic);
-  if (inputShape.hasRank()) {
-    for (size_t i = 0; i < size.size(); i++) {
-      if (size[i] != 0 && size[i] >= -1 && start[i] >= 0 &&
-          (ShapedType::isDynamic(inputShape.getDimSize(i)) ||
-           start[i] < inputShape.getDimSize(i))) {
-        // size[i] is not 0 and not < -1, and start[i] is in valid range
-        if (ShapedType::isDynamic(inputShape.getDimSize(i))) {
-          // input shape has unknown dim[i] - only valid if size[i] > 0
-          if (size[i] > 0) {
-            outputShape[i] = size[i];
-          }
-        } else {
-          // input shape has known dim[i]
-          if (size[i] == -1) {
-            outputShape[i] = inputShape.getDimSize(i) - start[i];
-          } else if (start[i] + size[i] <= inputShape.getDimSize(i)) {
-            // start[i] + size[i] is within bound of input shape's dim[i]
-            outputShape[i] = size[i];
-          }
-        }
-      }
-    }
-  } else {
-    outputShape = convertToMlirShape(size);
-  }
-  inferredReturnShapes.push_back(ShapedTypeComponents(outputShape));
+  inferredReturnShapes.push_back(
+      ShapedTypeComponents(convertToMlirShape(adaptor.getSize())));
   return success();
 }
 
@@ -1131,7 +1089,7 @@ LogicalResult tosa::SliceOp::verify() {
   if (!inputType)
     return success();
 
-  auto startShapeRank =
+      ShapedTypeComponents(convertToMlirShape(size)));
       llvm::cast<tosa::shapeType>(getStart().getType()).getRank();
   if (inputType.getRank() != startShapeRank)
     return emitOpError(

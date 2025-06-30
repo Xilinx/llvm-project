@@ -197,11 +197,11 @@ SmallVector<int64_t> mlir::tosa::convertFromMlirShape(ArrayRef<int64_t> shape) {
 
 // AMD: Picked from torch-mlir 12250739bfe85b702f9503cad45c2e535ea8eb18
 // Get accumulator type for TOSA convolution ops
-LogicalResult mlir::tosa ::getConvOpsAccType(PatternRewriter &rewriter,
-                                             RankedTensorType inputTy,
-                                             RankedTensorType weightTy,
-                                             RankedTensorType outputTy,
-                                             TypeAttr &accType) {
+LogicalResult mlir::tosa::getConvOpsAccType(PatternRewriter &rewriter,
+                                            RankedTensorType inputTy,
+                                            RankedTensorType weightTy,
+                                            RankedTensorType outputTy,
+                                            TypeAttr &accType) {
   auto inputElemTy = inputTy.getElementType();
   auto weightElemTy = weightTy.getElementType();
   auto outputElemTy = outputTy.getElementType();
@@ -231,8 +231,8 @@ LogicalResult mlir::tosa ::getConvOpsAccType(PatternRewriter &rewriter,
   } else if (inputElemTy.isInteger(16) && weightElemTy.isInteger(8) &&
              outputElemTy.isInteger(48)) {
     accType = mlir::TypeAttr::get(rewriter.getIntegerType(48));
-  } else if ((isa<Float8E4M3FNType>(inputElemTy) &&
-              isa<Float8E4M3FNType>(weightElemTy) && outputElemTy.isF16()) ||
+  } else if ((isa<Float8E4M3Type>(inputElemTy) &&
+              isa<Float8E4M3Type>(weightElemTy) && outputElemTy.isF16()) ||
              (isa<Float8E5M2Type>(inputElemTy) &&
               isa<Float8E5M2Type>(weightElemTy) && outputElemTy.isF16())) {
     accType = mlir::TypeAttr::get(rewriter.getF16Type());
