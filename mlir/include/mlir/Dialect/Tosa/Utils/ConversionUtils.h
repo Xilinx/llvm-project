@@ -15,6 +15,7 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/Dialect/Tosa/Utils/ShapeUtils.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
@@ -89,6 +90,8 @@ Value getTosaConstShape(ImplicitLocOpBuilder &builder,
 
 Value getTosaConstShape(PatternRewriter &rewriter, Location loc,
                         llvm::ArrayRef<int64_t> shape);
+
+std::optional<int32_t> getConstTosaMulShift(tosa::MulOp mulOp);
 
 // Get accumulator type for TOSA convolution ops
 LogicalResult getConvOpsAccType(PatternRewriter &rewriter,

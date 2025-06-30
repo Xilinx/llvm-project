@@ -15,6 +15,7 @@
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"
 #include "mlir/Dialect/Tosa/Transforms/Passes.h"
+#include "mlir/Dialect/Tosa/Utils/ConversionUtils.h"
 #include "mlir/Dialect/Utils/IndexingUtils.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -354,7 +355,11 @@ struct TosaFoldConstantBase: public OpRewritePattern<TosaOp> {
       DenseElementsAttr valuesSecond) const {
     if (!foldSplatOrSingleUseOnly)
       return true;
-    assert(binaryOp->getNumOperands() == 2);
+    assert(
+        binaryOp->getNumOperands() == 2 ||
+        isa<MulOp>(
+            binaryOp)); // MulOp is a special case that has 3 operands due to
+                        // the shift but it otherwise behaves like a binary op
     auto firstOp = binaryOp->getOperand(0);
     auto secondOp = binaryOp->getOperand(1);
 
@@ -743,7 +748,8 @@ struct TosaFoldConstantMul
   DenseElementsAttr computeInteger(DenseElementsAttr lhsValues,
                                    DenseElementsAttr rhsValues,
                                    PatternRewriter &rewriter, MulOp op) const {
-    if (op.getShift() > 0) {
+    const auto shift = getConstTosaMulShift(op);
+    if (!shift || *shift != 0) {
       (void)rewriter.notifyMatchFailure(
           op, "Non-zero shift folding is currently not implemented.");
       return {};
