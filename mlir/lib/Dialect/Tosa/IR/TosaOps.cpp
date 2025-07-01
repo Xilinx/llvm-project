@@ -1079,8 +1079,17 @@ LogicalResult tosa::SliceOp::inferReturnTypeComponents(
     MLIRContext *context, ::std::optional<Location> location,
     SliceOp::Adaptor adaptor,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
+
+  Type inputType = getElementTypeOrSelf(adaptor.getInput1().getType());
+  SmallVector<int64_t> size;
+  if (!tosa::getConstShapeValue(adaptor.getSize().getDefiningOp(), size)) {
+    auto rank = cast<tosa::shapeType>(adaptor.getSize().getType()).getRank();
+    SmallVector<int64_t> fallback(rank, ShapedType::kDynamic);
+    inferredReturnShapes.push_back(ShapedTypeComponents(fallback, inputType));
+    return success();
+  }
   inferredReturnShapes.push_back(
-      ShapedTypeComponents(convertToMlirShape(adaptor.getSize())));
+      ShapedTypeComponents(convertToMlirShape(size)));
   return success();
 }
 
@@ -1089,7 +1098,7 @@ LogicalResult tosa::SliceOp::verify() {
   if (!inputType)
     return success();
 
-      ShapedTypeComponents(convertToMlirShape(size)));
+  auto startShapeRank =
       llvm::cast<tosa::shapeType>(getStart().getType()).getRank();
   if (inputType.getRank() != startShapeRank)
     return emitOpError(
@@ -1455,8 +1464,8 @@ llvm::LogicalResult tosa::ReshapeOp::verify() {
 
       if ((int64_t)shapeValues.size() != outputType.getRank()) {
         return emitOpError()
-               << "rank of newShape (" << shapeValues.size()
-               << ") and output (" << outputType.getRank() << ") must match";
+               << "rank of newShape (" << shapeValues.size() << ") and output ("
+               << outputType.getRank() << ") must match";
       }
 
       for (int64_t dim = 0; dim < outputType.getRank(); ++dim) {
