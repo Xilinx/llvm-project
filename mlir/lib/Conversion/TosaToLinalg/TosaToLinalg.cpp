@@ -102,22 +102,27 @@ static Value createLinalgBodyCalculationForElementwiseOp(
   // tosa::MulOp
   if (isa<tosa::MulOp>(op)) {
     auto shift_val = cast<tosa::MulOp>(op).getShift();
+    ElementsAttr shift_elem;
+    if (!shift_val.getImpl() ||
+        !matchPattern(shift_val, m_Constant(&shift_elem))) {
+      (void)rewriter.notifyMatchFailure(op, "shift value of mul not found");
+    }
+
+    int32_t shift = shift_elem.getValues<IntegerAttr>()[0].getInt();
 
     if (isa<FloatType>(elementTy)) {
+      if (shift != 0) {
+        (void)rewriter.notifyMatchFailure(op,
+                                          "Cannot have shift value for float");
+        return nullptr;
+      }
       return rewriter.create<arith::MulFOp>(loc, resultTypes, args[0], args[1]);
     }
 
     if (isa<IntegerType>(elementTy)) {
-      int32_t shift = 0;
-      ElementsAttr shift_elem;
-      if (shift_val.getImpl() &&
-          matchPattern(shift_val, m_Constant(&shift_elem))) {
-        // Explicit shift is set.
-        shift = shift_elem.getValues<IntegerAttr>()[0].getInt();
-      }
-
       Value a = args[0];
       Value b = args[1];
+
       if (shift > 0) {
         auto shiftConst =
             rewriter.create<arith::ConstantIntOp>(loc, shift, /*bitwidth=*/8);
@@ -156,11 +161,13 @@ static Value createLinalgBodyCalculationForElementwiseOp(
       return rewriter.create<arith::NegFOp>(loc, resultTypes, args);
 
     if (isa<IntegerType>(elementTy)) {
-      auto inputZpAttr = cast<tosa::NegateOp>(op).getInput1Zp();
-      auto outputZpAttr = cast<tosa::NegateOp>(op).getOutputZp();
+      auto inputZpAttr = cast<tosa::NegateOp>(op).getInput1ZpAttr();
+      auto outputZpAttr = cast<tosa::NegateOp>(op).getOutputZpAttr();
 
-      const int64_t inZp = inputZpAttr ? *inputZpAttr : 0;
-      const int64_t outZp = outputZpAttr ? *outputZpAttr : 0;
+      const int64_t inZp =
+          inputZpAttr ? inputZpAttr.getValue().getSExtValue() : 0;
+      const int64_t outZp =
+          outputZpAttr ? outputZpAttr.getValue().getSExtValue() : 0;
 
       if (!inZp && !outZp) {
         auto constant = rewriter.create<arith::ConstantOp>(

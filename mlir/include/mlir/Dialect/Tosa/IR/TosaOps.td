@@ -105,8 +105,9 @@ def Tosa_Conv2DOp : Tosa_ConvOp<"conv2d"> {
     Tosa_Tensor4D:$input,
     TosaTensorRankOf<[Tosa_Weight], [4]>:$weight,
     Tosa_Tensor1D:$bias,
-    Optional<Tosa_ZeroPointTensor>:$input_zp,
-    Optional<Tosa_ZeroPointTensor>:$weight_zp,
+    Tosa_ScalarTensor:$input_zp,
+    Tosa_ScalarTensor:$weight_zp,
+
     Tosa_IntArrayAttr4:$pad,
     Tosa_IntArrayAttr2:$stride,
     Tosa_IntArrayAttr2:$dilation,
@@ -117,6 +118,14 @@ def Tosa_Conv2DOp : Tosa_ConvOp<"conv2d"> {
   let results = (outs
     Tosa_Tensor4D:$output
   );
+
+
+  let extraClassDeclaration = [{
+    LogicalResult getInputZeroPoint(int64_t &zp);
+    LogicalResult getWeightZeroPoint(int64_t &zp);
+    LogicalResult verifyInputZeroPoint(int64_t zp);
+    LogicalResult verifyWeightZeroPoint(int64_t zp);
+  }];
 
   let builders = [Tosa_ConvOpQuantInfoBuilder];
   let hasVerifier = 1;
@@ -136,8 +145,9 @@ def Tosa_Conv3DOp : Tosa_ConvOp<"conv3d"> {
     Tosa_Tensor5D:$input,
     TosaTensorRankOf<[Tosa_Weight], [5]>:$weight,
     Tosa_Tensor1D:$bias,
-    Optional<Tosa_ZeroPointTensor>:$input_zp,
-    Optional<Tosa_ZeroPointTensor>:$weight_zp,
+    Tosa_ScalarTensor:$input_zp,
+    Tosa_ScalarTensor:$weight_zp,
+
     Tosa_IntArrayAttr6:$pad,
     Tosa_IntArrayAttr3:$stride,
     Tosa_IntArrayAttr3:$dilation,
@@ -148,6 +158,14 @@ def Tosa_Conv3DOp : Tosa_ConvOp<"conv3d"> {
   let results = (outs
     Tosa_Tensor5D:$output
   );
+
+
+  let extraClassDeclaration = [{
+    LogicalResult getInputZeroPoint(int64_t &zp);
+    LogicalResult getWeightZeroPoint(int64_t &zp);
+    LogicalResult verifyInputZeroPoint(int64_t zp);
+    LogicalResult verifyWeightZeroPoint(int64_t zp);
+  }];
 
   let builders = [Tosa_ConvOpQuantInfoBuilder];
   let hasVerifier = 1;
@@ -168,8 +186,9 @@ def Tosa_DepthwiseConv2DOp : Tosa_ConvOp<"depthwise_conv2d"> {
     Tosa_Tensor4D:$input,
     TosaTensorRankOf<[Tosa_Weight], [4]>:$weight,
     Tosa_Tensor1D:$bias,
-    Optional<Tosa_ZeroPointTensor>:$input_zp,
-    Optional<Tosa_ZeroPointTensor>:$weight_zp,
+    Tosa_ScalarTensor:$input_zp,
+    Tosa_ScalarTensor:$weight_zp,
+
     Tosa_IntArrayAttr4:$pad,
     Tosa_IntArrayAttr2:$stride,
     Tosa_IntArrayAttr2:$dilation,
@@ -180,6 +199,14 @@ def Tosa_DepthwiseConv2DOp : Tosa_ConvOp<"depthwise_conv2d"> {
   let results = (outs
     Tosa_Tensor4D:$output
   );
+
+
+  let extraClassDeclaration = [{
+    LogicalResult getInputZeroPoint(int64_t &zp);
+    LogicalResult getWeightZeroPoint(int64_t &zp);
+    LogicalResult verifyInputZeroPoint(int64_t zp);
+    LogicalResult verifyWeightZeroPoint(int64_t zp);
+  }];
 
   let builders = [Tosa_ConvOpQuantInfoBuilder];
   let hasVerifier = 1;
@@ -356,8 +383,9 @@ def Tosa_TransposeConv2DOp : Tosa_ConvOp<"transpose_conv2d"> {
     Tosa_Tensor4D:$input,
     TosaTensorRankOf<[Tosa_Weight], [4]>:$weight,
     Tosa_Tensor1D:$bias,
-    Optional<Tosa_ZeroPointTensor>:$input_zp,
-    Optional<Tosa_ZeroPointTensor>:$weight_zp,
+    Tosa_ScalarTensor:$input_zp,
+    Tosa_ScalarTensor:$weight_zp,
+
     Tosa_IntArrayAttr4:$out_pad,
     Tosa_IntArrayAttr2:$stride,
     Tosa_IntArrayAttr4:$out_shape,
@@ -368,6 +396,14 @@ def Tosa_TransposeConv2DOp : Tosa_ConvOp<"transpose_conv2d"> {
   let results = (outs
     Tosa_Tensor4D:$output
   );
+
+
+  let extraClassDeclaration = [{
+    LogicalResult getInputZeroPoint(int64_t &zp);
+    LogicalResult getWeightZeroPoint(int64_t &zp);
+    LogicalResult verifyInputZeroPoint(int64_t zp);
+    LogicalResult verifyWeightZeroPoint(int64_t zp);
+  }];
 
   let builders = [Tosa_TransConvOpQuantInfoBuilder];
   let hasVerifier = 1;
@@ -823,7 +859,8 @@ def Tosa_MulOp : Tosa_Op<"mul", [
   let arguments = (ins
     Tosa_Tensor:$input1,
     Tosa_Tensor:$input2,
-    Optional<TosaTensorRankOf<[Tosa_Int8], [1]>>:$shift
+    // Apply right shift on i32_t input data only
+    Tosa_ScalarInt8Tensor:$shift
   );
 
   let results = (outs
@@ -1616,7 +1653,7 @@ def Tosa_PadOp : Tosa_InferShapedTypeOp<"pad"> {
   let arguments = (ins
     Tosa_RankedTensor:$input1,
     Tosa_Shape:$padding,
-    Optional<Tosa_ScalarTensor>:$pad_const,
+    Optional<Tosa_Rank0Tensor>:$pad_const,
     OptionalAttr<I32Attr>:$input_zp
   );
 
