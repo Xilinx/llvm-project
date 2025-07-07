@@ -86,17 +86,8 @@ func.func @cast_no_fold_double2(%arg0: tensor<?x1xf32>) -> tensor<?x1xi16> {
 // CHECK-LABEL: @clamp_i32_not_noop
 func.func @clamp_i32_not_noop(%arg0: tensor<4xi32>) -> tensor<4xi32> {
   // CHECK: tosa.clamp
-  %0 = tosa.clamp %arg0 {min_int = 1 : i64, max_int = 4 : i64, min_fp = 1.0 : f32, max_fp = 4.0 : f32} : (tensor<4xi32>) -> tensor<4xi32>
+  %0 = tosa.clamp %arg0 {min_val = 1 : i32, max_val = 4 : i32} : (tensor<4xi32>) -> tensor<4xi32>
   return %0 : tensor<4xi32>
-}
-
-// -----
-
-// CHECK-LABEL: @clamp_f16_not_noop
-func.func @clamp_f16_not_noop(%arg0: tensor<4xf16>) -> tensor<4xf16> {
-  // CHECK: tosa.clamp
-  %0 = tosa.clamp %arg0 {min_int = -128 : i64, max_int = 127 : i64, min_fp = -3.40282347E+38 : f32, max_fp = 3.40282347E+38 : f32} : (tensor<4xf16>) -> tensor<4xf16>
-  return %0 : tensor<4xf16>
 }
 
 // -----
@@ -104,7 +95,7 @@ func.func @clamp_f16_not_noop(%arg0: tensor<4xf16>) -> tensor<4xf16> {
 // CHECK-LABEL: @clamp_f32_not_noop
 func.func @clamp_f32_not_noop(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: tosa.clamp
-  %0 = tosa.clamp %arg0 {min_int = -128 : i64, max_int = 127 : i64, min_fp = -3.40282347E+38 : f32, max_fp = 3.40282347E+38 : f32} : (tensor<4xf32>) -> tensor<4xf32>
+  %0 = tosa.clamp %arg0 {min_val = -3.40282347E+38 : f32, max_val = 3.40282347E+38 : f32} : (tensor<4xf32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
 
@@ -114,8 +105,8 @@ func.func @clamp_f32_not_noop(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 func.func @clamp_f16_is_noop(%arg0: tensor<4xf16>) -> tensor<4xf16> {
   // CHECK: return %arg0
   // CHECK-NOT: "tosa.clamp"
-  // 0xFF800000 and 0x7F800000 are respectively negative and positive F32 infinity.
-  %0 = tosa.clamp %arg0 {min_int = -128 : i64, max_int = 127 : i64, min_fp = 0xFF800000 : f32, max_fp = 0x7F800000 : f32} : (tensor<4xf16>) -> tensor<4xf16>
+  // 0x7C00 and 0xFC00 are respectively positive and negative F32 infinity.
+  %0 = tosa.clamp %arg0 {max_val = 0x7C00 : f16, min_val = 0xFC00 : f16} : (tensor<4xf16>) -> tensor<4xf16>
   return %0 : tensor<4xf16>
 }
 
@@ -126,7 +117,7 @@ func.func @clamp_f32_is_noop(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK: return %arg0
   // CHECK-NOT: "tosa.clamp"
   // 0xFF800000 and 0x7F800000 are respectively negative and positive F32 infinity.
-  %0 = tosa.clamp %arg0 {min_int = -128 : i64, max_int = 127 : i64, min_fp = 0xFF800000 : f32, max_fp = 0x7F800000 : f32} : (tensor<4xf32>) -> tensor<4xf32>
+  %0 = tosa.clamp %arg0 {min_val = 0xFF800000 : f32, max_val = 0x7F800000 : f32} : (tensor<4xf32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
 
@@ -136,7 +127,7 @@ func.func @clamp_f32_is_noop(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 func.func @clamp_int8_is_noop(%arg0: tensor<4xi8>) -> tensor<4xi8> {
   // CHECK: return %arg0
   // CHECK-NOT: tosa.clamp
-  %0 = tosa.clamp %arg0 {min_int = -128 : i64, max_int = 127 : i64, min_fp = -3.40282347E+38 : f32, max_fp = 3.40282347E+38 : f32} :  (tensor<4xi8>) -> tensor<4xi8>
+  %0 = tosa.clamp %arg0 {min_val = -128 : i8, max_val = 127 : i8} :  (tensor<4xi8>) -> tensor<4xi8>
   return %0 : tensor<4xi8>
 }
 
@@ -146,7 +137,7 @@ func.func @clamp_int8_is_noop(%arg0: tensor<4xi8>) -> tensor<4xi8> {
 func.func @clamp_int16_is_noop(%arg0: tensor<4xi16>) -> tensor<4xi16> {
   // CHECK: return %arg0
   // CHECK-NOT: tosa.clamp
-  %0 = tosa.clamp %arg0 {min_int = -32768 : i64, max_int = 32767 : i64, min_fp = -3.40282347E+38 : f32, max_fp = 3.40282347E+38 : f32} :  (tensor<4xi16>) -> tensor<4xi16>
+  %0 = tosa.clamp %arg0 {min_val = -32768 : i16, max_val = 32767 : i16} :  (tensor<4xi16>) -> tensor<4xi16>
   return %0 : tensor<4xi16>
 }
 
@@ -156,7 +147,7 @@ func.func @clamp_int16_is_noop(%arg0: tensor<4xi16>) -> tensor<4xi16> {
 func.func @clamp_uint8_is_noop(%arg0: tensor<4xui8>) -> tensor<4xui8> {
   // CHECK: return %arg0
   // CHECK-NOT: tosa.clamp
-  %0 = tosa.clamp %arg0 {min_int = 0 : i64, max_int = 255 : i64, min_fp = -3.40282347E+38 : f32, max_fp = 3.40282347E+38 : f32} :  (tensor<4xui8>) -> tensor<4xui8>
+  %0 = tosa.clamp %arg0 {min_val = 0 : ui8, max_val = 255 : ui8} :  (tensor<4xui8>) -> tensor<4xui8>
   return %0 : tensor<4xui8>
 }
 
@@ -164,35 +155,35 @@ func.func @clamp_uint8_is_noop(%arg0: tensor<4xui8>) -> tensor<4xui8> {
 
 // CHECK-LABEL: @clamp_twice_is_single_clamp
 func.func @clamp_twice_is_single_clamp(%arg0: tensor<4xi8>) -> tensor<4xi8> {
-  // CHECK: tosa.clamp %arg0 {max_fp = 3.000000e+00 : f32, max_int = 2 : i64, min_fp = -3.000000e+00 : f32, min_int = -2 : i64}
-  %0 = tosa.clamp %arg0 {max_fp = 3.0 : f32, max_int = 4 : i64, min_fp = -5.0 : f32, min_int = -2 : i64} :  (tensor<4xi8>) -> tensor<4xi8>
-  %1 = tosa.clamp %0 {max_fp = 5.0 : f32, max_int = 2 : i64, min_fp = -3.0 : f32, min_int = -4 : i64} :  (tensor<4xi8>) -> tensor<4xi8>
+  // CHECK: tosa.clamp %arg0 {max_val = 2 : i8, min_val = -2 : i8}
+  %0 = tosa.clamp %arg0 {max_val = 4 : i8, min_val = -2 : i8} :  (tensor<4xi8>) -> tensor<4xi8>
+  %1 = tosa.clamp %0 {max_val = 2 : i8, min_val = -4 : i8} :  (tensor<4xi8>) -> tensor<4xi8>
   return %1 : tensor<4xi8>
 }
 
 func.func @clamp_minimum_i32(%arg0: tensor<4xi32>) -> tensor<4xi32> {
-  // CHECK: tosa.clamp %arg0 {max_fp = 6.000000e+00 : f32, max_int = 6 : i64, min_fp = -3.40282347E+38 : f32, min_int = -2147483648 : i64}
+  // CHECK: tosa.clamp %arg0 {max_val = 6 : i32, min_val = -2147483648 : i32}
   %0 = "tosa.const"() <{value = dense<6> : tensor<1xi32>}> : () -> tensor<1xi32>
   %1 = tosa.minimum %arg0, %0 : (tensor<4xi32>, tensor<1xi32>) -> tensor<4xi32>
   return %1 : tensor<4xi32>
 }
 
 func.func @clamp_minimum_f32(%arg0: tensor<4xf32>) -> tensor<4xf32> {
-    // CHECK: tosa.clamp %arg0 {max_fp = 6.000000e+00 : f32, max_int = 6 : i64, min_fp = -3.40282347E+38 : f32, min_int = -2147483648 : i64}
+    // CHECK: tosa.clamp %arg0 {max_val = 6.000000e+00 : f32, min_val = 0xFF800000 : f32}
   %0 = "tosa.const"() <{value = dense<6.0> : tensor<1xf32>}> : () -> tensor<1xf32>
   %1 = tosa.minimum %arg0, %0 : (tensor<4xf32>, tensor<1xf32>) -> tensor<4xf32>
   return %1 : tensor<4xf32>
 }
 
 func.func @clamp_maximum_i32(%arg0: tensor<4xi32>) -> tensor<4xi32> {
-  // CHECK: tosa.clamp %arg0 {max_fp = 3.40282347E+38 : f32, max_int = 9223372036854775807 : i64, min_fp = -6.000000e+00 : f32, min_int = -6 : i64}
+  // CHECK: tosa.clamp %arg0 {max_val = 2147483647 : i32, min_val = -6 : i32}
   %0 = "tosa.const"() <{value = dense<-6> : tensor<1xi32>}> : () -> tensor<1xi32>
   %1 = tosa.maximum %arg0, %0 : (tensor<4xi32>, tensor<1xi32>) -> tensor<4xi32>
   return %1 : tensor<4xi32>
 }
 
 func.func @clamp_maximum_f32(%arg0: tensor<4xf32>) -> tensor<4xf32> {
-    // CHECK: tosa.clamp %arg0 {max_fp = 3.40282347E+38 : f32, max_int = 9223372036854775807 : i64, min_fp = -6.000000e+00 : f32, min_int = -6 : i64}
+    // CHECK: tosa.clamp %arg0 {max_val = 0x7F800000 : f32, min_val = -6.000000e+00 : f32}
   %0 = "tosa.const"() <{value = dense<-6.0> : tensor<1xf32>}> : () -> tensor<1xf32>
   %1 = tosa.maximum %arg0, %0 : (tensor<4xf32>, tensor<1xf32>) -> tensor<4xf32>
   return %1 : tensor<4xf32>
@@ -235,10 +226,10 @@ func.func @concat_fold_zero_size(%arg0: tensor<?x0xf32>, %arg1: tensor<?x1xf32>,
 
 // CHECK: @disjoint_clamp_twice_is_not_single_clamp(%[[INPUT:.*]]: tensor<4xi8>)
 func.func @disjoint_clamp_twice_is_not_single_clamp(%arg0: tensor<4xi8>) -> tensor<4xi8> {
-  // CHECK: %[[CLAMP_1:.*]] = tosa.clamp %[[INPUT]] {max_fp = -5.000000e+00 : f32, max_int = -5 : i64, min_fp = -1.000000e+00 : f32, min_int = -10 : i64} :  (tensor<4xi8>) -> tensor<4xi8>
-  // CHECK-NEXT: tosa.clamp %[[CLAMP_1]] {max_fp = 5.000000e+00 : f32, max_int = 5 : i64, min_fp = 1.000000e+00 : f32, min_int = 1 : i64} :  (tensor<4xi8>) -> tensor<4xi8>
-  %0 = tosa.clamp %arg0 {max_fp = -5.0 : f32, max_int = -5 : i64, min_fp = -1.0 : f32, min_int = -10 : i64} :  (tensor<4xi8>) -> tensor<4xi8>
-  %1 = tosa.clamp %0 {max_fp = 5.0 : f32, max_int = 5 : i64, min_fp = 1.0 : f32, min_int = 1 : i64} :  (tensor<4xi8>) -> tensor<4xi8>
+  // CHECK: %[[CLAMP_1:.*]] = tosa.clamp %[[INPUT]] {max_val = -5 : i8, min_val = -10 : i8} :  (tensor<4xi8>) -> tensor<4xi8>
+  // CHECK-NEXT: tosa.clamp %[[CLAMP_1]] {max_val = 5 : i8, min_val = 1 : i8} :  (tensor<4xi8>) -> tensor<4xi8>
+  %0 = tosa.clamp %arg0 {max_val = -5 : i8, min_val = -10 : i8} :  (tensor<4xi8>) -> tensor<4xi8>
+  %1 = tosa.clamp %0 {max_val = 5 : i8, min_val = 1 : i8} :  (tensor<4xi8>) -> tensor<4xi8>
   return %1 : tensor<4xi8>
 }
 
@@ -246,9 +237,9 @@ func.func @disjoint_clamp_twice_is_not_single_clamp(%arg0: tensor<4xi8>) -> tens
 
 // CHECK-LABEL: @clamp_twice_with_nan_propagate_is_single_clamp
 func.func @clamp_twice_with_nan_propagate_is_single_clamp(%arg0: tensor<4xi8>) -> tensor<4xi8> {
-  // CHECK: tosa.clamp %arg0 {max_fp = 3.000000e+00 : f32, max_int = 2 : i64, min_fp = -3.000000e+00 : f32, min_int = -2 : i64}
-  %0 = tosa.clamp %arg0 {max_fp = 3.0 : f32, max_int = 4 : i64, min_fp = -5.0 : f32, min_int = -2 : i64, nan_mode = "PROPAGATE"} :  (tensor<4xi8>) -> tensor<4xi8>
-  %1 = tosa.clamp %0 {max_fp = 5.0 : f32, max_int = 2 : i64, min_fp = -3.0 : f32, min_int = -4 : i64, nan_mode = "PROPAGATE"} :  (tensor<4xi8>) -> tensor<4xi8>
+  // CHECK: tosa.clamp %arg0 {max_val = 2 : i8, min_val = -2 : i8}
+  %0 = tosa.clamp %arg0 {max_val = 4 : i8, min_val = -2 : i8, nan_mode = "PROPAGATE"} :  (tensor<4xi8>) -> tensor<4xi8>
+  %1 = tosa.clamp %0 {max_val = 2 : i8, min_val = -4 : i8, nan_mode = "PROPAGATE"} :  (tensor<4xi8>) -> tensor<4xi8>
   return %1 : tensor<4xi8>
 }
 
@@ -256,9 +247,9 @@ func.func @clamp_twice_with_nan_propagate_is_single_clamp(%arg0: tensor<4xi8>) -
 
 // CHECK-LABEL: @clamp_twice_with_nan_ignore_is_single_clamp
 func.func @clamp_twice_with_nan_ignore_is_single_clamp(%arg0: tensor<4xi8>) -> tensor<4xi8> {
-  // CHECK: tosa.clamp %arg0 {max_fp = 3.000000e+00 : f32, max_int = 2 : i64, min_fp = -3.000000e+00 : f32, min_int = -2 : i64, nan_mode = "IGNORE"}
-  %0 = tosa.clamp %arg0 {max_fp = 3.0 : f32, max_int = 4 : i64, min_fp = -5.0 : f32, min_int = -2 : i64, nan_mode = "IGNORE"} :  (tensor<4xi8>) -> tensor<4xi8>
-  %1 = tosa.clamp %0 {max_fp = 5.0 : f32, max_int = 2 : i64, min_fp = -3.0 : f32, min_int = -4 : i64, nan_mode = "IGNORE"} :  (tensor<4xi8>) -> tensor<4xi8>
+  // CHECK: tosa.clamp %arg0 {max_val = 2 : i8, min_val = -2 : i8, nan_mode = "IGNORE"}
+  %0 = tosa.clamp %arg0 {max_val = 4 : i8, min_val = -2 : i8, nan_mode = "IGNORE"} :  (tensor<4xi8>) -> tensor<4xi8>
+  %1 = tosa.clamp %0 {max_val = 2 : i8, min_val = -4 : i8, nan_mode = "IGNORE"} :  (tensor<4xi8>) -> tensor<4xi8>
   return %1 : tensor<4xi8>
 }
 
@@ -266,9 +257,9 @@ func.func @clamp_twice_with_nan_ignore_is_single_clamp(%arg0: tensor<4xi8>) -> t
 
 // CHECK-LABEL: @clamp_twice_with_nan_ignore_propagate_is_single_clamp
 func.func @clamp_twice_with_nan_ignore_propagate_is_single_clamp(%arg0: tensor<4xi8>) -> tensor<4xi8> {
-  // CHECK: tosa.clamp %arg0 {max_fp = 3.000000e+00 : f32, max_int = 2 : i64, min_fp = -3.000000e+00 : f32, min_int = -2 : i64, nan_mode = "IGNORE"}
-  %0 = tosa.clamp %arg0 {max_fp = 3.0 : f32, max_int = 4 : i64, min_fp = -5.0 : f32, min_int = -2 : i64, nan_mode = "IGNORE"} :  (tensor<4xi8>) -> tensor<4xi8>
-  %1 = tosa.clamp %0 {max_fp = 5.0 : f32, max_int = 2 : i64, min_fp = -3.0 : f32, min_int = -4 : i64, nan_mode = "PROPAGATE"} :  (tensor<4xi8>) -> tensor<4xi8>
+  // CHECK: tosa.clamp %arg0 {max_val = 2 : i8, min_val = -2 : i8, nan_mode = "IGNORE"}
+  %0 = tosa.clamp %arg0 {max_val = 4 : i8, min_val = -2 : i8, nan_mode = "IGNORE"} :  (tensor<4xi8>) -> tensor<4xi8>
+  %1 = tosa.clamp %0 {max_val = 2 : i8, min_val = -4 : i8, nan_mode = "PROPAGATE"} :  (tensor<4xi8>) -> tensor<4xi8>
   return %1 : tensor<4xi8>
 }
 
@@ -276,10 +267,10 @@ func.func @clamp_twice_with_nan_ignore_propagate_is_single_clamp(%arg0: tensor<4
 
 // CHECK: @clamp_twice_with_nan_propagate_ignore_is_not_single_clamp(%[[INPUT:.*]]: tensor<4xi8>)
 func.func @clamp_twice_with_nan_propagate_ignore_is_not_single_clamp(%arg0: tensor<4xi8>) -> tensor<4xi8> {
-  // CHECK: %[[CLAMP_1:.*]] = tosa.clamp %[[INPUT]] {max_fp = 3.000000e+00 : f32, max_int = 4 : i64, min_fp = -5.000000e+00 : f32, min_int = -2 : i64} :  (tensor<4xi8>) -> tensor<4xi8>
-  // CHECK-NEXT: tosa.clamp %[[CLAMP_1]] {max_fp = 5.000000e+00 : f32, max_int = 2 : i64, min_fp = -3.000000e+00 : f32, min_int = -4 : i64, nan_mode = "IGNORE"} :  (tensor<4xi8>) -> tensor<4xi8>
-  %0 = tosa.clamp %arg0 {max_fp = 3.0 : f32, max_int = 4 : i64, min_fp = -5.0 : f32, min_int = -2 : i64, nan_mode = "PROPAGATE"} :  (tensor<4xi8>) -> tensor<4xi8>
-  %1 = tosa.clamp %0 {max_fp = 5.0 : f32, max_int = 2 : i64, min_fp = -3.0 : f32, min_int = -4 : i64, nan_mode = "IGNORE"} :  (tensor<4xi8>) -> tensor<4xi8>
+  // CHECK: %[[CLAMP_1:.*]] = tosa.clamp %[[INPUT]] {max_val = 4 : i8, min_val = -2 : i8} :  (tensor<4xi8>) -> tensor<4xi8>
+  // CHECK-NEXT: tosa.clamp %[[CLAMP_1]] {max_val = 2 : i8, min_val = -4 : i8, nan_mode = "IGNORE"} :  (tensor<4xi8>) -> tensor<4xi8>
+  %0 = tosa.clamp %arg0 {max_val = 4 : i8, min_val = -2 : i8, nan_mode = "PROPAGATE"} :  (tensor<4xi8>) -> tensor<4xi8>
+  %1 = tosa.clamp %0 {max_val = 2 : i8, min_val = -4 : i8, nan_mode = "IGNORE"} :  (tensor<4xi8>) -> tensor<4xi8>
   return %1 : tensor<4xi8>
 }
 
@@ -1480,8 +1471,9 @@ func.func nested @do_not_fold_reciprocal_int() -> tensor<3x600x1200xi32> {
 
 // CHECK-LABEL: @canonicalize_select_to_clamp
 func.func @canonicalize_select_to_clamp(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
-// CHECK:           %[[VAL_1:.*]] = tosa.clamp %arg{{.*}} {max_fp = 0x7F800000 : f32, max_int = 9223372036854775807 : i64, min_fp = 1.500000e+00 : f32, min_int = -9223372036854775808 : i64} : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
-// CHECK:           return %[[VAL_1]] : tensor<13x21x3xf32>
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.clamp [[PARAM_0_]] {max_val = 0x7F800000 : f32, min_val = 1.500000e+00 : f32} : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK:           return [[VAR_0_]] : tensor<13x21x3xf32>
   %0 =  "tosa.const"() <{value = dense<1.500000e+00> : tensor<13x21x3xf32>}>: () -> tensor<13x21x3xf32>
   %1 = tosa.greater_equal %arg0, %0: (tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xi1>
   %2 = tosa.select %1, %arg0, %0: ( tensor<13x21x3xi1>, tensor<13x21x3xf32>, tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
@@ -1503,8 +1495,9 @@ func.func @canonicalize_select_to_clamp_not_splat(%arg0: tensor<4xi32>) -> tenso
 
 // CHECK-LABEL: @canonicalize_select_to_clamp_bf16
 func.func @canonicalize_select_to_clamp_bf16(%arg0: tensor<13x21x3xbf16>) -> tensor<13x21x3xbf16> {
-// CHECK:           %[[VAL_1:.*]] = tosa.clamp %arg{{.*}} {max_fp = 0x7F80 : bf16, max_int = 9223372036854775807 : i64, min_fp = 1.500000e+00 : bf16, min_int = -9223372036854775808 : i64} : (tensor<13x21x3xbf16>) -> tensor<13x21x3xbf16>
-// CHECK:           return %[[VAL_1]] : tensor<13x21x3xbf16>
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<13x21x3xbf16>) -> tensor<13x21x3xbf16> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.clamp [[PARAM_0_]] {max_val = 0x7F80 : bf16, min_val = 1.500000e+00 : bf16} : (tensor<13x21x3xbf16>) -> tensor<13x21x3xbf16>
+// CHECK:           return [[VAR_0_]] : tensor<13x21x3xbf16>
   %0 =  "tosa.const"() <{value = dense<1.500000e+00> : tensor<13x21x3xbf16>}>: () -> tensor<13x21x3xbf16>
   %1 = tosa.greater_equal %arg0, %0: (tensor<13x21x3xbf16>, tensor<13x21x3xbf16>) -> tensor<13x21x3xi1>
   %2 = tosa.select %1, %arg0, %0: ( tensor<13x21x3xi1>, tensor<13x21x3xbf16>, tensor<13x21x3xbf16>) -> tensor<13x21x3xbf16>
@@ -1526,8 +1519,9 @@ func.func @canonicalize_select_to_clamp_ui64(%arg0: tensor<13x21x3xui64>) -> ten
 
 // CHECK-LABEL: @canonicalize_select_to_clamp_ui4
 func.func @canonicalize_select_to_clamp_ui4(%arg0: tensor<13x21x3xui4>) -> tensor<13x21x3xui4> {
-// CHECK:           %[[VAL_1:.*]] = tosa.clamp %arg{{.*}} {max_fp = 0x7F800000 : f32, max_int = 9223372036854775807 : i64, min_fp = 0xFF800000 : f32, min_int = 8 : i64} : (tensor<13x21x3xui4>) -> tensor<13x21x3xui4>
-// CHECK:           return %[[VAL_1]] : tensor<13x21x3xui4>
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<13x21x3xui4>) -> tensor<13x21x3xui4> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.clamp [[PARAM_0_]] {max_val = 15 : ui4, min_val = 8 : ui4} : (tensor<13x21x3xui4>) -> tensor<13x21x3xui4>
+// CHECK:           return [[VAR_0_]] : tensor<13x21x3xui4>
   %0 =  "tosa.const"() <{value = dense<8> : tensor<13x21x3xui4>}>: () -> tensor<13x21x3xui4>
   %1 = tosa.greater_equal %arg0, %0: (tensor<13x21x3xui4>, tensor<13x21x3xui4>) -> tensor<13x21x3xi1>
   %2 = tosa.select %1, %arg0, %0: ( tensor<13x21x3xi1>, tensor<13x21x3xui4>, tensor<13x21x3xui4>) -> tensor<13x21x3xui4>
@@ -1538,8 +1532,9 @@ func.func @canonicalize_select_to_clamp_ui4(%arg0: tensor<13x21x3xui4>) -> tenso
 
 // CHECK-LABEL: @canonicalize_select_to_clamp_i16_pat2
 func.func @canonicalize_select_to_clamp_i16_pat2(%arg0: tensor<13x21x3xi16>) -> tensor<13x21x3xi16> {
-// CHECK:           %[[VAL_1:.*]] = tosa.clamp %arg{{.*}} {max_fp = 0x7F800000 : f32, max_int = 3 : i64, min_fp = 0xFF800000 : f32, min_int = -9223372036854775808 : i64} : (tensor<13x21x3xi16>) -> tensor<13x21x3xi16>
-// CHECK:           return %[[VAL_1]] : tensor<13x21x3xi16>
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<13x21x3xi16>) -> tensor<13x21x3xi16> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.clamp [[PARAM_0_]] {max_val = 3 : i16, min_val = -32768 : i16} : (tensor<13x21x3xi16>) -> tensor<13x21x3xi16>
+// CHECK:           return [[VAR_0_]] : tensor<13x21x3xi16>
   %0 =  "tosa.const"() <{value = dense<3> : tensor<13x21x3xi16>}>: () -> tensor<13x21x3xi16>
   %1 = tosa.greater_equal %arg0, %0: (tensor<13x21x3xi16>, tensor<13x21x3xi16>) -> tensor<13x21x3xi1>
   %2 = tosa.select %1, %0, %arg0: ( tensor<13x21x3xi1>, tensor<13x21x3xi16>, tensor<13x21x3xi16>) -> tensor<13x21x3xi16>
@@ -1549,8 +1544,9 @@ func.func @canonicalize_select_to_clamp_i16_pat2(%arg0: tensor<13x21x3xi16>) -> 
 
 // CHECK-LABEL: @canonicalize_select_to_clamp_i8_neg
 func.func @canonicalize_select_to_clamp_i8_neg(%arg0: tensor<13x21x3xi8>) -> tensor<13x21x3xi8> {
-// CHECK:           %[[VAL_1:.*]] = tosa.clamp %arg{{.*}} {max_fp = 0x7F800000 : f32, max_int = 9223372036854775807 : i64, min_fp = 0xFF800000 : f32, min_int = -42 : i64} : (tensor<13x21x3xi8>) -> tensor<13x21x3xi8>
-// CHECK:           return %[[VAL_1]] : tensor<13x21x3xi8>
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<13x21x3xi8>) -> tensor<13x21x3xi8> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.clamp [[PARAM_0_]] {max_val = 127 : i8, min_val = -42 : i8} : (tensor<13x21x3xi8>) -> tensor<13x21x3xi8>
+// CHECK:           return [[VAR_0_]] : tensor<13x21x3xi8>
   %0 =  "tosa.const"() <{value = dense<-42> : tensor<13x21x3xi8>}>: () -> tensor<13x21x3xi8>
   %1 = tosa.greater_equal %arg0, %0: (tensor<13x21x3xi8>, tensor<13x21x3xi8>) -> tensor<13x21x3xi1>
   %2 = tosa.select %1, %arg0, %0: ( tensor<13x21x3xi1>, tensor<13x21x3xi8>, tensor<13x21x3xi8>) -> tensor<13x21x3xi8>
@@ -1561,8 +1557,9 @@ func.func @canonicalize_select_to_clamp_i8_neg(%arg0: tensor<13x21x3xi8>) -> ten
 
 // CHECK-LABEL: @canonicalize_select_to_clamp_f64_pat2_neg
 func.func @canonicalize_select_to_clamp_f64_pat2_neg(%arg0: tensor<13x21x3xf64>) -> tensor<13x21x3xf64> {
-// CHECK:           %[[VAL_1:.*]] = tosa.clamp %arg{{.*}} {max_fp = -3.500000e+00 : f64, max_int = 9223372036854775807 : i64, min_fp = 0xFFF0000000000000 : f64, min_int = -9223372036854775808 : i64} : (tensor<13x21x3xf64>) -> tensor<13x21x3xf64>
-// CHECK:           return %[[VAL_1]] : tensor<13x21x3xf64>
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<13x21x3xf64>) -> tensor<13x21x3xf64> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.clamp [[PARAM_0_]] {max_val = -3.500000e+00 : f64, min_val = 0xFFF0000000000000 : f64} : (tensor<13x21x3xf64>) -> tensor<13x21x3xf64>
+// CHECK:           return [[VAR_0_]] : tensor<13x21x3xf64>
   %0 =  "tosa.const"() <{value = dense<-3.5> : tensor<13x21x3xf64>}>: () -> tensor<13x21x3xf64>
   %1 = tosa.greater_equal %arg0, %0: (tensor<13x21x3xf64>, tensor<13x21x3xf64>) -> tensor<13x21x3xi1>
   %2 = tosa.select %1, %0, %arg0: ( tensor<13x21x3xi1>, tensor<13x21x3xf64>, tensor<13x21x3xf64>) -> tensor<13x21x3xf64>
@@ -1572,8 +1569,9 @@ func.func @canonicalize_select_to_clamp_f64_pat2_neg(%arg0: tensor<13x21x3xf64>)
 
 // CHECK-LABEL: @canonicalize_select_lrelu_zero_pattern
 func.func @canonicalize_select_lrelu_zero_pattern(%arg0: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
-// CHECK:           %[[VAL_1:.*]] = tosa.clamp %arg{{.*}} {max_fp = 0x7F800000 : f32, max_int = 9223372036854775807 : i64, min_fp = 0.000000e+00 : f32, min_int = -9223372036854775808 : i64} : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
-// CHECK:           return %[[VAL_1]] : tensor<13x21x3xf32>
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<13x21x3xf32>) -> tensor<13x21x3xf32> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.clamp [[PARAM_0_]] {max_val = 0x7F800000 : f32, min_val = 0.000000e+00 : f32} : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
+// CHECK:           return [[VAR_0_]] : tensor<13x21x3xf32>
   %0 =  "tosa.const"() <{value = dense<0.000000e+00> : tensor<1x1x1xf32>}>: () -> tensor<1x1x1xf32>
   %1 = tosa.mul %arg0, %0 {shift = 0 : i8}: (tensor<13x21x3xf32>, tensor<1x1x1xf32>) -> tensor<13x21x3xf32>
   %2 = tosa.greater_equal %arg0, %0: (tensor<13x21x3xf32>, tensor<1x1x1xf32>) -> tensor<13x21x3xi1>
@@ -1585,9 +1583,10 @@ func.func @canonicalize_select_lrelu_zero_pattern(%arg0: tensor<13x21x3xf32>) ->
 
 // CHECK-LABEL: @canonicalize_select_to_clamp_i64_and_i8_pat1
 func.func @canonicalize_select_to_clamp_i64_and_i8_pat1(%arg0: tensor<13x21x3xi64>, %arg1: tensor<13x21x3xi8>) -> tensor<13x21x3xi8> {
-// CHECK:           %[[VAL_1:.*]] = tosa.cast %arg{{.*}} : (tensor<13x21x3xi64>) -> tensor<13x21x3xi8>
-// CHECK:           %[[VAL_2:.*]] = tosa.clamp %[[VAL_1]] {max_fp = 0x7F800000 : f32, max_int = 9223372036854775807 : i64, min_fp = 0xFF800000 : f32, min_int = 42 : i64} : (tensor<13x21x3xi8>) -> tensor<13x21x3xi8>
-// CHECK:           return %[[VAL_2]] : tensor<13x21x3xi8>
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<13x21x3xi64>, [[PARAM_1_:%.+]]: tensor<13x21x3xi8>) -> tensor<13x21x3xi8> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.cast [[PARAM_0_]] : (tensor<13x21x3xi64>) -> tensor<13x21x3xi8>
+// CHECK:           [[VAR_1_:%.+]] = tosa.clamp [[VAR_0_]] {max_val = 127 : i8, min_val = 42 : i8} : (tensor<13x21x3xi8>) -> tensor<13x21x3xi8>
+// CHECK:           return [[VAR_1_]] : tensor<13x21x3xi8>
   %0 =  "tosa.const"() <{value = dense<42> : tensor<13x21x3xi64>}>: () -> tensor<13x21x3xi64>
   %1 =  "tosa.const"() <{value = dense<42> : tensor<13x21x3xi8>}>: () -> tensor<13x21x3xi8>
   %2 = tosa.greater_equal %arg0, %0: (tensor<13x21x3xi64>, tensor<13x21x3xi64>) -> tensor<13x21x3xi1>
@@ -1599,9 +1598,10 @@ func.func @canonicalize_select_to_clamp_i64_and_i8_pat1(%arg0: tensor<13x21x3xi6
 
 // CHECK-LABEL: @canonicalize_select_to_clamp_i64_and_i8_pat2
 func.func @canonicalize_select_to_clamp_i64_and_i8_pat2(%arg0: tensor<13x21x3xi64>, %arg1: tensor<13x21x3xi8>) -> tensor<13x21x3xi8> {
-// CHECK:           %[[VAL_1:.*]] = tosa.cast %arg{{.*}} : (tensor<13x21x3xi64>) -> tensor<13x21x3xi8>
-// CHECK:           %[[VAL_2:.*]] = tosa.clamp %[[VAL_1]] {max_fp = 0x7F800000 : f32, max_int = -42 : i64, min_fp = 0xFF800000 : f32, min_int = -9223372036854775808 : i64} : (tensor<13x21x3xi8>) -> tensor<13x21x3xi8>
-// CHECK:           return %[[VAL_2]] : tensor<13x21x3xi8>
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<13x21x3xi64>, [[PARAM_1_:%.+]]: tensor<13x21x3xi8>) -> tensor<13x21x3xi8> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.cast [[PARAM_0_]] : (tensor<13x21x3xi64>) -> tensor<13x21x3xi8>
+// CHECK:           [[VAR_1_:%.+]] = tosa.clamp [[VAR_0_]] {max_val = -42 : i8, min_val = -128 : i8} : (tensor<13x21x3xi8>) -> tensor<13x21x3xi8>
+// CHECK:           return [[VAR_1_]] : tensor<13x21x3xi8>
   %0 =  "tosa.const"() <{value = dense<-42> : tensor<13x21x3xi64>}>: () -> tensor<13x21x3xi64>
   %1 =  "tosa.const"() <{value = dense<-42> : tensor<13x21x3xi8>}>: () -> tensor<13x21x3xi8>
   %2 = tosa.greater_equal %arg0, %0: (tensor<13x21x3xi64>, tensor<13x21x3xi64>) -> tensor<13x21x3xi1>
@@ -1613,9 +1613,10 @@ func.func @canonicalize_select_to_clamp_i64_and_i8_pat2(%arg0: tensor<13x21x3xi6
 
 // CHECK-LABEL: @canonicalize_select_to_clamp_i8_and_i64_pat1
 func.func @canonicalize_select_to_clamp_i8_and_i64_pat1(%arg0: tensor<13x21x3xi8>, %arg1: tensor<13x21x3xi64>) -> tensor<13x21x3xi64> {
-// CHECK:           %[[VAL_1:.*]] = tosa.cast %arg{{.*}} : (tensor<13x21x3xi8>) -> tensor<13x21x3xi64>
-// CHECK:           %[[VAL_2:.*]] = tosa.clamp %[[VAL_1]] {max_fp = 0x7F800000 : f32, max_int = 9223372036854775807 : i64, min_fp = 0xFF800000 : f32, min_int = 42 : i64} : (tensor<13x21x3xi64>) -> tensor<13x21x3xi64>
-// CHECK:           return %[[VAL_2]] : tensor<13x21x3xi64>
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<13x21x3xi8>, [[PARAM_1_:%.+]]: tensor<13x21x3xi64>) -> tensor<13x21x3xi64> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.cast [[PARAM_0_]] : (tensor<13x21x3xi8>) -> tensor<13x21x3xi64>
+// CHECK:           [[VAR_1_:%.+]] = tosa.clamp [[VAR_0_]] {max_val = 9223372036854775807 : i64, min_val = 42 : i64} : (tensor<13x21x3xi64>) -> tensor<13x21x3xi64>
+// CHECK:           return [[VAR_1_]] : tensor<13x21x3xi64>
   %0 =  "tosa.const"() <{value = dense<42> : tensor<13x21x3xi8>}>: () -> tensor<13x21x3xi8>
   %1 =  "tosa.const"() <{value = dense<42> : tensor<13x21x3xi64>}>: () -> tensor<13x21x3xi64>
   %2 = tosa.greater_equal %arg0, %0: (tensor<13x21x3xi8>, tensor<13x21x3xi8>) -> tensor<13x21x3xi1>
@@ -1627,9 +1628,10 @@ func.func @canonicalize_select_to_clamp_i8_and_i64_pat1(%arg0: tensor<13x21x3xi8
 
 // CHECK-LABEL: @canonicalize_select_to_clamp_i8_and_i64_pat2
 func.func @canonicalize_select_to_clamp_i8_and_i64_pat2(%arg0: tensor<13x21x3xi8>, %arg1: tensor<13x21x3xi64>) -> tensor<13x21x3xi64> {
-// CHECK:           %[[VAL_1:.*]] = tosa.cast %arg{{.*}} : (tensor<13x21x3xi8>) -> tensor<13x21x3xi64>
-// CHECK:           %[[VAL_2:.*]] = tosa.clamp %[[VAL_1]] {max_fp = 0x7F800000 : f32, max_int = -42 : i64, min_fp = 0xFF800000 : f32, min_int = -9223372036854775808 : i64} : (tensor<13x21x3xi64>) -> tensor<13x21x3xi64>
-// CHECK:           return %[[VAL_2]] : tensor<13x21x3xi64>
+// CHECK-SAME:   ([[PARAM_0_:%.+]]: tensor<13x21x3xi8>, [[PARAM_1_:%.+]]: tensor<13x21x3xi64>) -> tensor<13x21x3xi64> {
+// CHECK:           [[VAR_0_:%.+]] = tosa.cast [[PARAM_0_]] : (tensor<13x21x3xi8>) -> tensor<13x21x3xi64>
+// CHECK:           [[VAR_1_:%.+]] = tosa.clamp [[VAR_0_]] {max_val = -42 : i64, min_val = -9223372036854775808 : i64} : (tensor<13x21x3xi64>) -> tensor<13x21x3xi64>
+// CHECK:           return [[VAR_1_]] : tensor<13x21x3xi64>
   %0 =  "tosa.const"() <{value = dense<-42> : tensor<13x21x3xi8>}>: () -> tensor<13x21x3xi8>
   %1 =  "tosa.const"() <{value = dense<-42> : tensor<13x21x3xi64>}>: () -> tensor<13x21x3xi64>
   %2 = tosa.greater_equal %arg0, %0: (tensor<13x21x3xi8>, tensor<13x21x3xi8>) -> tensor<13x21x3xi1>
