@@ -1693,6 +1693,14 @@ OpFoldResult ConcatOp::fold(FoldAdaptor adaptor) {
     if (getAxis() != producer.getAxis())
       continue;
 
+    // If there are multiple uses of this operand concat and they are different
+    // operations, this means that operand concat will have to happen, so do not
+    // add its operands to us to avoid repeating data concatenation
+    const bool allConcatUsersAreThisConcat = llvm::all_of(
+        producer->getUsers(), [&](Operation *user) { return *this == user; });
+    if (!allConcatUsersAreThisConcat)
+      continue;
+
     // Replace the original operand with all incoming operands
     foundFoldableConcat = true;
     concatOperands.pop_back();
