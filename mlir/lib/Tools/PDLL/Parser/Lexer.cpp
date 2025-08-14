@@ -171,7 +171,9 @@ int Lexer::getNextChar() {
   }
 }
 
-StringRef Lexer::getCurrentInclude() const { return canonicalIncludeFileStack.back(); }
+StringRef Lexer::getCurrentInclude() const {
+  return canonicalIncludeFileStack.back();
+}
 
 bool Lexer::isLexingMainFile() const {
   return static_cast<int>(srcMgr.getMainFileID()) == curBufferID;
@@ -402,6 +404,8 @@ Token Lexer::lexIdentifier(const char *tokStart) {
                          .Case("log2", Token::log2)
                          .Case("exp2", Token::exp2)
                          .Case("math_abs", Token::abs)
+                         .Case("true", Token::kw_true)
+                         .Case("false", Token::kw_false)
                          .Default(Token::identifier);
   return Token(kind, str);
 }

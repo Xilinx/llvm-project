@@ -71,6 +71,10 @@ public:
     kw_with,
     KW_END,
 
+    // Boolean keywords
+    kw_true,
+    kw_false,
+
     /// Punctuation.
     arrow,
     colon,

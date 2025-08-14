@@ -344,6 +344,7 @@ private:
   FailureOr<ast::Expr *> parseMulDivModExpr();
   FailureOr<ast::Expr *> parseLogicalNotExpr();
   FailureOr<ast::Expr *> parseOtherExpr();
+  FailureOr<ast::Expr *> parseBoolExpr();
 
   /// Identifier expressions.
   FailureOr<ast::Expr *> parseArrayAttrExpr();
@@ -2301,6 +2302,10 @@ FailureOr<ast::Expr *> Parser::parseOtherExpr() {
   case Token::string_block:
     return emitError("expected expression. If you are trying to create an "
                      "ArrayAttr, use a space between `[` and `{`.");
+  case Token::kw_false:
+  case Token::kw_true:
+    lhsExpr = parseBoolExpr();
+    break;
   default:
     return emitError("expected expression");
   }
@@ -2576,6 +2581,16 @@ FailureOr<ast::Expr *> Parser::parseIntegerExpr() {
   consumeToken();
 
   auto allocated = copyStringWithNull(ctx, (Twine(value) + ":" + type).str());
+  return ast::AttributeExpr::create(ctx, loc, allocated);
+}
+
+FailureOr<ast::Expr *> Parser::parseBoolExpr() {
+  SMRange loc = curToken.getLoc();
+  const bool isTrue = curToken.is(Token::kw_true);
+  consumeToken();
+  const std::string boolAttrAsString = isTrue ? "true" : "false";
+
+  auto allocated = copyStringWithNull(ctx, boolAttrAsString);
   return ast::AttributeExpr::create(ctx, loc, allocated);
 }
 
