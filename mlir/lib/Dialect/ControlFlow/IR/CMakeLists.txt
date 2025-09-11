@@ -13,3 +13,12 @@ add_mlir_dialect_library(MLIRControlFlowDialect
   MLIRIR
   MLIRSideEffectInterfaces
   )
+
+  if(WIN32 AND NOT MINGW)
+    target_compile_definitions(MLIRControlFlowDialect PRIVATE
+                                 # Don't check the msvcprt iterator debug levels
+                                 # as we will define the iterator types; libc++
+                                 # uses a different macro to identify the debug
+                                 # level.
+                                 _ALLOW_ITERATOR_DEBUG_LEVEL_MISMATCH)
+  endif()
