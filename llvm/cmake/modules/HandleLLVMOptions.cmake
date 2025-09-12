@@ -1093,6 +1093,9 @@ endif()
 add_compile_definitions(__STDC_CONSTANT_MACROS)
 add_compile_definitions(__STDC_FORMAT_MACROS)
 add_compile_definitions(__STDC_LIMIT_MACROS)
+if(WIN32 AND NOT MINGW)
+  add_compile_definitions(_ALLOW_ITERATOR_DEBUG_LEVEL_MISMATCH)
+endif()
 
 # clang and gcc don't default-print colored diagnostics when invoked from Ninja.
 if (UNIX AND
