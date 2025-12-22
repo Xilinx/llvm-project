@@ -888,8 +888,8 @@ struct TosaFoldConstantClamp
       return {};
     }
 
-    auto lowerBoundVal = op.getMinIntAttr().getValue();
-    auto upperBoundVal = op.getMaxIntAttr().getValue();
+    auto lowerBoundVal = cast<mlir::IntegerAttr>(op.getMinValAttr()).getValue();
+    auto upperBoundVal = cast<mlir::IntegerAttr>(op.getMaxValAttr()).getValue();
     assert(lowerBoundVal.getBitWidth() == upperBoundVal.getBitWidth());
 
     return applyClamp(values, lowerBoundVal, upperBoundVal, op.getType());
@@ -898,8 +898,8 @@ struct TosaFoldConstantClamp
   /// Called when the values.getElementType() is FloatType.
   DenseElementsAttr computeFloat(DenseElementsAttr values,
                                  PatternRewriter &rewriter, ClampOp op) const {
-    auto lowerBoundVal = op.getMinFp();
-    auto upperBoundVal = op.getMaxFp();
+    auto lowerBoundVal = cast<mlir::FloatAttr>(op.getMinValAttr()).getValue();
+    auto upperBoundVal = cast<mlir::FloatAttr>(op.getMaxValAttr()).getValue();
     assert(APFloat::getSizeInBits(lowerBoundVal.getSemantics()) ==
            APFloat::getSizeInBits(upperBoundVal.getSemantics()));
 
